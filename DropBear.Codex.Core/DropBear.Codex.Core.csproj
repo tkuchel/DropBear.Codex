@@ -1,16 +1,53 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net8.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+  <PropertyGroup>
+    <!-- Target Framework -->
+    <TargetFramework>net8.0</TargetFramework>
 
-    <ItemGroup>
-      <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
-        <PrivateAssets>all</PrivateAssets>
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      </PackageReference>
-    </ItemGroup>
+    <!-- Language Features -->
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion> <!-- Ensures the latest C# language features are available -->
+
+    <!-- Package Information -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Version>2024.8.0</Version>
+    <PackageVersion>2024.8.0</PackageVersion> <!-- Specifies the version of the package -->
+    <PackageId>DropBear.Codex.Core</PackageId> <!-- Unique identifier for the package -->
+    <Title>DropBear Codex Core</Title>
+    <Description>The core set of classes used throughout the DropBear.Codex.* libraries</Description>
+    <Authors>Terrence Kuchel</Authors> <!-- Specifies the authors of the package -->
+    <Company>DropBear</Company> <!-- Company or individual responsible for the package -->
+    <PackageTags>DropBear, Codex, Core</PackageTags> <!-- Tags for easier discoverability -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression> <!-- License under which the package is distributed -->
+    <Copyright>2024 Terrence Kuchel (DropBear)</Copyright>
+    <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex</RepositoryUrl>
+    <RepositoryType>git</RepositoryType> <!-- Specifies the type of repository (git, svn, etc.) -->
+    <!--    <PackageIconUrl>https://github.com/tkuchel/DropBear.Codex/raw/main/icon.png</PackageIconUrl> &lt;!&ndash; URL to the package icon &ndash;&gt;-->
+    <PackageReleaseNotes>Initial release of the DropBear Codex Core library, containing foundational classes for result handling and more.</PackageReleaseNotes> <!-- Release notes for the package -->
+
+    <!-- Build Options -->
+    <AssemblyName>DropBear.Codex.Core</AssemblyName>
+    <RootNamespace>DropBear.Codex.Core</RootNamespace>
+    <Optimize>true</Optimize> <!-- Enables optimizations during build -->
+    <Deterministic>true</Deterministic> <!-- Ensures deterministic builds -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors> <!-- Optionally ensure warnings are treated as errors -->
+    <WarningsAsErrors>CSxxxx</WarningsAsErrors> <!-- Specific warnings that should be treated as errors -->
+    <NoWarn>CS1591</NoWarn> <!-- Suppresses missing XML comments warnings (CS1591) if needed -->
+
+    <!-- Output Options -->
+    <OutputType>Library</OutputType> <!-- Specifies that the project is a class library -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile> <!-- Generates an XML documentation file -->
+    <DebugType>embedded</DebugType> <!-- Embeds debugging information into the assembly -->
+  </PropertyGroup>
+
+  <!-- Item Group for Source Files -->
+  <ItemGroup>
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
 
 </Project>
