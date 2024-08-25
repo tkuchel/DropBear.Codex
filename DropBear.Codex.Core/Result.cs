@@ -14,7 +14,7 @@ namespace DropBear.Codex.Core;
 /// </summary>
 public class Result : IEquatable<Result>
 {
-    private protected static readonly ILogger _logger = new NoOpLogger(); // Default to a no-op logger
+    private protected static ILogger Logger = new NoOpLogger(); // Default to a no-op logger
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="Result" /> class.
@@ -72,6 +72,15 @@ public class Result : IEquatable<Result>
                string.Equals(ErrorMessage, other.ErrorMessage, StringComparison.Ordinal) &&
                Equals(Exception, other.Exception) &&
                Exceptions.SequenceEqual(other.Exceptions);
+    }
+
+    /// <summary>
+    ///     Sets the logger for the class. If a null logger is provided, the default no-op logger will be used.
+    /// </summary>
+    /// <param name="logger">The logger to be set. If null, the no-op logger will be used.</param>
+    public static void SetLogger(ILogger? logger)
+    {
+        Logger = logger ?? new NoOpLogger();
     }
 
     /// <inheritdoc />
@@ -229,7 +238,7 @@ public class Result : IEquatable<Result>
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception during action execution.");
+            Logger.LogError(ex, "Exception during action execution.");
         }
     }
 
@@ -246,7 +255,7 @@ public class Result : IEquatable<Result>
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Exception during asynchronous action execution.");
+            Logger.LogError(ex, "Exception during asynchronous action execution.");
         }
     }
 }
