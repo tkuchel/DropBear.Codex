@@ -2,8 +2,8 @@
 
 using System.Collections.ObjectModel;
 using DropBear.Codex.Core.Enums;
-using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Logging;
+using Serilog;
 
 #endregion
 
@@ -14,7 +14,7 @@ namespace DropBear.Codex.Core;
 /// </summary>
 public class Result : IEquatable<Result>
 {
-    private protected static ILogger Logger = new NoOpLogger(); // Default to a no-op logger
+    private protected static ILogger? Logger;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="Result" /> class.
@@ -34,6 +34,7 @@ public class Result : IEquatable<Result>
         ErrorMessage = error ?? string.Empty;
         Exception = exception;
         Exceptions = new ReadOnlyCollection<Exception>(new List<Exception>());
+        Logger = LoggerFactory.Logger.ForContext<Result>();
     }
 
     /// <summary>
@@ -74,14 +75,6 @@ public class Result : IEquatable<Result>
                Exceptions.SequenceEqual(other.Exceptions);
     }
 
-    /// <summary>
-    ///     Sets the logger for the class. If a null logger is provided, the default no-op logger will be used.
-    /// </summary>
-    /// <param name="logger">The logger to be set. If null, the no-op logger will be used.</param>
-    public static void SetLogger(ILogger? logger)
-    {
-        Logger = logger ?? new NoOpLogger();
-    }
 
     /// <inheritdoc />
     public override bool Equals(object? obj)
@@ -238,7 +231,7 @@ public class Result : IEquatable<Result>
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception during action execution.");
+            Logger.Error(ex, "Exception during action execution.");
         }
     }
 
@@ -255,7 +248,7 @@ public class Result : IEquatable<Result>
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Exception during asynchronous action execution.");
+            Logger.Error(ex, "Exception during asynchronous action execution.");
         }
     }
 }

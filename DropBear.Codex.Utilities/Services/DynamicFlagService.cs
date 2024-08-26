@@ -2,9 +2,9 @@
 
 using System.Collections.Concurrent;
 using System.Text.Json;
-using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Utilities.Interfaces;
+using Serilog;
 
 #endregion
 
@@ -15,7 +15,7 @@ namespace DropBear.Codex.Utilities.Services;
 /// </summary>
 public class DynamicFlagService : IDynamicFlagService
 {
-    private static ILogger _logger = new NoOpLogger(); // Default to a no-op logger
+    private static ILogger? _logger;
     private readonly ConcurrentDictionary<string, bool> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, int> _flagMap = new(StringComparer.OrdinalIgnoreCase);
     private int _flags;
@@ -28,6 +28,7 @@ public class DynamicFlagService : IDynamicFlagService
     {
         _flags = 0;
         _nextFreeBit = 0;
+        _logger = LoggerFactory.Logger.ForContext<DynamicFlagService>();
     }
 
     /// <summary>
@@ -42,14 +43,14 @@ public class DynamicFlagService : IDynamicFlagService
             var ex = new InvalidOperationException(
                 "Cannot add flag. Either the flag already exists or the maximum number of flags (32) has been reached.");
 
-            _logger.LogError(ex,
+            _logger.Error(ex,
                 "Cannot add flag. Either the flag already exists or the maximum number of flags (32) has been reached.");
             throw ex;
         }
 
         _flagMap[flagName] = 1 << _nextFreeBit++;
         _cache.Clear(); // Reset the cache to ensure consistency.
-        _logger.LogInformation($"Flag '{flagName}' added successfully.");
+        _logger.Information($"Flag '{flagName}' added successfully.");
     }
 
     /// <summary>
@@ -63,12 +64,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags &= ~bitValue;
             _cache.Clear();
-            _logger.LogInformation($"Flag '{flagName}' removed successfully.");
+            _logger.Information($"Flag '{flagName}' removed successfully.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.LogError(ex, $"Cannot remove flag '{flagName}'. Flag not found.");
+            _logger.Error(ex, $"Cannot remove flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -84,12 +85,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags |= bitValue;
             _cache[flagName] = true;
-            _logger.LogInformation($"Flag '{flagName}' set.");
+            _logger.Information($"Flag '{flagName}' set.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.LogError(ex, $"Cannot set flag '{flagName}'. Flag not found.");
+            _logger.Error(ex, $"Cannot set flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -105,12 +106,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags &= ~bitValue;
             _cache[flagName] = false;
-            _logger.LogInformation($"Flag '{flagName}' cleared.");
+            _logger.Information($"Flag '{flagName}' cleared.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.LogError(ex, $"Cannot clear flag '{flagName}'. Flag not found.");
+            _logger.Error(ex, $"Cannot clear flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -126,12 +127,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags ^= bitValue;
             _cache[flagName] = (_flags & bitValue) == bitValue;
-            _logger.LogInformation($"Flag '{flagName}' toggled.");
+            _logger.Information($"Flag '{flagName}' toggled.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.LogError(ex, $"Cannot toggle flag '{flagName}'. Flag not found.");
+            _logger.Error(ex, $"Cannot toggle flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -152,7 +153,7 @@ public class DynamicFlagService : IDynamicFlagService
         if (!_flagMap.TryGetValue(flagName, out var bitValue))
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.LogError(ex, $"Flag {flagName} not found.");
+            _logger.Error(ex, $"Flag {flagName} not found.");
             throw ex;
         }
 
@@ -175,7 +176,7 @@ public class DynamicFlagService : IDynamicFlagService
             NextFreeBit = _nextFreeBit
         };
 
-        _logger.LogInformation("Flag data serialized successfully.");
+        _logger.Information("Flag data serialized successfully.");
         return JsonSerializer.Serialize(data);
     }
 
@@ -190,7 +191,7 @@ public class DynamicFlagService : IDynamicFlagService
         if (data is null)
         {
             var ex = new InvalidOperationException("Flag data deserialization failed.");
-            _logger.LogError(ex, "Flag data deserialization failed.");
+            _logger.Error(ex, "Flag data deserialization failed.");
             throw ex;
         }
 
@@ -203,7 +204,7 @@ public class DynamicFlagService : IDynamicFlagService
         _flags = data.CurrentState;
         _nextFreeBit = data.NextFreeBit;
         _cache.Clear();
-        _logger.LogInformation("Flag data deserialized successfully.");
+        _logger.Information("Flag data deserialized successfully.");
     }
 
     /// <summary>
@@ -214,16 +215,6 @@ public class DynamicFlagService : IDynamicFlagService
     {
         return _flagMap.Keys.ToDictionary(flag => flag, IsFlagSet, StringComparer.OrdinalIgnoreCase);
     }
-
-    /// <summary>
-    ///     Sets the logger for the class. If a null logger is provided, the default no-op logger will be used.
-    /// </summary>
-    /// <param name="logger">The logger to be set. If null, the no-op logger will be used.</param>
-    public static void SetLogger(ILogger? logger)
-    {
-        _logger = logger ?? new NoOpLogger();
-    }
-
 
     /// <summary>
     ///     Helper class for serialization and deserialization of the flag manager state.

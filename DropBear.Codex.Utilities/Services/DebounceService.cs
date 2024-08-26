@@ -2,10 +2,10 @@
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core;
-using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Utilities.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
+using Serilog;
 
 #endregion
 
@@ -16,7 +16,7 @@ namespace DropBear.Codex.Utilities.Services;
 /// </summary>
 public class DebounceService : IDebounceService
 {
-    private protected static ILogger Logger = new NoOpLogger(); // Default to a no-op logger
+    private protected static ILogger Logger;
     private readonly TimeSpan _defaultDebounceTime = TimeSpan.FromSeconds(30);
     private readonly IMemoryCache _memoryCache;
 
@@ -28,6 +28,7 @@ public class DebounceService : IDebounceService
     public DebounceService(IMemoryCache memoryCache)
     {
         _memoryCache = memoryCache;
+        Logger = LoggerFactory.Logger.ForContext<DebounceService>();
     }
 
     /// <summary>

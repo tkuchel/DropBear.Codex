@@ -219,7 +219,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error executing action.");
+            Logger.Error(ex, "Error executing action.");
             return Failure(ex.Message);
         }
     }
@@ -232,7 +232,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error executing function.");
+            Logger.Error(ex, "Error executing function.");
             return Result<TOut>.Failure(ex.Message);
         }
     }
