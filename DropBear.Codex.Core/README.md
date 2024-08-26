@@ -6,16 +6,24 @@
 
 ## Overview
 
-**DropBear Codex Core** is a foundational .NET library that provides a set of core utilities, types, and base classes for handling results and operations within the DropBear Codex ecosystem. This library is designed to be lightweight, efficient, and easy to integrate into various applications.
+**DropBear Codex Core** is a foundational .NET library that provides a set of core utilities, types, and base classes
+for handling results and operations within the DropBear Codex ecosystem. This library is designed to be lightweight,
+efficient, and easy to integrate into various applications.
 
-The core components of this library include result types for encapsulating the outcome of operations, ensuring that success, failure, and other states are handled consistently across your applications.
+The core components of this library include result types for encapsulating the outcome of operations, ensuring that
+success, failure, and other states are handled consistently across your applications.
 
 ## Features
 
-- **Result Handling**: Standardized classes (`Result`, `Result<T>`, `Result<TSuccess, TFailure>`, and `ResultWithPayload<T>`) to represent the outcome of operations, including success, failure, warnings, partial success, and more.
-- **Payload Management**: Support for compressing, hashing, and validating payloads in operations, making it easy to handle large data sets efficiently.
-- **Extensible**: The library is designed with extensibility in mind, allowing you to build on top of the provided result types and adapt them to your specific needs.
-- **Robust Error Handling**: Comprehensive error handling mechanisms to ensure that exceptions are captured, logged, and managed appropriately.
+- **Result Handling**: Standardized classes (`Result`, `Result<T>`, `Result<TSuccess, TFailure>`, and
+  `ResultWithPayload<T>`) to represent the outcome of operations, including success, failure, warnings, partial success,
+  and more.
+- **Payload Management**: Support for compressing, hashing, and validating payloads in operations, making it easy to
+  handle large data sets efficiently.
+- **Extensible**: The library is designed with extensibility in mind, allowing you to build on top of the provided
+  result types and adapt them to your specific needs.
+- **Robust Error Handling**: Comprehensive error handling mechanisms to ensure that exceptions are captured, logged, and
+  managed appropriately.
 
 ## Getting Started
 
@@ -106,11 +114,14 @@ else
 
 ## Contributing
 
-Contributions are welcome! Please read the [CONTRIBUTING.md](https://github.com/tkuchel/DropBear.Codex/blob/main/CONTRIBUTING.md) for guidelines on how to contribute to this project.
+Contributions are welcome! Please read
+the [CONTRIBUTING.md](https://github.com/tkuchel/DropBear.Codex/blob/main/CONTRIBUTING.md) for guidelines on how to
+contribute to this project.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](https://github.com/tkuchel/DropBear.Codex/blob/main/LICENSE) file for details.
+This project is licensed under the MIT License - see
+the [LICENSE](https://github.com/tkuchel/DropBear.Codex/blob/main/LICENSE) file for details.
 
 ## Acknowledgements
 

@@ -1,15 +1,13 @@
 ﻿#region
 
-
-
-#endregion
-
 using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+
+#endregion
 
 namespace DropBear.Codex.Utilities.Helpers;
 
@@ -146,7 +144,7 @@ public static partial class StringHelper
     /// <param name="str">The string to convert.</param>
     /// <param name="encoding">The encoding to use.</param>
     /// <returns>The byte array representation of the string.</returns>
-    private static byte[] GetBytes(this string str, System.Text.Encoding encoding)
+    private static byte[] GetBytes(this string str, Encoding encoding)
     {
         ArgumentNullException.ThrowIfNull(str);
         ArgumentNullException.ThrowIfNull(encoding);

@@ -167,5 +167,5 @@ public static class ResultExtensions
         return result.State == ResultState.Failure;
     }
 
-    #pragma warning restore CS0081, CS1584, CS1658
+#pragma warning restore CS0081, CS1584, CS1658
 }

@@ -1,11 +1,7 @@
-﻿#region Using Directives
-
-#endregion
-
-namespace DropBear.Codex.Utilities.ConfigurationPresets;
+﻿namespace DropBear.Codex.Utilities.ConfigurationPresets;
 
 /// <summary>
-/// Provides preset configurations for <see cref="MessagePackSerializerOptions"/> used in MessagePack serialization.
+///     Provides preset configurations for <see cref="MessagePackSerializerOptions" /> used in MessagePack serialization.
 /// </summary>
 public static class MessagePackSerializerPresets
 {
