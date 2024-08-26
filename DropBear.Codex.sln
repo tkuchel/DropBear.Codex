@@ -6,6 +6,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Utilities", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Serialization", "DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj", "{198F7775-765A-4FCB-8DBB-848FBD42D188}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Hashing", "DropBear.Codex.Hashing\DropBear.Codex.Hashing.csproj", "{5D4B1363-1EA5-4977-BC61-534FD6A98397}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -24,5 +26,9 @@ Global
 		{198F7775-765A-4FCB-8DBB-848FBD42D188}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{198F7775-765A-4FCB-8DBB-848FBD42D188}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{198F7775-765A-4FCB-8DBB-848FBD42D188}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5D4B1363-1EA5-4977-BC61-534FD6A98397}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5D4B1363-1EA5-4977-BC61-534FD6A98397}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5D4B1363-1EA5-4977-BC61-534FD6A98397}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5D4B1363-1EA5-4977-BC61-534FD6A98397}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
