@@ -70,7 +70,7 @@ public static class SimpleObfuscator
         var originalValue = BinaryAndHexConverter.BinaryToString(originalBinary);
         var hash = BinaryAndHexConverter.BinaryToString(hashBinary);
 
-        if (GenerateHash(originalValue) != hash)
+        if (!string.Equals(GenerateHash(originalValue), hash, StringComparison.Ordinal))
         {
             throw new InvalidOperationException("Data integrity check failed - hash mismatch.");
         }

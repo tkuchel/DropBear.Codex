@@ -39,14 +39,18 @@ public abstract class SerializerFactory
         {
             var message = "Serializer type must be specified.";
             _logger.Error(message);
+#pragma warning disable MA0015
             throw new ArgumentException(message, nameof(config.SerializerType));
+#pragma warning restore MA0015
         }
 
         if (config.RecyclableMemoryStreamManager is null)
         {
             var message = "RecyclableMemoryStreamManager must be specified.";
             _logger.Error(message);
+#pragma warning disable MA0015
             throw new ArgumentException(message, nameof(config.RecyclableMemoryStreamManager));
+#pragma warning restore MA0015
         }
 
         _logger.Information("Configuration validated successfully.");

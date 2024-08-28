@@ -33,7 +33,9 @@ public class JsonSerializer : ISerializer
 
         _options = config.JsonSerializerOptions ?? new JsonSerializerOptions();
         _memoryManager = config.RecyclableMemoryStreamManager ?? throw new ArgumentNullException(
+#pragma warning disable MA0015
             nameof(config.RecyclableMemoryStreamManager), "RecyclableMemoryStreamManager must be provided.");
+#pragma warning restore MA0015
     }
 
     /// <inheritdoc />

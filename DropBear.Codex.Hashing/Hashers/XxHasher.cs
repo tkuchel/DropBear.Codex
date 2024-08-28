@@ -63,7 +63,7 @@ public class XxHasher : IHasher
             return Result.Failure("Failed to compute hash.");
         }
 
-        var isValid = hashResult.Value == expectedHash;
+        var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.Ordinal);
         Logger.Information(isValid ? "Verification succeeded." : "Verification failed.");
         return isValid ? Result.Success() : Result.Failure("Verification failed.");
     }
@@ -100,7 +100,7 @@ public class XxHasher : IHasher
             return Result.Failure("Failed to compute hash.");
         }
 
-        var isValid = encodeResult.Value == expectedBase64Hash;
+        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
         Logger.Information(isValid ? "Base64 hash verification succeeded." : "Base64 hash verification failed.");
         return isValid ? Result.Success() : Result.Failure("Base64 hash verification failed.");
     }

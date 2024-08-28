@@ -38,24 +38,27 @@ public class GZipCompressor : ICompressor
 
         _logger.Information("Starting compression of data with length {DataLength}.", data.Length);
 
-        await using var compressedStream = _memoryStreamManager.GetStream("GZipCompressor-Compress");
-        try
+        var compressedStream = _memoryStreamManager.GetStream("GZipCompressor-Compress");
+        await using (compressedStream.ConfigureAwait(false))
         {
-            await using var zipStream = new GZipStream(compressedStream, CompressionMode.Compress, false);
-            await zipStream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
-            await zipStream.FlushAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Error occurred while compressing data.");
-            throw;
-        }
+            try
+            {
+                await using var zipStream = new GZipStream(compressedStream, CompressionMode.Compress, false);
+                await zipStream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
+                await zipStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error occurred while compressing data.");
+                throw;
+            }
 
-        compressedStream.Position = 0; // Reset position to read the stream content
-        var result = compressedStream.ToArray();
-        _logger.Information("Compression completed. Compressed data length: {CompressedLength}.", result.Length);
+            compressedStream.Position = 0; // Reset position to read the stream content
+            var result = compressedStream.ToArray();
+            _logger.Information("Compression completed. Compressed data length: {CompressedLength}.", result.Length);
 
-        return result;
+            return result;
+        }
     }
 
     /// <inheritdoc />
@@ -70,25 +73,29 @@ public class GZipCompressor : ICompressor
         _logger.Information("Starting decompression of data with length {CompressedDataLength}.",
             compressedData.Length);
 
-        await using var compressedStream =
+        var compressedStream =
             _memoryStreamManager.GetStream("GZipCompressor-Decompress-Input", compressedData);
-        await using var decompressedStream = _memoryStreamManager.GetStream("GZipCompressor-Decompress-Output");
-
-        try
+        await using (compressedStream.ConfigureAwait(false))
         {
-            await using var zipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
-            await zipStream.CopyToAsync(decompressedStream, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Error occurred while decompressing data.");
-            throw;
-        }
+            await using var decompressedStream = _memoryStreamManager.GetStream("GZipCompressor-Decompress-Output");
 
-        decompressedStream.Position = 0; // Reset position to read the stream content
-        var result = decompressedStream.ToArray();
-        _logger.Information("Decompression completed. Decompressed data length: {DecompressedLength}.", result.Length);
+            try
+            {
+                await using var zipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
+                await zipStream.CopyToAsync(decompressedStream, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error occurred while decompressing data.");
+                throw;
+            }
 
-        return result;
+            decompressedStream.Position = 0; // Reset position to read the stream content
+            var result = decompressedStream.ToArray();
+            _logger.Information("Decompression completed. Decompressed data length: {DecompressedLength}.",
+                result.Length);
+
+            return result;
+        }
     }
 }

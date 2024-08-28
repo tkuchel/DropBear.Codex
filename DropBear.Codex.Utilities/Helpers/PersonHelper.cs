@@ -16,7 +16,7 @@ public static class PersonHelper
     {
         if (string.IsNullOrWhiteSpace(familyName) && string.IsNullOrWhiteSpace(givenNames))
         {
-            throw new ArgumentException("Both family name and given names cannot be empty.");
+            throw new ArgumentException("Both family name and given names cannot be empty.", nameof(givenNames));
         }
 
         familyName = familyName?.Trim() ?? string.Empty;
@@ -45,7 +45,7 @@ public static class PersonHelper
         if (string.IsNullOrWhiteSpace(line1) && string.IsNullOrWhiteSpace(line2) &&
             string.IsNullOrWhiteSpace(city) && string.IsNullOrWhiteSpace(state) && string.IsNullOrWhiteSpace(postCode))
         {
-            throw new ArgumentException("At least one address component must be provided.");
+            throw new ArgumentException("At least one address component must be provided.", nameof(postCode));
         }
 
         var addressParts = new[] { line1, line2, city, state, postCode }

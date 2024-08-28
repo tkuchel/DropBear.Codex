@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Tasks", "Dro
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.StateManagement", "DropBear.Codex.StateManagement\DropBear.Codex.StateManagement.csproj", "{871898EF-A3FB-4EE5-B42C-62888091CF4E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Files", "DropBear.Codex.Files\DropBear.Codex.Files.csproj", "{56C2FDBC-8F58-45C1-92EE-9FB3523C0F81}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,5 +44,9 @@ Global
 		{871898EF-A3FB-4EE5-B42C-62888091CF4E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{871898EF-A3FB-4EE5-B42C-62888091CF4E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{871898EF-A3FB-4EE5-B42C-62888091CF4E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{56C2FDBC-8F58-45C1-92EE-9FB3523C0F81}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{56C2FDBC-8F58-45C1-92EE-9FB3523C0F81}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{56C2FDBC-8F58-45C1-92EE-9FB3523C0F81}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{56C2FDBC-8F58-45C1-92EE-9FB3523C0F81}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

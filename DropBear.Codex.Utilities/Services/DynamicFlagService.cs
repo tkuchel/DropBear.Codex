@@ -211,7 +211,7 @@ public class DynamicFlagService : IDynamicFlagService
     ///     Returns a list of all flags and their current states.
     /// </summary>
     /// <returns>A dictionary with flag names as keys and their states as values.</returns>
-    public Dictionary<string, bool> GetAllFlags()
+    public IDictionary<string, bool> GetAllFlags()
     {
         return _flagMap.Keys.ToDictionary(flag => flag, IsFlagSet, StringComparer.OrdinalIgnoreCase);
     }

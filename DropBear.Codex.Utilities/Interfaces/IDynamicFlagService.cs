@@ -65,5 +65,5 @@ public interface IDynamicFlagService
     ///     Returns a list of all flags and their current states.
     /// </summary>
     /// <returns>A dictionary with flag names as keys and their states as values.</returns>
-    Dictionary<string, bool> GetAllFlags();
+    IDictionary<string, bool> GetAllFlags();
 }

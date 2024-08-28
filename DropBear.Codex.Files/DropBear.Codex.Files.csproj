@@ -9,21 +9,21 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Version>2024.8.0</Version>
     <PackageVersion>2024.8.0</PackageVersion>
-    <PackageId>DropBear.Codex.Hashing</PackageId>
-    <Title>DropBear Codex Hashing</Title>
-    <Description>Provides various hashing implementations and utilities for the DropBear.Codex ecosystem</Description>
+    <PackageId>DropBear.Codex.Files</PackageId>
+    <Title>DropBear Codex Files</Title>
+    <Description>Provides file management and storage capabilities for the DropBear.Codex ecosystem</Description>
     <Authors>Terrence Kuchel</Authors>
     <Company>DropBear</Company>
-    <PackageTags>DropBear, Codex, Hashing</PackageTags>
+    <PackageTags>DropBear, Codex, Files, Storage, Blob</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Copyright>2024 Terrence Kuchel (DropBear)</Copyright>
     <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>Initial release of the DropBear Codex Hashing library, offering various hashing algorithms.</PackageReleaseNotes>
+    <PackageReleaseNotes>Initial release of the DropBear Codex Files library, providing file management and storage capabilities including local and Azure Blob storage support.</PackageReleaseNotes>
 
-    <AssemblyName>DropBear.Codex.Hashing</AssemblyName>
-    <RootNamespace>DropBear.Codex.Hashing</RootNamespace>
+    <AssemblyName>DropBear.Codex.Files</AssemblyName>
+    <RootNamespace>DropBear.Codex.Files</RootNamespace>
     <Optimize>true</Optimize>
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
@@ -35,20 +35,20 @@
     <DebugType>embedded</DebugType>
   </PropertyGroup>
 
-
   <ItemGroup>
     <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj"/>
+    <ProjectReference Include="..\DropBear.Codex.Hashing\DropBear.Codex.Hashing.csproj"/>
+    <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj"/>
+    <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj"/>
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Blake3" Version="1.1.0"/>
-    <PackageReference Include="HashDepot" Version="3.1.0"/>
-    <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1"/>
+    <PackageReference Include="FluentStorage.Azure.Blobs" Version="5.2.5"/>
     <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="SauceControl.Blake2Fast" Version="2.0.0"/>
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1"/>
   </ItemGroup>
 
 </Project>

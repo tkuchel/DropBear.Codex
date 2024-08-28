@@ -35,7 +35,7 @@ public class AESCNGEncryptionProvider : IEncryptionProvider, IDisposable
         {
             var message = "PublicKeyPath and PrivateKeyPath must be provided in the configuration.";
             _logger.Error(message);
-            throw new ArgumentException(message);
+            throw new ArgumentException(message, nameof(config));
         }
 
         var rsaKeyProvider = new RSAKeyProvider(config.PublicKeyPath, config.PrivateKeyPath);

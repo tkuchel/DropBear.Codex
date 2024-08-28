@@ -9,8 +9,6 @@ using Serilog;
 
 namespace DropBear.Codex.Tasks.TaskManagement;
 
-public delegate Task<Result> TaskDefinition(TaskContext context);
-
 public class TaskManager : IDisposable
 {
     private readonly Dictionary<string, Func<TaskContext, Task<bool>>> _conditionalBranches =

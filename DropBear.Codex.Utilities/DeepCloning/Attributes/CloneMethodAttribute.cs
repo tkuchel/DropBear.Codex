@@ -1,4 +1,6 @@
-﻿/// <summary>
+﻿namespace DropBear.Codex.Utilities.DeepCloning.Attributes;
+
+/// <summary>
 ///     Specifies the preferred cloning method for a class, allowing for fine-tuned control over the cloning process.
 /// </summary>
 [AttributeUsage(AttributeTargets.Class)]

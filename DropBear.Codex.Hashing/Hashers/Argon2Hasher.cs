@@ -133,7 +133,9 @@ public class Argon2Hasher : IHasher
 
         Logger.Information("Verifying Base64 hash.");
         var base64Hash = Convert.ToBase64String(data);
-        return base64Hash == expectedBase64Hash ? Result.Success() : Result.Failure("Base64 hash verification failed.");
+        return string.Equals(base64Hash, expectedBase64Hash, StringComparison.Ordinal)
+            ? Result.Success()
+            : Result.Failure("Base64 hash verification failed.");
     }
 
     public IHasher WithHashSize(int size)

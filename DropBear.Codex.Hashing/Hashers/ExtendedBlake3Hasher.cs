@@ -29,7 +29,9 @@ public class ExtendedBlake3Hasher : Blake3Hasher
                 if (segment is null)
                 {
                     Logger.Error("Data segment cannot be null.");
+#pragma warning disable MA0015
                     throw new ArgumentNullException(nameof(segment), "Data segment cannot be null.");
+#pragma warning restore MA0015
                 }
 
                 hasher.Update(segment);

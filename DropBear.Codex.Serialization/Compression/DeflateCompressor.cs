@@ -39,23 +39,26 @@ public class DeflateCompressor : ICompressor
 
         _logger.Information("Starting compression of data with length {DataLength}.", data.Length);
 
-        await using var compressedStream = _memoryStreamManager.GetStream("DeflateCompressor-Compress");
-        try
+        var compressedStream = _memoryStreamManager.GetStream("DeflateCompressor-Compress");
+        await using (compressedStream.ConfigureAwait(false))
         {
-            await using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Compress, true);
-            await deflateStream.WriteAsync(data.AsMemory(), cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Error occurred while compressing data.");
-            throw new CompressionException("Error occurred while compressing data.", ex);
-        }
+            try
+            {
+                await using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Compress, true);
+                await deflateStream.WriteAsync(data.AsMemory(), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error occurred while compressing data.");
+                throw new CompressionException("Error occurred while compressing data.", ex);
+            }
 
-        compressedStream.Position = 0; // Reset position to read the stream content
-        var result = compressedStream.ToArray();
-        _logger.Information("Compression completed. Compressed data length: {CompressedLength}.", result.Length);
+            compressedStream.Position = 0; // Reset position to read the stream content
+            var result = compressedStream.ToArray();
+            _logger.Information("Compression completed. Compressed data length: {CompressedLength}.", result.Length);
 
-        return result;
+            return result;
+        }
     }
 
     /// <inheritdoc />
@@ -70,25 +73,29 @@ public class DeflateCompressor : ICompressor
         _logger.Information("Starting decompression of data with length {CompressedDataLength}.",
             compressedData.Length);
 
-        await using var compressedStream =
+        var compressedStream =
             _memoryStreamManager.GetStream("DeflateCompressor-Decompress-Input", compressedData);
-        await using var decompressedStream = _memoryStreamManager.GetStream("DeflateCompressor-Decompress-Output");
-
-        try
+        await using (compressedStream.ConfigureAwait(false))
         {
-            await using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress);
-            await deflateStream.CopyToAsync(decompressedStream, cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Error occurred while decompressing data.");
-            throw new CompressionException("Error occurred while decompressing data.", ex);
-        }
+            await using var decompressedStream = _memoryStreamManager.GetStream("DeflateCompressor-Decompress-Output");
 
-        decompressedStream.Position = 0; // Reset position to read the stream content
-        var result = decompressedStream.ToArray();
-        _logger.Information("Decompression completed. Decompressed data length: {DecompressedLength}.", result.Length);
+            try
+            {
+                await using var deflateStream = new DeflateStream(compressedStream, CompressionMode.Decompress);
+                await deflateStream.CopyToAsync(decompressedStream, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error occurred while decompressing data.");
+                throw new CompressionException("Error occurred while decompressing data.", ex);
+            }
 
-        return result;
+            decompressedStream.Position = 0; // Reset position to read the stream content
+            var result = decompressedStream.ToArray();
+            _logger.Information("Decompression completed. Decompressed data length: {DecompressedLength}.",
+                result.Length);
+
+            return result;
+        }
     }
 }

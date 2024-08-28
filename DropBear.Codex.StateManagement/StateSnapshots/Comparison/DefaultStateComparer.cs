@@ -23,7 +23,7 @@ public class DefaultStateComparer<T> : IStateComparer<T>
     public bool Equals(T x, T y)
     {
         // Handles nulls and serialization to ensure consistent comparison
-        return JsonConvert.SerializeObject(x) == JsonConvert.SerializeObject(y);
+        return string.Equals(JsonConvert.SerializeObject(x), JsonConvert.SerializeObject(y), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

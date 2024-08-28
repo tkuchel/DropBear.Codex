@@ -62,7 +62,7 @@ public class Blake3Hasher : IHasher
         {
             Logger.Information("Verifying hash using Blake3.");
             var hash = Hasher.Hash(Encoding.UTF8.GetBytes(input)).ToString();
-            return hash == expectedHash ? Result.Success() : Result.Failure("Verification failed.");
+            return string.Equals(hash, expectedHash, StringComparison.Ordinal) ? Result.Success() : Result.Failure("Verification failed.");
         }
         catch (Exception ex)
         {
@@ -105,8 +105,8 @@ public class Blake3Hasher : IHasher
             Logger.Information("Verifying Base64 hash using Blake3.");
             var hash = Hasher.Hash(data);
             var base64Hash = Convert.ToBase64String(hash.AsSpan());
-            return base64Hash == expectedBase64Hash
-                ? Result.Success()
+            return string.Equals(base64Hash, expectedBase64Hash
+, StringComparison.Ordinal) ? Result.Success()
                 : Result.Failure("Base64 hash verification failed.");
         }
         catch (Exception ex)

@@ -59,14 +59,17 @@ public class AESCNGEncryptor : IEncryptor, IDisposable
             var encryptedKey = _rsa.Encrypt(_aesCng.Key, RSAEncryptionPadding.OaepSHA256);
             var encryptedIV = _rsa.Encrypt(_aesCng.IV, RSAEncryptionPadding.OaepSHA256);
 
-            await using var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Encrypt");
-            await using var cryptoStream =
-                new CryptoStream(resultStream, _aesCng.CreateEncryptor(), CryptoStreamMode.Write);
+            var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Encrypt");
+            await using (resultStream.ConfigureAwait(false))
+            {
+                await using var cryptoStream =
+                    new CryptoStream(resultStream, _aesCng.CreateEncryptor(), CryptoStreamMode.Write);
 
-            await cryptoStream.WriteAsync(data.AsMemory(), cancellationToken).ConfigureAwait(false);
-            await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
+                await cryptoStream.WriteAsync(data.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
 
-            return Combine(encryptedKey, encryptedIV, resultStream.ToArray());
+                return Combine(encryptedKey, encryptedIV, resultStream.ToArray());
+            }
         }
         catch (Exception ex)
         {
@@ -107,14 +110,19 @@ public class AESCNGEncryptor : IEncryptor, IDisposable
             }
 
             // Decrypt data
-            await using var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Decrypt");
-            await using var cryptoStream = new CryptoStream(resultStream, _aesCng.CreateDecryptor(aesKey, aesIV),
-                CryptoStreamMode.Write);
+            var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Decrypt");
 
-            await cryptoStream.WriteAsync(encryptedData.AsMemory(), cancellationToken).ConfigureAwait(false);
-            await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
+            // Decrypt data
+            await using (resultStream.ConfigureAwait(false))
+            {
+                await using var cryptoStream = new CryptoStream(resultStream, _aesCng.CreateDecryptor(aesKey, aesIV),
+                    CryptoStreamMode.Write);
 
-            return await ReadStreamAsync(resultStream, cancellationToken).ConfigureAwait(false);
+                await cryptoStream.WriteAsync(encryptedData.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
+
+                return await ReadStreamAsync(resultStream, cancellationToken).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {

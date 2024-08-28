@@ -39,4 +39,11 @@
       <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
+        <PrivateAssets>all</PrivateAssets>
+        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      </PackageReference>
+    </ItemGroup>
+
 </Project>

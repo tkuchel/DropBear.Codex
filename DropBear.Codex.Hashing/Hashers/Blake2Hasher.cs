@@ -132,7 +132,7 @@ public class Blake2Hasher : IHasher
         var hash = Blake2b.ComputeHash(_hashSize, data);
         var base64Hash = Convert.ToBase64String(hash);
 
-        return base64Hash == expectedBase64Hash ? Result.Success() : Result.Failure("Base64 hash verification failed.");
+        return string.Equals(base64Hash, expectedBase64Hash, StringComparison.Ordinal) ? Result.Success() : Result.Failure("Base64 hash verification failed.");
     }
 
     public IHasher WithHashSize(int size)

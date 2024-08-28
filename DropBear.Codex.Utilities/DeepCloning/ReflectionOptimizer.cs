@@ -21,7 +21,7 @@ public static class ReflectionOptimizer
     /// </summary>
     /// <param name="type">The type whose fields are to be retrieved.</param>
     /// <returns>A collection of <see cref="FieldInfo" /> objects representing the fields of the specified type.</returns>
-    public static Collection<FieldInfo> GetFields(Type type)
+    public static ICollection<FieldInfo> GetFields(Type type)
     {
         return FieldsCache.GetOrAdd(type, t =>
         {

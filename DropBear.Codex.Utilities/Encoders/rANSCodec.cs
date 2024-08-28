@@ -32,7 +32,7 @@ public sealed class rANSCodec
     /// <summary>
     ///     Gets or sets the last used decode map during the encoding process.
     /// </summary>
-    public Dictionary<int, byte>? LastUsedDecodeMap { get; set; }
+    public IDictionary<int, byte>? LastUsedDecodeMap { get; set; }
 
     /// <summary>
     ///     Encodes a sequence of symbols into a compressed state using the rANS codec.
