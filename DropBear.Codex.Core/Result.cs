@@ -62,6 +62,7 @@ public class Result : IEquatable<Result>
     /// </summary>
     public bool IsSuccess => State is ResultState.Success or ResultState.PartialSuccess;
 
+
     /// <summary>
     ///     Determines whether the specified result is equal to the current result.
     /// </summary>
