@@ -56,7 +56,7 @@ public class AesGcmEncryptor : IEncryptor, IDisposable
             var ciphertext = new byte[data.Length];
             var tag = new byte[TagSize];
 
-            using var aesGcm = new AesGcm(_key);
+            using var aesGcm = new AesGcm(_key,TagSize);
             aesGcm.Encrypt(nonce, data, ciphertext, tag);
 
             var encryptedKey = await Task
@@ -99,7 +99,7 @@ public class AesGcmEncryptor : IEncryptor, IDisposable
                 .ConfigureAwait(false);
 
             var plaintext = new byte[ciphertext.Length];
-            using var aesGcm = new AesGcm(_key);
+            using var aesGcm = new AesGcm(_key,TagSize);
             aesGcm.Decrypt(nonce, ciphertext, tag, plaintext);
 
             _logger.Information("Decryption completed successfully.");

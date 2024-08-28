@@ -2,7 +2,7 @@
 
 using System.Text.Json;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Serialization.Configurations;
+using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Exceptions;
 using DropBear.Codex.Serialization.Interfaces;
 using Microsoft.IO;

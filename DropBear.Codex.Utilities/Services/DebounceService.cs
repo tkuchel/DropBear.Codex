@@ -16,7 +16,7 @@ namespace DropBear.Codex.Utilities.Services;
 /// </summary>
 public class DebounceService : IDebounceService
 {
-    private protected static ILogger Logger;
+    private protected static ILogger? Logger;
     private readonly TimeSpan _defaultDebounceTime = TimeSpan.FromSeconds(30);
     private readonly IMemoryCache _memoryCache;
 

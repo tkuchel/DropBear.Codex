@@ -19,8 +19,8 @@ public static class PersonHelper
             throw new ArgumentException("Both family name and given names cannot be empty.");
         }
 
-        familyName = familyName?.Trim();
-        givenNames = givenNames?.Trim();
+        familyName = familyName?.Trim() ?? string.Empty;
+        givenNames = givenNames?.Trim() ?? string.Empty;
 
         return givenNameFirst
             ? string.IsNullOrWhiteSpace(givenNames) ? familyName : $"{givenNames} {familyName}".TrimEnd()

@@ -2,7 +2,7 @@
 
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Serialization.Configurations;
+using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Interfaces;
 using DropBear.Codex.Serialization.Serializers;
 using Serilog;

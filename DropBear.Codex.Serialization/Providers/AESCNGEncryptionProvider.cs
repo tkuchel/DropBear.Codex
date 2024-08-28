@@ -3,7 +3,7 @@
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Serialization.Configurations;
+using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Encryption;
 using DropBear.Codex.Serialization.Interfaces;
 using Microsoft.IO;

@@ -5,7 +5,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Serialization.Configurations;
+using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Interfaces;
 using DropBear.Codex.Serialization.Providers;
 using DropBear.Codex.Serialization.Serializers;

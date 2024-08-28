@@ -43,14 +43,14 @@ public class DynamicFlagService : IDynamicFlagService
             var ex = new InvalidOperationException(
                 "Cannot add flag. Either the flag already exists or the maximum number of flags (32) has been reached.");
 
-            _logger.Error(ex,
+            _logger?.Error(ex,
                 "Cannot add flag. Either the flag already exists or the maximum number of flags (32) has been reached.");
             throw ex;
         }
 
         _flagMap[flagName] = 1 << _nextFreeBit++;
         _cache.Clear(); // Reset the cache to ensure consistency.
-        _logger.Information($"Flag '{flagName}' added successfully.");
+        _logger?.Information($"Flag '{flagName}' added successfully.");
     }
 
     /// <summary>
@@ -64,12 +64,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags &= ~bitValue;
             _cache.Clear();
-            _logger.Information($"Flag '{flagName}' removed successfully.");
+            _logger?.Information($"Flag '{flagName}' removed successfully.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.Error(ex, $"Cannot remove flag '{flagName}'. Flag not found.");
+            _logger?.Error(ex, $"Cannot remove flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -85,12 +85,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags |= bitValue;
             _cache[flagName] = true;
-            _logger.Information($"Flag '{flagName}' set.");
+            _logger?.Information($"Flag '{flagName}' set.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.Error(ex, $"Cannot set flag '{flagName}'. Flag not found.");
+            _logger?.Error(ex, $"Cannot set flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -106,12 +106,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags &= ~bitValue;
             _cache[flagName] = false;
-            _logger.Information($"Flag '{flagName}' cleared.");
+            _logger?.Information($"Flag '{flagName}' cleared.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.Error(ex, $"Cannot clear flag '{flagName}'. Flag not found.");
+            _logger?.Error(ex, $"Cannot clear flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -127,12 +127,12 @@ public class DynamicFlagService : IDynamicFlagService
         {
             _flags ^= bitValue;
             _cache[flagName] = (_flags & bitValue) == bitValue;
-            _logger.Information($"Flag '{flagName}' toggled.");
+            _logger?.Information($"Flag '{flagName}' toggled.");
         }
         else
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.Error(ex, $"Cannot toggle flag '{flagName}'. Flag not found.");
+            _logger?.Error(ex, $"Cannot toggle flag '{flagName}'. Flag not found.");
             throw ex;
         }
     }
@@ -153,7 +153,7 @@ public class DynamicFlagService : IDynamicFlagService
         if (!_flagMap.TryGetValue(flagName, out var bitValue))
         {
             var ex = new KeyNotFoundException($"Flag '{flagName}' not found.");
-            _logger.Error(ex, $"Flag {flagName} not found.");
+            _logger?.Error(ex, $"Flag {flagName} not found.");
             throw ex;
         }
 
@@ -176,7 +176,7 @@ public class DynamicFlagService : IDynamicFlagService
             NextFreeBit = _nextFreeBit
         };
 
-        _logger.Information("Flag data serialized successfully.");
+        _logger?.Information("Flag data serialized successfully.");
         return JsonSerializer.Serialize(data);
     }
 
@@ -191,7 +191,7 @@ public class DynamicFlagService : IDynamicFlagService
         if (data is null)
         {
             var ex = new InvalidOperationException("Flag data deserialization failed.");
-            _logger.Error(ex, "Flag data deserialization failed.");
+            _logger?.Error(ex, "Flag data deserialization failed.");
             throw ex;
         }
 
@@ -204,7 +204,7 @@ public class DynamicFlagService : IDynamicFlagService
         _flags = data.CurrentState;
         _nextFreeBit = data.NextFreeBit;
         _cache.Clear();
-        _logger.Information("Flag data deserialized successfully.");
+        _logger?.Information("Flag data deserialized successfully.");
     }
 
     /// <summary>

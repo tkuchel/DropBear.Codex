@@ -6,7 +6,7 @@ using Microsoft.IO;
 
 #endregion
 
-namespace DropBear.Codex.Serialization.Configurations;
+namespace DropBear.Codex.Serialization.ConfigurationPresets;
 
 /// <summary>
 ///     Represents the configuration settings for serialization.
