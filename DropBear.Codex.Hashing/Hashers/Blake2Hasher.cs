@@ -152,7 +152,12 @@ public class Blake2Hasher : IHasher
     {
         Logger.Debug("Hashing input using Blake2 with provided salt.");
         var inputBytes = Encoding.UTF8.GetBytes(input);
-        var saltedInput = HashingHelper.CombineBytes(salt, inputBytes);
-        return Blake2b.ComputeHash(_hashSize, saltedInput);
+        if (salt != null)
+        {
+            var saltedInput = HashingHelper.CombineBytes(salt, inputBytes);
+            return Blake2b.ComputeHash(_hashSize, saltedInput);
+        }
+
+        return Blake2b.ComputeHash(_hashSize, inputBytes);
     }
 }

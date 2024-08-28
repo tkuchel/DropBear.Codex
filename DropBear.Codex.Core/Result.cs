@@ -232,7 +232,7 @@ public class Result : IEquatable<Result>
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Exception during action execution.");
+            Logger?.Error(ex, "Exception during action execution.");
         }
     }
 
@@ -249,7 +249,7 @@ public class Result : IEquatable<Result>
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Exception during asynchronous action execution.");
+            Logger?.Error(ex, "Exception during asynchronous action execution.");
         }
     }
 }

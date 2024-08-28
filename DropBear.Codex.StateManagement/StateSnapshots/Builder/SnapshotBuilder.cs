@@ -9,7 +9,6 @@ namespace DropBear.Codex.StateManagement.StateSnapshots.Builder;
 public class SnapshotBuilder<T> where T : ICloneable<T>
 {
     private bool _automaticSnapshotting;
-    private IStateComparer<T>? _comparer;
     private TimeSpan _retentionTime = TimeSpan.FromHours(24);
     private TimeSpan _snapshotInterval = TimeSpan.FromMinutes(1);
 
