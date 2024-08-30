@@ -37,6 +37,9 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      - name: Update .NET workloads
+        run: dotnet workload update
+
       - name: Restore dependencies
         run: dotnet restore ${{ matrix.project }}/${{ matrix.project }}.csproj
 
@@ -67,7 +70,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           Get-ChildItem ./nuget-packages/*.nupkg -Name | ForEach-Object {
-            gh release upload ${{ github.ref_name }} "./nuget-packages/$_" --clobber
+            gh release upload ${{ github.ref_name }} "./nuget-packages/${{ matrix.project }}/$_" --clobber
           }
         shell: pwsh
         env:
@@ -77,7 +80,7 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/')
         run: |
           Get-ChildItem ./nuget-packages/*.nupkg -Name | ForEach-Object {
-            dotnet nuget push "./nuget-packages/$_" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+            dotnet nuget push "./nuget-packages/${{ matrix.project }}/$_" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
           }
         shell: pwsh
         env:
