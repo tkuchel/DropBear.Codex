@@ -55,9 +55,9 @@ jobs:
       - name: Extract Package Version
         id: extract_version
         run: |
-          PACKAGE_NAME=$(basename ./*${{ matrix.project }}*.nupkg)
-          PACKAGE_VERSION=$(echo $PACKAGE_NAME | grep -oP '(?<=\.)[0-9]+\.[0-9]+\.[0-9]+(?=\.)')
-          echo "PACKAGE_VERSION=$PACKAGE_VERSION" >> $GITHUB_ENV
+          $packageName = Get-ChildItem -Path ./nuget-packages/ | Where-Object { $_.Name -like "*${{ matrix.project }}*.nupkg" } | Select-Object -ExpandProperty Name
+          $packageVersion = $packageName -replace '^.*\.(\d+\.\d+\.\d+)\.nupkg$', '$1'
+          echo "PACKAGE_VERSION=$packageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
 
       - name: Archive NuGet packages
         uses: actions/upload-artifact@v4
