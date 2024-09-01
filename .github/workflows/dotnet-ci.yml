@@ -65,13 +65,13 @@ jobs:
       - name: Check if GitHub Release Exists
         id: check_release
         run: |
-          gh release view ${{ github.ref_name }} || echo "not_found" >> $env:GITHUB_ENV
+          if (gh release view ${{ github.ref_name }} -q .id) { echo "exists=true" } else { echo "exists=false" } >> $env:GITHUB_ENV
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
-        if: env.GITHUB_ENV.contains('not_found')
+        if: env.exists == 'false'
         run: |
           gh release create ${{ github.ref_name }} --title "${{ github.ref_name }}" --notes "Release ${{ github.ref_name }}"
         shell: pwsh
