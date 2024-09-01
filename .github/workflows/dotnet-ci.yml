@@ -18,7 +18,7 @@ jobs:
     strategy:
       matrix:
         project:
-          - DropBear.Blazor
+          - DropBear.Codex.Blazor
           - DropBear.Codex.Core
           - DropBear.Codex.Files
           - DropBear.Codex.Hashing
