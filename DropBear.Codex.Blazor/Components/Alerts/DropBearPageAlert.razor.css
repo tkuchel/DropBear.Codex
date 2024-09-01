@@ -1,0 +1,116 @@
+﻿/* Alert Component Styles with Global Theme Support */
+
+/* Core Alert Styles */
+.alert {
+  border-radius: var(--br-md);
+  padding: var(--spacing-sm);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  box-shadow: var(--bs-md);
+  transition: var(--transition-normal);
+  position: relative;
+  overflow: hidden;
+  animation: slideInDown var(--transition-normal) ease-out;
+  background-color: var(--clr-background); /* Global background */
+  color: var(--clr-text-primary); /* Global text color */
+}
+
+.alert::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 4px;
+  background-color: var(--clr-accent); /* Global accent color */
+}
+
+.alert-icon {
+  font-size: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  color: var(--clr-icon); /* Global icon color */
+  background-color: var(--clr-icon-bg); /* Global icon background */
+}
+
+.alert-content {
+  flex-grow: 1;
+}
+
+.alert-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0 0 var(--spacing-xs) 0;
+  color: var(--clr-text-heading); /* Global heading color */
+}
+
+.alert-message {
+  margin: 0;
+  font-size: 14px;
+}
+
+/* Close Button */
+.alert-close {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: var(--transition-fast);
+  align-self: flex-start;
+  margin-left: var(--spacing-sm);
+  color: var(--clr-text-primary); /* Global text color */
+}
+
+.alert-close:hover {
+  color: var(--clr-primary); /* Global hover color */
+}
+
+/* Animations */
+@keyframes slideInDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Accessibility */
+.alert-close:focus {
+  outline: 2px solid var(--clr-primary);
+  outline-offset: 2px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Responsive adjustments */
+@media (width < 768px) {
+  .alert {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .alert-icon {
+    margin-bottom: var(--spacing-xs);
+  }
+}

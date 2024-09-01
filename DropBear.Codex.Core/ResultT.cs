@@ -16,7 +16,7 @@ namespace DropBear.Codex.Core;
 public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
 #pragma warning restore MA0048
 {
-    private Result(T value, string? error, Exception? exception, ResultState state)
+    protected Result(T value, string? error, Exception? exception, ResultState state)
         : base(state, error, exception)
     {
         Value = value;

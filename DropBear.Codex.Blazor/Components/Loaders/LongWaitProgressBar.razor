@@ -1,0 +1,27 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="loading-card-container">
+    <div class="loading-card">
+        <h3>
+            <span class="icon">🕒</span>
+            @Title
+        </h3>
+        <div class="progress-container">
+            @if (_isIndeterminate)
+            {
+                <div class="progress-bar indeterminate"></div>
+            }
+            else
+            {
+                <div class="progress-bar" style="width: @_currentProgress%">
+                    <span class="progress-text">@_currentProgress%</span>
+                </div>
+            }
+        </div>
+        <p>@Message</p>
+        @if (ShowCancelButton)
+        {
+            <button class="btn btn-primary" @onclick="Cancel">@CancelButtonText</button>
+        }
+    </div>
+</div>

@@ -1,0 +1,17 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="snackbar-container">
+    @foreach (var snackbar in _snackbars)
+    {
+        <DropBearSnackbarNotification @key="snackbar.Id"
+                                      @ref="snackbar.ComponentRef"
+                                      SnackbarId="@snackbar.Id.ToString("N")"
+                                      Title="@snackbar.Title"
+                                      Message="@snackbar.Message"
+                                      Type="snackbar.Type"
+                                      Duration="snackbar.Duration"
+                                      IsDismissible="snackbar.IsDismissible"
+                                      ActionText="@snackbar.ActionText"
+                                      OnAction="@(() => OnSnackbarAction(snackbar))"/>
+    }
+</div>

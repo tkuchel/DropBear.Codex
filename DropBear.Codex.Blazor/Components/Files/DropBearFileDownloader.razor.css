@@ -1,0 +1,90 @@
+﻿.file-download-container {
+  /* max-width: 600px; */
+  /* margin: 0 auto; */
+}
+
+.file-download-component {
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--br-md);
+  background-color: var(--clr-surface-primary); /* Use surface color for consistent theming */
+  color: var(--clr-text-secondary); /* Text color aligned with the current theme */
+  transition: var(--transition-normal);
+  box-shadow: var(--bs-md);
+  margin-bottom: var(--spacing-sm);
+  overflow: hidden;
+}
+
+.file-info-row {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm);
+}
+
+.file-info {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+}
+
+.file-icon {
+  font-size: var(--fs-md);
+  margin-right: var(--spacing-sm);
+  color: var(--clr-primary);
+}
+
+.file-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-500);
+  margin-right: var(--spacing-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size {
+  font-size: var(--fs-sm);
+  color: var(--clr-secondary);
+  margin-right: var(--spacing-sm);
+  white-space: nowrap;
+}
+
+.progress-row {
+  padding: 0 var(--spacing-sm);
+}
+
+.download-progress {
+  height: 4px;
+  background-color: var(--clr-surface-dark); /* Use a surface color for background consistency */
+  border-radius: var(--br-md);
+  overflow: hidden;
+}
+
+.progress-bar {
+  width: 0;
+  height: 100%;
+  background-color: var(--clr-primary);
+  transition: width var(--transition-normal);
+}
+
+.download-button {
+  padding: var(--spacing-xs);
+  border: none;
+  border-radius: var(--br-md);
+  background-color: var(--clr-primary);
+  color: var(--clr-background);
+  font-weight: var(--fw-600);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: var(--transition-fast);
+  white-space: nowrap;
+}
+
+.download-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.download-button:hover:not(:disabled) {
+  background-color: var(--clr-information);
+}

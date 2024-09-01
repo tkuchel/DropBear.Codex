@@ -1,0 +1,111 @@
+﻿.dropbear-datagrid-container {
+  margin: var(--spacing-xs);
+  padding: 0;
+  max-width: 100%;
+}
+
+.dropbear-datagrid {
+  border-radius: var(--br-md);
+  overflow: hidden;
+  box-shadow: var(--bs-md);
+  transition: box-shadow var(--transition-normal);
+  animation: fadeIn var(--transition-normal);
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+.dropbear-datagrid:hover {
+  box-shadow: var(--bs-lg);
+}
+
+/* Header */
+.datagrid-header {
+  background: var(--gradient-example);
+  color: var(--clr-surface-primary);
+  padding: var(--spacing-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+/* Buttons */
+.btn-search,
+.btn-primary {
+  background-color: var(--clr-primary);
+  color: var(--clr-surface-primary);
+  border: none;
+  padding: var(--spacing-sm);
+  border-radius: var(--br-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-normal), color var(--transition-normal);
+}
+
+.btn-search:hover,
+.btn-primary:hover {
+  background-color: var(--clr-secondary);
+  color: var(--clr-surface-light);
+}
+
+/* Table Cells */
+.datagrid-cell {
+  padding: var(--spacing-xs);
+  width: 150px;
+  border-bottom: 1px solid var(--border-default);
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Table Row */
+.datagrid-row {
+  transition: background-color var(--transition-normal);
+  animation: fadeIn 0.3s ease-out;
+}
+
+.datagrid-row.selected {
+  background-color: var(--clr-information-light);
+  animation: smoothPulse 6s ease-in-out infinite;
+}
+
+.datagrid-row:hover:not(.header) {
+  background-color: var(--clr-information-light);
+  transform: translateY(-1px);
+}
+
+/* Footer */
+.datagrid-footer {
+  background-color: var(--clr-surface-secondary);
+  padding: var(--spacing-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: var(--fs-sm);
+}
+
+select {
+  background-color: var(--clr-surface-secondary);
+  color: var(--clr-text-primary);
+  border: 1px solid var(--border-default);
+  padding: 0.25rem 0.5rem;
+  border-radius: var(--br-sm);
+  transition: background-color var(--transition-normal);
+}
+
+.datagrid-footer select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.7rem top 50%;
+  background-size: 0.65rem auto;
+  padding: 0.4rem 2rem 0.4rem 0.8rem;
+}
+
+/* Animations */
+@keyframes smoothPulse {
+  0%, 100% {
+    background-color: var(--clr-information);
+  }
+  50% {
+    background-color: var(--clr-information-light);
+  }
+}

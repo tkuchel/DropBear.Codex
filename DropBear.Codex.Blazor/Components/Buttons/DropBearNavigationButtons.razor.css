@@ -1,0 +1,43 @@
+﻿.navigation-buttons {
+  position: fixed;
+  z-index: 110;
+}
+
+.nav-button {
+  position: fixed;
+  background-color: var(--clr-primary);
+  color: var(--clr-white);
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: var(--bs-md);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nav-button:hover {
+  background-color: var(--clr-information);
+  transform: scale(1.1);
+}
+
+.scroll-top-button {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-normal), visibility var(--transition-normal);
+}
+
+.scroll-top-button.visible {
+  opacity: 1;
+  visibility: visible;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .nav-button {
+    transition: none;
+  }
+}

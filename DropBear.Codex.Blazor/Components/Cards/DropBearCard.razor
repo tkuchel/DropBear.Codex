@@ -1,0 +1,43 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@namespace DropBear.Codex.Blazor.Components.Cards
+
+<div class="card-container">
+    <div class="card @CompactSelected">
+        @if (!string.IsNullOrEmpty(ImageSource))
+        {
+            <img class="card-img-top" src="@ImageSource" alt="@ImageAlt"/>
+        }
+        <div class="card-header">
+            @if (!string.IsNullOrEmpty(IconSource))
+            {
+                <i class="@IconSource card-icon"></i>
+            }
+            @if (!string.IsNullOrEmpty(HeaderTitle))
+            {
+                <h3 class="card-title">@HeaderTitle</h3>
+            }
+        </div>
+        <div class="card-body">
+            @CardBodyContent
+        </div>
+        <div class="card-footer">
+            @if (UseCustomFooter)
+            {
+                @CardFooterContent
+            }
+            else
+            {
+                @foreach (var button in Buttons)
+                {
+                    <button type="button" class="btn @GetButtonClass(button.Type)" @onclick="@(() => OnButtonClick(button))">
+                        @if (!string.IsNullOrEmpty(button.Icon))
+                        {
+                            <i class="@button.Icon"></i>
+                        }
+                        @button.Text
+                    </button>
+                }
+            }
+        </div>
+    </div>
+</div>

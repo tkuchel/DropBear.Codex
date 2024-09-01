@@ -1,0 +1,137 @@
+﻿/* Custom Card Styles - Updated */
+
+.card-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-sm);
+  max-width: 100%;
+  margin: var(--spacing-sm);
+}
+
+.card {
+  font-family: "Poppins", sans-serif;
+  font-size: calc(var(--fs-md));
+  border-radius: var(--br-md);
+  box-shadow: var(--bs-md);
+  overflow: hidden;
+  transition: box-shadow var(--transition-normal);
+  display: flex;
+  flex-direction: column;
+  height: 100%; /* Ensure the card takes full height of its container */
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+/* Header, Body, and Footer Styling */
+.card-header,
+.card-body,
+.card-footer {
+  padding: var(--spacing-md);
+  display: flex;
+  align-items: center;
+}
+
+.card-header {
+  background: var(--light-header-gradient);
+  color: var(--clr-primary);
+  justify-content: space-between;
+}
+
+.card-body {
+  flex-grow: 1; /* Allow the body to take up remaining space */
+}
+
+.card-footer {
+  background: var(--light-footer-gradient);
+}
+
+/* Add this to reduce space in compact cards */
+.compact {
+  justify-content: space-between; /* Distribute space evenly */
+}
+
+/* Compact card styles */
+.compact .card-header {
+  padding: var(--spacing-sm);
+}
+
+.compact .card-body {
+  padding: var(--spacing-md);
+  flex-grow: 0; /* Prevent the body from growing in compact cards */
+}
+
+.compact .card-footer {
+  padding: var(--spacing-sm);
+}
+
+.btn {
+  padding: var(--spacing-sm);
+  border: none;
+  border-radius: var(--br-md);
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+  transform var(--transition-fast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+}
+
+.btn:hover {
+  transform: scale(1.05);
+}
+
+.btn-default {
+  background-color: var(--clr-primary);
+  color: var(--clr-text-primary);
+}
+
+.btn-secondary {
+  background-color: var(--clr-secondary);
+  color: var(--clr-text-primary);
+}
+
+.btn-success {
+  background-color: var(--clr-success);
+  color: var(--clr-text-primary);
+}
+
+.btn-warning {
+  background-color: var(--clr-warning);
+  color: var(--clr-text-primary);
+}
+
+.btn-error {
+  background-color: var(--clr-error);
+  color: var(--clr-text-primary);
+}
+
+.btn-information {
+  background-color: var(--clr-information);
+  color: var(--clr-text-primary);
+}
+
+.btn-primary {
+  background-color: var(--clr-primary);
+  color: var(--clr-text-primary);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(var(--spacing-md));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .card-container {
+    grid-template-columns: 1fr;
+  }
+}

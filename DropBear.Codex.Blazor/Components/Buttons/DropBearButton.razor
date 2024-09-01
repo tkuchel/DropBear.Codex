@@ -1,0 +1,14 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<button @attributes="AdditionalAttributes"
+        class="@CssClass"
+        type="@Type"
+        disabled="@IsDisabled"
+        aria-disabled="@IsDisabled"
+        @onclick="OnClickHandler">
+    @if (!string.IsNullOrEmpty(Icon))
+    {
+        <i class="@Icon"></i>
+    }
+    @ChildContent
+</button>

@@ -1,0 +1,35 @@
+﻿.progress-circle {
+  position: relative;
+  width: 100%; /* Ensures the circle scales with its container */
+  height: 100%;
+}
+
+.progress-circle svg {
+  transform: rotate(-90deg);
+  width: 100%;
+  height: 100%;
+}
+
+.progress-circle__background {
+  fill: none;
+  stroke: var(--clr-grey-300, #e0e0e0); /* Use a global variable for the background stroke color */
+  stroke-width: 4;
+}
+
+.progress-circle__progress {
+  fill: none;
+  stroke: var(--clr-primary, #2196f3); /* Use the primary color for the progress stroke */
+  stroke-width: 4;
+  stroke-linecap: round;
+  transition: stroke-dashoffset var(--transition-normal, 0.3s ease);
+}
+
+.progress-circle__text {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--fs-md, 20px); /* Use a global font size variable */
+  font-weight: var(--fw-600, bold); /* Use a global font weight variable */
+  color: var(--clr-primary, #2196f3); /* Use the primary color for the text */
+}

@@ -1,0 +1,192 @@
+﻿/* prompt-card-styles.css */
+
+.prompt-card-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--spacing-sm);
+  max-width: calc(75rem * var(--golden-ratio));
+  margin: 0 auto;
+  padding: var(--spacing-sm);
+}
+
+.prompt-card-overlay {
+  position: relative;
+  max-width: calc(20rem * var(--golden-ratio));
+}
+
+.prompt-card {
+  font-family: "Poppins", sans-serif;
+  font-weight: 500;
+  background-color: var(--clr-background);
+  border: none;
+  border-radius: var(--br-lg);
+  box-shadow: var(--bs-lg);
+  transition: all var(--transition-normal);
+  max-width: calc(15rem * var(--golden-ratio));
+  animation: fadeIn var(--transition-normal) ease-out;
+  overflow: hidden;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(calc(-1 * var(--spacing-md)));
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-md);
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.card-header i {
+  font-size: var(--fs-md);
+  margin-right: var(--spacing-md);
+}
+
+.card-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: var(--fs-sm);
+  color: var(--clr-grey-500);
+}
+
+.card-body {
+  padding: var(--spacing-md);
+}
+
+.card-text {
+  color: var(--clr-grey-500);
+  margin-bottom: var(--spacing-md);
+  font-weight: 300;
+  font-size: var(--fs-sm);
+  line-height: var(--lh-md);
+  word-wrap: break-word;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.button-group {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+}
+
+.prompt-btn {
+  border: none;
+  padding: var(--spacing-xs);
+  border-radius: var(--br-md);
+  transition: all var(--transition-fast);
+  font-family: "Poppins", sans-serif;
+  font-weight: 500;
+  font-size: var(--fs-sm);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-xs);
+  cursor: pointer;
+}
+
+.prompt-btn:hover {
+  transform: scale(1.05);
+}
+
+.prompt-btn-primary {
+  background-color: var(--clr-primary);
+  color: var(--clr-background);
+}
+
+.prompt-btn-secondary {
+  background-color: var(--clr-secondary);
+  color: var(--clr-background);
+}
+
+.prompt-btn-secondary:hover {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.prompt-btn-success {
+  background-color: var(--clr-success);
+  color: var(--clr-background);
+}
+
+.prompt-btn-warning {
+  background-color: var(--clr-warning);
+  color: var(--clr-background);
+}
+
+.prompt-btn-danger {
+  background-color: var(--clr-error);
+  color: var(--clr-background);
+}
+
+.prompt-btn-default {
+  background-color: var(--clr-grey-500);
+  color: var(--clr-background);
+}
+
+/* Subtle variation */
+.prompt-card.subtle {
+  opacity: 0.8;
+  box-shadow: var(--bs-sm);
+}
+
+.prompt-card.subtle .card-header i,
+.prompt-card.subtle .card-title {
+  font-size: var(--fs-md);
+}
+
+.prompt-card.subtle .card-text {
+  font-size: var(--fs-md);
+}
+
+/* Card Hover Effect */
+.prompt-card {
+  transition: transform var(--transition-normal),
+  box-shadow var(--transition-normal);
+}
+
+.prompt-card:hover {
+  transform: translateY(calc(-1 * var(--spacing-sm)));
+  box-shadow: var(--bs-lg);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .prompt-card-container {
+    padding: var(--spacing-md);
+  }
+
+  .prompt-card-overlay {
+    max-width: 100%;
+  }
+
+  .card-header {
+    padding: var(--spacing-sm) var(--spacing-md);
+  }
+
+  .card-body {
+    padding: var(--spacing-md);
+  }
+
+  .button-group {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .prompt-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

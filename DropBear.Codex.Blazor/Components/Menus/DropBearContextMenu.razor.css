@@ -1,0 +1,187 @@
+﻿/* Custom Context Menu Styles */
+
+.context-menu-trigger {
+  padding: var(--spacing-md) var(--spacing-lg);
+  background-color: var(--clr-primary);
+  color: var(--clr-mine-shaft);
+  border-radius: var(--br-md);
+  cursor: context-menu;
+  transition: background-color var(--transition-fast);
+}
+
+.context-menu-trigger:hover {
+  background-color: var(--clr-information);
+}
+
+.context-menu-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.context-menu {
+  position: fixed;
+  background-color: var(--clr-background);
+  border-radius: var(--br-md);
+  padding: var(--spacing-xs);
+  min-width: calc(var(--golden-ratio) * 100px);
+  box-shadow: var(--bs-lg);
+  z-index: var(--z-100);
+  opacity: 0;
+  transform: scale(0.95);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  display: none;
+}
+
+.context-menu.active {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+  animation: fadeIn var(--transition-normal);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  padding: var(--spacing-sm);
+  cursor: pointer;
+  border-radius: var(--br-md);
+  transition: background-color var(--transition-fast), color var(--transition-fast);
+  position: relative;
+  color: var(--clr-grey-800);
+  opacity: 1;
+  animation: fadeIn var(--transition-normal) ease-out forwards;
+}
+
+.context-menu-item:hover {
+  background-color: var(--clr-primary);
+  color: var(--clr-mine-shaft);
+}
+
+.context-menu-item i {
+  margin-right: var(--spacing-sm);
+  width: 1em;
+  text-align: center;
+  transition: transform var(--transition-fast);
+}
+
+.context-menu-item:hover i {
+  transform: scale(1.2);
+}
+
+.context-menu-item span {
+  display: inline-block;
+  margin-left: var(--spacing-sm);
+}
+
+.context-menu-separator {
+  height: 1px;
+  background-color: var(--clr-grey-500);
+  margin: var(--spacing-xs) 0;
+  opacity: 0.2;
+}
+
+.context-menu-item.has-submenu {
+  position: relative;
+}
+
+.context-menu-item.has-submenu .submenu-icon {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background-color: var(--clr-background);
+  border-radius: var(--br-md);
+  padding: var(--spacing-xs);
+  min-width: calc(var(--golden-ratio) * 90px);
+  box-shadow: var(--bs-lg);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-10px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.context-menu-item.has-submenu:hover .submenu {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.context-menu-item:nth-child(1) {
+  animation-delay: calc(var(--transition-fast) * 0.2);
+}
+
+.context-menu-item:nth-child(2) {
+  animation-delay: calc(var(--transition-fast) * 0.4);
+}
+
+.context-menu-item:nth-child(3) {
+  animation-delay: calc(var(--transition-fast) * 0.6);
+}
+
+.context-menu-item:nth-child(4) {
+  animation-delay: calc(var(--transition-fast) * 0.8);
+}
+
+.context-menu-item:nth-child(5) {
+  animation-delay: calc(var(--transition-fast) * 1);
+}
+
+.context-menu-item::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, var(--clr-primary), var(--clr-information));
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  border-radius: var(--br-md);
+  z-index: -1;
+}
+
+.context-menu-item:hover::before {
+  opacity: 1;
+}
+
+.context-menu-item.danger {
+  color: var(--clr-error);
+}
+
+.context-menu-item.danger:hover {
+  background-color: var(--clr-error);
+  color: var(--clr-mine-shaft);
+}
+
+.context-menu-item.danger:hover::before {
+  background: linear-gradient(135deg, var(--clr-error), var(--clr-coral));
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .context-menu {
+    min-width: calc(var(--golden-ratio) * 80px);
+  }
+
+  .submenu {
+    min-width: calc(var(--golden-ratio) * 70px);
+  }
+}

@@ -1,0 +1,17 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="alert @AlertClassString" role="alert">
+    <div class="alert-icon">
+        <i class="@IconClassString"></i>
+    </div>
+    <div class="alert-content">
+        <h4 class="alert-title">@Title</h4>
+        <p class="alert-message">@Message</p>
+    </div>
+    @if (IsDismissible)
+    {
+        <button class="alert-close" @onclick="OnCloseClick" aria-label="Close alert">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    }
+</div>

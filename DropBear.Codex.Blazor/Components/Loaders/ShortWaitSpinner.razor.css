@@ -1,0 +1,123 @@
+﻿/* Loading Components Styles */
+
+/* Common variables for gradients */
+:root {
+  --gradient-start: var(--clr-information);
+  --gradient-mid: var(--clr-information-light);
+  --gradient-end: var(--clr-heliotrope);
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+  max-width: 400px;
+  margin: 0 auto;
+  padding: var(--spacing-sm);
+}
+
+.loading-card {
+  border-radius: var(--br-md);
+  padding: var(--spacing-md);
+  width: 100%;
+  min-height: 200px;
+  box-shadow: var(--bs-md);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+.loading-card h3 {
+  color: var(--clr-text-primary);
+  margin-bottom: var(--spacing-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  border-bottom: 1px solid var(--clr-grey-300);
+  padding-bottom: var(--spacing-sm);
+}
+
+/* Icon Styles */
+.icon {
+  font-size: var(--fs-md);
+  color: var(--clr-text-primary);
+  margin-right: var(--spacing-sm);
+}
+
+/* Spinner Styles */
+.spinner-container {
+  margin: auto 0;
+  width: 70px;
+  height: 70px;
+}
+
+.spinner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  border: 8px solid transparent;
+  border-top: 8px solid var(--gradient-start);
+  border-right: 8px solid var(--gradient-mid);
+  border-bottom: 8px solid var(--gradient-end);
+  animation: spin 1.5s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-card p {
+  color: var(--clr-text-secondary);
+  font-size: var(--fs-sm);
+  margin-top: var(--spacing-md);
+  width: 100%;
+  text-align: center;
+}
+
+/* Animated dots */
+.dots {
+  display: inline-block;
+}
+
+@keyframes ellipsis {
+  0% {
+    content: "";
+  }
+  25% {
+    content: ".";
+  }
+  50% {
+    content: "..";
+  }
+  75% {
+    content: "...";
+  }
+  100% {
+    content: "";
+  }
+}
+
+.dots::after {
+  content: "";
+  animation: ellipsis 1.5s infinite;
+}
+
+/* Responsive adjustments */
+@media (max-width: 640px) {
+  .container {
+    padding: var(--spacing-md);
+  }
+}

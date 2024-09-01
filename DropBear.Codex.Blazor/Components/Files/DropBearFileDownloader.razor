@@ -1,0 +1,30 @@
+﻿@using Microsoft.JSInterop
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@inject IJSRuntime JsRuntime
+
+<div class="file-download-container">
+    <div class="file-download-component">
+        <div class="file-info-row">
+            <div class="file-info">
+                <i class="@FileIconClass file-icon"></i>
+                <span class="file-name">@FileName</span>
+            </div>
+            <div class="file-size">@FileSize</div>
+            <button class="download-button" @onclick="StartDownload" disabled="@_isDownloading">
+                @if (_isDownloading)
+                {
+                    <span>Downloading...</span>
+                }
+                else
+                {
+                    <span>Download</span>
+                }
+            </button>
+        </div>
+        <div class="progress-row">
+            <div class="download-progress">
+                <div class="progress-bar" style="width: @(_downloadProgress)%"></div>
+            </div>
+        </div>
+    </div>
+</div>

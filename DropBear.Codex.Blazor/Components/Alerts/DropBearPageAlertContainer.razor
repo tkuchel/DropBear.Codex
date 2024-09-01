@@ -1,0 +1,15 @@
+﻿@inject IPageAlertService AlertService
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@using DropBear.Codex.Blazor.Interfaces
+
+<div class="page-alert-container">
+    @foreach (var alert in AlertService.Alerts.OrderByDescending(a => a.CreatedAt))
+    {
+        <DropBearPageAlert
+            Title="@alert.Title"
+            Message="@alert.Message"
+            Type="@alert.Type"
+            IsDismissible="@alert.IsDismissible"
+            OnClose="@(() => AlertService.RemoveAlert(alert.Id))"/>
+    }
+</div>

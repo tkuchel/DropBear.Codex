@@ -1,0 +1,8 @@
+﻿.section-component-section {
+  display: block; /* Each section takes up the full width */
+  width: 100%;    /* Ensure each section spans the full width */
+  padding: var(--section-padding, 10px); /* Use CSS variable for padding */
+  background-color: var(--section-bg-color, hsl(206, 30%, 95%)); /* Use variable for background color */
+  border: var(--section-border, none); /* Allow for optional border */
+  border-radius: var(--section-border-radius, 0); /* Optional border radius */
+}

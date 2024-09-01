@@ -1,0 +1,45 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div @ref="_triggerElement" id="@_contextMenuId" @oncontextmenu="OnContextMenu" @oncontextmenu:preventDefault>
+    @ChildContent
+</div>
+
+@if (_isVisible)
+{
+    <div class="context-menu active" style="left: @_left; top: @_top;">
+        @foreach (var item in MenuItems)
+        {
+            if (item.IsSeparator)
+            {
+                <div class="context-menu-separator"></div>
+            }
+            else
+            {
+                <div class="context-menu-item @(item.IsDanger ? "danger" : "") @(item.HasSubmenu ? "has-submenu" : "")"
+                     @onclick="() => OnItemClick(item)">
+                    @if (!string.IsNullOrEmpty(item.IconClass))
+                    {
+                        <i class="@item.IconClass"></i>
+                    }
+                    <span>@item.Text</span>
+                    @if (item.HasSubmenu)
+                    {
+                        <i class="fas fa-chevron-right submenu-icon"></i>
+                        <div class="submenu">
+                            @foreach (var subItem in item.Submenu)
+                            {
+                                <div class="context-menu-item" @onclick="() => OnItemClick(subItem)">
+                                    @if (!string.IsNullOrEmpty(subItem.IconClass))
+                                    {
+                                        <i class="@subItem.IconClass"></i>
+                                    }
+                                    <span>@subItem.Text</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        }
+    </div>
+}

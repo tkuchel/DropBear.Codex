@@ -1,0 +1,19 @@
+﻿/* Base Section Container Styles */
+.section-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--max-width, 100%);
+  gap: var(--section-gap, 5px);
+}
+
+/* Centered Container Variant */
+.section-container.centered {
+  justify-content: center;
+  align-items: center;
+}
+
+/* Section Spacing */
+.section-container .section {
+  margin-bottom: var(--section-margin-bottom, 20px);
+}

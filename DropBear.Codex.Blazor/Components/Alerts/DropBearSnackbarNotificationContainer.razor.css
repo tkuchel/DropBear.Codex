@@ -1,0 +1,24 @@
+﻿.snackbar-container {
+  position: fixed;
+  bottom: var(--spacing-lg, 40px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  gap: var(--spacing-xs, 10px);
+  max-width: min(400px, calc(100% - 40px));
+  width: 100%;
+  z-index: var(--z-100, 9999);
+  pointer-events: none;
+}
+
+.snackbar-container > * {
+  pointer-events: auto;
+}
+
+@media (max-width: 600px) {
+  .snackbar-container {
+    bottom: var(--spacing-sm, 10px);
+    max-width: calc(100% - 20px);
+  }
+}

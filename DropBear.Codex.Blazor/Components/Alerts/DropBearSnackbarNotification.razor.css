@@ -1,0 +1,127 @@
+﻿/* Core Snackbar Styles */
+.snackbar {
+  display: flex;
+  align-items: center;
+  border-radius: var(--br-md);
+  padding: var(--spacing-sm);
+  box-shadow: var(--bs-md);
+  animation: slideInUp 0.3s ease-out;
+  position: relative;
+  overflow: hidden;
+  pointer-events: auto; /* Re-enable pointer events for the snackbar itself */
+  opacity: 1 !important; /* Force full opacity */
+  transform: translateY(0) translateX(-50%) !important; /* Force full visibility */
+  width: 100%; /* Ensures the snackbar takes full width of its container */
+  box-sizing: border-box; /* Includes padding in the width calculation */
+  background-color: var(--clr-surface-primary); /* Global surface color */
+  color: var(--clr-text-primary); /* Global text color */
+}
+
+/* Type-Specific Borders */
+.snackbar-success {
+  border-left: 4px solid var(--clr-success);
+}
+
+.snackbar-information {
+  border-left: 4px solid var(--clr-information);
+}
+
+.snackbar-warning {
+  border-left: 4px solid var(--clr-warning);
+}
+
+.snackbar-error {
+  border-left: 4px solid var(--clr-error);
+}
+
+/* Icon and Content Styles */
+.snackbar-icon {
+  margin-right: 12px;
+  font-size: 20px;
+}
+
+.snackbar-content {
+  flex-grow: 1;
+}
+
+.snackbar-title {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.snackbar-message {
+  margin: 0;
+  font-size: 12px;
+}
+
+/* Action and Close Button Styles */
+.snackbar-action {
+  background: none;
+  border: none;
+  color: inherit;
+  font-weight: 500;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 4px;
+  text-transform: uppercase;
+}
+
+.snackbar-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 4px;
+  margin-left: 8px;
+}
+
+/* Progress Bar Styles */
+.snackbar-progress {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  width: 100%;
+  background-color: rgba(255, 255, 255, 0.3);
+  overflow: hidden;
+}
+
+.snackbar-success .snackbar-progress {
+  background-color: var(--clr-success);
+}
+
+.snackbar-information .snackbar-progress {
+  background-color: var(--clr-information);
+}
+
+.snackbar-warning .snackbar-progress {
+  background-color: var(--clr-warning);
+}
+
+.snackbar-error .snackbar-progress {
+  background-color: var(--clr-error);
+}
+
+/* Animations */
+@keyframes slideInDown {
+  from {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideInUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

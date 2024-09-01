@@ -1,0 +1,12 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+@if (Predicate == null || Predicate.Invoke())
+{
+<div class="section-component-section">
+    @ChildContent
+</div>
+}
+
+@code {
+// Intentionally left blank
+}
