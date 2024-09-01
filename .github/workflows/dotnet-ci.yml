@@ -65,7 +65,11 @@ jobs:
       - name: Check if GitHub Release Exists
         id: check_release
         run: |
-          if (gh release view ${{ github.ref_name }} -q .id) { echo "exists=true" } else { echo "exists=false" } >> $env:GITHUB_ENV
+          if (gh release view ${{ github.ref_name }} -q .id) {
+            echo "exists=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+          } else {
+            echo "exists=false" | Out-File -FilePath $env:GITHUB_ENV -Append
+          }
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
