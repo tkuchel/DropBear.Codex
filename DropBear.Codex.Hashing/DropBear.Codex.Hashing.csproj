@@ -49,6 +49,9 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="SauceControl.Blake2Fast" Version="2.0.0"/>
+    <PackageReference Update="Nerdbank.GitVersioning">
+      <Version>3.6.143</Version>
+    </PackageReference>
   </ItemGroup>
 
 </Project>
