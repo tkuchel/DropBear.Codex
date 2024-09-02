@@ -75,14 +75,15 @@ jobs:
         id: check_release
         run: |
           $releaseName = "${{ env.RELEASE_NAME }}"
-          $releaseExists = (gh release view "$releaseName" 2>&1)
-          if ($LASTEXITCODE -eq 0) {
+          $releaseExists = $(gh release view "$releaseName" 2>&1)
+          if ($?) {
             echo "EXISTS=true" | Out-File -FilePath $env:GITHUB_ENV -Append
             echo "Release '$releaseName' exists."
           } else {
             echo "EXISTS=false" | Out-File -FilePath $env:GITHUB_ENV -Append
             echo "Release '$releaseName' does not exist."
           }
+          exit 0
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
