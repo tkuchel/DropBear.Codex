@@ -66,7 +66,7 @@ jobs:
         id: check_release
         run: |
           try {
-            gh release view ${{ github.ref_name }} > $null 2>&1
+            gh release view ${{ github.ref_name }} -ErrorAction Stop > $null 2>&1
             echo "exists=true" | Out-File -FilePath $env:GITHUB_ENV -Append
           } catch {
             echo "exists=false" | Out-File -FilePath $env:GITHUB_ENV -Append
