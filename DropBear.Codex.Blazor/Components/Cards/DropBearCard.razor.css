@@ -27,7 +27,7 @@
 .card-footer {
   padding: var(--spacing-md);
   display: flex;
-  align-items: center;
+  /*align-items: center;*/
 }
 
 .card-header {
@@ -115,7 +115,7 @@
 .btn {
   padding: var(--spacing-sm);
   border: none;
-  border-radius: var(--br-md);
+  border-radius: var(--br-sm);
   font-weight: 500;
   font-size: var(--fs-sm);
   cursor: pointer;

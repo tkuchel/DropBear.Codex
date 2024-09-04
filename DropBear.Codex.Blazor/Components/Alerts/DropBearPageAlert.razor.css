@@ -4,6 +4,7 @@
 .alert {
   border-radius: var(--br-md);
   padding: var(--spacing-sm);
+  margin: var(--spacing-sm);
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
