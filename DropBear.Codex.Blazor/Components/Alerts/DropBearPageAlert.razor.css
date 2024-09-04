@@ -73,6 +73,49 @@
   color: var(--clr-primary); /* Global hover color */
 }
 
+/* Specific Alert Type Styles */
+.alert-information {
+  --clr-accent: var(--clr-information);
+  --clr-icon-bg: var(--clr-information-light);
+  --clr-icon: var(--clr-text-primary);
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+.alert-success {
+  --clr-accent: var(--clr-success);
+  --clr-icon-bg: var(--clr-success-light);
+  --clr-icon: var(--clr-white);
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+.alert-warning {
+  --clr-accent: var(--clr-warning);
+  --clr-icon-bg: var(--clr-warning-light);
+  --clr-icon: var(--clr-text-primary);
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+.alert-danger {
+  --clr-accent: var(--clr-error);
+  --clr-icon-bg: var(--clr-error-light);
+  --clr-icon: var(--clr-white);
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+.alert-notification {
+  --clr-accent: var(--clr-primary);
+  --clr-icon-bg: var(--clr-primary);
+  --clr-icon: var(--clr-white);
+  background-color: var(--clr-surface-primary);
+  color: var(--clr-text-primary);
+}
+
+
+
 /* Animations */
 @keyframes slideInDown {
   from {
