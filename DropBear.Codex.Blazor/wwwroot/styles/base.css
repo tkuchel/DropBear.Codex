@@ -93,6 +93,20 @@
     var(--clr-japonica)
   );
 
+  --light-header-gradient: linear-gradient(
+    90deg,
+    in lch,
+    var(--clr-grey-200),
+    var(--clr-grey-500)
+  );
+
+  --light-footer-gradient: linear-gradient(
+    90deg,
+    in lch,
+    var(--clr-grey-200),
+    var(--clr-grey-500)
+  );
+
   /* Themes */
   @media (prefers-color-scheme: light) {
     --clr-primary: var(--clr-viking);

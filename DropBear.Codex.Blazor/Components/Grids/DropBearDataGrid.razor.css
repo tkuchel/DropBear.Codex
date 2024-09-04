@@ -20,7 +20,7 @@
 
 /* Header */
 .datagrid-header {
-  background: var(--gradient-example);
+  background: var(--light-header-gradient);
   color: var(--clr-white); /* Change to white or a lighter color */
   padding: var(--spacing-sm);
   display: flex;
@@ -129,6 +129,16 @@
   overflow-x: auto;
 }
 
+/* Datagrid Cells */
+.datagrid-cell {
+  padding: var(--spacing-xs);
+  margin: 0;
+  width: 150px; /* Ensure a consistent width */
+  border-bottom: 1px solid var(--clr-surface-dark);
+  box-sizing: border-box; /* Ensure box-sizing is border-box */
+  overflow: hidden;
+}
+
 /* Action Buttons - Modern Styling */
 .datagrid-cell .btn-icon {
   background: none; /* Remove button-like appearance */
@@ -161,7 +171,6 @@
   align-items: center;
   justify-content: center; /* Center align the icons */
 }
-
 
 /* Flexbox settings */
 .datagrid-cell-content {
@@ -219,7 +228,7 @@ select {
 .dropbear-datagrid .pagination {
   display: flex;
   align-items: center;
-  background-color: var(--clr-tertiary);
+  background-color: var(--clr-surface-primary);
 }
 
 .dropbear-datagrid .pagination button {

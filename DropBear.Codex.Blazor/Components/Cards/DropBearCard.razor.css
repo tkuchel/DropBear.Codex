@@ -32,15 +32,64 @@
 
 .card-header {
   background: var(--light-header-gradient);
+  border-bottom: 1px solid var(--clr-surface-primary);
   color: var(--clr-primary);
-  justify-content: space-between;
+  justify-content: left;
+}
+
+/* Adjustments for cards without icons */
+.card-header:not(:has(.card-icon)) .card-title {
+  margin-left: 0;
+}
+
+.card-header::after,
+.card-footer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: inherit;
+  z-index: -1;
+  opacity: 0.7;
+}
+
+.card-title {
+  margin: 0;
+  font-size: var(--fs-md) !important;
+  font-weight: 500 !important;
+}
+
+.card-icon {
+  font-size: var(--fs-md);
+  margin-right: var(--spacing-sm);
+}
+
+/* Image card styles */
+.card-img-top {
+  width: 100%;
+  height: auto;
+  object-fit: cover;
 }
 
 .card-body {
-  flex-grow: 1; /* Allow the body to take up remaining space */
+  padding: var(--spacing-xs) !important;
+  font-size: var(--fs-sm);
+  flex-grow: 1; /* Allow the body to grow and push the footer down */
+  display: flex;
+  flex-direction: column;
+  margin-top: 15px;
 }
 
 .card-footer {
+  padding: var(--spacing-sm);
+  padding-top: 10px !important;
+  border-top: 1px solid var(--clr-surface-primary);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-xs);
+  margin-top: auto;
   background: var(--light-footer-gradient);
 }
 
