@@ -2,8 +2,7 @@
 
 using System.ComponentModel.DataAnnotations;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core;
-using ValidationResult = System.ComponentModel.DataAnnotations.ValidationResult;
+using ValidationResult = DropBear.Codex.Blazor.Models.ValidationResult;
 
 #endregion
 
@@ -15,38 +14,34 @@ namespace DropBear.Codex.Blazor.Helpers;
 public static class ValidationHelper
 {
     /// <summary>
-    ///     Validates an object using Data Annotations.
+    ///     Validates an object using Data Annotations and returns a ValidationResult.
     /// </summary>
     /// <param name="model">The object to validate.</param>
-    /// <returns>A <see cref="Result{T}" /> of <see cref="IEnumerable{ValidationError}" /> containing any validation errors.</returns>
+    /// <returns>A <see cref="ValidationResult" /> containing any validation errors.</returns>
     /// <exception cref="ArgumentNullException">Thrown if the model is null.</exception>
-    public static Result<IEnumerable<ValidationError>> ValidateModel(object model)
+    public static ValidationResult ValidateModel(object model)
     {
         if (model == null)
         {
             throw new ArgumentNullException(nameof(model), "Model cannot be null.");
         }
 
-        var validationResults = new List<ValidationResult>();
+        var validationResults = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
         var validationContext = new ValidationContext(model);
 
         if (!Validator.TryValidateObject(model, validationContext, validationResults, true))
         {
-            var errors = validationResults.SelectMany(result =>
-                result.MemberNames.Select(memberName => new ValidationError
+            var errors = validationResults.Select(result =>
+                new ValidationError
                 {
-                    Parameter = memberName,
+                    Parameter = result.MemberNames.FirstOrDefault() ?? "Unknown",
                     ErrorMessage = result.ErrorMessage ?? "Unknown validation error occurred."
-                })
-            ).ToList();
+                }).ToList();
 
-            return Result<IEnumerable<ValidationError>>.Failure(
-                "Validation failed",
-                new Exception("Validation errors occurred")
-            );
+            return ValidationResult.Failure(errors, "Validation failed");
         }
 
-        return Result<IEnumerable<ValidationError>>.Success(Enumerable.Empty<ValidationError>());
+        return ValidationResult.Success();
     }
 
     /// <summary>
@@ -54,9 +49,9 @@ public static class ValidationHelper
     /// </summary>
     /// <param name="model">The object to validate.</param>
     /// <param name="customValidation">A delegate that performs custom validation on the model.</param>
-    /// <returns>A <see cref="Result{T}" /> of <see cref="IEnumerable{ValidationError}" /> containing any validation errors.</returns>
+    /// <returns>A <see cref="ValidationResult" /> containing any validation errors.</returns>
     /// <exception cref="ArgumentNullException">Thrown if the model or customValidation is null.</exception>
-    public static Result<IEnumerable<ValidationError>> ValidateModelWithCustomRules(object model,
+    public static ValidationResult ValidateModelWithCustomRules(object model,
         Action<object, List<ValidationError>> customValidation)
     {
         if (model == null)
@@ -70,9 +65,9 @@ public static class ValidationHelper
         }
 
         var result = ValidateModel(model);
-        var errors = new List<ValidationError>();
+        var errors = new List<ValidationError>(result.Value);
 
-        if (result.IsSuccess)
+        if (result.IsValid)
         {
             try
             {
@@ -88,17 +83,10 @@ public static class ValidationHelper
                 });
             }
         }
-        else
-        {
-            errors.AddRange(result.Value);
-        }
 
         return errors.Any()
-            ? Result<IEnumerable<ValidationError>>.Failure(
-                "Validation failed",
-                new Exception("Validation errors occurred")
-            )
-            : Result<IEnumerable<ValidationError>>.Success(Enumerable.Empty<ValidationError>());
+            ? ValidationResult.Failure(errors, "Validation failed")
+            : ValidationResult.Success();
     }
 
     /// <summary>
@@ -107,7 +95,7 @@ public static class ValidationHelper
     /// <param name="obj">The object to retrieve the property from.</param>
     /// <param name="propertyName">The name of the property to retrieve.</param>
     /// <returns>The value of the property, or null if the property doesn't exist or an error occurs.</returns>
-    public static object GetPropertyValue(object obj, string propertyName)
+    public static object? GetPropertyValue(object? obj, string propertyName)
     {
         if (obj == null || string.IsNullOrWhiteSpace(propertyName))
         {
