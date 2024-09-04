@@ -21,7 +21,7 @@
 /* Header */
 .datagrid-header {
   background: var(--gradient-example);
-  color: var(--clr-surface-primary);
+  color: var(--clr-white); /* Change to white or a lighter color */
   padding: var(--spacing-sm);
   display: flex;
   justify-content: space-between;
@@ -32,7 +32,7 @@
 .btn-search,
 .btn-primary {
   background-color: var(--clr-primary);
-  color: var(--clr-surface-primary);
+  color: var(--clr-white); /* Ensure button text is legible */
   border: none;
   padding: var(--spacing-sm);
   border-radius: var(--br-sm);
@@ -43,18 +43,29 @@
 .btn-search:hover,
 .btn-primary:hover {
   background-color: var(--clr-secondary);
-  color: var(--clr-surface-light);
+  color: var(--clr-white); /* Maintain contrast on hover */
 }
 
 /* Table Cells */
 .datagrid-cell {
-  padding: var(--spacing-xs);
+  padding: var(--spacing-sm); /* Increase padding */
   width: 150px;
   border-bottom: 1px solid var(--border-default);
   box-sizing: border-box;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.datagrid-cell .action-icon {
+  font-size: 1rem; /* Adjust size */
+  margin-right: var(--spacing-xs); /* Ensure some space between icons */
+  color: var(--clr-text-primary); /* Adjust icon color if necessary */
+  vertical-align: middle; /* Align icons properly */
+}
+
+.datagrid-cell .action-icon:hover {
+  color: var(--clr-primary); /* Slight color change on hover */
 }
 
 /* Table Row */
