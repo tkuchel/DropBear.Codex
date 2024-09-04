@@ -25,7 +25,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
     /// <summary>
     ///     Gets the value returned by the operation, if successful.
     /// </summary>
-    public T Value { get; }
+    public T Value { get; protected set; }
 
     /// <inheritdoc />
     public IEnumerator<T> GetEnumerator()

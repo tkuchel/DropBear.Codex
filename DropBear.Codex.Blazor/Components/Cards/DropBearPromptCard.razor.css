@@ -43,7 +43,7 @@
 .card-header {
   display: flex;
   align-items: center;
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm);
   border-bottom: 2px solid rgba(255, 255, 255, 0.1);
   background-color: rgba(255, 255, 255, 0.05);
 }
@@ -86,7 +86,7 @@
 .prompt-btn {
   border: none;
   padding: var(--spacing-xs);
-  border-radius: var(--br-md);
+  border-radius: var(--br-sm);
   transition: all var(--transition-fast);
   font-family: "Poppins", sans-serif;
   font-weight: 500;
@@ -206,12 +206,12 @@
 
 /* Default Card */
 .prompt-card-default {
-  background-color: var(--clr-grey-300);
+  background-color: var(--clr-grey-100);
   color: var(--clr-grey-700);
 }
 
 .prompt-card-default .card-header {
-  background-color: var(--clr-grey-500);
+  background-color: var(--clr-grey-400);
   color: var(--clr-background);
 }
 

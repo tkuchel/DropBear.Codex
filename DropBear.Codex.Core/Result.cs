@@ -40,7 +40,7 @@ public class Result : IEquatable<Result>
     /// <summary>
     ///     Gets the state of the result.
     /// </summary>
-    public ResultState State { get; }
+    public ResultState State { get; protected set; }
 
     /// <summary>
     ///     Gets the error message associated with the result, if any.
