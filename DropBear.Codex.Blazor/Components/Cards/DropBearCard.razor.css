@@ -35,6 +35,7 @@
   border-bottom: 1px solid var(--clr-surface-primary);
   color: var(--clr-primary);
   justify-content: left;
+  padding-bottom: var(--spacing-md);
 }
 
 /* Adjustments for cards without icons */

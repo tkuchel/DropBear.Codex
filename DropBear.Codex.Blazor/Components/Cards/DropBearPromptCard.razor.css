@@ -20,8 +20,8 @@
   font-weight: 500;
   background-color: var(--clr-background);
   border: none;
-  border-radius: var(--br-lg);
-  box-shadow: var(--bs-lg);
+  border-radius: var(--br-md);
+  box-shadow: var(--bs-md);
   transition: all var(--transition-normal);
   max-width: calc(15rem * var(--golden-ratio));
   animation: fadeIn var(--transition-normal) ease-out;
@@ -50,7 +50,7 @@
 
 .card-header i {
   font-size: var(--fs-md);
-  margin-right: var(--spacing-md);
+  margin-right: var(--spacing-sm);
 }
 
 .card-title {
@@ -61,12 +61,12 @@
 }
 
 .card-body {
-  padding: var(--spacing-md);
+  padding: var(--spacing-sm);
 }
 
 .card-text {
   color: var(--clr-grey-500);
-  margin-bottom: var(--spacing-md);
+  margin-bottom: var(--spacing-sm);
   font-weight: 300;
   font-size: var(--fs-sm);
   line-height: var(--lh-md);
@@ -157,10 +157,64 @@
   box-shadow var(--transition-normal);
 }
 
-.prompt-card:hover {
-  transform: translateY(calc(-1 * var(--spacing-sm)));
-  box-shadow: var(--bs-lg);
+
+/* Prompt Card Styles by Type */
+
+/* Success Card */
+.prompt-card-success {
+  background-color: var(--clr-success-light);
+  color: var(--clr-success-dark);
 }
+
+.prompt-card-success .card-header {
+  background-color: var(--clr-success);
+  color: var(--clr-background);
+}
+
+/* Warning Card */
+.prompt-card-warning {
+  background-color: var(--clr-warning-light);
+  color: var(--clr-warning-dark);
+}
+
+.prompt-card-warning .card-header {
+  background-color: var(--clr-warning);
+  color: var(--clr-background);
+}
+
+/* Error Card */
+.prompt-card-danger {
+  background-color: var(--clr-error-light);
+  color: var(--clr-error-dark);
+}
+
+.prompt-card-danger .card-header {
+  background-color: var(--clr-error);
+  color: var(--clr-background);
+}
+
+/* Information Card */
+.prompt-card-information {
+  background-color: var(--clr-information-light);
+  color: var(--clr-information-dark);
+}
+
+.prompt-card-information .card-header {
+  background-color: var(--clr-information);
+  color: var(--clr-background);
+}
+
+/* Default Card */
+.prompt-card-default {
+  background-color: var(--clr-grey-300);
+  color: var(--clr-grey-700);
+}
+
+.prompt-card-default .card-header {
+  background-color: var(--clr-grey-500);
+  color: var(--clr-background);
+}
+
 
 /* Responsive adjustments */
 @media (max-width: 768px) {

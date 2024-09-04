@@ -95,14 +95,14 @@
 
   --light-header-gradient: linear-gradient(
     90deg,
-    var(--clr-grey-100),
-    var(--clr-grey-200)
+    var(--clr-grey-200),
+    var(--clr-grey-100)
   );
 
   --light-footer-gradient: linear-gradient(
     90deg,
-    var(--clr-grey-100),
-    var(--clr-grey-200)
+    var(--clr-grey-200),
+    var(--clr-grey-100)
   );
 
   /* Themes */

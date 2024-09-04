@@ -1,7 +1,7 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 <div class="prompt-card-container">
     <div class="prompt-card-overlay">
-        <div class="prompt-card @PromptType.ToString().ToLower() @(Subtle ? "subtle" : "")">
+        <div class="prompt-card @GetPromptClass() @(Subtle ? "subtle" : "")">
             <div class="card-header">
                 <i class="@Icon" aria-hidden="true"></i>
                 <h5 class="card-title">@Title</h5>
