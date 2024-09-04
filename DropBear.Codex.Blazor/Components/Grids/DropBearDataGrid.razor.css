@@ -10,7 +10,7 @@
   box-shadow: var(--bs-md);
   transition: box-shadow var(--transition-normal);
   animation: fadeIn var(--transition-normal);
-  background-color: var(--clr-surface-primary);
+  background-color: var( --clr-grey-100);
   color: var(--clr-text-primary);
 }
 
@@ -20,7 +20,7 @@
 
 /* Header */
 .datagrid-header {
-  background: var(--light-header-gradient);
+  background: var(--clr-white);
   color: var(--clr-white); /* Change to white or a lighter color */
   padding: var(--spacing-sm);
   display: flex;

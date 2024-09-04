@@ -95,14 +95,12 @@
 
   --light-header-gradient: linear-gradient(
     90deg,
-    in lch,
     var(--clr-grey-200),
     var(--clr-grey-500)
   );
 
   --light-footer-gradient: linear-gradient(
     90deg,
-    in lch,
     var(--clr-grey-200),
     var(--clr-grey-500)
   );
@@ -113,8 +111,8 @@
     --clr-secondary: var(--clr-rock-blue);
     --clr-tertiary: var(--clr-mine-shaft);
     --clr-background: var(--clr-white); /* Overall page background */
-    --clr-surface-primary: var(--clr-anti-flash-white); /* Primary surface for cards, modals, etc. */
-    --clr-surface-secondary: var(--clr-seasalt); /* Secondary surface for nested elements */
+    --clr-surface-primary: var(--clr-seasalt); /* Primary surface for cards, modals, etc. */
+    --clr-surface-secondary: var(--clr-anti-flash-white); /* Secondary surface for nested elements */
     --clr-surface-dark: var(--clr-platinum); /* Darker surface for footer or less prominent sections */
     --clr-surface-light: var(--clr-white); /* Lighter surface for elevated elements */
     /* Text Colors */
@@ -131,10 +129,10 @@
     --clr-tertiary: var(--clr-cornflower-blue); /* #8552f8 */
     /* Background and Surface Colors */
     --clr-background: var(--clr-black); /* Overall page background */
-    --clr-surface-primary: var(--clr-onyx); /* Primary surface for cards, modals, etc. */
-    --clr-surface-secondary: var(--clr-davy-gray); /* Secondary surface for nested elements */
-    --clr-surface-dark: var(--clr-dim-gray); /* Darker surface for footer or less prominent sections */
-    --clr-surface-light: var(--clr-onyx); /* Lighter surface for elevated elements */
+    --clr-surface-primary: var(--clr-davy-gray); /* Primary surface for cards, modals, etc. */
+    --clr-surface-secondary: var(--clr-onyx); /* Secondary surface for nested elements */
+    --clr-surface-dark: var(--clr-onyx); /* Darker surface for footer or less prominent sections */
+    --clr-surface-light: var(--clr-dim-gray); /* Lighter surface for elevated elements */
     /* Text Colors */
     --clr-text-primary: var(--clr-silver-sand); /* Main text color, high contrast against black background */
     --clr-text-secondary: var(--clr-dim-gray); /* Slightly darker for secondary text */
