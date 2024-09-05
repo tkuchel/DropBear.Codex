@@ -1,0 +1,11 @@
+﻿@inject ModalService ModalService
+@using DropBear.Codex.Blazor.Services
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@if (ModalService.IsModalVisible)
+{
+    <div class="modal-overlay" @onclick="HandleOutsideClick">
+        <div class="modal-content @modalTransitionClass" @onclick:stopPropagation="true">
+            <DynamicComponent Type="ModalService.CurrentComponent" Parameters="ModalService.CurrentParameters"/>
+        </div>
+    </div>
+}

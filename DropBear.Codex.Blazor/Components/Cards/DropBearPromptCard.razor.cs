@@ -30,7 +30,6 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     [Parameter] public IReadOnlyCollection<ButtonConfig> Buttons { get; set; } = Array.Empty<ButtonConfig>();
     [Parameter] public EventCallback<ButtonConfig> OnButtonClicked { get; set; }
     [Parameter] public PromptType PromptType { get; set; } = PromptType.Information;
-    [Parameter] public PromptType ButtonType { get; set; } = PromptType.Information;
     [Parameter] public bool Subtle { get; set; }
 
     /// <summary>
@@ -42,11 +41,8 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     {
         const string BaseClass = "prompt-btn";
         var typeClass = ButtonClasses.GetValueOrDefault(type, "prompt-btn-default");
-#pragma warning disable CA1308
-        var promptTypeClass = ButtonType.ToString().ToLowerInvariant();
-#pragma warning restore CA1308
 
-        return $"{BaseClass} {typeClass} {promptTypeClass}".Trim();
+        return $"{BaseClass} {typeClass}".Trim();
     }
 
     private string GetPromptClass()

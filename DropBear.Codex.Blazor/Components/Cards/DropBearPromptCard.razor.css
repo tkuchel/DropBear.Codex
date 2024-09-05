@@ -57,7 +57,7 @@
   margin: 0;
   font-weight: 600;
   font-size: var(--fs-sm);
-  color: var(--clr-grey-500);
+  color: var(--clr-text-secondary);
 }
 
 .card-body {
@@ -207,12 +207,12 @@
 /* Default Card */
 .prompt-card-default {
   background-color: var(--clr-grey-100);
-  color: var(--clr-grey-700);
+  color: var(--clr-text-secondary);
 }
 
 .prompt-card-default .card-header {
-  background-color: var(--clr-grey-400);
-  color: var(--clr-background);
+  background-color: var(--clr-grey-500);
+  color: var(--clr-text-secondary);
 }
 
 

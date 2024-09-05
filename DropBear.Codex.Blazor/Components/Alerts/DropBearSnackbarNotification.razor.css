@@ -56,8 +56,9 @@
 
 /* Action and Close Button Styles */
 .snackbar-action {
-  background: none;
+  background: var(--clr-grey-200);
   border: none;
+  border-radius: var(--br-sm);
   color: inherit;
   font-weight: 500;
   font-size: 14px;
@@ -65,6 +66,10 @@
   padding: 4px;
   margin-left: 4px;
   text-transform: uppercase;
+}
+
+.snackbar-action:hover {
+  background: var(--clr-grey-300);
 }
 
 .snackbar-close {

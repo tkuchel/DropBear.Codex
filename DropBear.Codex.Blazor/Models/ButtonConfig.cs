@@ -21,13 +21,13 @@ public sealed class ButtonConfig
     /// </summary>
     /// <param name="id">The ID of the button.</param>
     /// <param name="text">The text displayed on the button.</param>
-    /// <param name="type">The type/color of the button.</param>
+    /// <param name="color">The type/color of the button.</param>
     /// <param name="icon">The icon displayed on the button.</param>
-    public ButtonConfig(string id, string text, ButtonColor type, string icon)
+    public ButtonConfig(string id, string text, ButtonColor color, string icon)
     {
         Id = id;
         Text = text;
-        Type = type;
+        Color = color;
         Icon = icon;
     }
 
@@ -44,7 +44,7 @@ public sealed class ButtonConfig
     /// <summary>
     ///     Gets or sets the type/color of the button.
     /// </summary>
-    public ButtonColor Type { get; set; } = ButtonColor.Default;
+    public ButtonColor Color { get; set; } = ButtonColor.Default;
 
     /// <summary>
     ///     Gets or sets the icon displayed on the button.

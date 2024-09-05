@@ -13,7 +13,7 @@
                 <div class="button-group">
                     @foreach (var button in Buttons)
                     {
-                        <button type="button" class="@GetButtonClass(button.Type)" @onclick="@(() => OnButtonClick(button))">
+                        <button type="button" class="@GetButtonClass(button.Color)" @onclick="@(() => OnButtonClick(button))">
                             @if (!string.IsNullOrEmpty(button.Icon))
                             {
                                 <i class="@button.Icon"></i>
