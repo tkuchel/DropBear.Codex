@@ -43,6 +43,7 @@ window.DropBearSnackbar = (function () {
 
   return {
     startProgress(snackbarId, duration) {
+      console.log(`Starting progress for snackbar ${snackbarId} with duration ${duration}`);
       const snackbar = document.getElementById(snackbarId);
       if (!snackbar) {
         console.error(`Snackbar ${snackbarId} not found`);
@@ -68,6 +69,7 @@ window.DropBearSnackbar = (function () {
     },
 
     hideSnackbar(snackbarId) {
+      console.log(`Hiding snackbar ${snackbarId}`);
       if (snackbars.has(snackbarId)) {
         clearTimeout(snackbars.get(snackbarId));
         removeSnackbar(snackbarId);
@@ -77,6 +79,7 @@ window.DropBearSnackbar = (function () {
     },
 
     disposeSnackbar(snackbarId) {
+      console.log(`Disposing snackbar ${snackbarId}`);
       this.hideSnackbar(snackbarId);
     }
   };

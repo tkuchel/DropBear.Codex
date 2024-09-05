@@ -67,6 +67,14 @@
   padding: 0.5rem 30px 0.5rem 1rem;
 }
 
+.search-indicator {
+  position: absolute;
+  right: 10px;
+  font-size: 0.8em;
+  color: var(--clr-text-primary);
+  animation: pulse 1.5s infinite;
+}
+
 
 /* Alternative dot animation */
 .search-indicator-dots {

@@ -69,7 +69,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     {
         var options = e.Options;
 
-        var snackbar = new SnackbarInstance(options);
+        var snackbar = new SnackbarInstance(options){};
         _snackbars.Add(snackbar);
 
         StateHasChanged();

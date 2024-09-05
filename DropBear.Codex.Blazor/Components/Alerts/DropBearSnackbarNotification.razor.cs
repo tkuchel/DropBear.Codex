@@ -37,6 +37,14 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && IsVisible)
+        {
+            await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
+        }
+    }
+
     /// <summary>
     ///     Handles component disposal, including JS interop cleanup.
     /// </summary>
