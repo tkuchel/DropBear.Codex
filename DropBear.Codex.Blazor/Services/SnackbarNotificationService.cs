@@ -35,7 +35,7 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// <param name="actionText">The text of the action button on the snackbar notification.</param>
     /// <param name="onAction">The action to perform when the action button is clicked.</param>
     /// <returns>A result indicating the success or failure of the operation.</returns>
-    public Result ShowAsync(string message, SnackbarType type = SnackbarType.Information, int duration = 5000,
+    public Task<Result> ShowAsync(string message, SnackbarType type = SnackbarType.Information, int duration = 5000,
         bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
     {
         var options = new SnackbarNotificationOptions(
@@ -48,25 +48,7 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
             onAction
         );
 
-        return Show(options);
-    }
-
-    /// <summary>
-    ///     Shows a snackbar notification with the specified options.
-    /// </summary>
-    /// <param name="options">The options for the snackbar notification.</param>
-    /// <returns>A result indicating the success or failure of the operation.</returns>
-    public Result Show(SnackbarNotificationOptions options)
-    {
-        try
-        {
-            OnShow?.Invoke(this, new SnackbarNotificationEventArgs(options));
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure("Error showing snackbar", ex);
-        }
+        return ShowInternalAsync(options);
     }
 
     /// <summary>
@@ -83,6 +65,24 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
         catch (Exception ex)
         {
             return Result.Failure("Error hiding all snackbars", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Shows a snackbar notification with the specified options.
+    /// </summary>
+    /// <param name="options">The options for the snackbar notification.</param>
+    /// <returns>A result indicating the success or failure of the operation.</returns>
+    private async Task<Result> ShowInternalAsync(SnackbarNotificationOptions options)
+    {
+        try
+        {
+            OnShow?.Invoke(this, new SnackbarNotificationEventArgs(options));
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            return Result.Failure("Error showing snackbar", ex);
         }
     }
 }

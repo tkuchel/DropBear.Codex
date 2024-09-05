@@ -16,8 +16,9 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 public sealed partial class DropBearSnackbarNotification : DropBearComponentBase, IAsyncDisposable
 {
     private bool _isDismissed;
+
     private bool _isDisposed;
-    private bool _shouldRender;
+    // private bool _shouldRender;
 
 
     // Unique ID for the snackbar instance
@@ -37,18 +38,6 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender && IsVisible)
-        {
-            var isActive = await JsRuntime.InvokeAsync<bool>("DropBearSnackbar.isSnackbarActive", SnackbarId);
-            if (!isActive)
-            {
-                await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
-            }
-        }
-    }
-
     /// <summary>
     ///     Handles component disposal, including JS interop cleanup.
     /// </summary>
@@ -58,6 +47,41 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         {
             _isDisposed = true;
             await DisposeSnackbarAsync();
+        }
+    }
+
+    public async Task ShowAsync()
+    {
+        if (IsVisible)
+        {
+            return;
+        }
+
+        try
+        {
+            IsVisible = true;
+            await Task.Yield(); // Ensure the component is rendered before showing the snackbar
+            var isActive = await JsRuntime.InvokeAsync<bool>("DropBearSnackbar.isSnackbarActive", SnackbarId);
+            if (!isActive)
+            {
+                await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
+            }
+        }
+        catch (JSException ex)
+        {
+            throw new SnackbarException("Error showing snackbar", ex);
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && IsVisible)
+        {
+            // var isActive = await JsRuntime.InvokeAsync<bool>("DropBearSnackbar.isSnackbarActive", SnackbarId);
+            // if (!isActive)
+            // {
+            //     await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
+            // }
         }
     }
 
@@ -82,7 +106,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
 
         IsVisible = false;
         _isDismissed = true;
-        _shouldRender = true;
+        // _shouldRender = true;
         StateHasChanged();
     }
 

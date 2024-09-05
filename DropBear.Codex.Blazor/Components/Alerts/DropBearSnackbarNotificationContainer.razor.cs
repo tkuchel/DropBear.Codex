@@ -69,10 +69,17 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     {
         var options = e.Options;
 
-        var snackbar = new SnackbarInstance(options){};
+        var snackbar = new SnackbarInstance(options);
         _snackbars.Add(snackbar);
 
+        await Task.Yield(); // Ensure the component is rendered before showing the snackbar
+
         StateHasChanged();
+
+        if (snackbar.ComponentRef != null)
+        {
+            await snackbar.ComponentRef.ShowAsync();
+        }
 
         if (options.Duration > 0)
         {
