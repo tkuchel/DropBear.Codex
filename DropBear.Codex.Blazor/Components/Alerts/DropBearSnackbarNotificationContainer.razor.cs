@@ -72,9 +72,8 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         var snackbar = new SnackbarInstance(options);
         _snackbars.Add(snackbar);
 
-        await Task.Yield(); // Ensure the component is rendered before showing the snackbar
-
         StateHasChanged();
+        await Task.Delay(50); // Small delay to ensure the DOM is updated
 
         if (snackbar.ComponentRef != null)
         {

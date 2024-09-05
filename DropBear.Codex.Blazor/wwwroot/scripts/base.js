@@ -30,7 +30,7 @@ window.DropBearSnackbar = (function () {
   function getSnackbarElement(snackbarId) {
     const snackbar = document.getElementById(snackbarId);
     if (!snackbar) {
-      log(`Snackbar ${snackbarId} not found in DOM`, 'error');
+      log(`Snackbar ${snackbarId} not found in DOM`, 'warn');
     }
     return snackbar;
   }
@@ -55,6 +55,7 @@ window.DropBearSnackbar = (function () {
   }
 
   function removeSnackbar(snackbarId) {
+    log(`Attempting to remove snackbar ${snackbarId}`);
     const snackbar = getSnackbarElement(snackbarId);
     if (snackbar) {
       snackbar.addEventListener('animationend', () => {
@@ -73,7 +74,11 @@ window.DropBearSnackbar = (function () {
       log(`Starting progress for snackbar ${snackbarId} with duration ${duration}`);
 
       const snackbar = getSnackbarElement(snackbarId);
-      if (!snackbar) return;
+      if (!snackbar) {
+        log(`Retrying to find snackbar ${snackbarId} in 50ms`);
+        setTimeout(() => this.startProgress(snackbarId, duration), 50);
+        return;
+      }
 
       const progressBar = getProgressBarElement(snackbar);
       if (!progressBar) return;
@@ -103,9 +108,10 @@ window.DropBearSnackbar = (function () {
       this.hideSnackbar(snackbarId);
     },
 
-    // New method to check if a snackbar is active
     isSnackbarActive(snackbarId) {
-      return snackbars.has(snackbarId);
+      const isActive = snackbars.has(snackbarId);
+      log(`Checking if snackbar ${snackbarId} is active: ${isActive}`);
+      return isActive;
     }
   };
 })();

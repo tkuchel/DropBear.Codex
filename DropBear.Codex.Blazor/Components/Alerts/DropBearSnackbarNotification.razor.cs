@@ -59,11 +59,11 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
 
         try
         {
-            IsVisible = true;
-            await Task.Yield(); // Ensure the component is rendered before showing the snackbar
-            var isActive = await JsRuntime.InvokeAsync<bool>("DropBearSnackbar.isSnackbarActive", SnackbarId);
-            if (!isActive)
+            if (!IsVisible)
             {
+                IsVisible = true;
+                StateHasChanged();
+                await Task.Delay(50); // Small delay to ensure the DOM is updated
                 await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
             }
         }
@@ -77,11 +77,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     {
         if (firstRender && IsVisible)
         {
-            // var isActive = await JsRuntime.InvokeAsync<bool>("DropBearSnackbar.isSnackbarActive", SnackbarId);
-            // if (!isActive)
-            // {
-            //     await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
-            // }
+            ShowAsync();
         }
     }
 
