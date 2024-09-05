@@ -41,7 +41,11 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     {
         if (firstRender && IsVisible)
         {
-            await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
+            var isActive = await JsRuntime.InvokeAsync<bool>("DropBearSnackbar.isSnackbarActive", SnackbarId);
+            if (!isActive)
+            {
+                await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
+            }
         }
     }
 

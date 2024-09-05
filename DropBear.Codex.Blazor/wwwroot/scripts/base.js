@@ -19,68 +19,93 @@ function throttle(func, limit) {
   };
 }
 
-// DropBearSnackbar
+// DropBearSnackbar (v1.0.0)
 window.DropBearSnackbar = (function () {
   const snackbars = new Map();
 
-  function removeSnackbar(snackbarId) {
+  function log(message, type = 'log') {
+    console[type](`[DropBearSnackbar] ${message}`);
+  }
+
+  function getSnackbarElement(snackbarId) {
     const snackbar = document.getElementById(snackbarId);
+    if (!snackbar) {
+      log(`Snackbar ${snackbarId} not found in DOM`, 'error');
+    }
+    return snackbar;
+  }
+
+  function getProgressBarElement(snackbar) {
+    const progressBar = snackbar.querySelector('.snackbar-progress');
+    if (!progressBar) {
+      log('Progress bar not found', 'error');
+    }
+    return progressBar;
+  }
+
+  function animateProgressBar(progressBar, duration) {
+    progressBar.style.transition = 'none';
+    progressBar.style.width = '100%';
+    progressBar.style.backgroundColor = getComputedStyle(progressBar).getPropertyValue('color');
+
+    setTimeout(() => {
+      progressBar.style.transition = `width ${duration}ms linear`;
+      progressBar.style.width = '0%';
+    }, 10);
+  }
+
+  function removeSnackbar(snackbarId) {
+    const snackbar = getSnackbarElement(snackbarId);
     if (snackbar) {
-      snackbar.addEventListener(
-        'animationend',
-        () => {
-          snackbar.remove();
-          snackbars.delete(snackbarId);
-        },
-        {once: true}
-      );
+      snackbar.addEventListener('animationend', () => {
+        snackbar.remove();
+        snackbars.delete(snackbarId);
+        log(`Snackbar ${snackbarId} removed from DOM and active snackbars`);
+      }, { once: true });
       snackbar.style.animation = 'slideOutDown 0.3s ease-out forwards';
     } else {
-      console.warn(`Snackbar ${snackbarId} not found for removal`);
       snackbars.delete(snackbarId);
     }
   }
 
   return {
     startProgress(snackbarId, duration) {
-      console.log(`Starting progress for snackbar ${snackbarId} with duration ${duration}`);
-      const snackbar = document.getElementById(snackbarId);
-      if (!snackbar) {
-        console.error(`Snackbar ${snackbarId} not found`);
-        return;
+      log(`Starting progress for snackbar ${snackbarId} with duration ${duration}`);
+
+      const snackbar = getSnackbarElement(snackbarId);
+      if (!snackbar) return;
+
+      const progressBar = getProgressBarElement(snackbar);
+      if (!progressBar) return;
+
+      animateProgressBar(progressBar, duration);
+
+      if (snackbars.has(snackbarId)) {
+        clearTimeout(snackbars.get(snackbarId));
       }
-
-      const progressBar = snackbar.querySelector('.snackbar-progress');
-      if (!progressBar) {
-        console.error('Progress bar not found');
-        return;
-      }
-
-      progressBar.style.transition = 'none';
-      progressBar.style.width = '100%';
-      progressBar.style.backgroundColor = getComputedStyle(progressBar).getPropertyValue('color');
-
-      setTimeout(() => {
-        progressBar.style.transition = `width ${duration}ms linear`;
-        progressBar.style.width = '0%';
-      }, 10);
 
       snackbars.set(snackbarId, setTimeout(() => this.hideSnackbar(snackbarId), duration));
+      log(`Snackbar ${snackbarId} added to active snackbars`);
     },
 
     hideSnackbar(snackbarId) {
-      console.log(`Hiding snackbar ${snackbarId}`);
+      log(`Attempting to hide snackbar ${snackbarId}`);
       if (snackbars.has(snackbarId)) {
         clearTimeout(snackbars.get(snackbarId));
         removeSnackbar(snackbarId);
       } else {
-        console.warn(`Snackbar ${snackbarId} not found in active snackbars`);
+        log(`Snackbar ${snackbarId} not found in active snackbars`, 'warn');
       }
     },
 
     disposeSnackbar(snackbarId) {
-      console.log(`Disposing snackbar ${snackbarId}`);
+      log(`Disposing snackbar ${snackbarId}`);
       this.hideSnackbar(snackbarId);
+    },
+
+    // New method to check if a snackbar is active
+    isSnackbarActive(snackbarId) {
+      return snackbars.has(snackbarId);
     }
   };
 })();
