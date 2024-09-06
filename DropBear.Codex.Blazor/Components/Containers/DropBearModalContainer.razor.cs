@@ -9,7 +9,11 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 
 public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
 {
+    private string customHeight = "auto"; // Default height
+    private string customWidth = "auto"; // Default width
     private string modalTransitionClass = "enter";
+    private string transitionDuration = "0.3s"; // Default transition duration
+
 
     /// <summary>
     ///     Cleanup on component disposal, ensuring event unsubscription.
@@ -34,6 +38,25 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         try
         {
             ModalService.OnChange += StateHasChanged;
+
+            if (ModalService.CurrentParameters != null)
+            {
+                // Retrieve custom width, height, and transition duration if specified
+                if (ModalService.CurrentParameters.TryGetValue("CustomWidth", out var width))
+                {
+                    customWidth = width.ToString();
+                }
+
+                if (ModalService.CurrentParameters.TryGetValue("CustomHeight", out var height))
+                {
+                    customHeight = height.ToString();
+                }
+
+                if (ModalService.CurrentParameters.TryGetValue("TransitionDuration", out var duration))
+                {
+                    transitionDuration = duration.ToString();
+                }
+            }
         }
         catch (Exception ex)
         {

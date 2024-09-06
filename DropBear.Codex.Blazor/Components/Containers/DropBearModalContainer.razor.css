@@ -16,17 +16,32 @@
   padding: var(--spacing-lg); /* Dynamic spacing */
   border-radius: var(--br-md); /* Use existing border radius */
   box-shadow: var(--bs-md); /* Box shadow for depth */
-  transition: var(--transition-normal); /* Smooth transition */
+
+  /* Dynamic width with boundaries */
+  width: min(max(var(--modal-width, 50%), 300px), 80%); /* Minimum 300px, max 80% of viewport width */
+
+  /* Dynamic height with boundaries */
+  height: min(max(var(--modal-height, auto), 200px), 80vh); /* Minimum 200px, max 80% of viewport height */
+
+  max-width: 80%; /* Max width should not exceed 80% of the screen width */
+  max-height: 80vh; /* Max height should not exceed 80% of the screen height */
+
+  overflow-y: auto; /* Enable scrolling if content exceeds modal height */
+
+  /* Smooth transition using a customizable transition duration */
+  transition: opacity var(--transition-normal, 0.3s ease-in-out), transform var(--transition-normal, 0.3s ease-in-out); /* Use fallback if custom transition is not provided */
 }
 
-.enter {
-  opacity: 0;
-  transform: scale(0.9);
+.modal-content.enter {
+  opacity: 1; /* Ensure opacity is fully visible on enter */
+  transform: scale(1); /* Fully scale modal content on enter */
+  transition: opacity var(--transition-normal), transform var(--transition-normal); /* Smooth entry */
 }
 
-.enter-active {
-  opacity: 1;
-  transform: scale(1);
+.modal-content.leave {
+  opacity: 0; /* Fade out on exit */
+  transform: scale(0.9); /* Slightly scale down on exit */
+  transition: opacity var(--transition-normal), transform var(--transition-normal); /* Smooth exit */
 }
 
 .leave {
@@ -37,4 +52,11 @@
 .leave-active {
   opacity: 0;
   transform: scale(0.9);
+}
+
+/* Optional variables for custom width, height, and transition duration */
+* {
+  --modal-width: auto; /* Default width is auto, can be overridden */
+  --modal-height: auto; /* Default height is auto, can be overridden */
+  --transition-normal: 0.3s ease-in-out; /* Default transition duration */
 }
