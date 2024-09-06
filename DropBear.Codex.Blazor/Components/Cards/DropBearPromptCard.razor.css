@@ -65,7 +65,7 @@
 }
 
 .card-text {
-  color: var(--clr-grey-500);
+  color: var(--clr-grey-700);
   margin-bottom: var(--spacing-sm);
   font-weight: 300;
   font-size: var(--fs-sm);
