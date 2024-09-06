@@ -5,12 +5,14 @@
   width: 100%;
   max-width: var(--max-width, 100%);
   gap: var(--section-gap, 5px);
+  margin: 0 auto; /* Center horizontally */
 }
 
 /* Centered Container Variant */
 .section-container.centered {
   justify-content: center;
   align-items: center;
+  min-height: 100vh; /* Full-height for vertical centering */
 }
 
 /* Section Spacing */
