@@ -62,7 +62,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
             if (!IsVisible)
             {
                 IsVisible = true;
-                StateHasChanged();
+                await InvokeAsync(StateHasChanged);
                 await Task.Delay(50); // Small delay to ensure the DOM is updated
                 await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
             }
