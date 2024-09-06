@@ -4,7 +4,7 @@
   padding: var(--spacing-md) var(--spacing-lg);
   background-color: var(--clr-primary);
   color: var(--clr-mine-shaft);
-  border-radius: var(--br-md);
+  border-radius: var(--br-sm);
   cursor: context-menu;
   transition: background-color var(--transition-fast);
 }
@@ -22,10 +22,10 @@
 .context-menu {
   position: fixed;
   background-color: var(--clr-background);
-  border-radius: var(--br-md);
+  border-radius: var(--br-sm);
   padding: var(--spacing-xs);
   min-width: calc(var(--golden-ratio) * 100px);
-  box-shadow: var(--bs-lg);
+  box-shadow: var(--bs-md);
   z-index: var(--z-100);
   opacity: 0;
   transform: scale(0.95);
@@ -43,9 +43,9 @@
 .context-menu-item {
   display: flex;
   align-items: center;
-  padding: var(--spacing-sm);
+  padding: var(--spacing-xs);
   cursor: pointer;
-  border-radius: var(--br-md);
+  border-radius: var(--br-sm);
   transition: background-color var(--transition-fast), color var(--transition-fast);
   position: relative;
   color: var(--clr-grey-800);
@@ -97,10 +97,10 @@
   left: 100%;
   top: 0;
   background-color: var(--clr-background);
-  border-radius: var(--br-md);
+  border-radius: var(--br-sm);
   padding: var(--spacing-xs);
   min-width: calc(var(--golden-ratio) * 90px);
-  box-shadow: var(--bs-lg);
+  box-shadow: var(--bs-md);
   opacity: 0;
   pointer-events: none;
   transform: translateX(-10px);

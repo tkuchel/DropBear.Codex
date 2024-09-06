@@ -1,10 +1,10 @@
 ﻿/* Loading Components Styles */
 
 /* Common variables for gradients */
-:root {
+* {
   --gradient-start: var(--clr-information);
   --gradient-mid: var(--clr-information-light);
-  --gradient-end: var(--clr-heliotrope);
+  --gradient-end: var(--clr-information-dark);
 }
 
 .loading-container {

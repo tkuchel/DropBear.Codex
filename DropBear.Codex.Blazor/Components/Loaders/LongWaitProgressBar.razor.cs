@@ -20,7 +20,7 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
     private Timer? _timer;
 
     [Parameter] public string Title { get; set; } = "Please wait...";
-    [Parameter] public string Message { get; set; } = "Please wait while we process your request.";
+    [Parameter] public string Message { get; set; } = "Processing your request...";
     [Parameter] public int Progress { get; set; }
     [Parameter] public bool ShowCancelButton { get; set; }
     [Parameter] public string CancelButtonText { get; set; } = "Cancel";
