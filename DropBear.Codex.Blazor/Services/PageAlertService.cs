@@ -4,6 +4,7 @@ using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core;
+using Serilog;
 
 #endregion
 
@@ -14,16 +15,18 @@ namespace DropBear.Codex.Blazor.Services;
 /// </summary>
 public sealed class PageAlertService : IPageAlertService
 {
-    private readonly List<PageAlert> _alerts = new();
-    public IReadOnlyList<PageAlert> Alerts => _alerts.AsReadOnly();
+    private readonly List<PageAlert> _alerts = new(); // Backing field for managing alerts.
 
-    public event EventHandler<EventArgs>? OnChange; // Event to notify the UI that the alerts have changed
+    public IReadOnlyList<PageAlert> Alerts =>
+        _alerts.AsReadOnly(); // Exposes alerts as read-only to ensure encapsulation.
+
+    public event EventHandler<EventArgs>? OnChange; // Event to notify the UI when alerts are updated.
 
     /// <summary>
     ///     Removes an alert by its ID.
     /// </summary>
     /// <param name="id">The ID of the alert to remove.</param>
-    /// <returns>A result indicating the success or failure of the operation.</returns>
+    /// <returns>A result indicating success or failure.</returns>
     public Result RemoveAlert(Guid id)
     {
         var alert = _alerts.Find(a => a.Id == id);
@@ -33,7 +36,7 @@ public sealed class PageAlertService : IPageAlertService
         }
 
         _alerts.RemoveAll(a => a.Id == id);
-        OnChange?.Invoke(this, EventArgs.Empty);
+        NotifyStateChanged();
         return Result.Success();
     }
 
@@ -44,27 +47,28 @@ public sealed class PageAlertService : IPageAlertService
     public Result ClearAlerts()
     {
         _alerts.Clear();
-        OnChange?.Invoke(this, EventArgs.Empty);
+        NotifyStateChanged();
         return Result.Success();
     }
 
     /// <summary>
-    ///     Adds an alert to the list.
+    ///     Adds an alert to the list with optional duration.
     /// </summary>
     /// <param name="title">The title of the alert.</param>
     /// <param name="message">The message of the alert.</param>
     /// <param name="type">The type of the alert.</param>
-    /// <param name="isDismissible">Indicates whether the alert is dismissible.</param>
-    /// <param name="durationMs">The duration in milliseconds for the alert to be displayed.</param>
-    /// <returns>A result indicating the success or failure of the operation.</returns>
+    /// <param name="isDismissible">Indicates if the alert can be dismissed.</param>
+    /// <param name="durationMs">Optional duration in milliseconds before the alert is removed automatically.</param>
+    /// <returns>A result indicating success or failure.</returns>
     public Result AddAlert(string title, string message, AlertType type, bool isDismissible, int? durationMs = 5000)
     {
         var alert = new PageAlert(title, message, type, isDismissible);
         _alerts.Add(alert);
-        OnChange?.Invoke(this, EventArgs.Empty);
+        NotifyStateChanged();
 
         if (durationMs.HasValue)
         {
+            // Removing the alert after a delay if a duration is specified.
             _ = RemoveAlertAfterDelay(alert.Id, durationMs.Value);
         }
 
@@ -72,31 +76,28 @@ public sealed class PageAlertService : IPageAlertService
     }
 
     /// <summary>
-    ///     Adds an alert to the list asynchronously.
+    ///     Asynchronously adds an alert to the list.
     /// </summary>
     /// <param name="title">The title of the alert.</param>
     /// <param name="message">The message of the alert.</param>
     /// <param name="type">The type of the alert.</param>
-    /// <param name="isDismissible">Indicates whether the alert is dismissible.</param>
-    /// <param name="durationMs">The duration in milliseconds for the alert to be displayed.</param>
+    /// <param name="isDismissible">Indicates if the alert can be dismissed.</param>
+    /// <param name="durationMs">Optional duration in milliseconds before the alert is removed.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task<Result> AddAlertAsync(string title, string message, AlertType type, bool isDismissible,
         int? durationMs = 5000)
     {
-        var result = await Task.Run(() => AddAlert(title, message, type, isDismissible, durationMs))
-            .ConfigureAwait(false);
-        return result;
+        return await Task.Run(() => AddAlert(title, message, type, isDismissible, durationMs)).ConfigureAwait(false);
     }
 
     /// <summary>
-    ///     Removes an alert by its ID asynchronously.
+    ///     Asynchronously removes an alert by its ID.
     /// </summary>
     /// <param name="id">The ID of the alert to remove.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task<Result> RemoveAlertAsync(Guid id)
     {
-        var result = await Task.Run(() => RemoveAlert(id)).ConfigureAwait(false);
-        return result;
+        return await Task.Run(() => RemoveAlert(id)).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -108,5 +109,20 @@ public sealed class PageAlertService : IPageAlertService
     {
         await Task.Delay(delayMs).ConfigureAwait(false);
         await RemoveAlertAsync(id).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Notifies subscribers that the alerts have been updated.
+    /// </summary>
+    private void NotifyStateChanged()
+    {
+        try
+        {
+            OnChange?.Invoke(this, EventArgs.Empty);
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error occurred while notifying state change. Error: {ErrorMessage}", ex.Message);
+        }
     }
 }

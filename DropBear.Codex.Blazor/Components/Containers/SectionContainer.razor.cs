@@ -24,16 +24,40 @@ public sealed partial class SectionContainer : DropBearComponentBase
     public string? MaxWidth { get; set; }
 
     /// <summary>
-    ///     If true, the container will be centered within its parent element.
+    ///     If true, the container will be horizontally centered within its parent element.
     /// </summary>
     [Parameter]
-    public bool IsCentered { get; set; }
+    public bool IsHorizontalCentered { get; set; }
 
     /// <summary>
-    ///     Determines the CSS class applied to the container. Handles centering based on the <see cref="IsCentered" />
-    ///     property.
+    ///     If true, the container will be vertically centered within its parent element.
     /// </summary>
-    private string ContainerClass => IsCentered ? "section-container centered" : "section-container";
+    [Parameter]
+    public bool IsVerticalCentered { get; set; }
+
+    /// <summary>
+    ///     Determines the CSS class applied to the container. Handles centering based on the
+    ///     <see cref="IsHorizontalCentered" />
+    ///     and <see cref="IsVerticalCentered" /> properties.
+    /// </summary>
+    private string ContainerClass
+    {
+        get
+        {
+            var classes = "section-container";
+            if (IsHorizontalCentered)
+            {
+                classes += " horizontal-centered";
+            }
+
+            if (IsVerticalCentered)
+            {
+                classes += " vertical-centered";
+            }
+
+            return classes;
+        }
+    }
 
     /// <summary>
     ///     Initializes the component and ensures necessary parameters are set.
