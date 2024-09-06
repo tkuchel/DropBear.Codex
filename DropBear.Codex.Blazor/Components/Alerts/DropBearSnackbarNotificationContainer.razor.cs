@@ -72,7 +72,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         var snackbar = new SnackbarInstance(options);
         _snackbars.Add(snackbar);
 
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
         await Task.Delay(50); // Small delay to ensure the DOM is updated
 
         if (snackbar.ComponentRef != null)
