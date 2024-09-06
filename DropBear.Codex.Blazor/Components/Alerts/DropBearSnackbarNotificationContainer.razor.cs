@@ -105,7 +105,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
                 await Console.Error.WriteLineAsync($"Error removing snackbar: {ex.Message}");
             }
 
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -129,7 +129,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         var tasks = _snackbars.Select(s => s.ComponentRef?.DismissAsync() ?? Task.CompletedTask);
         await Task.WhenAll(tasks);
         _snackbars.Clear();
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnSnackbarAction(SnackbarInstance snackbar)
