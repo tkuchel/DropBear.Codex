@@ -12,7 +12,7 @@
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Version>2024.8.0</Version>
-    <PackageVersion>2024.8.0</PackageVersion> <!-- Specifies the version of the package -->
+    <PackageVersion>2024.9.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.Blazor</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex Blazor</Title>
     <Description>Blazor components and utilities for the DropBear.Codex ecosystem</Description>
