@@ -3,6 +3,7 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 #endregion
 
@@ -65,9 +66,14 @@ public sealed partial class SectionContainer : DropBearComponentBase
         {
             // Call JavaScript to get the window size and calculate the max width
             await SetMaxWidthBasedOnWindowSize();
+
+            // Register resize event listener
+            var dotnetRef = DotNetObjectReference.Create(this);
+            await JSRuntime.InvokeVoidAsync("addResizeEventListener", dotnetRef);
         }
     }
 
+    [JSInvokable]
     private async Task SetMaxWidthBasedOnWindowSize()
     {
         // Call the JavaScript function to get the window's width

@@ -368,6 +368,44 @@ window.DropBearNavigationButtons = (function () {
   };
 })();
 
+// DropBearResizeManager (v1.0.0)
+window.DropBearResizeManager = (function () {
+  let dotNetReference = null;
+
+  function handleResize() {
+    if (dotNetReference) {
+      dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize')
+        .catch(error => console.error('Error invoking SetMaxWidthBasedOnWindowSize method:', error));
+    }
+  }
+
+  return {
+    // Initialize the resize event listener and associate it with the DotNetObjectReference
+    initialize: function (dotNetRef) {
+      if (dotNetReference) {
+        console.warn('DropBearResizeManager already initialized. Disposing previous instance.');
+        this.dispose();
+      }
+
+      dotNetReference = dotNetRef;
+      // Use debounce to limit the frequency of resize event handling
+      window.addEventListener('resize', debounce(handleResize, 100));
+      console.log('DropBearResizeManager initialized');
+
+      // Trigger an initial call to SetMaxWidthBasedOnWindowSize to apply the size on load
+      handleResize();
+    },
+
+    // Dispose of the event listener when the component is destroyed
+    dispose: function () {
+      if (dotNetReference) {
+        window.removeEventListener('resize', handleResize);
+        dotNetReference = null;
+        console.log('DropBearResizeManager disposed');
+      }
+    }
+  };
+})();
 
 // Utility function for getting the window dimensions
 window.getWindowDimensions = function () {
