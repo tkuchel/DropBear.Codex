@@ -74,7 +74,7 @@ public sealed partial class SectionContainer : DropBearComponentBase
     }
 
     [JSInvokable]
-    private async Task SetMaxWidthBasedOnWindowSize()
+    public async Task SetMaxWidthBasedOnWindowSize()
     {
         // Call the JavaScript function to get the window's width
         var dimensions = await JSRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions", null);
