@@ -1,6 +1,7 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 
 #endregion
@@ -9,16 +10,17 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 
 public sealed partial class SectionContainer : DropBearComponentBase
 {
+    private string MaxWidthStyle { get; set; } = "100%"; // Default value if not set dynamically
+
     /// <summary>
-    ///     The content to be rendered within the container. This can include one or more <see cref="SectionComponent" />
-    ///     instances.
+    ///     The content to be rendered within the container.
     /// </summary>
     [Parameter]
     [EditorRequired]
     public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    ///     Specifies the maximum width of the container. This value can be any valid CSS width value (e.g., "800px", "50%").
+    ///     Specifies the maximum width of the container.
     /// </summary>
     [Parameter]
     public string? MaxWidth { get; set; }
@@ -36,9 +38,7 @@ public sealed partial class SectionContainer : DropBearComponentBase
     public bool IsVerticalCentered { get; set; }
 
     /// <summary>
-    ///     Determines the CSS class applied to the container. Handles centering based on the
-    ///     <see cref="IsHorizontalCentered" />
-    ///     and <see cref="IsVerticalCentered" /> properties.
+    ///     Determines the CSS class applied to the container.
     /// </summary>
     private string ContainerClass
     {
@@ -59,16 +59,35 @@ public sealed partial class SectionContainer : DropBearComponentBase
         }
     }
 
-    /// <summary>
-    ///     Initializes the component and ensures necessary parameters are set.
-    /// </summary>
-    protected override void OnInitialized()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (ChildContent is null)
+        if (firstRender)
         {
-            throw new InvalidOperationException($"{nameof(ChildContent)} must be provided and cannot be null.");
+            // Call JavaScript to get the window size and calculate the max width
+            await SetMaxWidthBasedOnWindowSize();
+        }
+    }
+
+    private async Task SetMaxWidthBasedOnWindowSize()
+    {
+        // Call the JavaScript function to get the window's width
+        var dimensions = await JSRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions", null);
+        var windowWidth = dimensions.Width;
+
+        // Check if the MaxWidth is a percentage (e.g., "70%") and calculate the actual width based on the window width
+        if (MaxWidth != null && MaxWidth.EndsWith("%"))
+        {
+            var percentage = double.Parse(MaxWidth.TrimEnd('%')) / 100;
+            var calculatedWidth = windowWidth * percentage;
+            MaxWidthStyle = $"{calculatedWidth}px";
+        }
+        else
+        {
+            // If the MaxWidth is not a percentage (e.g., "800px"), use it directly
+            MaxWidthStyle = MaxWidth ?? "100%";
         }
 
-        base.OnInitialized();
+        // Trigger a re-render with the updated max width style
+        await InvokeAsync(StateHasChanged);
     }
 }

@@ -1,9 +1,7 @@
-﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+﻿@using Microsoft.JSInterop
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@inject IJSRuntime JSRuntime
 
-<div class="@ContainerClass" style="--max-width:@MaxWidth;">
+<div class="@ContainerClass" style="--max-width:@MaxWidthStyle;">
     @ChildContent
 </div>
-
-@code {
-    // Intentionally left blank
-}
