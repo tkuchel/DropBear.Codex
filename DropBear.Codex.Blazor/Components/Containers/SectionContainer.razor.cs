@@ -69,7 +69,7 @@ public sealed partial class SectionContainer : DropBearComponentBase
 
             // Register resize event listener
             var dotnetRef = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("addResizeEventListener", dotnetRef);
+            await JSRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", dotnetRef);
         }
     }
 
