@@ -20,7 +20,7 @@
 
 /* Header */
 .datagrid-header {
-  background: var(--light-header-gradient);
+  background: var(--header-gradient);
   color: var(--clr-white); /* Change to white or a lighter color */
   padding: var(--spacing-sm);
   display: flex;
@@ -135,6 +135,7 @@
 
 .datagrid-table-wrapper {
   overflow-x: auto;
+  background-color: var(--clr-surface-primary);
 }
 
 /* Datagrid Cells */
@@ -207,7 +208,7 @@
 
 /* Footer */
 .datagrid-footer {
-  background-color: var(--light-footer-gradient);
+  background-color: var(--footer-gradient);
   padding: var(--spacing-sm);
   display: flex;
   justify-content: space-between;

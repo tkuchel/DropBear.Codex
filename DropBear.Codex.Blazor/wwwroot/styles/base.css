@@ -66,7 +66,6 @@
   --section-gap: var(--spacing-sm, 5px);
   --section-margin-bottom: var(--spacing-md, 20px);
   --section-padding: var(--spacing-md, 10px); /* Updated to reuse spacing variable */
-  --section-bg-color: var(--clr-grey-100, hsl(206, 30%, 95%));
   --section-border: var(--border-default, none); /* Optionally add a global border variable */
   --section-border-radius: var(--br-md, 0); /* Updated to use existing border radius variable */
 
@@ -79,31 +78,6 @@
   --deg-225: 225deg;
   --deg-270: 270deg;
   --deg-315: 315deg;
-
-  /* Gradients */
-  --gradient-example: linear-gradient(
-    90deg,
-    var(--clr-viking),
-    var(--clr-japonica)
-  );
-  --gradient-example-vibrant: linear-gradient(
-    90deg,
-    in lch,
-    var(--clr-viking),
-    var(--clr-japonica)
-  );
-
-  --light-header-gradient: linear-gradient(
-    90deg,
-    var(--clr-grey-200),
-    var(--clr-grey-100)
-  );
-
-  --light-footer-gradient: linear-gradient(
-    90deg,
-    var(--clr-grey-200),
-    var(--clr-grey-100)
-  );
 
   /* Themes */
   @media (prefers-color-scheme: light) {
@@ -121,6 +95,20 @@
     --clr-text-link: var(--clr-viking); /* Link color to match the secondary color */
     --clr-text-heading: var(--clr-mine-shaft); /* Heading text color, strong and prominent */
     --clr-text-muted: var(--clr-french-gray); /* Muted text color for less prominent text */
+    /* Gradients */
+    --header-gradient: linear-gradient(
+      90deg,
+      var(--clr-grey-200),
+      var(--clr-grey-100)
+    );
+
+    --footer-gradient: linear-gradient(
+      90deg,
+      var(--clr-grey-200),
+      var(--clr-grey-100)
+    );
+    /* Section Container Variables */
+    --section-bg-color: var(--clr-grey-100, hsl(206, 30%, 95%));
   }
 
   @media (prefers-color-scheme: dark) {
@@ -139,6 +127,20 @@
     --clr-text-link: var(--clr-hot-pink); /* Link color to match the secondary color */
     --clr-text-heading: var(--clr-silver-sand); /* Heading text color, strong and prominent */
     --clr-text-muted: var(--clr-davy-gray); /* Muted text color for less prominent text */
+    /* Gradients */
+    --datagrid-header-gradient: linear-gradient(
+      90deg,
+      var(--clr-grey-800),
+      var(--clr-grey-700)
+    );
+
+    --datagrid-footer-gradient: linear-gradient(
+      90deg,
+      var(--clr-grey-800),
+      var(--clr-grey-700)
+    );
+    /* Section Container Variables */
+    --section-bg-color: var(--clr-grey-800, hsl(206, 30%, 95%));
   }
 
   /* Font Families */

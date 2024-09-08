@@ -19,6 +19,21 @@
   flex-direction: column;
   height: 100%; /* Ensure the card takes full height of its container */
   animation: fadeIn 0.3s ease-in-out;
+  background-color: var(--clr-surface-primary);
+}
+
+.card input {
+  background-color: var(--clr-grey-400);
+  color: var(--clr-grey-800);
+}
+
+.card select {
+  background-color: var(--clr-grey-400);
+  color: var(--clr-grey-800);
+}
+
+.card label {
+  color: var(--clr-grey-400);
 }
 
 /* Header, Body, and Footer Styling */
@@ -31,7 +46,7 @@
 }
 
 .card-header {
-  background: var(--light-header-gradient);
+  background: var(--header-gradient);
   border-bottom: 1px solid var(--clr-surface-primary);
   color: var(--clr-primary);
   justify-content: left;
@@ -91,7 +106,7 @@
   justify-content: flex-end;
   gap: var(--spacing-xs);
   margin-top: auto;
-  background: var(--light-footer-gradient);
+  background: var(--footer-gradient);
 }
 
 /* Add this to reduce space in compact cards */
@@ -134,37 +149,37 @@
 
 .btn-default {
   background-color: var(--clr-primary);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 .btn-secondary {
   background-color: var(--clr-secondary);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 .btn-success {
   background-color: var(--clr-success);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 .btn-warning {
   background-color: var(--clr-warning);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 .btn-error {
   background-color: var(--clr-error);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 .btn-information {
   background-color: var(--clr-information);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 .btn-primary {
   background-color: var(--clr-primary);
-  color: var(--clr-text-primary);
+  color: var(--clr-mine-shaft);
 }
 
 /* Animations */
