@@ -62,7 +62,7 @@ window.DropBearSnackbar = (function () {
         snackbar.remove();
         snackbars.delete(snackbarId);
         log(`Snackbar ${snackbarId} removed from DOM and active snackbars`);
-      }, { once: true });
+      }, {once: true});
       snackbar.style.animation = 'slideOutDown 0.3s ease-out forwards';
     } else {
       snackbars.delete(snackbarId);
@@ -381,7 +381,7 @@ window.DropBearResizeManager = (function () {
 
   return {
     // Initialize the resize event listener and associate it with the DotNetObjectReference
-    initialize: function (dotNetRef) {
+    initialize(dotNetRef) {
       if (dotNetReference) {
         console.warn('DropBearResizeManager already initialized. Disposing previous instance.');
         this.dispose();
@@ -397,11 +397,137 @@ window.DropBearResizeManager = (function () {
     },
 
     // Dispose of the event listener when the component is destroyed
-    dispose: function () {
+    dispose() {
       if (dotNetReference) {
         window.removeEventListener('resize', handleResize);
         dotNetReference = null;
         console.log('DropBearResizeManager disposed');
+      }
+    }
+  };
+})();
+
+// DropBearThemeManager (v1.0.1)
+window.DropBearThemeManager = (function () {
+  let dotNetReference = null;
+  const STORAGE_KEY = 'dropbear-theme-preference';
+  let mediaQuery = null;
+
+  function log(message, type = 'log') {
+    console[type](`[DropBearThemeManager] ${message}`);
+  }
+
+  function setColorScheme(scheme) {
+    try {
+      document.documentElement.style.setProperty('--color-scheme', scheme);
+      localStorage.setItem(STORAGE_KEY, scheme);
+      log(`Color scheme set to: ${scheme}`);
+    } catch (error) {
+      log(`Error setting color scheme: ${error.message}`, 'error');
+    }
+  }
+
+  function getColorScheme() {
+    return localStorage.getItem(STORAGE_KEY) || 'auto';
+  }
+
+  function applyColorScheme(scheme) {
+    log(`Attempting to apply color scheme: ${scheme}`);
+
+    if (!['auto', 'light', 'dark'].includes(scheme)) {
+      log(`Invalid scheme provided: ${scheme}. Falling back to 'auto'.`, 'warn');
+      scheme = 'auto';
+    }
+
+    let effectiveScheme = scheme;
+    if (scheme === 'auto') {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      effectiveScheme = prefersDark ? 'dark' : 'light';
+      log(`Auto theme detected. System prefers ${effectiveScheme} mode.`);
+    }
+
+    try {
+      document.documentElement.style.setProperty('--color-scheme', effectiveScheme);
+      localStorage.setItem(STORAGE_KEY, scheme); // Store the user's preference, not the effective scheme
+      log(`Color scheme applied: ${effectiveScheme} (user preference: ${scheme})`);
+
+      // Update body class for potential CSS hooks
+      document.body.classList.remove('theme-light', 'theme-dark');
+      document.body.classList.add(`theme-${effectiveScheme}`);
+
+      // Dispatch a custom event for other parts of the application
+      window.dispatchEvent(new CustomEvent('themeChanged', { detail: { scheme: effectiveScheme, preference: scheme } }));
+
+      if (dotNetReference) {
+        dotNetReference.invokeMethodAsync('OnThemeChanged', effectiveScheme, scheme)
+          .then(() => log('Blazor component notified of theme change'))
+          .catch(error => log(`Error invoking OnThemeChanged: ${error.message}`, 'error'));
+      } else {
+        log('No Blazor reference available to notify of theme change', 'warn');
+      }
+    } catch (error) {
+      log(`Error applying color scheme: ${error.message}`, 'error');
+    }
+  }
+
+  // Use the existing debounce utility
+  const debouncedApplyColorScheme = debounce(applyColorScheme, 50);
+
+  function handleSystemThemeChange(event) {
+    if (getColorScheme() === 'auto') {
+      log('System theme change detected');
+      debouncedApplyColorScheme('auto');
+    }
+  }
+
+  return {
+    initialize(dotNetRef) {
+      if (dotNetReference) {
+        log('DropBearThemeManager already initialized. Disposing previous instance.', 'warn');
+        this.dispose();
+      }
+
+      dotNetReference = dotNetRef;
+      const storedScheme = getColorScheme();
+      setColorScheme(storedScheme);
+
+      mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      mediaQuery.addEventListener('change', handleSystemThemeChange);
+
+      if (storedScheme === 'auto') {
+        handleSystemThemeChange({ matches: mediaQuery.matches });
+      }
+
+      log('DropBearThemeManager initialized');
+    },
+
+    toggleTheme() {
+      const currentScheme = getColorScheme();
+      const newScheme = currentScheme === 'dark' ? 'light' :
+        currentScheme === 'light' ? 'auto' : 'dark';
+      applyColorScheme(newScheme);
+    },
+
+    setTheme(scheme) {
+      if (['auto', 'light', 'dark'].includes(scheme)) {
+        applyColorScheme(scheme);
+      } else {
+        log(`Invalid color scheme: ${scheme}`, 'error');
+      }
+    },
+
+    getCurrentTheme() {
+      return getColorScheme();
+    },
+
+    dispose() {
+      if (mediaQuery) {
+        mediaQuery.removeEventListener('change', handleSystemThemeChange);
+        mediaQuery = null;
+      }
+      if (dotNetReference) {
+        dotNetReference = null;
+        log('DropBearThemeManager disposed');
       }
     }
   };
