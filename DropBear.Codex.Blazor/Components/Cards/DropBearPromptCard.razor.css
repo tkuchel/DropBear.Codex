@@ -104,12 +104,12 @@
 
 .prompt-btn-primary {
   background-color: var(--clr-primary);
-  color: var(--clr-background);
+  color: var(--clr-text-primary);
 }
 
 .prompt-btn-secondary {
   background-color: var(--clr-secondary);
-  color: var(--clr-background);
+  color: var(--clr-text-primary);
 }
 
 .prompt-btn-secondary:hover {
@@ -118,22 +118,22 @@
 
 .prompt-btn-success {
   background-color: var(--clr-success);
-  color: var(--clr-background);
+  color: var(--clr-text-primary);
 }
 
 .prompt-btn-warning {
   background-color: var(--clr-warning);
-  color: var(--clr-background);
+  color: var(--clr-text-primary);
 }
 
 .prompt-btn-danger {
   background-color: var(--clr-error);
-  color: var(--clr-background);
+  color: var(--clr-text-primary);
 }
 
 .prompt-btn-default {
   background-color: var(--clr-grey-500);
-  color: var(--clr-background);
+  color: var(--clr-text-primary);
 }
 
 /* Subtle variation */
@@ -162,7 +162,7 @@
 
 /* Success Card */
 .prompt-card-success {
-  background-color: var(--clr-success-light);
+  /*background-color: var(--clr-success-light);*/
   color: var(--clr-success-dark);
 }
 
@@ -173,7 +173,7 @@
 
 /* Warning Card */
 .prompt-card-warning {
-  background-color: var(--clr-warning-light);
+  /*background-color: var(--clr-warning-light);*/
   color: var(--clr-warning-dark);
 }
 
@@ -184,7 +184,7 @@
 
 /* Error Card */
 .prompt-card-danger {
-  background-color: var(--clr-error-light);
+  /*background-color: var(--clr-error-light);*/
   color: var(--clr-error-dark);
 }
 
@@ -195,7 +195,7 @@
 
 /* Information Card */
 .prompt-card-information {
-  background-color: var(--clr-information-light);
+  /*background-color: var(--clr-information-light);*/
   color: var(--clr-information-dark);
 }
 
@@ -206,7 +206,7 @@
 
 /* Default Card */
 .prompt-card-default {
-  background-color: var(--clr-grey-100);
+  /*background-color: var(--clr-grey-100);*/
   color: var(--clr-text-secondary);
 }
 
