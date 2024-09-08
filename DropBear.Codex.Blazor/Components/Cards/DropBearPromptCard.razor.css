@@ -65,7 +65,7 @@
 }
 
 .card-text {
-  color: var(--clr-grey-700);
+  color: var(--clr-text-primary);
   margin-bottom: var(--spacing-sm);
   font-weight: 300;
   font-size: var(--fs-sm);
@@ -104,12 +104,12 @@
 
 .prompt-btn-primary {
   background-color: var(--clr-primary);
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
 }
 
 .prompt-btn-secondary {
   background-color: var(--clr-secondary);
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
 }
 
 .prompt-btn-secondary:hover {
@@ -118,22 +118,22 @@
 
 .prompt-btn-success {
   background-color: var(--clr-success);
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
 }
 
 .prompt-btn-warning {
   background-color: var(--clr-warning);
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
 }
 
 .prompt-btn-danger {
   background-color: var(--clr-error);
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
 }
 
 .prompt-btn-default {
   background-color: var(--clr-grey-500);
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
 }
 
 /* Subtle variation */

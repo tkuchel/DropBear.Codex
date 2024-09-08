@@ -19,20 +19,21 @@
   flex-direction: column;
   height: 100%; /* Ensure the card takes full height of its container */
   animation: fadeIn 0.3s ease-in-out;
-  background-color: var(--clr-surface-primary);
+  background-color: var(--clr-surface-dark);
+  border: var(--border-default);
 }
 
-.card input {
+.card input.form-control {
+  background-color: var(--clr-grey-400) !important;
+  color: var(--clr-grey-800);
+}
+
+.card select.form-select {
   background-color: var(--clr-grey-400);
   color: var(--clr-grey-800);
 }
 
-.card select {
-  background-color: var(--clr-grey-400);
-  color: var(--clr-grey-800);
-}
-
-.card label {
+.card label.form-label {
   color: var(--clr-grey-400);
 }
 
@@ -96,6 +97,13 @@
   display: flex;
   flex-direction: column;
   margin-top: 15px;
+}
+
+.card-body hr
+{
+  border: none;
+  height: 1px;
+  background-color: var(--clr-grey-400);
 }
 
 .card-footer {

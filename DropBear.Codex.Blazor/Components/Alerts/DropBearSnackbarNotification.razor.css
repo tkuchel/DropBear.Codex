@@ -13,8 +13,8 @@
   transform: translateY(0) translateX(-50%) !important; /* Force full visibility */
   width: 100%; /* Ensures the snackbar takes full width of its container */
   box-sizing: border-box; /* Includes padding in the width calculation */
-  background-color: var(--clr-surface-primary); /* Global surface color */
-  color: var(--clr-text-primary); /* Global text color */
+  background-color: var(--clr-surface-dark); /* Global surface color */
+  color: var(--clr-text-heading); /* Global text color */
 }
 
 /* Type-Specific Borders */
@@ -56,7 +56,7 @@
 
 /* Action and Close Button Styles */
 .snackbar-action {
-  background: var(--clr-grey-200);
+  background: var(--clr-background);
   border: none;
   border-radius: var(--br-sm);
   color: inherit;
@@ -69,7 +69,7 @@
 }
 
 .snackbar-action:hover {
-  background: var(--clr-grey-300);
+  background: var(--clr-surface-primary);
 }
 
 .snackbar-close {

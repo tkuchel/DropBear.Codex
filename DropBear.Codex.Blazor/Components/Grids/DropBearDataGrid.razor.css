@@ -12,6 +12,7 @@
   animation: fadeIn var(--transition-normal);
   background-color: var( --clr-grey-100);
   color: var(--clr-text-primary);
+  border: var(--border-default);
 }
 
 .dropbear-datagrid:hover {
@@ -135,7 +136,7 @@
 
 .datagrid-table-wrapper {
   overflow-x: auto;
-  background-color: var(--clr-surface-primary);
+  background-color: var(--clr-surface-dark);
 }
 
 /* Datagrid Cells */
@@ -143,7 +144,7 @@
   padding: var(--spacing-xs);
   margin: 0;
   width: 150px; /* Ensure a consistent width */
-  border-bottom: 1px solid var(--clr-surface-dark);
+  border-bottom: 1px solid var(--clr-surface-light);
   box-sizing: border-box; /* Ensure box-sizing is border-box */
   overflow: hidden;
 }
@@ -197,14 +198,16 @@
 }
 
 .datagrid-row.selected {
-  background-color: var(--clr-information-light);
+  background-color: var(--clr-information);
   animation: smoothPulse 6s ease-in-out infinite;
+  color: var(--clr-text-heading);
 }
 
 .datagrid-row:hover:not(.header) {
-  background-color: var(--clr-information-light);
-  transform: translateY(-1px);
-  color: var(--clr-text-secondary);
+  background-color: var(--clr-information-dark);
+  /*transform: translateY(-1px);*/
+  color: var(--clr-text-heading);
+  font-weight: var(--fw-600);
 }
 
 /* Footer */

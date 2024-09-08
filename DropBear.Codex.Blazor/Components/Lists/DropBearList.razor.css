@@ -8,7 +8,7 @@
 }
 
 .drop-bear-list-header {
-  background-color: var(--clr-surface-primary, #f44336); /* Use global surface color */
+  background-color: var(--clr-surface-dark, #f44336); /* Use global surface color */
   color: var(--clr-text-secondary, #fff); /* Use global text color for light text */ /* Use global text color for light text */
   padding: var(--spacing-sm, 8px);
   display: flex;

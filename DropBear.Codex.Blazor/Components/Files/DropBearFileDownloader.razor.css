@@ -1,14 +1,14 @@
 ﻿.file-download-container {
-  /* max-width: 600px; */
-  /* margin: 0 auto; */
+   max-width: 600px;
+   margin: 0 auto;
 }
 
 .file-download-component {
   display: flex;
   flex-direction: column;
   border-radius: var(--br-md);
-  background-color: var(--clr-surface-primary); /* Use surface color for consistent theming */
-  color: var(--clr-text-secondary); /* Text color aligned with the current theme */
+  background-color: var(--clr-surface-dark); /* Use surface color for consistent theming */
+  color: var(--clr-text-primary); /* Text color aligned with the current theme */
   transition: var(--transition-normal);
   box-shadow: var(--bs-md);
   margin-bottom: var(--spacing-sm);

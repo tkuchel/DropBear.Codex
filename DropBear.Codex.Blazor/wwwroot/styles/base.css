@@ -66,7 +66,7 @@
   --section-gap: var(--spacing-sm, 5px);
   --section-margin-bottom: var(--spacing-md, 20px);
   --section-padding: var(--spacing-md, 10px); /* Updated to reuse spacing variable */
-  --section-border: var(--border-default, none); /* Optionally add a global border variable */
+  --section-border: none; /* Optionally add a global border variable */
   --section-border-radius: var(--br-md, 0); /* Updated to use existing border radius variable */
 
   /* Gradient Degrees */
@@ -109,6 +109,8 @@
     );
     /* Section Container Variables */
     --section-bg-color: var(--clr-grey-100, hsl(206, 30%, 95%));
+    /* Default Border */
+    --border-default: 1px solid var(--clr-grey-400); /* Light gray solid border */
   }
 
   @media (prefers-color-scheme: dark) {
@@ -130,17 +132,19 @@
     /* Gradients */
     --header-gradient: linear-gradient(
       90deg,
-      var(--clr-grey-800),
-      var(--clr-grey-700)
+      var(--clr-black),
+      var(--clr-grey-800)
     );
 
     --footer-gradient: linear-gradient(
       90deg,
-      var(--clr-grey-800),
-      var(--clr-grey-700)
+      var(--clr-black),
+      var(--clr-grey-800)
     );
     /* Section Container Variables */
     --section-bg-color: var(--clr-black, hsl(206, 30%, 95%));
+    /* Default Border */
+    --border-default: 1px solid var(--clr-grey-400); /* Light gray solid border */
   }
 
   /* Font Families */
@@ -192,8 +196,7 @@
   --br-md: 0.5rem;
   --br-lg: calc(1rem * var(--golden-ratio));
 
-  /* Default Border */
-  --border-default: 1px solid var(--clr-grey-400); /* Light gray solid border */
+
 
   /* Box Shadows Based on Golden Ratio */
   --bs-sm: 0 calc(1px * var(--golden-ratio-inverse)) calc(2px * var(--golden-ratio-inverse)) 0 rgba(0, 0, 0, 0.05);
