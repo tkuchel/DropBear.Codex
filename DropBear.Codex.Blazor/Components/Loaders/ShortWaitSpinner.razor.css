@@ -80,7 +80,7 @@
 }
 
 .loading-card p {
-  color: var(--clr-text-secondary);
+  color: var(--clr-text-primary);
   font-size: var(--fs-sm);
   margin-top: var(--spacing-md);
   width: 100%;

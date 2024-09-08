@@ -160,7 +160,7 @@
 }
 
 .datagrid-cell .btn-icon:hover {
-  color: var(--clr-primary); /* Change icon color on hover */
+  color: var(--clr-tertiary); /* Change icon color on hover */
   transform: scale(1.1); /* Slightly enlarge on hover */
 }
 
@@ -204,11 +204,12 @@
 .datagrid-row:hover:not(.header) {
   background-color: var(--clr-information-light);
   transform: translateY(-1px);
+  color: var(--clr-text-secondary);
 }
 
 /* Footer */
 .datagrid-footer {
-  background-color: var(--footer-gradient);
+  background: var(--footer-gradient);
   padding: var(--spacing-sm);
   display: flex;
   justify-content: space-between;

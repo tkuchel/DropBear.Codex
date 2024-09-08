@@ -29,33 +29,37 @@
 
 /* Badge Colors */
 .dropbear-badge-default {
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
   background-color: var(--clr-grey-500);
 }
 
 .dropbear-badge-secondary {
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
   background-color: var(--clr-secondary);
 }
 
 .dropbear-badge-success {
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
   background-color: var(--clr-success);
 }
 
 .dropbear-badge-information {
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
   background-color: var(--clr-information);
 }
 
 .dropbear-badge-warning {
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
   background-color: var(--clr-warning);
 }
 
 .dropbear-badge-error {
-  color: var(--clr-text-primary);
+  color: var(--clr-black);
   background-color: var(--clr-error);
+}
+
+.badge-pad-left{
+  padding-left: var(--spacing-xs);
 }
 
 /* Tooltip */
