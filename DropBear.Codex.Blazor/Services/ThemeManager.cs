@@ -11,11 +11,13 @@ namespace DropBear.Codex.Blazor.Services;
 
 public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
 {
+    private Func<Func<Task>, Task> _invokeAsync;
     private DotNetObjectReference<ThemeManager>? objRef;
 
     public ThemeManager(IJSRuntime jsRuntime)
     {
         JSRuntime = jsRuntime;
+        _invokeAsync = async action => await action();
         Log.Information("ThemeManager constructor");
     }
 
@@ -37,17 +39,19 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
     }
 
     [JSInvokable]
-    public void OnThemeChanged(string effectiveTheme, string userPreference)
+    public async Task OnThemeChanged(string effectiveTheme, string userPreference)
     {
         Log.Information($"Theme changed - Effective: {effectiveTheme}, User Preference: {userPreference}");
-        InvokeAsync(() => ThemeChanged?.Invoke(this, new ThemeChangedEventArgs(effectiveTheme, userPreference)));
+        await _invokeAsync(async () =>
+        {
+            ThemeChanged?.Invoke(this, new ThemeChangedEventArgs(effectiveTheme, userPreference));
+            await Task.CompletedTask;
+        });
     }
 
-    private Action<Action> InvokeAsync { get; set; } = action => action();
-
-    public void SetInvokeAsync(Action<Action> invokeAsync)
+    public void SetInvokeAsync(Func<Func<Task>, Task> invokeAsync)
     {
-        InvokeAsync = invokeAsync;
+        _invokeAsync = invokeAsync ?? throw new ArgumentNullException(nameof(invokeAsync));
     }
 
     public event EventHandler<ThemeChangedEventArgs>? ThemeChanged;
