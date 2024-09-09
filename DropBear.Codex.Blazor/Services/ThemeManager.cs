@@ -1,7 +1,7 @@
 ﻿#region
 
+using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Events.EventArgs;
-using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Serilog;
 
@@ -9,10 +9,17 @@ using Serilog;
 
 namespace DropBear.Codex.Blazor.Services;
 
-public sealed class ThemeManager : ComponentBase, IAsyncDisposable
+public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
 {
     private DotNetObjectReference<ThemeManager>? objRef;
-    [Inject] private IJSRuntime JSRuntime { get; set; } = null!;
+
+    public ThemeManager(IJSRuntime jsRuntime)
+    {
+        JSRuntime = jsRuntime;
+        Log.Information("ThemeManager constructor");
+    }
+
+    private IJSRuntime JSRuntime { get; } = null!;
 
     public async ValueTask DisposeAsync()
     {
@@ -38,7 +45,7 @@ public sealed class ThemeManager : ComponentBase, IAsyncDisposable
         ThemeChanged?.Invoke(this, new ThemeChangedEventArgs(effectiveTheme, userPreference));
     }
 
-    public event EventHandler<ThemeChangedEventArgs> ThemeChanged;
+    public event EventHandler<ThemeChangedEventArgs>? ThemeChanged;
 
     public async Task ToggleThemeAsync()
     {
