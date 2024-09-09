@@ -39,10 +39,15 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
     [JSInvokable]
     public void OnThemeChanged(string effectiveTheme, string userPreference)
     {
-        Log.Information("Theme changed to {EffectiveTheme} by {UserPreference}", effectiveTheme, userPreference);
-        // You can add additional logic here to update your Blazor app's state
-        // For example, notify other components about the theme change
-        ThemeChanged?.Invoke(this, new ThemeChangedEventArgs(effectiveTheme, userPreference));
+        Log.Information($"Theme changed - Effective: {effectiveTheme}, User Preference: {userPreference}");
+        InvokeAsync(() => ThemeChanged?.Invoke(this, new ThemeChangedEventArgs(effectiveTheme, userPreference)));
+    }
+
+    private Action<Action> InvokeAsync { get; set; } = action => action();
+
+    public void SetInvokeAsync(Action<Action> invokeAsync)
+    {
+        InvokeAsync = invokeAsync;
     }
 
     public event EventHandler<ThemeChangedEventArgs>? ThemeChanged;
