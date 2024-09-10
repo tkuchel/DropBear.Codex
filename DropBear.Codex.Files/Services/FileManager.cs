@@ -20,22 +20,25 @@ namespace DropBear.Codex.Files.Services;
 [SupportedOSPlatform("windows")]
 public sealed class FileManager
 {
+    private readonly string _baseDirectory;
     private readonly ILogger _logger;
     private readonly IStorageManager _storageManager;
 
     /// <summary>
     ///     Initializes a new instance of the FileManager class.
     /// </summary>
+    /// <param name="baseDirectory">The base directory for local storage or the container name for blob storage.</param>
     /// <param name="storageManager">The storage manager implementation.</param>
     /// <exception cref="PlatformNotSupportedException">Thrown when the operating system is not Windows.</exception>
     /// <exception cref="ArgumentNullException">Thrown when storageManager is null.</exception>
-    internal FileManager(IStorageManager? storageManager)
+    internal FileManager(string baseDirectory, IStorageManager? storageManager)
     {
         if (!OperatingSystem.IsWindows())
         {
             throw new PlatformNotSupportedException("FileManager is only supported on Windows.");
         }
 
+        _baseDirectory = baseDirectory;
         _storageManager = storageManager ?? throw new ArgumentNullException(nameof(storageManager));
         _logger = LoggerFactory.Logger.ForContext<FileManager>();
         _logger.Debug("FileManager initialized with {StorageManager}", _storageManager.GetType().Name);
@@ -46,20 +49,21 @@ public sealed class FileManager
     /// </summary>
     /// <typeparam name="T">The type of the data to write. Supported types are DropBearFile and byte[].</typeparam>
     /// <param name="data">The data to write to the file.</param>
-    /// <param name="fullPath">The full path of the file.</param>
+    /// <param name="identifier">The path of the file or blob name for blob storage.</param>
     /// <returns>A result indicating success or failure.</returns>
-    public async Task<Result> WriteToFileAsync<T>(T data, string fullPath)
+    public async Task<Result> WriteToFileAsync<T>(T data, string identifier)
     {
-        _logger.Debug("Attempting to write {DataType} to file {FilePath}", typeof(T).Name, fullPath);
+        _logger.Debug("Attempting to write {DataType} to file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
-            var validationResult = await ValidateFilePathAsync(fullPath).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
                 return validationResult;
             }
 
+            identifier = GetFullPath(identifier);
             var streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
             if (!streamResult.IsSuccess)
             {
@@ -71,21 +75,21 @@ public sealed class FileManager
             var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
-                var writeResult = await _storageManager.WriteAsync(fullPath, stream).ConfigureAwait(false);
+                var writeResult = await _storageManager.WriteAsync(identifier, stream).ConfigureAwait(false);
                 if (writeResult.IsSuccess)
                 {
-                    _logger.Information("Successfully wrote {DataType} to file {FilePath}", typeof(T).Name, fullPath);
+                    _logger.Information("Successfully wrote {DataType} to file {FilePath}", typeof(T).Name, identifier);
                     return Result.Success();
                 }
 
-                _logger.Warning("Failed to write to file {FilePath}. Error: {ErrorMessage}", fullPath,
+                _logger.Warning("Failed to write to file {FilePath}. Error: {ErrorMessage}", identifier,
                     writeResult.ErrorMessage);
                 return writeResult;
             }
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error writing {DataType} to file {FilePath}", typeof(T).Name, fullPath);
+            _logger.Error(ex, "Error writing {DataType} to file {FilePath}", typeof(T).Name, identifier);
             return Result.Failure($"Error writing to file: {ex.Message}", ex);
         }
     }
@@ -94,24 +98,25 @@ public sealed class FileManager
     ///     Reads data from the specified file path.
     /// </summary>
     /// <typeparam name="T">The type of the data to read.</typeparam>
-    /// <param name="fullPath">The full path of the file.</param>
+    /// <param name="identifier">The path of the file or blob name for blob storage.</param>
     /// <returns>A result containing the data read from the file or an error message.</returns>
-    public async Task<Result<T>> ReadFromFileAsync<T>(string fullPath)
+    public async Task<Result<T>> ReadFromFileAsync<T>(string identifier)
     {
-        _logger.Debug("Attempting to read {DataType} from file {FilePath}", typeof(T).Name, fullPath);
+        _logger.Debug("Attempting to read {DataType} from file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
-            var validationResult = await ValidateFilePathAsync(fullPath).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
                 return Result<T>.Failure(validationResult.ErrorMessage);
             }
 
-            var streamResult = await _storageManager.ReadAsync(fullPath).ConfigureAwait(false);
+            identifier = GetFullPath(identifier);
+            var streamResult = await _storageManager.ReadAsync(identifier).ConfigureAwait(false);
             if (!streamResult.IsSuccess)
             {
-                _logger.Warning("Failed to read from file {FilePath}. Error: {ErrorMessage}", fullPath,
+                _logger.Warning("Failed to read from file {FilePath}. Error: {ErrorMessage}", identifier,
                     streamResult.ErrorMessage);
                 return Result<T>.Failure(streamResult.ErrorMessage);
             }
@@ -124,7 +129,7 @@ public sealed class FileManager
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error reading from file {FilePath}", fullPath);
+            _logger.Error(ex, "Error reading from file {FilePath}", identifier);
             return Result<T>.Failure(ex.Message, ex);
         }
     }
@@ -134,15 +139,15 @@ public sealed class FileManager
     /// </summary>
     /// <typeparam name="T">The type of the data to update. Supported types are DropBearFile and byte[].</typeparam>
     /// <param name="data">The data to update in the file.</param>
-    /// <param name="fullPath">The full path of the file.</param>
+    /// <param name="identifier">The path of the file or blob name for blob storage.</param>
     /// <returns>A result indicating success or failure.</returns>
-    public async Task<Result> UpdateFileAsync<T>(T data, string fullPath)
+    public async Task<Result> UpdateFileAsync<T>(T data, string identifier)
     {
-        _logger.Debug("Attempting to update {DataType} in file {FilePath}", typeof(T).Name, fullPath);
+        _logger.Debug("Attempting to update {DataType} in file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
-            var validationResult = await ValidateFilePathAsync(fullPath).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
                 return validationResult;
@@ -156,24 +161,26 @@ public sealed class FileManager
                 return Result.Failure(streamResult.ErrorMessage);
             }
 
+            identifier = GetFullPath(identifier);
             var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
-                var updateResult = await _storageManager.UpdateAsync(fullPath, stream).ConfigureAwait(false);
+                var updateResult = await _storageManager.UpdateAsync(identifier, stream).ConfigureAwait(false);
                 if (updateResult.IsSuccess)
                 {
-                    _logger.Information("Successfully updated {DataType} in file {FilePath}", typeof(T).Name, fullPath);
+                    _logger.Information("Successfully updated {DataType} in file {FilePath}", typeof(T).Name,
+                        identifier);
                     return Result.Success();
                 }
 
-                _logger.Warning("Failed to update file {FilePath}. Error: {ErrorMessage}", fullPath,
+                _logger.Warning("Failed to update file {FilePath}. Error: {ErrorMessage}", identifier,
                     updateResult.ErrorMessage);
                 return updateResult;
             }
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error updating {DataType} in file {FilePath}", typeof(T).Name, fullPath);
+            _logger.Error(ex, "Error updating {DataType} in file {FilePath}", typeof(T).Name, identifier);
             return Result.Failure($"Error updating file: {ex.Message}", ex);
         }
     }
@@ -181,49 +188,61 @@ public sealed class FileManager
     /// <summary>
     ///     Deletes the specified file.
     /// </summary>
-    /// <param name="fullPath">The full path of the file.</param>
+    /// <param name="identifier">The path of the file or blob name for blob storage.</param>
     /// <returns>A result indicating success or failure.</returns>
-    public async Task<Result> DeleteFileAsync(string fullPath)
+    public async Task<Result> DeleteFileAsync(string identifier)
     {
-        _logger.Debug("Attempting to delete file {FilePath}", fullPath);
+        _logger.Debug("Attempting to delete file {FilePath}", identifier);
 
         try
         {
-            var validationResult = await ValidateFilePathAsync(fullPath).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
                 return validationResult;
             }
 
-            if (!File.Exists(fullPath))
+            identifier = GetFullPath(identifier);
+
+            if (!File.Exists(identifier))
             {
-                _logger.Warning("File {FilePath} does not exist", fullPath);
+                _logger.Warning("File {FilePath} does not exist", identifier);
                 return Result.Failure("File does not exist.");
             }
 
-            var deleteResult = await _storageManager.DeleteAsync(fullPath).ConfigureAwait(false);
+            var deleteResult = await _storageManager.DeleteAsync(identifier).ConfigureAwait(false);
             if (deleteResult.IsSuccess)
             {
-                _logger.Information("Successfully deleted file {FilePath}", fullPath);
+                _logger.Information("Successfully deleted file {FilePath}", identifier);
                 return Result.Success();
             }
 
-            _logger.Warning("Failed to delete file {FilePath}. Error: {ErrorMessage}", fullPath,
+            _logger.Warning("Failed to delete file {FilePath}. Error: {ErrorMessage}", identifier,
                 deleteResult.ErrorMessage);
             return deleteResult;
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error deleting file {FilePath}", fullPath);
+            _logger.Error(ex, "Error deleting file {FilePath}", identifier);
             return Result.Failure(ex.Message, ex);
         }
     }
 
-    private async Task<Result> ValidateFilePathAsync(string fullPath)
+    private string GetFullPath(string path)
+    {
+        if (Path.IsPathRooted(path) && path.StartsWith(_baseDirectory, StringComparison.Ordinal))
+        {
+            return path; // It's already a full path within the base directory
+        }
+
+        return Path.GetFullPath(Path.Combine(_baseDirectory, path));
+    }
+
+    private async Task<Result> ValidateFilePathAsync(string path)
     {
         try
         {
-            var directoryPath = Path.GetDirectoryName(fullPath);
+            var directoryPath = Path.GetDirectoryName(GetFullPath(path));
             if (string.IsNullOrEmpty(directoryPath))
             {
                 return Result.Failure("Invalid file path.");
@@ -252,7 +271,7 @@ public sealed class FileManager
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error validating file path: {FilePath}", fullPath);
+            _logger.Error(ex, "Error validating file path: {FilePath}", path);
             return Result.Failure("Error validating file path.", ex);
         }
     }

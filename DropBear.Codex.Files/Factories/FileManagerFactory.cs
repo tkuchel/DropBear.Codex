@@ -32,9 +32,9 @@ public static class FileManagerFactory
         {
             var logger = LoggerFactory.Logger.ForContext<FileManager>();
             var memoryStreamManager = new RecyclableMemoryStreamManager();
-            var localStorageManager = new LocalStorageManager(memoryStreamManager, logger, baseDirectory);
+            var localStorageManager = new LocalStorageManager(memoryStreamManager, logger);
 
-            var fileManager = new FileManager(localStorageManager);
+            var fileManager = new FileManager(baseDirectory, localStorageManager);
             Logger.Information("Successfully created LocalFileManager");
             return fileManager;
         }
@@ -63,7 +63,7 @@ public static class FileManagerFactory
             var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
             var blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, logger, containerName);
 
-            var fileManager = new FileManager(blobStorageManager);
+            var fileManager = new FileManager(string.Empty, blobStorageManager);
             Logger.Information("Successfully created BlobFileManager");
             return fileManager;
         }
@@ -94,7 +94,7 @@ public static class FileManagerFactory
                 .ConfigureAwait(false);
             var blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, logger, containerName);
 
-            var fileManager = new FileManager(blobStorageManager);
+            var fileManager = new FileManager(containerName, blobStorageManager);
             Logger.Information("Successfully created BlobFileManager asynchronously");
             return fileManager;
         }
@@ -115,7 +115,7 @@ public static class FileManagerFactory
 
         try
         {
-            var fileManager = new FileManager(null);
+            var fileManager = new FileManager(string.Empty, null);
             Logger.Information("Successfully created NoOpFileManager");
             return fileManager;
         }

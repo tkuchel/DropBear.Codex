@@ -17,7 +17,7 @@ namespace DropBear.Codex.Files.StorageManagers;
 public sealed class BlobStorageManager : IStorageManager
 {
     private readonly IBlobStorage _blobStorage;
-    private readonly string _defaultContainerName;
+    private readonly string _containerName;
     private readonly ILogger _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
@@ -27,23 +27,23 @@ public sealed class BlobStorageManager : IStorageManager
     /// <param name="blobStorage">The blob storage provider.</param>
     /// <param name="memoryStreamManager">The memory stream manager for efficient memory usage.</param>
     /// <param name="logger">The logger instance for logging operations.</param>
-    /// <param name="defaultContainerName">The default container name for blob storage.</param>
+    /// <param name="containerName">The default container name for blob storage.</param>
     /// <exception cref="ArgumentNullException">Thrown when blobStorage or memoryStreamManager is null.</exception>
     public BlobStorageManager(
         IBlobStorage blobStorage,
         RecyclableMemoryStreamManager memoryStreamManager,
         ILogger? logger = null,
-        string defaultContainerName = "default-container")
+        string containerName = "default-container")
     {
         _blobStorage = blobStorage ?? throw new ArgumentNullException(nameof(blobStorage));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _logger = logger ?? LoggerFactory.Logger.ForContext<BlobStorageManager>();
-        _defaultContainerName = defaultContainerName;
+        _containerName = containerName;
     }
 
 
     /// <inheritdoc />
-    public async Task<Result> WriteAsync(string identifier, Stream dataStream, string? subDirectory = null,
+    public async Task<Result> WriteAsync(string identifier, Stream dataStream,
         CancellationToken cancellationToken = default)
     {
         if (dataStream == null)
@@ -56,8 +56,7 @@ public sealed class BlobStorageManager : IStorageManager
             return Result.Failure("Attempting to write an empty stream to blob storage.");
         }
 
-        var fullPath = GetFullPath(identifier, subDirectory);
-
+        var fullPath = GetFullPath(identifier, _containerName);
         try
         {
             var seekableStream = await GetSeekableStreamAsync(dataStream, cancellationToken).ConfigureAwait(false);
@@ -66,23 +65,23 @@ public sealed class BlobStorageManager : IStorageManager
                 await _blobStorage.WriteAsync(fullPath, seekableStream, false, cancellationToken).ConfigureAwait(false);
 
                 _logger.Information("Successfully wrote blob {BlobName} to container {ContainerName}", identifier,
-                    subDirectory ?? _defaultContainerName);
+                    _containerName);
                 return Result.Success();
             }
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
         {
             _logger.Error(ex, "Error writing blob {BlobName} to container {ContainerName}", identifier,
-                subDirectory ?? _defaultContainerName);
+                _containerName);
             return Result.Failure(ex.Message, ex);
         }
     }
 
     /// <inheritdoc />
-    public async Task<Result<Stream>> ReadAsync(string identifier, string? subDirectory = null,
+    public async Task<Result<Stream>> ReadAsync(string identifier,
         CancellationToken cancellationToken = default)
     {
-        var fullPath = GetFullPath(identifier, subDirectory);
+        var fullPath = GetFullPath(identifier, _containerName);
 
         try
         {
@@ -91,7 +90,7 @@ public sealed class BlobStorageManager : IStorageManager
             if (readStream == null)
             {
                 _logger.Error("Blob not found or no access: {BlobName} in container {ContainerName}", identifier,
-                    subDirectory ?? _defaultContainerName);
+                    _containerName);
                 return Result<Stream>.Failure("Blob not found or no access.");
             }
 
@@ -100,22 +99,43 @@ public sealed class BlobStorageManager : IStorageManager
             memoryStream.Position = 0;
 
             _logger.Information("Successfully read blob {BlobName} from container {ContainerName}", identifier,
-                subDirectory ?? _defaultContainerName);
+                _containerName);
             return Result<Stream>.Success(memoryStream);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
         {
             _logger.Error(ex, "Error reading blob {BlobName} from container {ContainerName}", identifier,
-                subDirectory ?? _defaultContainerName);
+                _containerName);
             return Result<Stream>.Failure(ex.Message, ex);
         }
     }
 
     /// <inheritdoc />
-    public async Task<Result> UpdateAsync(string identifier, Stream newDataStream, string? subDirectory = null,
+    public async Task<Result> DeleteAsync(string identifier,
         CancellationToken cancellationToken = default)
     {
-        var fullPath = GetFullPath(identifier, subDirectory);
+        var fullPath = GetFullPath(identifier, _containerName);
+
+        try
+        {
+            await _blobStorage.DeleteAsync(new[] { fullPath }, cancellationToken).ConfigureAwait(false);
+            _logger.Information("Successfully deleted blob {BlobName} from container {ContainerName}", identifier,
+                _containerName);
+            return Result.Success();
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
+        {
+            _logger.Error(ex, "Error deleting blob {BlobName} from container {ContainerName}", identifier,
+                _containerName);
+            return Result.Failure(ex.Message, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<Result> UpdateAsync(string identifier, Stream newDataStream,
+        CancellationToken cancellationToken = default)
+    {
+        var fullPath = GetFullPath(identifier, _containerName);
 
         try
         {
@@ -123,38 +143,17 @@ public sealed class BlobStorageManager : IStorageManager
             if (!exists.FirstOrDefault())
             {
                 _logger.Error("Blob {BlobName} does not exist in container {ContainerName}", identifier,
-                    subDirectory ?? _defaultContainerName);
+                    _containerName);
                 return Result.Failure("The specified blob does not exist.");
             }
 
             await _blobStorage.DeleteAsync(new[] { fullPath }, cancellationToken).ConfigureAwait(false);
-            return await WriteAsync(identifier, newDataStream, subDirectory, cancellationToken).ConfigureAwait(false);
+            return await WriteAsync(fullPath, newDataStream, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
         {
             _logger.Error(ex, "Error updating blob {BlobName} in container {ContainerName}", identifier,
-                subDirectory ?? _defaultContainerName);
-            return Result.Failure(ex.Message, ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public async Task<Result> DeleteAsync(string identifier, string? subDirectory = null,
-        CancellationToken cancellationToken = default)
-    {
-        var fullPath = GetFullPath(identifier, subDirectory);
-
-        try
-        {
-            await _blobStorage.DeleteAsync(new[] { fullPath }, cancellationToken).ConfigureAwait(false);
-            _logger.Information("Successfully deleted blob {BlobName} from container {ContainerName}", identifier,
-                subDirectory ?? _defaultContainerName);
-            return Result.Success();
-        }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
-        {
-            _logger.Error(ex, "Error deleting blob {BlobName} from container {ContainerName}", identifier,
-                subDirectory ?? _defaultContainerName);
+                _containerName);
             return Result.Failure(ex.Message, ex);
         }
     }
@@ -175,22 +174,9 @@ public sealed class BlobStorageManager : IStorageManager
 
     private string GetFullPath(string blobName, string? containerName)
     {
-        containerName ??= _defaultContainerName;
+        containerName ??= _containerName;
         var fullPath = $"{containerName}/{blobName}";
         return ValidateBlobName(fullPath);
-    }
-
-    private async Task<Stream> GetSeekableStreamAsync(Stream inputStream)
-    {
-        if (inputStream.CanSeek)
-        {
-            return inputStream;
-        }
-
-        var memoryStream = _memoryStreamManager.GetStream();
-        await inputStream.CopyToAsync(memoryStream).ConfigureAwait(false);
-        memoryStream.Position = 0;
-        return memoryStream;
     }
 
     private static string ValidateBlobName(string blobName)

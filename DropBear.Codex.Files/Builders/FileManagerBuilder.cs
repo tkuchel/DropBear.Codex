@@ -21,6 +21,7 @@ namespace DropBear.Codex.Files.Builders;
 public class FileManagerBuilder
 {
     private readonly ILogger _logger;
+    private string _baseDirectory;
     private BlobStorageManager? _blobStorageManager;
     private LocalStorageManager? _localStorageManager;
     private StorageStrategy _strategy = StorageStrategy.NoOperation;
@@ -31,6 +32,7 @@ public class FileManagerBuilder
     public FileManagerBuilder()
     {
         _logger = LoggerFactory.Logger.ForContext<FileManagerBuilder>();
+        _baseDirectory = string.Empty;
     }
 
     /// <summary>
@@ -42,8 +44,9 @@ public class FileManagerBuilder
     {
         try
         {
+            _baseDirectory = baseDirectory;
             var memoryStreamManager = new RecyclableMemoryStreamManager();
-            _localStorageManager = new LocalStorageManager(memoryStreamManager, _logger, baseDirectory);
+            _localStorageManager = new LocalStorageManager(memoryStreamManager, _logger);
             _strategy = StorageStrategy.LocalOnly;
             _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
                 baseDirectory);
@@ -152,7 +155,7 @@ public class FileManagerBuilder
                 _ => throw new InvalidOperationException("Unsupported storage strategy.")
             };
 
-            return new FileManager(storageManager);
+            return new FileManager(_baseDirectory, storageManager);
         }
         catch (Exception ex)
         {
