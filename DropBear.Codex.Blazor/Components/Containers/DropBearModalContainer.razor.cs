@@ -7,13 +7,15 @@ using Serilog;
 
 namespace DropBear.Codex.Blazor.Components.Containers;
 
+/// <summary>
+///     A container for displaying modals, with customizable width, height, and transitions.
+/// </summary>
 public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
 {
     private string customHeight = "auto"; // Default height
     private string customWidth = "auto"; // Default width
-    private string modalTransitionClass = "enter";
+    private string modalTransitionClass = "enter"; // Controls enter/leave animations
     private string transitionDuration = "0.3s"; // Default transition duration
-
 
     /// <summary>
     ///     Cleanup on component disposal, ensuring event unsubscription.
@@ -23,6 +25,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         try
         {
             ModalService.OnChange -= StateHasChanged;
+            Log.Debug("Unsubscribed from ModalService OnChange event.");
         }
         catch (Exception ex)
         {
@@ -31,7 +34,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Subscribes to the ModalService's OnChange event.
+    ///     Subscribes to the ModalService's OnChange event during initialization.
     /// </summary>
     protected override void OnInitialized()
     {
@@ -44,19 +47,23 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
                 // Retrieve custom width, height, and transition duration if specified
                 if (ModalService.CurrentParameters.TryGetValue("CustomWidth", out var width))
                 {
-                    customWidth = width.ToString();
+                    customWidth = width?.ToString() ?? "auto";
                 }
 
                 if (ModalService.CurrentParameters.TryGetValue("CustomHeight", out var height))
                 {
-                    customHeight = height.ToString();
+                    customHeight = height?.ToString() ?? "auto";
                 }
 
                 if (ModalService.CurrentParameters.TryGetValue("TransitionDuration", out var duration))
                 {
-                    transitionDuration = duration.ToString();
+                    transitionDuration = duration?.ToString() ?? "0.3s";
                 }
             }
+
+            Log.Debug(
+                "Modal container initialized with custom dimensions: Width = {Width}, Height = {Height}, Transition Duration = {Duration}",
+                customWidth, customHeight, transitionDuration);
         }
         catch (Exception ex)
         {
@@ -65,7 +72,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Handles the click event outside the modal to trigger closure.
+    ///     Handles clicking outside the modal to trigger its closure, if allowed.
     /// </summary>
     private async Task HandleOutsideClick()
     {
@@ -73,6 +80,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         {
             // Handle modal closure via outside click if not sticky.
             ModalService.Close();
+            Log.Debug("Modal closed via outside click.");
         }
         catch (Exception ex)
         {
@@ -88,6 +96,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         try
         {
             ModalService.Close();
+            Log.Debug("Modal manually closed.");
         }
         catch (Exception ex)
         {
@@ -105,7 +114,10 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         {
             modalTransitionClass = isOpening ? "enter" : "leave";
             StateHasChanged();
-            await Task.Delay(300); // Add a delay to match the CSS transition duration.
+
+            // Delay to match the CSS transition duration (ensuring smooth animations).
+            await Task.Delay(300);
+            Log.Debug("Modal transition {Transition} started.", isOpening ? "enter" : "leave");
         }
         catch (Exception ex)
         {

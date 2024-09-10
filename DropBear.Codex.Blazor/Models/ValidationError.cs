@@ -6,12 +6,29 @@
 public class ValidationError
 {
     /// <summary>
-    ///     Gets or sets the name of the parameter that caused the validation error.
+    ///     Initializes a new instance of the <see cref="ValidationError" /> class.
     /// </summary>
-    public string Parameter { get; set; } = string.Empty;
+    /// <param name="parameter">The name of the parameter that caused the validation error.</param>
+    /// <param name="errorMessage">The error message associated with the validation error.</param>
+    /// <exception cref="ArgumentNullException">Thrown when a required argument is null or empty.</exception>
+    public ValidationError(string parameter, string errorMessage)
+    {
+        Parameter = !string.IsNullOrWhiteSpace(parameter)
+            ? parameter
+            : throw new ArgumentNullException(nameof(parameter), "Parameter cannot be null or empty.");
+
+        ErrorMessage = !string.IsNullOrWhiteSpace(errorMessage)
+            ? errorMessage
+            : throw new ArgumentNullException(nameof(errorMessage), "Error message cannot be null or empty.");
+    }
 
     /// <summary>
-    ///     Gets or sets the error message associated with the validation error.
+    ///     Gets the name of the parameter that caused the validation error.
     /// </summary>
-    public string ErrorMessage { get; set; } = string.Empty;
+    public string Parameter { get; init; }
+
+    /// <summary>
+    ///     Gets the error message associated with the validation error.
+    /// </summary>
+    public string ErrorMessage { get; init; }
 }

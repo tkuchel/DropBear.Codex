@@ -12,9 +12,13 @@ using Microsoft.JSInterop;
 
 namespace DropBear.Codex.Blazor.Components.Menus;
 
+/// <summary>
+///     A Blazor component for displaying a dynamic context menu.
+/// </summary>
 public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncDisposable
 {
     private readonly string _contextMenuId = $"context-menu-{Guid.NewGuid()}";
+    private bool _isDisposed;
     private bool _isVisible;
     private bool _jsInitialized;
     private int _left;
@@ -26,19 +30,44 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
     [Inject] private IDynamicContextMenuService? DynamicContextMenuService { get; set; }
     [Inject] private ILogger<DropBearContextMenu> Logger { get; set; } = null!;
 
-    [Parameter] public RenderFragment? ChildContent { get; set; }
-    [Parameter] public IReadOnlyCollection<ContextMenuItem> MenuItems { get; set; } = Array.Empty<ContextMenuItem>();
-    [Parameter] public EventCallback<(ContextMenuItem, object)> OnItemClicked { get; set; }
-    [Parameter] public Func<object> GetContext { get; set; } = () => new object();
-    [Parameter] public bool UseDynamicService { get; set; }
+    /// <summary>
+    ///     The menu items to display in the context menu.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyCollection<ContextMenuItem> MenuItems { get; set; } = Array.Empty<ContextMenuItem>();
+
+    /// <summary>
+    ///     Triggered when a menu item is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(ContextMenuItem, object)> OnItemClicked { get; set; }
+
+    /// <summary>
+    ///     A function to get the current context when an item is clicked.
+    /// </summary>
+    [Parameter]
+    public Func<object> GetContext { get; set; } = () => new object();
+
+    /// <summary>
+    ///     Whether to use a dynamic context menu service for interactions.
+    /// </summary>
+    [Parameter]
+    public bool UseDynamicService { get; set; }
+
+    /// <summary>
+    ///     Custom content to be rendered inside the context menu or the trigger element for the menu.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
 
     public async ValueTask DisposeAsync()
     {
-        if (_jsInitialized)
+        if (!_isDisposed && _jsInitialized)
         {
             try
             {
                 await JsRuntime.InvokeVoidAsync("DropBearContextMenu.dispose", _contextMenuId);
+                Logger.LogInformation("Context menu JavaScript resources disposed for {ContextMenuId}", _contextMenuId);
             }
             catch (JSException ex)
             {
@@ -47,6 +76,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
         }
 
         _objectReference?.Dispose();
+        _isDisposed = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -76,6 +106,12 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
     [JSInvokable]
     public void Show(double left, double top)
     {
+        if (_isDisposed)
+        {
+            Logger.LogWarning("Attempted to show disposed context menu.");
+            return;
+        }
+
         _left = (int)Math.Round(left);
         _top = (int)Math.Round(top);
         _isVisible = true;
@@ -93,6 +129,12 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
 
     private async Task OnContextMenu(MouseEventArgs e)
     {
+        if (_isDisposed)
+        {
+            Logger.LogWarning("Attempted to show context menu, but component is disposed.");
+            return;
+        }
+
         if (!_jsInitialized)
         {
             Logger.LogWarning("Attempted to show context menu, but JavaScript is not initialized");
@@ -111,7 +153,16 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
 
     private async Task OnItemClick(ContextMenuItem item)
     {
-        await OnItemClicked.InvokeAsync((item, GetContext()));
+        if (_isDisposed)
+        {
+            Logger.LogWarning("Attempted to handle click on a disposed context menu.");
+            return;
+        }
+
+        var context = GetContext();
+        Logger.LogInformation("Menu item clicked: {ItemText} with context: {Context}", item.Text, context);
+
+        await OnItemClicked.InvokeAsync((item, context));
         Hide();
     }
 }

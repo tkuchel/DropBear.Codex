@@ -3,9 +3,11 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
+using Serilog;
 
 #endregion
 
@@ -16,6 +18,8 @@ namespace DropBear.Codex.Blazor.Components.Files;
 /// </summary>
 public sealed partial class DropBearFileUploader : DropBearComponentBase, IDisposable
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileUploader>();
+
     private readonly List<UploadFile> _selectedFiles = new();
     private readonly List<UploadFile> _uploadedFiles = new();
     private CancellationTokenSource? _dismissCancellationTokenSource;
@@ -28,36 +32,63 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     [Parameter] public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }
     [Parameter] public Func<UploadFile, IProgress<int>, Task<UploadResult>>? UploadFileAsync { get; set; }
 
+    /// <summary>
+    ///     Clean up resources on disposal.
+    /// </summary>
     public void Dispose()
     {
         _dismissCancellationTokenSource?.Dispose();
     }
 
+    /// <summary>
+    ///     Handles the drop event for drag-and-drop file uploads.
+    /// </summary>
     private async Task HandleDrop()
     {
         _isDragOver = false;
         await HandleDroppedFiles();
     }
 
+    /// <summary>
+    ///     Handles processing of dropped files from JavaScript interop.
+    /// </summary>
     private async Task HandleDroppedFiles()
     {
         _dismissCancellationTokenSource = new CancellationTokenSource();
-        var files = await JSRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles",
-            _dismissCancellationTokenSource.Token);
 
-        foreach (var uploadFile in from file in files
-                 where IsFileValid(file)
-                 select new UploadFile
-                 {
-                     Name = file.Name, Size = file.Size, ContentType = file.Type, UploadStatus = UploadStatus.Ready
-                 })
+        try
         {
-            _selectedFiles.Add(uploadFile);
-        }
+            var files = await JSRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles",
+                _dismissCancellationTokenSource.Token);
 
-        await JSRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
-            _dismissCancellationTokenSource.Token);
-        StateHasChanged();
+            foreach (var file in files)
+            {
+                if (IsFileValid(file))
+                {
+                    Logger.Information("File added: {FileName} with size {FileSize}", file.Name,
+                        FormatFileSize(file.Size));
+
+                    // Creating new UploadFile instances using the constructor
+                    var uploadFile = new UploadFile(file.Name, file.Size, file.Type, null);
+
+                    _selectedFiles.Add(uploadFile);
+                }
+                else
+                {
+                    Logger.Warning("File rejected: {FileName} due to validation failure", file.Name);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error handling dropped files.");
+        }
+        finally
+        {
+            await JSRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
+                _dismissCancellationTokenSource.Token);
+            StateHasChanged();
+        }
     }
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
@@ -66,48 +97,68 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     {
         foreach (var file in e.GetMultipleFiles())
         {
-            if (!IsFileValid(file))
+            if (IsFileValid(file))
             {
-                continue;
+                // Creating new UploadFile instances using the constructor
+                var uploadFile = new UploadFile(file.Name, file.Size, file.ContentType, file);
+
+                _selectedFiles.Add(uploadFile);
+                Logger.Information("File selected: {FileName} with size {FileSize}", file.Name,
+                    FormatFileSize(file.Size));
             }
-
-            var uploadFile = new UploadFile
+            else
             {
-                Name = file.Name,
-                Size = file.Size,
-                ContentType = file.ContentType,
-                UploadStatus = UploadStatus.Ready,
-                FileData = file
-            };
-
-            _selectedFiles.Add(uploadFile);
+                Logger.Warning("File rejected: {FileName} due to validation failure", file.Name);
+            }
         }
 
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Validates a file's size and type against allowed parameters.
+    /// </summary>
     private bool IsFileValid(IBrowserFile file)
     {
-        return IsFileValid(new DroppedFile { Name = file.Name, Size = file.Size, Type = file.ContentType });
+        // Create a DroppedFile instance using the constructor, then validate it
+        var droppedFile = new DroppedFile(file.Name, file.Size, file.ContentType);
+        return IsFileValid(droppedFile);
     }
 
+    /// <summary>
+    ///     Validates a dropped file's size and type against allowed parameters.
+    /// </summary>
     private bool IsFileValid(DroppedFile file)
     {
         if (file.Size > MaxFileSize)
         {
-            // You might want to show an error message to the user here
+            Logger.Warning("File {FileName} exceeds maximum size limit of {MaxFileSize}", file.Name,
+                FormatFileSize(MaxFileSize));
             return false;
         }
 
-        return AllowedFileTypes.Count == 0 || AllowedFileTypes.Contains(file.Type, StringComparer.OrdinalIgnoreCase);
+        if (AllowedFileTypes.Count > 0 && !AllowedFileTypes.Contains(file.Type, StringComparer.OrdinalIgnoreCase))
+        {
+            Logger.Warning("File {FileName} has unsupported file type {FileType}", file.Name, file.Type);
+            return false;
+        }
+
+        return true;
     }
 
+    /// <summary>
+    ///     Removes a file from the selected files list.
+    /// </summary>
     private void RemoveFile(UploadFile file)
     {
         _selectedFiles.Remove(file);
+        Logger.Information("File removed: {FileName}", file.Name);
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Uploads the selected files with progress tracking.
+    /// </summary>
     private async Task UploadFiles()
     {
         _isUploading = true;
@@ -127,6 +178,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                         file.UploadProgress = percent;
                         _uploadProgress =
                             (int)(_selectedFiles.Sum(f => f.UploadProgress) / (float)_selectedFiles.Count);
+                        Logger.Debug("File upload progress: {FileName} {Progress}%", file.Name, percent);
                         StateHasChanged();
                     });
 
@@ -135,29 +187,38 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                     if (result.Status == UploadStatus.Success)
                     {
                         _uploadedFiles.Add(file);
+                        Logger.Information("File uploaded successfully: {FileName}", file.Name);
+                    }
+                    else
+                    {
+                        Logger.Warning("File upload failed: {FileName}", file.Name);
                     }
                 }
                 else
                 {
-                    // Fallback to simulated upload if no upload function is provided
+                    // Fallback simulated upload
                     if (_dismissCancellationTokenSource is not null)
                     {
                         await Task.Delay(1000, _dismissCancellationTokenSource.Token);
                     }
 
-#pragma warning disable CA5394
                     file.UploadStatus = Random.Shared.Next(10) < 8 ? UploadStatus.Success : UploadStatus.Failure;
-#pragma warning restore CA5394
 
                     if (file.UploadStatus == UploadStatus.Success)
                     {
                         _uploadedFiles.Add(file);
+                        Logger.Information("Simulated file upload successful: {FileName}", file.Name);
+                    }
+                    else
+                    {
+                        Logger.Warning("Simulated file upload failed: {FileName}", file.Name);
                     }
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 file.UploadStatus = UploadStatus.Failure;
+                Logger.Error(ex, "Error uploading file: {FileName}", file.Name);
             }
 
             _uploadProgress = (int)((i + 1) / (float)_selectedFiles.Count * 100);
@@ -172,9 +233,13 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         // Remove successfully uploaded files from the selected files list
         _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
 
+        Logger.Information("File upload process completed.");
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Formats the file size in a human-readable format.
+    /// </summary>
     private static string FormatFileSize(long bytes)
     {
         string[] sizes = { "B", "KB", "MB", "GB", "TB" };
@@ -188,6 +253,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         return $"{bytes:0.##} {sizes[order]}";
     }
 
+    /// <summary>
+    ///     Retrieves the appropriate icon class for a file's upload status.
+    /// </summary>
     private static string GetFileStatusIconClass(UploadStatus status)
     {
         return status switch

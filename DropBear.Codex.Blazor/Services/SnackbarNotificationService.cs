@@ -18,12 +18,12 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// <summary>
     ///     Event triggered when a new snackbar should be shown.
     /// </summary>
-    public event EventHandler<SnackbarNotificationEventArgs>? OnShow;
+    public event Func<object?, SnackbarNotificationEventArgs, Task>? OnShow;
 
     /// <summary>
     ///     Event triggered when all snackbars should be hidden.
     /// </summary>
-    public event EventHandler? OnHideAll;
+    public event Func<object?, EventArgs, Task>? OnHideAll;
 
     /// <summary>
     ///     Shows a snackbar notification with the specified message and options.
@@ -55,12 +55,16 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// <summary>
     ///     Hides all snackbar notifications.
     /// </summary>
-    /// <returns>A result indicating the success of the operation.</returns>
-    public Result HideAll()
+    /// <returns>A task representing the result of the operation.</returns>
+    public async Task<Result> HideAllAsync()
     {
         try
         {
-            OnHideAll?.Invoke(this, EventArgs.Empty);
+            if (OnHideAll != null)
+            {
+                await OnHideAll.Invoke(this, EventArgs.Empty);
+            }
+
             return Result.Success();
         }
         catch (Exception ex)
@@ -78,8 +82,12 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     {
         try
         {
-            OnShow?.Invoke(this, new SnackbarNotificationEventArgs(options));
-            return await Task.FromResult(Result.Success()).ConfigureAwait(false);
+            if (OnShow != null)
+            {
+                await OnShow.Invoke(this, new SnackbarNotificationEventArgs(options));
+            }
+
+            return Result.Success();
         }
         catch (Exception ex)
         {

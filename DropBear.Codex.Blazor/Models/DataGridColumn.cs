@@ -14,9 +14,12 @@ namespace DropBear.Codex.Blazor.Models;
 public sealed class DataGridColumn<TItem>
 {
     /// <summary>
-    ///     Initializes a new instance of the <see cref="DataGridColumn{TItem}" /> class.
+    ///     Initializes a new instance of the <see cref="DataGridColumn{TItem}" /> class with default values.
     /// </summary>
-    public DataGridColumn() { }
+    public DataGridColumn()
+        : this(string.Empty, string.Empty)
+    {
+    }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="DataGridColumn{TItem}" /> class with specified values.
@@ -39,6 +42,11 @@ public sealed class DataGridColumn<TItem>
         bool visible = true,
         string format = "")
     {
+        if (string.IsNullOrWhiteSpace(propertyName))
+        {
+            throw new ArgumentException("PropertyName cannot be null or empty.", nameof(propertyName));
+        }
+
         PropertyName = propertyName;
         Title = title;
         Sortable = sortable;
@@ -50,44 +58,44 @@ public sealed class DataGridColumn<TItem>
     }
 
     /// <summary>
-    ///     Gets or sets the name of the property that the column represents.
+    ///     Gets the name of the property that the column represents.
     /// </summary>
-    public string PropertyName { get; set; } = string.Empty;
+    public string PropertyName { get; }
 
     /// <summary>
-    ///     Gets or sets the title of the column.
+    ///     Gets the title of the column.
     /// </summary>
-    public string Title { get; set; } = string.Empty;
+    public string Title { get; }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the column is sortable.
+    ///     Gets a value indicating whether the column is sortable.
     /// </summary>
-    public bool Sortable { get; set; }
+    public bool Sortable { get; }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the column is filterable.
+    ///     Gets a value indicating whether the column is filterable.
     /// </summary>
-    public bool Filterable { get; set; }
+    public bool Filterable { get; }
 
     /// <summary>
-    ///     Gets or sets the width of the column.
+    ///     Gets the width of the column.
     /// </summary>
-    public double Width { get; set; } = 100;
+    public double Width { get; }
 
     /// <summary>
-    ///     Gets or sets the CSS class to apply to the column.
+    ///     Gets the CSS class to apply to the column.
     /// </summary>
-    public string CssClass { get; set; } = string.Empty;
+    public string CssClass { get; }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the column is visible.
+    ///     Gets a value indicating whether the column is visible.
     /// </summary>
-    public bool Visible { get; set; } = true;
+    public bool Visible { get; }
 
     /// <summary>
-    ///     Gets or sets the format string for displaying values in the column.
+    ///     Gets the format string for displaying values in the column.
     /// </summary>
-    public string Format { get; set; } = string.Empty;
+    public string Format { get; }
 
     /// <summary>
     ///     Gets or sets the expression for selecting the property from the data item.

@@ -3,7 +3,9 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Serilog;
 
 #endregion
 
@@ -14,6 +16,8 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 /// </summary>
 public sealed partial class DropBearCard : DropBearComponentBase
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearCard>();
+
     private static readonly Dictionary<ButtonColor, string> ButtonClasses = new()
     {
         { ButtonColor.Default, "btn-default" },
@@ -28,7 +32,7 @@ public sealed partial class DropBearCard : DropBearComponentBase
     [Parameter] public CardType Type { get; set; } = CardType.Default;
 
     [Parameter] public bool CompactMode { get; set; }
-    private string CompactSelected => CompactMode ? "compact" : string.Empty;
+    private string CompactClass => CompactMode ? "compact" : string.Empty;
 
     [Parameter] public string ImageSource { get; set; } = string.Empty;
     [Parameter] public string ImageAlt { get; set; } = string.Empty;
@@ -62,6 +66,14 @@ public sealed partial class DropBearCard : DropBearComponentBase
     /// <param name="button">The button configuration.</param>
     private async Task OnButtonClick(ButtonConfig button)
     {
-        await OnButtonClicked.InvokeAsync(button);
+        try
+        {
+            Logger.Information("Button clicked: {ButtonText}", button.Text);
+            await OnButtonClicked.InvokeAsync(button);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error occurred while handling button click for button: {ButtonText}", button.Text);
+        }
     }
 }

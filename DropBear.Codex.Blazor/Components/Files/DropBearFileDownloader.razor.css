@@ -7,7 +7,7 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--br-md);
-  background-color: var(--clr-surface-dark); /* Use surface color for consistent theming */
+  background-color: var(--clr-surface-light); /* Use surface color for consistent theming */
   color: var(--clr-text-primary); /* Text color aligned with the current theme */
   transition: var(--transition-normal);
   box-shadow: var(--bs-md);

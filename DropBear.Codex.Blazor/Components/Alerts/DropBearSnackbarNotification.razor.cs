@@ -3,8 +3,10 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Exceptions;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using Serilog;
 
 #endregion
 
@@ -15,11 +17,10 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// </summary>
 public sealed partial class DropBearSnackbarNotification : DropBearComponentBase, IAsyncDisposable
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSnackbarNotification>();
+
     private bool _isDismissed;
-
     private bool _isDisposed;
-    // private bool _shouldRender;
-
 
     // Unique ID for the snackbar instance
     private string SnackbarId { get; } = $"snackbar-{Guid.NewGuid()}";
@@ -43,10 +44,21 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (!_isDisposed)
+        if (_isDisposed)
         {
-            _isDisposed = true;
+            return;
+        }
+
+        _isDisposed = true;
+        try
+        {
             await DisposeSnackbarAsync();
+            Logger.Debug("Snackbar disposed successfully for SnackbarId: {SnackbarId}", SnackbarId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error disposing snackbar for SnackbarId: {SnackbarId}", SnackbarId);
+            throw;
         }
     }
 
@@ -54,21 +66,21 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     {
         if (IsVisible)
         {
+            Logger.Warning("Attempt to show an already visible snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             return;
         }
 
         try
         {
-            if (!IsVisible)
-            {
-                IsVisible = true;
-                await InvokeAsync(StateHasChanged);
-                await Task.Delay(50); // Small delay to ensure the DOM is updated
-                await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
-            }
+            IsVisible = true;
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(50); // Small delay to ensure the DOM is updated
+            await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
+            Logger.Information("Snackbar shown successfully for SnackbarId: {SnackbarId}", SnackbarId);
         }
         catch (JSException ex)
         {
+            Logger.Error(ex, "Error showing snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             throw new SnackbarException("Error showing snackbar", ex);
         }
     }
@@ -77,7 +89,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     {
         if (firstRender && IsVisible)
         {
-            ShowAsync();
+            await ShowAsync();
         }
     }
 
@@ -88,22 +100,23 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     {
         if (!IsVisible)
         {
+            Logger.Warning("Attempt to dismiss a hidden snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             return;
         }
 
         try
         {
             await HideSnackbarAsync();
+            IsVisible = false;
+            _isDismissed = true;
+            Logger.Information("Snackbar dismissed successfully for SnackbarId: {SnackbarId}", SnackbarId);
+            StateHasChanged();
         }
         catch (JSException ex)
         {
+            Logger.Error(ex, "Error dismissing snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             throw new SnackbarException("Error dismissing snackbar", ex);
         }
-
-        IsVisible = false;
-        _isDismissed = true;
-        // _shouldRender = true;
-        StateHasChanged();
     }
 
     private void Dismiss()
@@ -139,9 +152,11 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         try
         {
             await JsRuntime.InvokeVoidAsync("DropBearSnackbar.disposeSnackbar", SnackbarId);
+            Logger.Debug("Snackbar disposed via JS for SnackbarId: {SnackbarId}", SnackbarId);
         }
         catch (JSException ex)
         {
+            Logger.Error(ex, "Error during JS disposal of snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             throw new SnackbarException("Error disposing snackbar", ex);
         }
     }
@@ -151,9 +166,11 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         try
         {
             await JsRuntime.InvokeVoidAsync("DropBearSnackbar.hideSnackbar", SnackbarId);
+            Logger.Debug("Snackbar hidden via JS for SnackbarId: {SnackbarId}", SnackbarId);
         }
         catch (JSException ex)
         {
+            Logger.Error(ex, "Error hiding snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             throw new SnackbarException("Error hiding snackbar", ex);
         }
     }

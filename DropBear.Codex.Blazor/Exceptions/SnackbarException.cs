@@ -1,8 +1,15 @@
-﻿namespace DropBear.Codex.Blazor.Exceptions;
+﻿#region
+
+using System.Runtime.Serialization;
+
+#endregion
+
+namespace DropBear.Codex.Blazor.Exceptions;
 
 /// <summary>
-///     Custom exception for snackbar-related errors.
+///     Represents errors that occur during snackbar operations in the application.
 /// </summary>
+[Serializable]
 public sealed class SnackbarException : Exception
 {
     /// <summary>
@@ -26,4 +33,36 @@ public sealed class SnackbarException : Exception
     ///     exception is specified.
     /// </param>
     public SnackbarException(string message, Exception innerException) : base(message, innerException) { }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="SnackbarException" /> class with serialized data.
+    /// </summary>
+    /// <param name="info">
+    ///     The <see cref="SerializationInfo" /> that holds the serialized object data about the exception being
+    ///     thrown.
+    /// </param>
+    /// <param name="context">
+    ///     The <see cref="StreamingContext" /> that contains contextual information about the source or
+    ///     destination.
+    /// </param>
+    protected SnackbarException(SerializationInfo info, StreamingContext context)
+        : base(info, context)
+    {
+    }
+
+    /// <summary>
+    ///     Sets the <see cref="SerializationInfo" /> with information about the exception.
+    /// </summary>
+    /// <param name="info">
+    ///     The <see cref="SerializationInfo" /> that holds the serialized object data about the exception being
+    ///     thrown.
+    /// </param>
+    /// <param name="context">
+    ///     The <see cref="StreamingContext" /> that contains contextual information about the source or
+    ///     destination.
+    /// </param>
+    public override void GetObjectData(SerializationInfo info, StreamingContext context)
+    {
+        base.GetObjectData(info, context);
+    }
 }

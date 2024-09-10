@@ -2,9 +2,12 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
+using Serilog;
 
 #endregion
 
@@ -15,6 +18,8 @@ namespace DropBear.Codex.Blazor.Components.Badges;
 /// </summary>
 public sealed partial class DropBearBadge : DropBearComponentBase
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearBadge>();
+
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
 
     [Parameter] public BadgeColor Color { get; set; } = BadgeColor.Default;
@@ -59,14 +64,25 @@ public sealed partial class DropBearBadge : DropBearComponentBase
 
         ShowTooltip = true;
 
-        // Get the window dimensions using JavaScript interop
-        var windowDimensions = await JsRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions");
+        try
+        {
+            // Get the window dimensions using JavaScript interop
+            var windowDimensions = await JsRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions");
 
-        var offsetX = args.ClientX + 200 > windowDimensions.Width ? -200 : 10;
-        var offsetY = args.ClientY + 50 > windowDimensions.Height ? -50 : 10;
+            var offsetX = args.ClientX + 200 > windowDimensions.Width ? -200 : 10;
+            var offsetY = args.ClientY + 50 > windowDimensions.Height ? -50 : 10;
 
-        TooltipStyle = $"left: {args.ClientX + offsetX}px; top: {args.ClientY + offsetY}px;";
-        StateHasChanged();
+            TooltipStyle = $"left: {args.ClientX + offsetX}px; top: {args.ClientY + offsetY}px;";
+            Logger.Debug("Tooltip shown at position: X={ClientX}, Y={ClientY}", args.ClientX, args.ClientY);
+        }
+        catch (JSException ex)
+        {
+            Logger.Error(ex, "Error showing tooltip for badge.");
+        }
+        finally
+        {
+            StateHasChanged();
+        }
     }
 
     /// <summary>
@@ -75,12 +91,7 @@ public sealed partial class DropBearBadge : DropBearComponentBase
     private void OnTooltipHide()
     {
         ShowTooltip = false;
+        Logger.Debug("Tooltip hidden.");
         StateHasChanged();
-    }
-
-    private sealed class WindowDimensions
-    {
-        public int Width { get; set; }
-        public int Height { get; set; }
     }
 }

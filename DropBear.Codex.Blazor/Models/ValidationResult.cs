@@ -28,9 +28,14 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     }
 
     /// <summary>
+    ///     Gets the validation errors in a read-only format.
+    /// </summary>
+    public IReadOnlyList<ValidationError> Errors => _errors.AsReadOnly();
+
+    /// <summary>
     ///     Gets a value indicating whether the validation passed.
     /// </summary>
-    public bool IsValid => !Value.Any();
+    public bool IsValid => !_errors.Any();
 
     /// <summary>
     ///     Creates a successful validation result with no errors.
@@ -72,13 +77,19 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     /// </summary>
     /// <param name="parameter">The name of the parameter or property that caused the validation error.</param>
     /// <param name="errorMessage">The error message describing the validation failure.</param>
-    /// <remarks>
-    ///     This method creates a new ValidationError instance and adds it to the internal list of errors.
-    ///     It also updates the overall state of the ValidationResult to reflect the addition of the new error.
-    /// </remarks>
     public void AddError(string parameter, string errorMessage)
     {
-        _errors.Add(new ValidationError { Parameter = parameter, ErrorMessage = errorMessage });
+        if (string.IsNullOrWhiteSpace(parameter))
+        {
+            throw new ArgumentNullException(nameof(parameter), "Parameter cannot be null or empty.");
+        }
+
+        if (string.IsNullOrWhiteSpace(errorMessage))
+        {
+            throw new ArgumentNullException(nameof(errorMessage), "Error message cannot be null or empty.");
+        }
+
+        _errors.Add(new ValidationError(parameter, errorMessage));
         UpdateState();
     }
 
@@ -86,12 +97,13 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     ///     Adds multiple validation errors to the ValidationResult.
     /// </summary>
     /// <param name="errors">An IEnumerable of ValidationError objects to be added.</param>
-    /// <remarks>
-    ///     This method adds all the provided ValidationError instances to the internal list of errors.
-    ///     It also updates the overall state of the ValidationResult to reflect the addition of the new errors.
-    /// </remarks>
     public void AddErrors(IEnumerable<ValidationError> errors)
     {
+        if (errors == null || !errors.Any())
+        {
+            throw new ArgumentNullException(nameof(errors), "Errors cannot be null or empty.");
+        }
+
         _errors.AddRange(errors);
         UpdateState();
     }

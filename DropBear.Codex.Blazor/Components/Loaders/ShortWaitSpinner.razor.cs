@@ -1,7 +1,9 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Serilog;
 
 #endregion
 
@@ -12,8 +14,35 @@ namespace DropBear.Codex.Blazor.Components.Loaders;
 /// </summary>
 public sealed partial class ShortWaitSpinner : DropBearComponentBase
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ShortWaitSpinner>();
+
+    /// <summary>
+    ///     The title displayed above the spinner.
+    /// </summary>
     [Parameter] public string Title { get; set; } = "Please Wait";
+
+    /// <summary>
+    ///     The message displayed below the spinner.
+    /// </summary>
     [Parameter] public string Message { get; set; } = "Processing your request";
 
-    // The method to get a theme-specific CSS class has been removed as it's no longer needed
+    /// <summary>
+    ///     The size of the spinner (default is medium).
+    /// </summary>
+    [Parameter] public string SpinnerSize { get; set; } = "md";
+
+    /// <summary>
+    ///     The color of the spinner (default is theme-based).
+    /// </summary>
+    [Parameter] public string SpinnerColor { get; set; } = "primary";
+
+    protected override void OnInitialized()
+    {
+        Logger.Information("ShortWaitSpinner initialized with title '{Title}' and message '{Message}'", Title, Message);
+    }
+
+    /// <summary>
+    ///     Renders the spinner with appropriate accessibility attributes.
+    /// </summary>
+    private string GetSpinnerAriaLabel() => $"{Title}: {Message}";
 }

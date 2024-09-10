@@ -1,25 +1,24 @@
-﻿
-
-using DropBear.Codex.Blazor.Models;
+﻿using DropBear.Codex.Blazor.Models;
 
 namespace DropBear.Codex.Blazor.Arguments.Events;
 
 /// <summary>
-///     Event arguments for the snackbar notification event.
+///     Provides data for the snackbar notification event.
 /// </summary>
 public sealed class SnackbarNotificationEventArgs : EventArgs
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="SnackbarNotificationEventArgs" /> class.
     /// </summary>
-    /// <param name="options">The snackbar notification options.</param>
+    /// <param name="options">The options for the snackbar notification.</param>
+    /// <exception cref="ArgumentNullException">Thrown when the <paramref name="options"/> argument is null.</exception>
     public SnackbarNotificationEventArgs(SnackbarNotificationOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));
     }
 
     /// <summary>
-    ///     Gets the options for the snackbar notification.
+    ///     Gets the snackbar notification options used to configure the notification behavior and appearance.
     /// </summary>
     public SnackbarNotificationOptions Options { get; }
 }

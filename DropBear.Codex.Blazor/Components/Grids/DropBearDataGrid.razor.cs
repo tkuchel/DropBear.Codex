@@ -4,8 +4,10 @@ using System.Collections.ObjectModel;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Serilog;
 
 #endregion
 
@@ -18,6 +20,7 @@ namespace DropBear.Codex.Blazor.Components.Grids;
 public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposable
 {
     private const int DebounceDelay = 300; // milliseconds
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>();
     private readonly List<DataGridColumn<TItem>> _columns = new();
     private DataGridColumn<TItem> _currentSortColumn = new();
     private SortDirection _currentSortDirection = SortDirection.Ascending;
@@ -90,16 +93,26 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
     private async Task LoadDataAsync()
     {
-        IsLoading = true;
-        StateHasChanged();
+        try
+        {
+            IsLoading = true;
+            StateHasChanged();
+            Logger.Information("Loading data for DropBearDataGrid.");
 
-        await Task.Delay(500);
+            await Task.Delay(500); // Simulate data loading
 
-        FilteredItems = Items.ToList();
-        UpdateDisplayedItems();
-
-        IsLoading = false;
-        StateHasChanged();
+            FilteredItems = Items.ToList();
+            UpdateDisplayedItems();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error occurred while loading data.");
+        }
+        finally
+        {
+            IsLoading = false;
+            StateHasChanged();
+        }
     }
 
     private void OnSearchInput(ChangeEventArgs e)
@@ -121,20 +134,31 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     {
         _isSearching = true;
         StateHasChanged();
+        Logger.Information("Performing search with term: {SearchTerm}", SearchTerm);
 
-        await Task.Delay(200);
+        try
+        {
+            await Task.Delay(200); // Simulate search delay
 
-        FilteredItems = string.IsNullOrWhiteSpace(SearchTerm)
-            ? Items.ToList()
-            : Items.Where(item => _columns.Any(column =>
-                MatchesSearchTerm(column.PropertySelector?.Compile()(item), SearchTerm, column.Format)
-            )).ToList();
+            FilteredItems = string.IsNullOrWhiteSpace(SearchTerm)
+                ? Items.ToList()
+                : Items.Where(item => _columns.Any(column =>
+                    MatchesSearchTerm(column.PropertySelector?.Compile()(item), SearchTerm, column.Format)
+                )).ToList();
 
-        CurrentPage = 1;
-        UpdateDisplayedItems();
-
-        _isSearching = false;
-        await _searchInput.FocusAsync();
+            CurrentPage = 1;
+            UpdateDisplayedItems();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error occurred during search.");
+        }
+        finally
+        {
+            _isSearching = false;
+            await _searchInput.FocusAsync();
+            StateHasChanged();
+        }
     }
 
     private void UpdateDisplayedItems()
@@ -142,6 +166,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         DisplayedItems = FilteredItems
             .Skip((CurrentPage - 1) * ItemsPerPage)
             .Take(ItemsPerPage);
+        Logger.Debug("Updated displayed items. Current page: {CurrentPage}, Items per page: {ItemsPerPage}",
+            CurrentPage, ItemsPerPage);
     }
 
     private static bool MatchesSearchTerm(object? value, string searchTerm, string format)
@@ -186,6 +212,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             : FilteredItems.OrderBy(column.PropertySelector.Compile())
                 .ToList();
 
+        Logger.Information("Sorted by column: {Column}, Direction: {Direction}", column.PropertyName,
+            _currentSortDirection);
+
         UpdateDisplayedItems();
     }
 
@@ -199,6 +228,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         if (CurrentPage > 1)
         {
             CurrentPage--;
+            Logger.Debug("Navigated to previous page: {CurrentPage}", CurrentPage);
             UpdateDisplayedItems();
         }
     }
@@ -208,6 +238,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         if (CurrentPage < TotalPages)
         {
             CurrentPage++;
+            Logger.Debug("Navigated to next page: {CurrentPage}", CurrentPage);
             UpdateDisplayedItems();
         }
     }
@@ -219,11 +250,13 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             if (!SelectedItems.Contains(item))
             {
                 SelectedItems.Add(item);
+                Logger.Debug("Item selected: {Item}", item);
             }
         }
         else
         {
             SelectedItems.Remove(item);
+            Logger.Debug("Item deselected: {Item}", item);
         }
 
         _ = OnSelectionChanged.InvokeAsync(SelectedItems.ToList());
@@ -236,6 +269,11 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         if (selectAll)
         {
             SelectedItems.AddRange(Items);
+            Logger.Debug("All items selected.");
+        }
+        else
+        {
+            Logger.Debug("All items deselected.");
         }
 
         _ = OnSelectionChanged.InvokeAsync(SelectedItems.ToList());
@@ -244,16 +282,19 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
     private async Task AddItem()
     {
+        Logger.Information("Add item triggered.");
         await OnAddItem.InvokeAsync(default!);
     }
 
     private async Task EditItem(TItem item)
     {
+        Logger.Information("Edit item triggered for item: {Item}", item);
         await OnEditItem.InvokeAsync(item);
     }
 
     private async Task DeleteItem(TItem item)
     {
+        Logger.Information("Delete item triggered for item: {Item}", item);
         await OnDeleteItem.InvokeAsync(item);
     }
 
@@ -261,16 +302,20 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     {
         if (_columns.Any(c => c.PropertyName == column.PropertyName))
         {
+            Logger.Warning("Column with the property name {PropertyName} already exists and will not be added.",
+                column.PropertyName);
             return;
         }
 
         _columns.Add(column);
+        Logger.Debug("Column added: {PropertyName}", column.PropertyName);
         StateHasChanged();
     }
 
     public void ResetColumns()
     {
         _columns.Clear();
+        Logger.Information("Columns reset.");
         StateHasChanged();
     }
 
@@ -287,6 +332,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
     private async Task HandleRowClick(TItem item)
     {
+        Logger.Debug("Row clicked for item: {Item}", item);
         await OnRowClicked.InvokeAsync(item);
     }
 

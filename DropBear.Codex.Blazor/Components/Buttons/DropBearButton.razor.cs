@@ -2,8 +2,10 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Serilog;
 
 #endregion
 
@@ -14,6 +16,8 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 /// </summary>
 public sealed partial class DropBearButton : DropBearComponentBase
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearButton>();
+
     [Parameter] public ButtonStyle ButtonStyle { get; set; } = ButtonStyle.Solid;
     [Parameter] public ButtonColor Color { get; set; } = ButtonColor.Default;
     [Parameter] public ButtonSize Size { get; set; } = ButtonSize.Medium;
@@ -36,11 +40,10 @@ public sealed partial class DropBearButton : DropBearComponentBase
     private string BuildCssClass()
     {
         var cssClass = "dropbear-btn";
-#pragma warning disable CA1308
         cssClass += $" dropbear-btn-{ButtonStyle.ToString().ToLowerInvariant()}";
         cssClass += $" dropbear-btn-{Color.ToString().ToLowerInvariant()}";
         cssClass += $" dropbear-btn-{Size.ToString().ToLowerInvariant()}";
-#pragma warning restore CA1308
+
         if (IsBlock)
         {
             cssClass += " dropbear-btn-block";
@@ -65,9 +68,23 @@ public sealed partial class DropBearButton : DropBearComponentBase
     /// <param name="args">The mouse event arguments.</param>
     private async Task OnClickHandler(MouseEventArgs args)
     {
-        if (!IsDisabled && OnClick.HasDelegate)
+        if (IsDisabled)
         {
-            await OnClick.InvokeAsync(args);
+            Logger.Debug("Button click ignored because the button is disabled.");
+            return;
+        }
+
+        if (OnClick.HasDelegate)
+        {
+            try
+            {
+                Logger.Information("Button clicked.");
+                await OnClick.InvokeAsync(args);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during button click handling.");
+            }
         }
     }
 }

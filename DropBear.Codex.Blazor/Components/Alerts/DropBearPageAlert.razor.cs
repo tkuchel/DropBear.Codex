@@ -2,7 +2,9 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Serilog;
 
 #endregion
 
@@ -13,6 +15,8 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// </summary>
 public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearPageAlert>();
+
     private static readonly Dictionary<AlertType, string> IconClasses = new()
     {
         { AlertType.Information, "fas fa-info-circle" },
@@ -36,11 +40,30 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
     /// </summary>
     private async Task OnCloseClick()
     {
-        if (!IsDismissible || !OnClose.HasDelegate)
+        if (!IsDismissible)
         {
+            Logger.Warning(
+                "Non-dismissible alert of type {AlertType} with title '{AlertTitle}' attempted to be closed.", Type,
+                Title);
             return;
         }
 
-        await OnClose.InvokeAsync();
+        if (!OnClose.HasDelegate)
+        {
+            Logger.Warning("Alert of type {AlertType} with title '{AlertTitle}' has no close delegate attached.", Type,
+                Title);
+            return;
+        }
+
+        try
+        {
+            await OnClose.InvokeAsync();
+            Logger.Information("Alert of type {AlertType} with title '{AlertTitle}' closed successfully.", Type, Title);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error occurred while closing the alert of type {AlertType} with title '{AlertTitle}'.",
+                Type, Title);
+        }
     }
 }

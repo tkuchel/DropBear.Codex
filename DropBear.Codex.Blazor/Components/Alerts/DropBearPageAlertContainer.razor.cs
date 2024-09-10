@@ -1,6 +1,8 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Core.Logging;
+using Serilog;
 
 #endregion
 
@@ -11,6 +13,8 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// </summary>
 public partial class DropBearPageAlertContainer : DropBearComponentBase, IDisposable
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearPageAlertContainer>();
+
     /// <summary>
     ///     Disposes of the alert service subscription.
     /// </summary>
@@ -19,10 +23,12 @@ public partial class DropBearPageAlertContainer : DropBearComponentBase, IDispos
         try
         {
             AlertService.OnChange -= HandleAlertChange;
+            Logger.Debug("Alert service subscription disposed successfully.");
         }
         catch (Exception ex)
         {
             // Log the exception if necessary
+            Logger.Error(ex, "Error occurred while disposing of the alert service subscription.");
         }
     }
 
@@ -33,6 +39,7 @@ public partial class DropBearPageAlertContainer : DropBearComponentBase, IDispos
     {
         base.OnInitialized();
         AlertService.OnChange += HandleAlertChange;
+        Logger.Debug("Alert service subscription initialized.");
     }
 
     /// <summary>
@@ -41,5 +48,6 @@ public partial class DropBearPageAlertContainer : DropBearComponentBase, IDispos
     private void HandleAlertChange(object? sender, EventArgs e)
     {
         _ = InvokeAsync(StateHasChanged);
+        Logger.Debug("Alert service state changed; UI will be updated.");
     }
 }

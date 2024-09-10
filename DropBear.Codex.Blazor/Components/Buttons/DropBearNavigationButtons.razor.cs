@@ -1,7 +1,9 @@
 ﻿#region
 
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using Serilog;
 
 #endregion
 
@@ -9,8 +11,9 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 
 public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDisposable
 {
-    private DotNetObjectReference<DropBearNavigationButtons> _objRef;
-    private bool isJsInitialized;
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearNavigationButtons>();
+    private bool _isJsInitialized;
+    private DotNetObjectReference<DropBearNavigationButtons>? _objRef;
     private bool IsVisible { get; set; }
 
     [Parameter] public string BackButtonTop { get; set; } = "20px";
@@ -25,12 +28,21 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (isJsInitialized)
+        if (_isJsInitialized && JSRuntime is not null)
         {
-            await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
+                Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during JS interop disposal.");
+            }
         }
 
         _objRef?.Dispose();
+        Logger.Debug("DotNetObjectReference for DropBearNavigationButtons disposed.");
     }
 
     /// <summary>
@@ -41,8 +53,17 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         if (firstRender)
         {
             _objRef = DotNetObjectReference.Create(this);
-            await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.initialize", _objRef);
-            isJsInitialized = true;
+
+            try
+            {
+                await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.initialize", _objRef);
+                _isJsInitialized = true;
+                Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error initializing JS interop for DropBearNavigationButtons.");
+            }
         }
     }
 
@@ -54,11 +75,11 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         try
         {
             await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.goBack");
+            Logger.Information("Navigated back.");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error navigating back: {ex.Message}");
-            // Consider logging this error or showing a user-friendly message
+            Logger.Error(ex, "Error navigating back.");
         }
     }
 
@@ -70,11 +91,11 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         try
         {
             NavigationManager.NavigateTo("/");
+            Logger.Information("Navigated to home.");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error navigating home: {ex.Message}");
-            // Consider logging this error or showing a user-friendly message
+            Logger.Error(ex, "Error navigating to home.");
         }
     }
 
@@ -86,11 +107,11 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         try
         {
             await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.scrollToTop");
+            Logger.Information("Page scrolled to top.");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"Error scrolling to top: {ex.Message}");
-            // Consider logging this error or showing a user-friendly message
+            Logger.Error(ex, "Error scrolling to top.");
         }
     }
 
@@ -103,6 +124,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     public void UpdateVisibility(bool isVisible)
     {
         IsVisible = isVisible;
+        Logger.Debug("Scroll-to-top button visibility updated: {IsVisible}", isVisible);
         StateHasChanged();
     }
 }

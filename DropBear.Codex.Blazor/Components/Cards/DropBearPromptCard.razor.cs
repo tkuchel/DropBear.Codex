@@ -3,7 +3,9 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Serilog;
 
 #endregion
 
@@ -14,6 +16,8 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 /// </summary>
 public sealed partial class DropBearPromptCard : DropBearComponentBase
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearPromptCard>();
+
     private static readonly Dictionary<ButtonColor, string> ButtonClasses = new()
     {
         { ButtonColor.Primary, "prompt-btn-primary" },
@@ -42,9 +46,13 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
         const string BaseClass = "prompt-btn";
         var typeClass = ButtonClasses.GetValueOrDefault(type, "prompt-btn-default");
 
+        // Construct the full CSS class for the button
         return $"{BaseClass} {typeClass}".Trim();
     }
 
+    /// <summary>
+    ///     Returns the CSS class for the prompt card based on its type.
+    /// </summary>
     private string GetPromptClass()
     {
         return PromptType switch
@@ -61,8 +69,16 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     ///     Handles the button click event.
     /// </summary>
     /// <param name="button">The button configuration.</param>
-    private Task OnButtonClick(ButtonConfig button)
+    private async Task OnButtonClick(ButtonConfig button)
     {
-        return OnButtonClicked.InvokeAsync(button);
+        try
+        {
+            Logger.Information("Button clicked: {ButtonText}", button.Text);
+            await OnButtonClicked.InvokeAsync(button);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error occurred while handling button click for button: {ButtonText}", button.Text);
+        }
     }
 }

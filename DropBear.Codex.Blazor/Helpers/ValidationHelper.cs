@@ -2,6 +2,8 @@
 
 using System.ComponentModel.DataAnnotations;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
+using Serilog;
 using ValidationResult = DropBear.Codex.Blazor.Models.ValidationResult;
 
 #endregion
@@ -13,6 +15,8 @@ namespace DropBear.Codex.Blazor.Helpers;
 /// </summary>
 public static class ValidationHelper
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(ValidationHelper));
+
     /// <summary>
     ///     Validates an object using Data Annotations and returns a ValidationResult.
     /// </summary>
@@ -32,7 +36,8 @@ public static class ValidationHelper
         if (!Validator.TryValidateObject(model, validationContext, validationResults, true))
         {
             var errors = validationResults.Select(result =>
-                new ValidationError
+                new ValidationError(result.MemberNames.FirstOrDefault() ?? "Unknown",
+                    result.ErrorMessage ?? "Unknown validation error occurred.")
                 {
                     Parameter = result.MemberNames.FirstOrDefault() ?? "Unknown",
                     ErrorMessage = result.ErrorMessage ?? "Unknown validation error occurred."
@@ -75,12 +80,10 @@ public static class ValidationHelper
             }
             catch (Exception ex)
             {
-                // Log the exception here if you have a logging mechanism
-                errors.Add(new ValidationError
-                {
-                    Parameter = "CustomValidation",
-                    ErrorMessage = $"An error occurred during custom validation: {ex.Message}"
-                });
+                // Log the exception with context if available
+                Logger.Error(ex, "An error occurred during custom validation for {ModelType}", model.GetType().Name);
+                errors.Add(new ValidationError("CustomValidation",
+                    $"An error occurred during custom validation: {ex.Message}"));
             }
         }
 
@@ -99,6 +102,7 @@ public static class ValidationHelper
     {
         if (obj == null || string.IsNullOrWhiteSpace(propertyName))
         {
+            Logger.Warning("Attempted to get property value from null object or empty property name.");
             return null;
         }
 
@@ -106,8 +110,10 @@ public static class ValidationHelper
         {
             return obj.GetType().GetProperty(propertyName)?.GetValue(obj);
         }
-        catch
+        catch (Exception ex)
         {
+            Logger.Error(ex, "Error retrieving property value for {PropertyName} on object of type {ObjectType}",
+                propertyName, obj.GetType().Name);
             return null;
         }
     }

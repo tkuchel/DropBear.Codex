@@ -16,12 +16,12 @@ public interface ISnackbarNotificationService
     /// <summary>
     ///     Event triggered when a new snackbar notification should be shown.
     /// </summary>
-    event EventHandler<SnackbarNotificationEventArgs> OnShow;
+    event Func<object?, SnackbarNotificationEventArgs, Task> OnShow;
 
     /// <summary>
     ///     Event triggered when all snackbar notifications should be hidden.
     /// </summary>
-    event EventHandler OnHideAll;
+    event Func<object?, EventArgs, Task> OnHideAll;
 
     /// <summary>
     ///     Shows a snackbar notification with the specified message and options.
@@ -39,6 +39,6 @@ public interface ISnackbarNotificationService
     /// <summary>
     ///     Hides all currently visible snackbar notifications.
     /// </summary>
-    /// <returns>A result indicating the success of the operation.</returns>
-    Result HideAll();
+    /// <returns>A task that represents the completion of the operation.</returns>
+    Task<Result> HideAllAsync();
 }

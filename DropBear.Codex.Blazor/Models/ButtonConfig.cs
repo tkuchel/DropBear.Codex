@@ -12,9 +12,12 @@ namespace DropBear.Codex.Blazor.Models;
 public sealed class ButtonConfig
 {
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ButtonConfig" /> class.
+    ///     Initializes a new instance of the <see cref="ButtonConfig" /> class with default values.
     /// </summary>
-    public ButtonConfig() { }
+    public ButtonConfig() : this(string.Empty, string.Empty, ButtonColor.Default, string.Empty)
+    {
+        // Default constructor chaining to main constructor
+    }
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ButtonConfig" /> class with specified values.
@@ -23,31 +26,38 @@ public sealed class ButtonConfig
     /// <param name="text">The text displayed on the button.</param>
     /// <param name="color">The type/color of the button.</param>
     /// <param name="icon">The icon displayed on the button.</param>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="id" /> or <paramref name="text" /> is null or empty.</exception>
     public ButtonConfig(string id, string text, ButtonColor color, string icon)
     {
-        Id = id;
-        Text = text;
+        Id = string.IsNullOrWhiteSpace(id)
+            ? throw new ArgumentException("Button ID cannot be null or empty.", nameof(id))
+            : id;
+
+        Text = string.IsNullOrWhiteSpace(text)
+            ? throw new ArgumentException("Button text cannot be null or empty.", nameof(text))
+            : text;
+
         Color = color;
-        Icon = icon;
+        Icon = icon ?? string.Empty;
     }
 
     /// <summary>
-    ///     Gets or sets the ID of the button.
+    ///     Gets the ID of the button.
     /// </summary>
-    public string Id { get; set; } = string.Empty;
+    public string Id { get; }
 
     /// <summary>
-    ///     Gets or sets the text displayed on the button.
+    ///     Gets the text displayed on the button.
     /// </summary>
-    public string Text { get; set; } = string.Empty;
+    public string Text { get; }
 
     /// <summary>
-    ///     Gets or sets the type/color of the button.
+    ///     Gets the type/color of the button.
     /// </summary>
-    public ButtonColor Color { get; set; } = ButtonColor.Default;
+    public ButtonColor Color { get; }
 
     /// <summary>
-    ///     Gets or sets the icon displayed on the button.
+    ///     Gets the icon displayed on the button.
     /// </summary>
-    public string Icon { get; set; } = string.Empty;
+    public string Icon { get; }
 }
