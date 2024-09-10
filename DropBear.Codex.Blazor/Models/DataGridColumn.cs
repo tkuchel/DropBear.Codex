@@ -17,9 +17,10 @@ public sealed class DataGridColumn<TItem>
     ///     Initializes a new instance of the <see cref="DataGridColumn{TItem}" /> class with default values.
     /// </summary>
     public DataGridColumn()
-        : this(string.Empty, string.Empty)
+        : this("DefaultProperty", "Default Title")
     {
     }
+
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="DataGridColumn{TItem}" /> class with specified values.
