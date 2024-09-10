@@ -61,6 +61,13 @@ public class FileManagerBuilder
             throw new ArgumentException("Base directory cannot be null or empty.", nameof(baseDirectory));
         }
 
+        // Validate that the directory exists or create it
+        if (!Directory.Exists(baseDirectory))
+        {
+            Directory.CreateDirectory(baseDirectory);
+            _logger.Warning("Base directory did not exist. Created: {BaseDirectory}", baseDirectory);
+        }
+
         if (_memoryStreamManager == null)
         {
             _memoryStreamManager = new RecyclableMemoryStreamManager();

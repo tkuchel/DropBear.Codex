@@ -1,6 +1,8 @@
 ﻿#region
 
 using System.Runtime.Versioning;
+using System.Text;
+using System.Text.Json;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Files.Models;
@@ -123,16 +125,19 @@ public class ContentContainerBuilder
             if (_compressionProviderType != null)
             {
                 _container.AddProvider("CompressionProvider", _compressionProviderType);
+                _logger.Debug("Added CompressionProvider: {Provider}", _compressionProviderType.Name);
             }
 
             if (_encryptionProviderType != null)
             {
                 _container.AddProvider("EncryptionProvider", _encryptionProviderType);
+                _logger.Debug("Added EncryptionProvider: {Provider}", _encryptionProviderType.Name);
             }
 
             if (_serializerType != null)
             {
                 _container.AddProvider("Serializer", _serializerType);
+                _logger.Debug("Added Serializer: {Provider}", _serializerType.Name);
             }
 
             // Handle serialization
@@ -148,18 +153,45 @@ public class ContentContainerBuilder
                     throw new InvalidOperationException("No data available for serialization.");
                 }
 
+                // Serialize the data
                 var serializedData = await serializer.SerializeAsync(data).ConfigureAwait(false);
                 if (serializedData == null || serializedData.Length == 0)
                 {
-                    throw new InvalidOperationException("Serialization failed to produce data.");
+                    throw new InvalidOperationException("Serialization failed to produce valid data.");
                 }
 
                 _container.Data = serializedData;
+                _logger.Debug("Serialized data of type {DataType} for ContentContainer.", data.GetType().Name);
+            }
+            else
+            {
+                // Fallback: Convert TemporaryData to a byte array if no explicit serialization is required
+                var data = _container.TemporaryData;
+                if (data != null)
+                {
+                    // Use default or fallback serialization (e.g., JSON or Binary)
+                    _container.Data = ConvertToByteArray(data);
+                    _logger.Debug(
+                        "Using fallback serialization for TemporaryData directly as Data for ContentContainer.");
+                }
+                else
+                {
+                    throw new InvalidOperationException("TemporaryData is null and no serialization was required.");
+                }
             }
 
-            _container.ComputeAndSetHash();
-            _logger.Information("Built ContentContainer");
+            // Compute the hash after serialization or setting data
+            if (_container.Data != null)
+            {
+                _container.ComputeAndSetHash();
+                _logger.Debug("Computed hash for ContentContainer.");
+            }
+            else
+            {
+                throw new InvalidOperationException("ContentContainer has no data to compute hash.");
+            }
 
+            _logger.Information("Built ContentContainer successfully.");
             return _container;
         }
         catch (Exception ex)
@@ -168,6 +200,7 @@ public class ContentContainerBuilder
             throw;
         }
     }
+
 
     #region Provider Support (Compression, Encryption, Serialization)
 
@@ -216,6 +249,15 @@ public class ContentContainerBuilder
         _serializerType = null;
         _logger.Debug("Disabled serialization.");
         return this;
+    }
+
+    private byte[] ConvertToByteArray(object data)
+    {
+        // Example: using JSON serialization as a fallback
+        var jsonString = JsonSerializer.Serialize(data);
+        return Encoding.UTF8.GetBytes(jsonString);
+
+        // Alternatively, you could use binary serialization, or other methods depending on the object type.
     }
 
     #endregion

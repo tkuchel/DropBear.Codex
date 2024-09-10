@@ -19,8 +19,6 @@ public class DropBearFileBuilder
     private readonly ILogger _logger;
     private readonly Dictionary<string, string> _metadata = new(StringComparer.OrdinalIgnoreCase);
     private FileVersion? _currentVersion;
-
-    private DropBearFile? _file; // Keeps track of DropBearFile instance
     private string? _fileName;
 
     /// <summary>
@@ -105,6 +103,11 @@ public class DropBearFileBuilder
                 throw new ArgumentException("Metadata value cannot be null or empty.", nameof(value));
             }
 
+            if (_metadata.ContainsKey(key))
+            {
+                _logger.Warning("Overwriting existing metadata for key: {Key}", key);
+            }
+
             _metadata[key] = value;
             _logger.Debug("Added metadata: {Key} = {Value}", key, value);
             return this;
@@ -129,6 +132,12 @@ public class DropBearFileBuilder
             if (container == null)
             {
                 throw new ArgumentNullException(nameof(container), "ContentContainer cannot be null.");
+            }
+
+            // Check if the container is valid (e.g., ensure the container is properly built)
+            if (container.Data == null)
+            {
+                _logger.Warning("The ContentContainer has no data set. Ensure it is built properly.");
             }
 
             _contentContainers.Add(container);
@@ -161,10 +170,9 @@ public class DropBearFileBuilder
                 throw new InvalidOperationException("Version must be set before building.");
             }
 
-            _file = new DropBearFile(_metadata, _contentContainers, _fileName, _currentVersion);
-
-            _logger.Information("Built DropBearFile: {FileName}", _file.FileName);
-            return _file;
+            var file = new DropBearFile(_metadata, _contentContainers, _fileName, _currentVersion);
+            _logger.Information("Built DropBearFile: {FileName}", file.FileName);
+            return file;
         }
         catch (Exception ex)
         {
