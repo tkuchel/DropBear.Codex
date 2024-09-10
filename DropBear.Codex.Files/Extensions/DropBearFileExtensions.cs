@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using DropBear.Codex.Files.Converters;
 using DropBear.Codex.Files.Models;
+using Microsoft.IO;
 using Serilog;
 
 #endregion
@@ -23,6 +24,8 @@ public static class DropBearFileExtensions
         Converters = { new TypeConverter(), new ContentContainerConverter() }, WriteIndented = true
     };
 
+    private static readonly RecyclableMemoryStreamManager MemoryStreamManager = new();
+
     /// <summary>
     ///     Serializes a <see cref="DropBearFile" /> object to a memory stream.
     /// </summary>
@@ -36,20 +39,17 @@ public static class DropBearFileExtensions
             throw new ArgumentNullException(nameof(file), "Cannot serialize a null DropBearFile object.");
         }
 
-        string jsonString;
-
         try
         {
-            jsonString = JsonSerializer.Serialize(file, Options);
+            var jsonString = JsonSerializer.Serialize(file, Options);
             logger.Information("Serialized DropBearFile to JSON string.");
+            return MemoryStreamManager.GetStream(Encoding.UTF8.GetBytes(jsonString));
         }
         catch (Exception ex)
         {
             logger.Error(ex, "Serialization failed.");
             throw new InvalidOperationException("Serialization failed.", ex);
         }
-
-        return new MemoryStream(Encoding.UTF8.GetBytes(jsonString));
     }
 
     /// <summary>
@@ -57,21 +57,23 @@ public static class DropBearFileExtensions
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> object to serialize.</param>
     /// <param name="logger">The logger for logging serialization details.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the work.</param>
     /// <returns>
     ///     A task representing the asynchronous operation. The task result contains a memory stream with the serialized
     ///     data.
     /// </returns>
-    public static async Task<MemoryStream?> ToStreamAsync(this DropBearFile file, ILogger logger)
+    public static async Task<MemoryStream> ToStreamAsync(this DropBearFile file, ILogger logger,
+        CancellationToken cancellationToken = default)
     {
         if (file is null)
         {
             throw new ArgumentNullException(nameof(file), "Cannot serialize a null DropBearFile object.");
         }
 
-        var stream = new MemoryStream();
+        var stream = MemoryStreamManager.GetStream();
         try
         {
-            await JsonSerializer.SerializeAsync(stream, file, Options).ConfigureAwait(false);
+            await JsonSerializer.SerializeAsync(stream, file, Options, cancellationToken).ConfigureAwait(false);
             stream.Position = 0; // Reset position after writing
             logger.Information("Asynchronously serialized DropBearFile to stream.");
             return stream;
@@ -104,7 +106,7 @@ public static class DropBearFileExtensions
         try
         {
             stream.Position = 0; // Reset the position to ensure correct reading from start
-            using var reader = new StreamReader(stream, Encoding.UTF8);
+            using var reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true);
             var jsonString = reader.ReadToEnd();
             var file = JsonSerializer.Deserialize<DropBearFile>(jsonString, Options);
 
@@ -128,11 +130,13 @@ public static class DropBearFileExtensions
     /// </summary>
     /// <param name="stream">The stream containing the serialized data.</param>
     /// <param name="logger">The logger for logging deserialization details.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the work.</param>
     /// <returns>
     ///     A task representing the asynchronous operation. The task result contains the deserialized
     ///     <see cref="DropBearFile" /> object.
     /// </returns>
-    public static async Task<DropBearFile> FromStreamAsync(Stream stream, ILogger logger)
+    public static async Task<DropBearFile> FromStreamAsync(Stream stream, ILogger logger,
+        CancellationToken cancellationToken = default)
     {
         if (stream is null)
         {
@@ -147,7 +151,8 @@ public static class DropBearFileExtensions
         try
         {
             stream.Position = 0; // Ensure stream is at the beginning
-            var file = await JsonSerializer.DeserializeAsync<DropBearFile>(stream, Options).ConfigureAwait(false);
+            var file = await JsonSerializer.DeserializeAsync<DropBearFile>(stream, Options, cancellationToken)
+                .ConfigureAwait(false);
             if (file is null)
             {
                 throw new InvalidOperationException("Deserialization resulted in a null object.");

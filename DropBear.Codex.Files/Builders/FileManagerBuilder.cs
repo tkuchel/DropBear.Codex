@@ -40,12 +40,20 @@ public class FileManagerBuilder
     /// <returns>The current <see cref="FileManagerBuilder" /> instance.</returns>
     public FileManagerBuilder UseLocalStorage(string baseDirectory = @"C:\Data")
     {
-        var memoryStreamManager = new RecyclableMemoryStreamManager();
-        _localStorageManager = new LocalStorageManager(memoryStreamManager, _logger, baseDirectory);
-        _strategy = StorageStrategy.LocalOnly;
-        _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
-            baseDirectory);
-        return this;
+        try
+        {
+            var memoryStreamManager = new RecyclableMemoryStreamManager();
+            _localStorageManager = new LocalStorageManager(memoryStreamManager, _logger, baseDirectory);
+            _strategy = StorageStrategy.LocalOnly;
+            _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
+                baseDirectory);
+            return this;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error configuring local storage with base directory: {BaseDirectory}", baseDirectory);
+            throw;
+        }
     }
 
     /// <summary>
@@ -57,14 +65,58 @@ public class FileManagerBuilder
     /// <returns>The current <see cref="FileManagerBuilder" /> instance.</returns>
     public FileManagerBuilder UseBlobStorage(string accountName, string accountKey, string containerName)
     {
-        var memoryStreamManager = new RecyclableMemoryStreamManager();
-        var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
-        _blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, _logger, containerName);
-        _strategy = StorageStrategy.BlobOnly;
-        _logger.Information(
-            "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
-            accountName, containerName);
-        return this;
+        try
+        {
+            var memoryStreamManager = new RecyclableMemoryStreamManager();
+            var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
+            _blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, _logger, containerName);
+            _strategy = StorageStrategy.BlobOnly;
+            _logger.Information(
+                "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
+                accountName, containerName);
+            return this;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex,
+                "Error configuring Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
+                accountName, containerName);
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Configures the FileManager to use Azure blob storage asynchronously.
+    /// </summary>
+    /// <param name="accountName">The Azure Storage account name.</param>
+    /// <param name="accountKey">The shared key for the Azure Storage account.</param>
+    /// <param name="containerName">The default container name for blob storage.</param>
+    /// <returns>
+    ///     A Task representing the asynchronous operation, containing the current <see cref="FileManagerBuilder" />
+    ///     instance.
+    /// </returns>
+    public async Task<FileManagerBuilder> UseBlobStorageAsync(string accountName, string accountKey,
+        string containerName)
+    {
+        try
+        {
+            var memoryStreamManager = new RecyclableMemoryStreamManager();
+            var blobStorage = await BlobStorageFactory.CreateAzureBlobStorageAsync(accountName, accountKey)
+                .ConfigureAwait(false);
+            _blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, _logger, containerName);
+            _strategy = StorageStrategy.BlobOnly;
+            _logger.Information(
+                "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
+                accountName, containerName);
+            return this;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex,
+                "Error configuring Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
+                accountName, containerName);
+            throw;
+        }
     }
 
     /// <summary>
@@ -86,18 +138,26 @@ public class FileManagerBuilder
     {
         _logger.Information("Building FileManager with strategy: {Strategy}", _strategy);
 
-        IStorageManager storageManager = _strategy switch
+        try
         {
-            StorageStrategy.LocalOnly => _localStorageManager ??
-                                         throw new InvalidOperationException(
-                                             "Local storage manager is not configured."),
-            StorageStrategy.BlobOnly => _blobStorageManager ??
-                                        throw new InvalidOperationException("Blob storage manager is not configured."),
-            StorageStrategy.NoOperation => throw new InvalidOperationException(
-                "No operation strategy does not require a storage manager."),
-            _ => throw new InvalidOperationException("Unsupported storage strategy.")
-        };
+            IStorageManager? storageManager = _strategy switch
+            {
+                StorageStrategy.LocalOnly => _localStorageManager ??
+                                             throw new InvalidOperationException(
+                                                 "Local storage manager is not configured."),
+                StorageStrategy.BlobOnly => _blobStorageManager ??
+                                            throw new InvalidOperationException(
+                                                "Blob storage manager is not configured."),
+                StorageStrategy.NoOperation => null,
+                _ => throw new InvalidOperationException("Unsupported storage strategy.")
+            };
 
-        return new FileManager(_strategy, storageManager);
+            return new FileManager(_strategy, storageManager);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error building FileManager with strategy: {Strategy}", _strategy);
+            throw;
+        }
     }
 }

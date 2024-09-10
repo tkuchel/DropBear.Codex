@@ -27,48 +27,26 @@ public sealed class ContentContainer
     }
 
     [JsonPropertyName("flags")] public ContentContainerFlags Flags { get; private set; }
-
     [JsonPropertyName("contentType")] public string ContentType { get; private set; }
-
     [JsonPropertyName("data")] public byte[]? Data { get; internal set; }
-
     [JsonPropertyName("hash")] public string? Hash { get; private set; }
-
     public object? TemporaryData { get; private set; }
 
-    /// <summary>
-    ///     Determines if serialization is required based on the flags.
-    /// </summary>
-    /// <returns>True if serialization is required; otherwise, false.</returns>
     public bool RequiresSerialization()
     {
         return Flags.HasFlag(ContentContainerFlags.ShouldSerialize);
     }
 
-    /// <summary>
-    ///     Determines if compression is required based on the flags.
-    /// </summary>
-    /// <returns>True if compression is required; otherwise, false.</returns>
     public bool RequiresCompression()
     {
         return Flags.HasFlag(ContentContainerFlags.ShouldCompress);
     }
 
-    /// <summary>
-    ///     Determines if encryption is required based on the flags.
-    /// </summary>
-    /// <returns>True if encryption is required; otherwise, false.</returns>
     public bool RequiresEncryption()
     {
         return Flags.HasFlag(ContentContainerFlags.ShouldEncrypt);
     }
 
-    /// <summary>
-    ///     Sets the data for the content container.
-    /// </summary>
-    /// <typeparam name="T">The type of the data.</typeparam>
-    /// <param name="data">The data to set.</param>
-    /// <returns>A <see cref="Result" /> indicating the outcome of the operation.</returns>
     public Result SetData<T>(T? data)
     {
         if (data is null)
@@ -82,12 +60,10 @@ public sealed class ContentContainer
                 Data = byteArray;
                 Flags |= ContentContainerFlags.DataIsSet;
                 break;
-
             case string str:
                 Data = Encoding.UTF8.GetBytes(str);
                 Flags |= ContentContainerFlags.DataIsSet;
                 break;
-
             default:
                 TemporaryData = data;
                 Flags |= ContentContainerFlags.TemporaryDataIsSet | ContentContainerFlags.ShouldSerialize;
@@ -104,16 +80,11 @@ public sealed class ContentContainer
         return Result.Success();
     }
 
-    /// <summary>
-    ///     Adds a provider to the content container.
-    /// </summary>
-    /// <param name="key">The key for the provider.</param>
-    /// <param name="type">The type of the provider.</param>
     public void AddProvider(string key, Type type)
     {
-        if (key is null || type is null)
+        if (string.IsNullOrEmpty(key) || type is null)
         {
-            throw new ArgumentException("Key and Type must not be null.", nameof(key));
+            throw new ArgumentException("Key and Type must not be null or empty.", nameof(key));
         }
 
         if (!_providers.TryAdd(key, type))
@@ -122,10 +93,6 @@ public sealed class ContentContainer
         }
     }
 
-    /// <summary>
-    ///     Sets the providers dictionary. This is useful during deserialization.
-    /// </summary>
-    /// <param name="providers">The dictionary of providers to set.</param>
     internal void SetProviders(Dictionary<string, Type> providers)
     {
         foreach (var provider in providers)
@@ -134,39 +101,22 @@ public sealed class ContentContainer
         }
     }
 
-    /// <summary>
-    ///     Gets the providers dictionary.
-    /// </summary>
-    /// <returns>A dictionary of providers.</returns>
     public IDictionary<string, Type> GetProvidersDictionary()
     {
         return new Dictionary<string, Type>(_providers, StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>
-    ///     Computes and sets the hash of the data.
-    /// </summary>
     internal void ComputeAndSetHash()
-    {
-        ComputeHash();
-    }
-
-    private void ComputeHash()
     {
         if (Data is null)
         {
             return;
         }
 
-        var hashResult = _hasher.EncodeToBase64Hash(Data.ToArray());
+        var hashResult = _hasher.EncodeToBase64Hash(Data);
         Hash = hashResult.IsSuccess ? hashResult.Value : null;
     }
 
-    /// <summary>
-    ///     Gets the data asynchronously.
-    /// </summary>
-    /// <typeparam name="T">The type of the data.</typeparam>
-    /// <returns>A <see cref="Result{T}" /> containing the data or an error message.</returns>
     public async Task<Result<T>> GetDataAsync<T>()
     {
         if (Data is null || Data.Length == 0)
@@ -179,7 +129,7 @@ public sealed class ContentContainer
             return Result<T>.Failure("No hash available.");
         }
 
-        var hashResult = _hasher.EncodeToBase64Hash(Data.ToArray());
+        var hashResult = _hasher.EncodeToBase64Hash(Data);
         if (!hashResult.IsSuccess || !string.Equals(hashResult.Value, Hash, StringComparison.Ordinal))
         {
             return Result<T>.Failure("Data integrity check failed.");
@@ -216,20 +166,17 @@ public sealed class ContentContainer
     {
         if (RequiresSerialization())
         {
-            var serializerProviderType = GetProviderType("Serializer");
-            serializerBuilder.WithSerializer(serializerProviderType);
+            serializerBuilder.WithSerializer(GetProviderType("Serializer"));
         }
 
         if (RequiresCompression())
         {
-            var compressionProviderType = GetProviderType("CompressionProvider");
-            serializerBuilder.WithCompression(compressionProviderType);
+            serializerBuilder.WithCompression(GetProviderType("CompressionProvider"));
         }
 
         if (RequiresEncryption())
         {
-            var encryptionProviderType = GetProviderType("EncryptionProvider");
-            serializerBuilder.WithEncryption(encryptionProviderType);
+            serializerBuilder.WithEncryption(GetProviderType("EncryptionProvider"));
         }
     }
 
@@ -243,19 +190,11 @@ public sealed class ContentContainer
         throw new KeyNotFoundException($"Provider for {keyName} not found.");
     }
 
-    /// <summary>
-    ///     Enables a specific flag.
-    /// </summary>
-    /// <param name="flag">The flag to enable.</param>
     public void EnableFlag(ContentContainerFlags flag)
     {
         Flags |= flag;
     }
 
-    /// <summary>
-    ///     Disables a specific flag.
-    /// </summary>
-    /// <param name="flag">The flag to disable.</param>
     public void DisableFlag(ContentContainerFlags flag)
     {
         Flags &= ~flag;
@@ -266,9 +205,6 @@ public sealed class ContentContainer
         return (Flags & flag) == flag;
     }
 
-    /// <summary>
-    ///     Prints the currently enabled flags to the console.
-    /// </summary>
     public void PrintFlags()
     {
         Console.WriteLine("Current Features Enabled:");
@@ -276,24 +212,16 @@ public sealed class ContentContainer
         {
             if (IsFlagEnabled(flag))
             {
-                Console.WriteLine("- " + flag);
+                Console.WriteLine($"- {flag}");
             }
         }
     }
 
-    /// <summary>
-    ///     Sets the content type.
-    /// </summary>
-    /// <param name="type">The content type.</param>
     internal void SetContentType(string type)
     {
         ContentType = type;
     }
 
-    /// <summary>
-    ///     Sets the hash value.
-    /// </summary>
-    /// <param name="hash">The hash value to set.</param>
     internal void SetHash(string? hash)
     {
         Hash = hash;

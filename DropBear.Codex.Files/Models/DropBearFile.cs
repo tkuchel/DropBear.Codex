@@ -13,10 +13,14 @@ public sealed class DropBearFile
 {
     private const string DefaultExtension = ".dbf";
 
+    private static readonly IEqualityComparer<KeyValuePair<string, string>> MetadataComparer =
+        new MetadataEqualityComparer();
+
     public DropBearFile()
     {
         ContentContainers = new Collection<ContentContainer>();
         Metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        FileName = string.Empty;
     }
 
     [JsonConstructor]
@@ -32,43 +36,20 @@ public sealed class DropBearFile
         CurrentVersion = currentVersion;
     }
 
-    /// <summary>
-    ///     Gets or sets the file name, which includes the extension.
-    /// </summary>
-    public string FileName { get; } = string.Empty;
+    public string FileName { get; init; }
 
-    /// <summary>
-    ///     Gets the metadata associated with the file.
-    /// </summary>
-    [JsonPropertyName("metadata")]
-    public IDictionary<string, string> Metadata { get; init; }
+    [JsonPropertyName("metadata")] public IDictionary<string, string> Metadata { get; init; }
 
-    /// <summary>
-    ///     Gets or sets the content containers within the file.
-    /// </summary>
     [JsonPropertyName("contentContainers")]
-    public ICollection<ContentContainer> ContentContainers { get; set; }
+    public ICollection<ContentContainer> ContentContainers { get; init; }
 
-    /// <summary>
-    ///     Gets or sets the current version of the file.
-    /// </summary>
-    [JsonPropertyName("currentVersion")]
-    public FileVersion? CurrentVersion { get; }
+    [JsonPropertyName("currentVersion")] public FileVersion? CurrentVersion { get; init; }
 
-    /// <summary>
-    ///     Gets the default extension used for DropBear files.
-    /// </summary>
     public static string GetDefaultExtension()
     {
         return DefaultExtension;
     }
 
-    /// <summary>
-    ///     Adds metadata to the file.
-    /// </summary>
-    /// <param name="key">The metadata key.</param>
-    /// <param name="value">The metadata value.</param>
-    /// <exception cref="ArgumentException">Thrown when the key already exists.</exception>
     public void AddMetadata(string key, string value)
     {
         if (!Metadata.TryAdd(key, value))
@@ -77,11 +58,6 @@ public sealed class DropBearFile
         }
     }
 
-    /// <summary>
-    ///     Removes metadata from the file.
-    /// </summary>
-    /// <param name="key">The metadata key to remove.</param>
-    /// <exception cref="ArgumentException">Thrown when the key does not exist.</exception>
     public void RemoveMetadata(string key)
     {
         if (!Metadata.Remove(key))
@@ -90,22 +66,12 @@ public sealed class DropBearFile
         }
     }
 
-    /// <summary>
-    ///     Adds a content container to the file.
-    /// </summary>
-    /// <param name="container">The content container to add.</param>
-    /// <exception cref="ArgumentNullException">Thrown when the container is null.</exception>
     public void AddContentContainer(ContentContainer container)
     {
-        ArgumentNullException.ThrowIfNull(container, nameof(container));
+        ArgumentNullException.ThrowIfNull(container);
         ContentContainers.Add(container);
     }
 
-    /// <summary>
-    ///     Removes a content container from the file.
-    /// </summary>
-    /// <param name="container">The content container to remove.</param>
-    /// <exception cref="ArgumentException">Thrown when the container does not exist in the collection.</exception>
     public void RemoveContentContainer(ContentContainer container)
     {
         if (!ContentContainers.Remove(container))
@@ -114,31 +80,25 @@ public sealed class DropBearFile
         }
     }
 
-    /// <summary>
-    ///     Determines whether the specified object is equal to the current object.
-    /// </summary>
     public override bool Equals(object? obj)
     {
         return obj is DropBearFile other &&
                string.Equals(FileName, other.FileName, StringComparison.Ordinal) &&
                CurrentVersion?.Equals(other.CurrentVersion) == true &&
-               Metadata.SequenceEqual(other.Metadata) &&
+               Metadata.SequenceEqual(other.Metadata, MetadataComparer) &&
                ContentContainers.SequenceEqual(other.ContentContainers);
     }
 
-    /// <summary>
-    ///     Serves as the default hash function.
-    /// </summary>
     public override int GetHashCode()
     {
         var hash = new HashCode();
         hash.Add(FileName);
         hash.Add(CurrentVersion);
 
-        foreach (var item in Metadata)
+        foreach (var (key, value) in Metadata)
         {
-            hash.Add(item.Key);
-            hash.Add(item.Value);
+            hash.Add(key, StringComparer.OrdinalIgnoreCase);
+            hash.Add(value);
         }
 
         foreach (var container in ContentContainers)
@@ -147,5 +107,22 @@ public sealed class DropBearFile
         }
 
         return hash.ToHashCode();
+    }
+
+    private sealed class MetadataEqualityComparer : IEqualityComparer<KeyValuePair<string, string>>
+    {
+        public bool Equals(KeyValuePair<string, string> x, KeyValuePair<string, string> y)
+        {
+            return string.Equals(x.Key, y.Key, StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(x.Value, y.Value, StringComparison.Ordinal);
+        }
+
+        public int GetHashCode(KeyValuePair<string, string> obj)
+        {
+            return HashCode.Combine(
+                StringComparer.OrdinalIgnoreCase.GetHashCode(obj.Key),
+                StringComparer.Ordinal.GetHashCode(obj.Value)
+            );
+        }
     }
 }

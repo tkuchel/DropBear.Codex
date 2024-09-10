@@ -13,12 +13,14 @@ namespace DropBear.Codex.Files.Enums;
 [Flags]
 public enum ContentContainerFlags
 {
+    // Operation flags
     /// <summary>
     ///     No operation should be performed.
     /// </summary>
     [Description("No operation should be performed")] [JsonPropertyName("noOperation")]
     NoOperation = 1 << 0,
 
+    // Processing flags
     /// <summary>
     ///     Serialization should be skipped.
     /// </summary>
@@ -37,6 +39,7 @@ public enum ContentContainerFlags
     [Description("Encryption should be skipped")] [JsonPropertyName("noEncryption")]
     NoEncryption = 1 << 3,
 
+    // State flags
     /// <summary>
     ///     Data has been set.
     /// </summary>
@@ -49,6 +52,7 @@ public enum ContentContainerFlags
     [Description("Temporary data has been set")] [JsonPropertyName("temporaryDataIsSet")]
     TemporaryDataIsSet = 1 << 5,
 
+    // Action flags
     /// <summary>
     ///     Serialization should be performed.
     /// </summary>

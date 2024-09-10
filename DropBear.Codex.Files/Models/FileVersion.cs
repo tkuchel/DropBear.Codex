@@ -3,7 +3,7 @@
 /// <summary>
 ///     Represents a version of a file, including a version label and the date of the version.
 /// </summary>
-public class FileVersion
+public sealed class FileVersion : IEquatable<FileVersion>
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="FileVersion" /> class.
@@ -18,14 +18,35 @@ public class FileVersion
     }
 
     /// <summary>
-    ///     Gets or sets the date of the version.
+    ///     Gets the date of the version.
     /// </summary>
-    public DateTimeOffset VersionDate { get; set; }
+    public DateTimeOffset VersionDate { get; }
 
     /// <summary>
-    ///     Gets or sets the label of the version.
+    ///     Gets the label of the version.
     /// </summary>
-    public string VersionLabel { get; set; }
+    public string VersionLabel { get; }
+
+    /// <summary>
+    ///     Determines whether the specified FileVersion is equal to the current FileVersion.
+    /// </summary>
+    /// <param name="other">The FileVersion to compare with the current FileVersion.</param>
+    /// <returns>True if the specified FileVersion is equal to the current FileVersion; otherwise, false.</returns>
+    public bool Equals(FileVersion? other)
+    {
+        if (other is null)
+        {
+            return false;
+        }
+
+        if (ReferenceEquals(this, other))
+        {
+            return true;
+        }
+
+        return string.Equals(VersionLabel, other.VersionLabel, StringComparison.OrdinalIgnoreCase) &&
+               VersionDate.Equals(other.VersionDate);
+    }
 
     /// <summary>
     ///     Determines whether the specified object is equal to the current object.
@@ -34,13 +55,7 @@ public class FileVersion
     /// <returns>True if the specified object is equal to the current object; otherwise, false.</returns>
     public override bool Equals(object? obj)
     {
-        if (obj is FileVersion other)
-        {
-            return string.Equals(VersionLabel, other.VersionLabel, StringComparison.OrdinalIgnoreCase) &&
-                   VersionDate.Equals(other.VersionDate);
-        }
-
-        return false;
+        return Equals(obj as FileVersion);
     }
 
     /// <summary>
@@ -49,13 +64,32 @@ public class FileVersion
     /// <returns>A hash code for the current object.</returns>
     public override int GetHashCode()
     {
-        unchecked // Overflow is fine, just wrap
+        return HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(VersionLabel),
+            VersionDate.GetHashCode());
+    }
+
+    public static bool operator ==(FileVersion? left, FileVersion? right)
+    {
+        if (left is null)
         {
-            var hash = 17;
-            hash = (hash * 23) +
-                   (VersionLabel != null ? StringComparer.OrdinalIgnoreCase.GetHashCode(VersionLabel) : 0);
-            hash = (hash * 23) + VersionDate.GetHashCode();
-            return hash;
+            return right is null;
         }
+
+        return left.Equals(right);
+    }
+
+    public static bool operator !=(FileVersion? left, FileVersion? right)
+    {
+        return !(left == right);
+    }
+
+    /// <summary>
+    ///     Returns a string that represents the current object.
+    /// </summary>
+    /// <returns>A string that represents the current object.</returns>
+    public override string ToString()
+    {
+        return $"{VersionLabel} ({VersionDate:g})";
     }
 }

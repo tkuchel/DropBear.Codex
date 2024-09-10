@@ -15,7 +15,7 @@ namespace DropBear.Codex.Files.Converters;
 /// </summary>
 public sealed class TypeConverter : JsonConverter<Type>
 {
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="TypeConverter" /> class.
@@ -36,35 +36,20 @@ public sealed class TypeConverter : JsonConverter<Type>
     public override Type? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         var typeName = reader.GetString();
-        if (typeName is null)
+        if (string.IsNullOrEmpty(typeName))
         {
-            _logger?.Warning("Failed to deserialize Type: typeName is null.");
+            _logger.Warning("Failed to deserialize Type: typeName is null or empty.");
             return null;
         }
 
         try
         {
-            return Type.GetType(typeName, AssemblyResolver, null);
+            return Type.GetType(typeName, AssemblyResolver, null, true);
         }
         catch (Exception ex)
         {
-            _logger?.Error(ex, "Failed to resolve Type: {TypeName}", typeName);
+            _logger.Error(ex, "Failed to resolve Type: {TypeName}", typeName);
             return null;
-        }
-
-        static Assembly? AssemblyResolver(AssemblyName assemblyName)
-        {
-            try
-            {
-                return Assembly.Load(assemblyName);
-            }
-            catch (Exception ex)
-            {
-                // You might want to log this error using a logger instance, if available
-                Console.WriteLine($"Failed to load assembly: {assemblyName.FullName}. Exception: {ex.Message}");
-                // _logger.Error(ex, "Failed to load assembly: {AssemblyName}", assemblyName.FullName);
-                return null;
-            }
         }
     }
 
@@ -74,8 +59,35 @@ public sealed class TypeConverter : JsonConverter<Type>
     /// <param name="writer">The UTF-8 JSON writer.</param>
     /// <param name="value">The <see cref="Type" /> to write.</param>
     /// <param name="options">The serializer options.</param>
-    public override void Write(Utf8JsonWriter writer, Type value, JsonSerializerOptions options)
+    public override void Write(Utf8JsonWriter writer, Type? value, JsonSerializerOptions options)
     {
-        writer.WriteStringValue(value.AssemblyQualifiedName);
+        if (value == null)
+        {
+            writer.WriteNullValue();
+            return;
+        }
+
+        try
+        {
+            writer.WriteStringValue(value.AssemblyQualifiedName);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to write Type: {TypeName}", value.FullName);
+            writer.WriteNullValue();
+        }
+    }
+
+    private Assembly? AssemblyResolver(AssemblyName assemblyName)
+    {
+        try
+        {
+            return Assembly.Load(assemblyName);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to load assembly: {AssemblyName}", assemblyName.FullName);
+            return null;
+        }
     }
 }
