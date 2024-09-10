@@ -5,7 +5,6 @@ using System.Security.AccessControl;
 using System.Security.Principal;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Files.Extensions;
 using DropBear.Codex.Files.Interfaces;
 using DropBear.Codex.Files.Models;
@@ -23,16 +22,14 @@ public sealed class FileManager
 {
     private readonly ILogger _logger;
     private readonly IStorageManager _storageManager;
-    private readonly StorageStrategy _storageStrategy;
 
     /// <summary>
     ///     Initializes a new instance of the FileManager class.
     /// </summary>
-    /// <param name="storageStrategy">The storage strategy to use.</param>
     /// <param name="storageManager">The storage manager implementation.</param>
     /// <exception cref="PlatformNotSupportedException">Thrown when the operating system is not Windows.</exception>
     /// <exception cref="ArgumentNullException">Thrown when storageManager is null.</exception>
-    internal FileManager(StorageStrategy storageStrategy, IStorageManager? storageManager)
+    internal FileManager(IStorageManager? storageManager)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -40,16 +37,14 @@ public sealed class FileManager
         }
 
         _storageManager = storageManager ?? throw new ArgumentNullException(nameof(storageManager));
-        _storageStrategy = storageStrategy;
-
         _logger = LoggerFactory.Logger.ForContext<FileManager>();
-        _logger.Debug("FileManager initialized with {StorageStrategy}", storageStrategy);
+        _logger.Debug("FileManager initialized with {StorageManager}", _storageManager.GetType().Name);
     }
 
     /// <summary>
     ///     Writes data to the specified file path.
     /// </summary>
-    /// <typeparam name="T">The type of the data to write.</typeparam>
+    /// <typeparam name="T">The type of the data to write. Supported types are DropBearFile and byte[].</typeparam>
     /// <param name="data">The data to write to the file.</param>
     /// <param name="fullPath">The full path of the file.</param>
     /// <returns>A result indicating success or failure.</returns>
@@ -65,12 +60,15 @@ public sealed class FileManager
                 return validationResult;
             }
 
-            var stream = await ConvertToStreamAsync(data).ConfigureAwait(false);
-            if (stream is null)
+            var streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
+            if (!streamResult.IsSuccess)
             {
-                return Result.Failure("Unsupported type for write operation.");
+                _logger.Warning("Failed to convert {DataType} to stream. Error: {ErrorMessage}", typeof(T).Name,
+                    streamResult.ErrorMessage);
+                return Result.Failure(streamResult.ErrorMessage);
             }
 
+            var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
                 var writeResult = await _storageManager.WriteAsync(fullPath, stream).ConfigureAwait(false);
@@ -87,8 +85,8 @@ public sealed class FileManager
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error writing to file {FilePath}", fullPath);
-            return Result.Failure(ex.Message, ex);
+            _logger.Error(ex, "Error writing {DataType} to file {FilePath}", typeof(T).Name, fullPath);
+            return Result.Failure($"Error writing to file: {ex.Message}", ex);
         }
     }
 
@@ -134,7 +132,7 @@ public sealed class FileManager
     /// <summary>
     ///     Updates data in the specified file path.
     /// </summary>
-    /// <typeparam name="T">The type of the data to update.</typeparam>
+    /// <typeparam name="T">The type of the data to update. Supported types are DropBearFile and byte[].</typeparam>
     /// <param name="data">The data to update in the file.</param>
     /// <param name="fullPath">The full path of the file.</param>
     /// <returns>A result indicating success or failure.</returns>
@@ -150,12 +148,15 @@ public sealed class FileManager
                 return validationResult;
             }
 
-            var stream = await ConvertToStreamAsync(data).ConfigureAwait(false);
-            if (stream is null)
+            var streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
+            if (!streamResult.IsSuccess)
             {
-                return Result.Failure("Unsupported type for update operation.");
+                _logger.Warning("Failed to convert {DataType} to stream for update. Error: {ErrorMessage}",
+                    typeof(T).Name, streamResult.ErrorMessage);
+                return Result.Failure(streamResult.ErrorMessage);
             }
 
+            var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
                 var updateResult = await _storageManager.UpdateAsync(fullPath, stream).ConfigureAwait(false);
@@ -172,8 +173,8 @@ public sealed class FileManager
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error updating file {FilePath}", fullPath);
-            return Result.Failure(ex.Message, ex);
+            _logger.Error(ex, "Error updating {DataType} in file {FilePath}", typeof(T).Name, fullPath);
+            return Result.Failure($"Error updating file: {ex.Message}", ex);
         }
     }
 
@@ -294,13 +295,14 @@ public sealed class FileManager
         }
     }
 
-    private async Task<Stream?> ConvertToStreamAsync<T>(T data)
+    private async Task<Result<Stream>> ConvertToStreamAsync<T>(T data)
     {
         return data switch
         {
-            DropBearFile file => await file.ToStreamAsync(_logger).ConfigureAwait(false),
-            byte[] byteArray => new MemoryStream(byteArray),
-            _ => null
+            DropBearFile file => Result<Stream>.Success(await file.ToStreamAsync(_logger).ConfigureAwait(false)),
+            byte[] byteArray => Result<Stream>.Success(new MemoryStream(byteArray)),
+            // Add any other supported types here
+            _ => Result<Stream>.Failure($"Unsupported type for write operation: {typeof(T).Name}")
         };
     }
 
@@ -319,6 +321,8 @@ public sealed class FileManager
             return Result<T>.Success((T)(object)file);
         }
 
-        return Result<T>.Failure("Unsupported type for read operation.");
+        // Add any other supported types here
+
+        return Result<T>.Failure($"Unsupported type for read operation: {typeof(T).Name}");
     }
 }

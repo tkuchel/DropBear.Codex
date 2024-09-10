@@ -152,7 +152,7 @@ public class FileManagerBuilder
                 _ => throw new InvalidOperationException("Unsupported storage strategy.")
             };
 
-            return new FileManager(_strategy, storageManager);
+            return new FileManager(storageManager);
         }
         catch (Exception ex)
         {

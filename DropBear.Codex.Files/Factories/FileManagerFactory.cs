@@ -2,7 +2,6 @@
 
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Files.Services;
 using DropBear.Codex.Files.StorageManagers;
 using Microsoft.IO;
@@ -35,7 +34,7 @@ public static class FileManagerFactory
             var memoryStreamManager = new RecyclableMemoryStreamManager();
             var localStorageManager = new LocalStorageManager(memoryStreamManager, logger, baseDirectory);
 
-            var fileManager = new FileManager(StorageStrategy.LocalOnly, localStorageManager);
+            var fileManager = new FileManager(localStorageManager);
             Logger.Information("Successfully created LocalFileManager");
             return fileManager;
         }
@@ -64,7 +63,7 @@ public static class FileManagerFactory
             var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
             var blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, logger, containerName);
 
-            var fileManager = new FileManager(StorageStrategy.BlobOnly, blobStorageManager);
+            var fileManager = new FileManager(blobStorageManager);
             Logger.Information("Successfully created BlobFileManager");
             return fileManager;
         }
@@ -95,7 +94,7 @@ public static class FileManagerFactory
                 .ConfigureAwait(false);
             var blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, logger, containerName);
 
-            var fileManager = new FileManager(StorageStrategy.BlobOnly, blobStorageManager);
+            var fileManager = new FileManager(blobStorageManager);
             Logger.Information("Successfully created BlobFileManager asynchronously");
             return fileManager;
         }
@@ -116,7 +115,7 @@ public static class FileManagerFactory
 
         try
         {
-            var fileManager = new FileManager(StorageStrategy.NoOperation, null);
+            var fileManager = new FileManager(null);
             Logger.Information("Successfully created NoOpFileManager");
             return fileManager;
         }
