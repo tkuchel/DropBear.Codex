@@ -19,6 +19,8 @@ public class DropBearFileBuilder
     private readonly ILogger _logger;
     private readonly Dictionary<string, string> _metadata = new(StringComparer.OrdinalIgnoreCase);
     private FileVersion? _currentVersion;
+
+    private DropBearFile? _file; // Keeps track of DropBearFile instance
     private string? _fileName;
 
     /// <summary>
@@ -159,15 +161,10 @@ public class DropBearFileBuilder
                 throw new InvalidOperationException("Version must be set before building.");
             }
 
-            var dropBearFile = new DropBearFile(
-                _metadata,
-                _contentContainers,
-                _fileName,
-                _currentVersion
-            );
+            _file = new DropBearFile(_metadata, _contentContainers, _fileName, _currentVersion);
 
-            _logger.Information("Built DropBearFile: {FileName}", dropBearFile.FileName);
-            return dropBearFile;
+            _logger.Information("Built DropBearFile: {FileName}", _file.FileName);
+            return _file;
         }
         catch (Exception ex)
         {

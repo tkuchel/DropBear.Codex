@@ -2,7 +2,6 @@
 
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Files.Factories;
 using DropBear.Codex.Files.Interfaces;
 using DropBear.Codex.Files.Services;
@@ -15,24 +14,39 @@ using Serilog;
 namespace DropBear.Codex.Files.Builders;
 
 /// <summary>
-///     Builder class for creating instances of <see cref="FileManager" /> with various storage strategies.
+///     Builder class for creating instances of <see cref="FileManager" /> with various storage configurations.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public class FileManagerBuilder
 {
     private readonly ILogger _logger;
-    private string _baseDirectory;
-    private BlobStorageManager? _blobStorageManager;
-    private LocalStorageManager? _localStorageManager;
-    private StorageStrategy _strategy = StorageStrategy.NoOperation;
+    private string? _baseDirectory;
+    private RecyclableMemoryStreamManager? _memoryStreamManager;
+    private IStorageManager? _storageManager; // Single storage manager (Local or Blob)
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="FileManagerBuilder" /> class with logging support.
+    ///     Initializes a new instance of the <see cref="FileManagerBuilder" /> class.
     /// </summary>
     public FileManagerBuilder()
     {
         _logger = LoggerFactory.Logger.ForContext<FileManagerBuilder>();
-        _baseDirectory = string.Empty;
+    }
+
+    /// <summary>
+    ///     Configures the FileManager to use a custom <see cref="RecyclableMemoryStreamManager" />.
+    /// </summary>
+    /// <param name="memoryStreamManager">The custom memory stream manager.</param>
+    /// <returns>The current <see cref="FileManagerBuilder" /> instance.</returns>
+    public FileManagerBuilder WithMemoryStreamManager(RecyclableMemoryStreamManager memoryStreamManager)
+    {
+        if (memoryStreamManager == null)
+        {
+            throw new ArgumentNullException(nameof(memoryStreamManager), "MemoryStreamManager cannot be null.");
+        }
+
+        _memoryStreamManager = memoryStreamManager;
+        _logger.Debug("Configured custom MemoryStreamManager.");
+        return this;
     }
 
     /// <summary>
@@ -42,25 +56,26 @@ public class FileManagerBuilder
     /// <returns>The current <see cref="FileManagerBuilder" /> instance.</returns>
     public FileManagerBuilder UseLocalStorage(string baseDirectory = @"C:\Data")
     {
-        try
+        if (string.IsNullOrEmpty(baseDirectory))
         {
-            _baseDirectory = baseDirectory;
-            var memoryStreamManager = new RecyclableMemoryStreamManager();
-            _localStorageManager = new LocalStorageManager(memoryStreamManager, _logger);
-            _strategy = StorageStrategy.LocalOnly;
-            _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
-                baseDirectory);
-            return this;
+            throw new ArgumentException("Base directory cannot be null or empty.", nameof(baseDirectory));
         }
-        catch (Exception ex)
+
+        if (_memoryStreamManager == null)
         {
-            _logger.Error(ex, "Error configuring local storage with base directory: {BaseDirectory}", baseDirectory);
-            throw;
+            _memoryStreamManager = new RecyclableMemoryStreamManager();
+            _logger.Debug("Default MemoryStreamManager created for local storage.");
         }
+
+        _baseDirectory = baseDirectory;
+        _storageManager = new LocalStorageManager(_memoryStreamManager, _logger);
+        _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
+            baseDirectory);
+        return this;
     }
 
     /// <summary>
-    ///     Configures the FileManager to use Azure blob storage.
+    ///     Configures the FileManager to use Azure Blob Storage.
     /// </summary>
     /// <param name="accountName">The Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
@@ -68,28 +83,37 @@ public class FileManagerBuilder
     /// <returns>The current <see cref="FileManagerBuilder" /> instance.</returns>
     public FileManagerBuilder UseBlobStorage(string accountName, string accountKey, string containerName)
     {
-        try
+        if (string.IsNullOrEmpty(accountName))
         {
-            var memoryStreamManager = new RecyclableMemoryStreamManager();
-            var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
-            _blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, _logger, containerName);
-            _strategy = StorageStrategy.BlobOnly;
-            _logger.Information(
-                "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
-                accountName, containerName);
-            return this;
+            throw new ArgumentException("Account name cannot be null or empty.", nameof(accountName));
         }
-        catch (Exception ex)
+
+        if (string.IsNullOrEmpty(accountKey))
         {
-            _logger.Error(ex,
-                "Error configuring Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
-                accountName, containerName);
-            throw;
+            throw new ArgumentException("Account key cannot be null or empty.", nameof(accountKey));
         }
+
+        if (string.IsNullOrEmpty(containerName))
+        {
+            throw new ArgumentException("Container name cannot be null or empty.", nameof(containerName));
+        }
+
+        if (_memoryStreamManager == null)
+        {
+            _memoryStreamManager = new RecyclableMemoryStreamManager();
+            _logger.Debug("Default MemoryStreamManager created for blob storage.");
+        }
+
+        var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
+        _storageManager = new BlobStorageManager(blobStorage, _memoryStreamManager, _logger, containerName);
+        _logger.Information(
+            "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
+            accountName, containerName);
+        return this;
     }
 
     /// <summary>
-    ///     Configures the FileManager to use Azure blob storage asynchronously.
+    ///     Configures the FileManager to use Azure Blob Storage asynchronously.
     /// </summary>
     /// <param name="accountName">The Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
@@ -101,65 +125,55 @@ public class FileManagerBuilder
     public async Task<FileManagerBuilder> UseBlobStorageAsync(string accountName, string accountKey,
         string containerName)
     {
-        try
+        if (string.IsNullOrEmpty(accountName))
         {
-            var memoryStreamManager = new RecyclableMemoryStreamManager();
-            var blobStorage = await BlobStorageFactory.CreateAzureBlobStorageAsync(accountName, accountKey)
-                .ConfigureAwait(false);
-            _blobStorageManager = new BlobStorageManager(blobStorage, memoryStreamManager, _logger, containerName);
-            _strategy = StorageStrategy.BlobOnly;
-            _logger.Information(
-                "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
-                accountName, containerName);
-            return this;
+            throw new ArgumentException("Account name cannot be null or empty.", nameof(accountName));
         }
-        catch (Exception ex)
-        {
-            _logger.Error(ex,
-                "Error configuring Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
-                accountName, containerName);
-            throw;
-        }
-    }
 
-    /// <summary>
-    ///     Configures the FileManager to perform no operations.
-    /// </summary>
-    /// <returns>The current <see cref="FileManagerBuilder" /> instance.</returns>
-    public FileManagerBuilder WithNoOperation()
-    {
-        _strategy = StorageStrategy.NoOperation;
-        _logger.Information("Configured FileManager to perform no operations.");
+        if (string.IsNullOrEmpty(accountKey))
+        {
+            throw new ArgumentException("Account key cannot be null or empty.", nameof(accountKey));
+        }
+
+        if (string.IsNullOrEmpty(containerName))
+        {
+            throw new ArgumentException("Container name cannot be null or empty.", nameof(containerName));
+        }
+
+        if (_memoryStreamManager == null)
+        {
+            _memoryStreamManager = new RecyclableMemoryStreamManager();
+            _logger.Debug("Default MemoryStreamManager created for blob storage.");
+        }
+
+        var blobStorage = await BlobStorageFactory.CreateAzureBlobStorageAsync(accountName, accountKey)
+            .ConfigureAwait(false);
+        _storageManager = new BlobStorageManager(blobStorage, _memoryStreamManager, _logger, containerName);
+        _logger.Information(
+            "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
+            accountName, containerName);
         return this;
     }
 
     /// <summary>
     ///     Builds and returns the configured <see cref="FileManager" /> instance.
     /// </summary>
-    /// <returns>A configured <see cref="FileManager" /> instance.</returns>
+    /// <returns>The built <see cref="FileManager" /> instance.</returns>
     public FileManager Build()
     {
-        _logger.Information("Building FileManager with strategy: {Strategy}", _strategy);
-
         try
         {
-            IStorageManager? storageManager = _strategy switch
+            if (_storageManager == null)
             {
-                StorageStrategy.LocalOnly => _localStorageManager ??
-                                             throw new InvalidOperationException(
-                                                 "Local storage manager is not configured."),
-                StorageStrategy.BlobOnly => _blobStorageManager ??
-                                            throw new InvalidOperationException(
-                                                "Blob storage manager is not configured."),
-                StorageStrategy.NoOperation => null,
-                _ => throw new InvalidOperationException("Unsupported storage strategy.")
-            };
+                throw new InvalidOperationException("A storage manager (local or blob) must be configured.");
+            }
 
-            return new FileManager(_baseDirectory, storageManager);
+            _logger.Information("Building FileManager with configured storage manager.");
+            return new FileManager(_baseDirectory ?? string.Empty, _storageManager);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error building FileManager with strategy: {Strategy}", _strategy);
+            _logger.Error(ex, "Error building FileManager");
             throw;
         }
     }

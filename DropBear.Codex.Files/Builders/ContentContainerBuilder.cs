@@ -4,6 +4,8 @@ using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Files.Models;
+using DropBear.Codex.Serialization.Factories;
+using DropBear.Codex.Serialization.Interfaces;
 using Serilog;
 
 #endregion
@@ -18,6 +20,10 @@ public class ContentContainerBuilder
 {
     private readonly ContentContainer _container = new();
     private readonly ILogger _logger;
+
+    private Type? _compressionProviderType;
+    private Type? _encryptionProviderType;
+    private Type? _serializerType;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContentContainerBuilder" /> class.
@@ -106,52 +112,54 @@ public class ContentContainerBuilder
     }
 
     /// <summary>
-    ///     Adds a provider to the ContentContainer.
-    /// </summary>
-    /// <param name="key">The key for the provider.</param>
-    /// <param name="providerType">The type of the provider.</param>
-    /// <returns>The current <see cref="ContentContainerBuilder" /> instance.</returns>
-    /// <exception cref="ArgumentException">Thrown when key is null or empty, or when providerType is null.</exception>
-    public ContentContainerBuilder AddProvider(string key, Type providerType)
-    {
-        try
-        {
-            if (string.IsNullOrEmpty(key))
-            {
-                throw new ArgumentException("Provider key cannot be null or empty.", nameof(key));
-            }
-
-            if (providerType == null)
-            {
-                throw new ArgumentNullException(nameof(providerType), "Provider type cannot be null.");
-            }
-
-            _container.AddProvider(key, providerType);
-            _logger.Debug("Added provider: {ProviderKey} of type {ProviderType}", key, providerType.Name);
-            return this;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Error adding provider");
-            throw;
-        }
-    }
-
-    /// <summary>
-    ///     Builds and returns the configured ContentContainer instance.
+    ///     Builds and returns the configured ContentContainer instance asynchronously.
     /// </summary>
     /// <returns>The built <see cref="ContentContainer" /> instance.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the ContentContainer is in an invalid state.</exception>
-    public ContentContainer Build()
+    public async Task<ContentContainer> BuildAsync()
     {
         try
         {
-            if (_container.Data == null && _container.TemporaryData == null)
+            // Add provider configurations
+            if (_compressionProviderType != null)
             {
-                throw new InvalidOperationException("Data must be set before building.");
+                _container.AddProvider("CompressionProvider", _compressionProviderType);
             }
 
+            if (_encryptionProviderType != null)
+            {
+                _container.AddProvider("EncryptionProvider", _encryptionProviderType);
+            }
+
+            if (_serializerType != null)
+            {
+                _container.AddProvider("Serializer", _serializerType);
+            }
+
+            // Handle serialization
+            if (_serializerType != null && _container.RequiresSerialization())
+            {
+                var serializerBuilder = new SerializationBuilder();
+                _container.ConfigureContainerSerializer(serializerBuilder);
+                var serializer = serializerBuilder.Build();
+                var data = _container.TemporaryData;
+
+                if (data == null)
+                {
+                    throw new InvalidOperationException("No data available for serialization.");
+                }
+
+                var serializedData = await serializer.SerializeAsync(data).ConfigureAwait(false);
+                if (serializedData == null || serializedData.Length == 0)
+                {
+                    throw new InvalidOperationException("Serialization failed to produce data.");
+                }
+
+                _container.Data = serializedData;
+            }
+
+            _container.ComputeAndSetHash();
             _logger.Information("Built ContentContainer");
+
             return _container;
         }
         catch (Exception ex)
@@ -160,4 +168,55 @@ public class ContentContainerBuilder
             throw;
         }
     }
+
+    #region Provider Support (Compression, Encryption, Serialization)
+
+    /// <summary>
+    ///     Configures the container to use the specified serializer.
+    /// </summary>
+    /// <typeparam name="T">The type of the serializer.</typeparam>
+    /// <returns>The current <see cref="ContentContainerBuilder" /> instance.</returns>
+    public ContentContainerBuilder WithSerializer<T>() where T : ISerializer
+    {
+        _serializerType = typeof(T);
+        _logger.Debug("Configured serializer: {SerializerType}", _serializerType.Name);
+        return this;
+    }
+
+    /// <summary>
+    ///     Configures the container to use the specified compression provider.
+    /// </summary>
+    /// <typeparam name="T">The type of the compression provider.</typeparam>
+    /// <returns>The current <see cref="ContentContainerBuilder" /> instance.</returns>
+    public ContentContainerBuilder WithCompression<T>() where T : ICompressionProvider
+    {
+        _compressionProviderType = typeof(T);
+        _logger.Debug("Configured compression provider: {CompressionProviderType}", _compressionProviderType.Name);
+        return this;
+    }
+
+    /// <summary>
+    ///     Configures the container to use the specified encryption provider.
+    /// </summary>
+    /// <typeparam name="T">The type of the encryption provider.</typeparam>
+    /// <returns>The current <see cref="ContentContainerBuilder" /> instance.</returns>
+    public ContentContainerBuilder WithEncryption<T>() where T : IEncryptionProvider
+    {
+        _encryptionProviderType = typeof(T);
+        _logger.Debug("Configured encryption provider: {EncryptionProviderType}", _encryptionProviderType.Name);
+        return this;
+    }
+
+    /// <summary>
+    ///     Skips serialization for this content container.
+    /// </summary>
+    /// <returns>The current <see cref="ContentContainerBuilder" /> instance.</returns>
+    public ContentContainerBuilder NoSerialization()
+    {
+        _serializerType = null;
+        _logger.Debug("Disabled serialization.");
+        return this;
+    }
+
+    #endregion
 }
