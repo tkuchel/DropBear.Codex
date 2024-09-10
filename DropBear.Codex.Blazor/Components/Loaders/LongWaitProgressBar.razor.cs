@@ -114,33 +114,37 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
 
     private void UpdateProgress(object? state)
     {
-        if (_isCanceled)
+        // Ensure UI updates are invoked on the correct Blazor render thread
+        InvokeAsync(() =>
         {
-            StopTimer();
-            return;
-        }
+            if (_isCanceled)
+            {
+                StopTimer();
+                return;
+            }
 
-        if (_currentProgress < Progress)
-        {
-            _currentProgress = Math.Min(_currentProgress + StepSize, Progress);
-        }
-        else if (_currentProgress > Progress)
-        {
-            _currentProgress = Math.Max(_currentProgress - StepSize, Progress);
-        }
+            if (_currentProgress < Progress)
+            {
+                _currentProgress = Math.Min(_currentProgress + StepSize, Progress);
+            }
+            else if (_currentProgress > Progress)
+            {
+                _currentProgress = Math.Max(_currentProgress - StepSize, Progress);
+            }
 
-        if (_currentProgress == Progress)
-        {
-            StopTimer();
-        }
+            if (_currentProgress == Progress)
+            {
+                StopTimer();
+            }
 
-        Logger.Debug("Progress updated to {Progress}%", _currentProgress);
+            Logger.Debug("Progress updated to {Progress}%", _currentProgress);
 
-        // Notify parent component of progress changes
-        _ = ProgressChanged.InvokeAsync((Title, _currentProgress));
-
-        _ = InvokeAsync(StateHasChanged);
+            // Notify parent component of progress changes
+            _ = ProgressChanged.InvokeAsync((Title, _currentProgress));
+            StateHasChanged(); // This is already inside InvokeAsync, no need for an extra call
+        });
     }
+
 
     private async Task Cancel()
     {
