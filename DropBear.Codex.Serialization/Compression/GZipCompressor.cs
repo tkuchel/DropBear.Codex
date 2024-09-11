@@ -39,27 +39,36 @@ public class GZipCompressor : ICompressor
         _logger.Information("Starting compression of data with length {DataLength}.", data.Length);
 
         var compressedStream = _memoryStreamManager.GetStream("GZipCompressor-Compress");
-        await using (compressedStream.ConfigureAwait(false))
+
+        try
         {
-            try
+            await using (var zipStream =
+                         new GZipStream(compressedStream, CompressionMode.Compress, true)) // Leave stream open
             {
-                await using var zipStream = new GZipStream(compressedStream, CompressionMode.Compress, false);
-                await zipStream.WriteAsync(data, cancellationToken).ConfigureAwait(false);
+                await zipStream.WriteAsync(data, 0, data.Length, cancellationToken).ConfigureAwait(false);
                 await zipStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex)
-            {
-                _logger.Error(ex, "Error occurred while compressing data.");
-                throw;
-            }
 
-            compressedStream.Position = 0; // Reset position to read the stream content
+            // Reset the position only after the GZipStream is disposed and the data is written
+            compressedStream.Position = 0;
+
             var result = compressedStream.ToArray();
             _logger.Information("Compression completed. Compressed data length: {CompressedLength}.", result.Length);
 
             return result;
         }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error occurred while compressing data.");
+            throw;
+        }
+        finally
+        {
+            // Dispose of the stream after all operations are complete
+            await compressedStream.DisposeAsync().ConfigureAwait(false);
+        }
     }
+
 
     /// <inheritdoc />
     public async Task<byte[]> DecompressAsync(byte[] compressedData, CancellationToken cancellationToken = default)

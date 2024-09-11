@@ -4,11 +4,13 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core;
+using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Hashing;
 using DropBear.Codex.Hashing.Interfaces;
 using DropBear.Codex.Serialization.Factories;
 using DropBear.Codex.Utilities.Extensions;
+using Serilog;
 
 #endregion
 
@@ -17,6 +19,7 @@ namespace DropBear.Codex.Files.Models;
 [SupportedOSPlatform("windows")]
 public sealed class ContentContainer
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SerializationBuilder>();
     private readonly IHasher _hasher = new HashBuilder().GetHasher("XxHash");
     private readonly Dictionary<string, Type> _providers = new(StringComparer.OrdinalIgnoreCase);
 
@@ -164,31 +167,50 @@ public sealed class ContentContainer
 
     internal void ConfigureContainerSerializer(SerializationBuilder serializerBuilder)
     {
-        if (RequiresSerialization())
+        try
         {
-            serializerBuilder.WithSerializer(GetProviderType("Serializer"));
-        }
+            if (RequiresSerialization())
+            {
+                var serializerType = GetProviderType("Serializer");
+                serializerBuilder.WithSerializer(serializerType);
+            }
 
-        if (RequiresCompression())
-        {
-            serializerBuilder.WithCompression(GetProviderType("CompressionProvider"));
-        }
+            if (RequiresCompression())
+            {
+                var compressionType = GetProviderType("CompressionProvider");
+                serializerBuilder.WithCompression(compressionType);
+            }
 
-        if (RequiresEncryption())
+            if (RequiresEncryption())
+            {
+                var encryptionType = GetProviderType("EncryptionProvider");
+                serializerBuilder.WithEncryption(encryptionType);
+            }
+        }
+        catch (KeyNotFoundException ex)
         {
-            serializerBuilder.WithEncryption(GetProviderType("EncryptionProvider"));
+            Console.WriteLine(ex.Message);
+            Logger.Error(ex, "Error while configuring ContentContainer serializer: {Message}", ex.Message);
+            throw; // rethrow to preserve the original exception
         }
     }
+
 
     private Type GetProviderType(string keyName)
     {
         if (_providers.TryGetValue(keyName, out var type))
         {
+            Console.WriteLine($"Provider for {keyName} found: {type.Name}");
+            Logger.Debug("Provider for {ProviderKey} found: {ProviderType}", keyName, type.Name);
             return type;
         }
 
-        throw new KeyNotFoundException($"Provider for {keyName} not found.");
+        var errorMessage = $"Provider for {keyName} not found.";
+        Logger.Error(errorMessage);
+        Console.WriteLine(errorMessage);
+        throw new KeyNotFoundException(errorMessage);
     }
+
 
     public void EnableFlag(ContentContainerFlags flag)
     {
@@ -207,7 +229,7 @@ public sealed class ContentContainer
 
     public void PrintFlags()
     {
-        Console.WriteLine("Current Features Enabled:");
+        Logger.Information("Current Features Enabled:");
         foreach (ContentContainerFlags flag in Enum.GetValues(typeof(ContentContainerFlags)))
         {
             if (IsFlagEnabled(flag))

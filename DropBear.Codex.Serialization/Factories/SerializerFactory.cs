@@ -119,12 +119,26 @@ public abstract class SerializerFactory
 
     private static object CreateProvider(SerializationConfig config, Type providerType)
     {
-        var constructor = providerType.GetConstructor(new[] { typeof(SerializationConfig) })
-                          ?? throw new InvalidOperationException(
-                              $"No suitable constructor found for {providerType.FullName}.");
+        // Try to find a constructor that takes a SerializationConfig
+        var constructor = providerType.GetConstructor(new[] { typeof(SerializationConfig) });
+
+        // If no such constructor exists, look for a parameterless constructor
+        if (constructor == null)
+        {
+            constructor = providerType.GetConstructor(Type.EmptyTypes);
+        }
+
+        // If still no constructor is found, throw an exception
+        if (constructor == null)
+        {
+            throw new InvalidOperationException($"No suitable constructor found for {providerType.FullName}.");
+        }
 
         _logger.Information($"Instantiating provider of type {providerType.Name}.");
 
-        return constructor.Invoke(new object[] { config });
+        // Invoke the appropriate constructor
+        return constructor.GetParameters().Length > 0
+            ? constructor.Invoke(new object[] { config })
+            : constructor.Invoke(null);
     }
 }

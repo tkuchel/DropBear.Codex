@@ -70,35 +70,50 @@ public class RSAKeyProvider
     }
 
     [SupportedOSPlatform("windows")]
-    private static void SaveKeyToFile(string filePath, RSAParameters parameters, bool isPrivate)
+    private void SaveKeyToFile(string filePath, RSAParameters parameters, bool isPrivate)
     {
         try
         {
-            var keyString = ConvertToXmlString(parameters, isPrivate);
-            if (isPrivate)
+            // Check if PEM format is required (e.g., by checking file extension or user configuration)
+            if (Path.GetExtension(filePath).Equals(".pem", StringComparison.OrdinalIgnoreCase))
             {
-                // Encrypt the private key using DPAPI before saving it
-                var encryptedKey = Protect(Encoding.UTF8.GetBytes(keyString), null, DataProtectionScope.CurrentUser);
-                File.WriteAllBytes(filePath, encryptedKey);
+                var pemKey = ConvertToPemString(parameters, isPrivate);
+                File.WriteAllText(filePath, pemKey);
             }
             else
             {
-                File.WriteAllText(filePath, keyString);
+                var keyString = ConvertToXmlString(parameters, isPrivate);
+                if (isPrivate)
+                {
+                    // Encrypt the private key using DPAPI before saving it
+                    var encryptedKey = Protect(Encoding.UTF8.GetBytes(keyString), null,
+                        DataProtectionScope.CurrentUser);
+                    File.WriteAllBytes(filePath, encryptedKey);
+                }
+                else
+                {
+                    File.WriteAllText(filePath, keyString);
+                }
             }
         }
         catch (Exception ex)
         {
-            LoggerFactory.Logger.ForContext<RSAKeyProvider>()
-                .Error(ex, "Failed to save RSA key to file {FilePath}.", filePath);
+            _logger.Error(ex, "Failed to save RSA key to file {FilePath}.", filePath);
             throw;
         }
     }
 
     [SupportedOSPlatform("windows")]
-    private static RSAParameters LoadKeyFromFile(string filePath, bool isPrivate)
+    private RSAParameters LoadKeyFromFile(string filePath, bool isPrivate)
     {
         try
         {
+            if (Path.GetExtension(filePath).Equals(".pem", StringComparison.OrdinalIgnoreCase))
+            {
+                var pemKey = File.ReadAllText(filePath);
+                return ConvertFromPemString(pemKey, isPrivate);
+            }
+
             if (isPrivate)
             {
                 var encryptedKey = File.ReadAllBytes(filePath);
@@ -114,25 +129,77 @@ public class RSAKeyProvider
         }
         catch (Exception ex)
         {
-            LoggerFactory.Logger.ForContext<RSAKeyProvider>()
-                .Error(ex, "Failed to load RSA key from file {FilePath}.", filePath);
+            _logger.Error(ex, "Failed to load RSA key from file {FilePath}.", filePath);
             throw;
         }
+    }
+
+    private string ConvertToPemString(RSAParameters parameters, bool isPrivate)
+    {
+        var rsa = RSA.Create();
+        rsa.ImportParameters(parameters);
+
+        if (isPrivate)
+        {
+            var privateKeyBytes = rsa.ExportRSAPrivateKey();
+            return PemEncode(privateKeyBytes, "PRIVATE KEY");
+        }
+
+        var publicKeyBytes = rsa.ExportRSAPublicKey();
+        return PemEncode(publicKeyBytes, "PUBLIC KEY");
+    }
+
+    private RSAParameters ConvertFromPemString(string pem, bool isPrivate)
+    {
+        var base64Key = pem
+            .Replace("-----BEGIN PRIVATE KEY-----", "")
+            .Replace("-----END PRIVATE KEY-----", "")
+            .Replace("-----BEGIN PUBLIC KEY-----", "")
+            .Replace("-----END PUBLIC KEY-----", "")
+            .Replace("\n", "")
+            .Replace("\r", "");
+
+        var keyBytes = Convert.FromBase64String(base64Key);
+        var rsa = RSA.Create();
+
+        if (isPrivate)
+        {
+            rsa.ImportRSAPrivateKey(keyBytes, out _);
+        }
+        else
+        {
+            rsa.ImportRSAPublicKey(keyBytes, out _);
+        }
+
+        return rsa.ExportParameters(isPrivate);
+    }
+
+    private string PemEncode(byte[] key, string keyType)
+    {
+        var base64Key = Convert.ToBase64String(key);
+        var pemBuilder = new StringBuilder();
+        pemBuilder.AppendLine($"-----BEGIN {keyType}-----");
+
+        for (var i = 0; i < base64Key.Length; i += 64)
+        {
+            pemBuilder.AppendLine(base64Key.Substring(i, Math.Min(64, base64Key.Length - i)));
+        }
+
+        pemBuilder.AppendLine($"-----END {keyType}-----");
+        return pemBuilder.ToString();
     }
 
     private static string ConvertToXmlString(RSAParameters parameters, bool includePrivateParameters)
     {
         using var rsa = RSA.Create();
         rsa.ImportParameters(parameters);
-        return
-            rsa.ToXmlString(
-                includePrivateParameters); // Replace with actual serialization method if not using .NET Framework
+        return rsa.ToXmlString(includePrivateParameters);
     }
 
     private static RSAParameters ConvertFromXmlString(string xml, bool includePrivateParameters)
     {
         using var rsa = RSA.Create();
-        rsa.FromXmlString(xml); // Replace with actual deserialization method if not using .NET Framework
+        rsa.FromXmlString(xml);
         return rsa.ExportParameters(includePrivateParameters);
     }
 }

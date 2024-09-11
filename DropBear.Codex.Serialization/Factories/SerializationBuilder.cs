@@ -24,9 +24,9 @@ namespace DropBear.Codex.Serialization.Factories;
 ///     Builder class for configuring serialization settings.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public class SerializationBuilder
+public sealed class SerializationBuilder
 {
-    private static readonly ILogger _logger = LoggerFactory.Logger.ForContext<SerializationBuilder>();
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SerializationBuilder>();
     private readonly SerializationConfig _config;
 
     /// <summary>
@@ -35,12 +35,12 @@ public class SerializationBuilder
     public SerializationBuilder()
     {
         _config = new SerializationConfig();
-        _logger.Information("SerializationBuilder initialized.");
+        Logger.Information("SerializationBuilder initialized.");
     }
 
     public SerializationBuilder WithSerializer<T>() where T : ISerializer
     {
-        _logger.Information($"Configuring serializer type: {typeof(T).Name}");
+        Logger.Information($"Configuring serializer type: {typeof(T).Name}");
         _config.SerializerType = typeof(T);
         return this;
     }
@@ -52,11 +52,11 @@ public class SerializationBuilder
         if (!typeof(ISerializer).IsAssignableFrom(serializerType))
         {
             var message = "The type must implement the ISerializer interface.";
-            _logger.Error(message);
+            Logger.Error(message);
             throw new ArgumentException(message, nameof(serializerType));
         }
 
-        _logger.Information($"Configuring serializer type: {serializerType.Name}");
+        Logger.Information($"Configuring serializer type: {serializerType.Name}");
         _config.SerializerType = serializerType;
         return this;
     }
@@ -64,7 +64,7 @@ public class SerializationBuilder
     public SerializationBuilder WithCompression(Type compressionType)
     {
         ValidateProviderType<ICompressionProvider>(compressionType, nameof(compressionType));
-        _logger.Information($"Configuring compression provider: {compressionType.Name}");
+        Logger.Information($"Configuring compression provider: {compressionType.Name}");
         _config.CompressionProviderType = compressionType;
         return this;
     }
@@ -72,7 +72,7 @@ public class SerializationBuilder
     public SerializationBuilder WithEncoding(Type encodingType)
     {
         ValidateProviderType<IEncodingProvider>(encodingType, nameof(encodingType));
-        _logger.Information($"Configuring encoding provider: {encodingType.Name}");
+        Logger.Information($"Configuring encoding provider: {encodingType.Name}");
         _config.EncodingProviderType = encodingType;
         return this;
     }
@@ -80,28 +80,35 @@ public class SerializationBuilder
     public SerializationBuilder WithEncryption(Type encryptionType)
     {
         ValidateProviderType<IEncryptionProvider>(encryptionType, nameof(encryptionType));
-        _logger.Information($"Configuring encryption provider: {encryptionType.Name}");
+        Logger.Information($"Configuring encryption provider: {encryptionType.Name}");
         _config.EncryptionProviderType = encryptionType;
+        return this;
+    }
+
+    public SerializationBuilder WithEncryption<T>() where T : IEncryptionProvider
+    {
+        Logger.Information($"Configuring encryption provider: {typeof(T).Name}");
+        _config.EncryptionProviderType = typeof(T);
         return this;
     }
 
     public SerializationBuilder WithStreamSerializer<T>() where T : IStreamSerializer
     {
-        _logger.Information($"Configuring stream serializer: {typeof(T).Name}");
+        Logger.Information($"Configuring stream serializer: {typeof(T).Name}");
         _config.StreamSerializerType = typeof(T);
         return this;
     }
 
     public SerializationBuilder WithCompression<T>() where T : ICompressionProvider
     {
-        _logger.Information($"Configuring compression provider: {typeof(T).Name}");
+        Logger.Information($"Configuring compression provider: {typeof(T).Name}");
         _config.CompressionProviderType = typeof(T);
         return this;
     }
 
     public SerializationBuilder WithEncoding<T>() where T : IEncodingProvider
     {
-        _logger.Information($"Configuring encoding provider: {typeof(T).Name}");
+        Logger.Information($"Configuring encoding provider: {typeof(T).Name}");
         _config.EncodingProviderType = typeof(T);
         return this;
     }
@@ -111,7 +118,7 @@ public class SerializationBuilder
         ValidateFileExists(publicKeyPath, "Public key file");
         ValidateFileExists(privateKeyPath, "Private key file");
 
-        _logger.Information("Configuring key paths for encryption.");
+        Logger.Information("Configuring key paths for encryption.");
         _config.PublicKeyPath = publicKeyPath;
         _config.PrivateKeyPath = privateKeyPath;
 
@@ -122,7 +129,7 @@ public class SerializationBuilder
     {
         _config.SerializerType ??= typeof(Serializers.JsonSerializer);
         _config.JsonSerializerOptions = options;
-        _logger.Information("Configured JSON serializer options.");
+        Logger.Information("Configured JSON serializer options.");
         return this;
     }
 
@@ -144,14 +151,14 @@ public class SerializationBuilder
 
         _config.SerializerType ??= typeof(Serializers.JsonSerializer);
         _config.JsonSerializerOptions = options;
-        _logger.Information("Configured default JSON serializer options.");
+        Logger.Information("Configured default JSON serializer options.");
         return this;
     }
 
     public SerializationBuilder WithMessagePackSerializerOptions(MessagePackSerializerOptions options)
     {
         _config.MessagePackSerializerOptions = options;
-        _logger.Information("Configured MessagePack serializer options.");
+        Logger.Information("Configured MessagePack serializer options.");
         return this;
     }
 
@@ -166,20 +173,20 @@ public class SerializationBuilder
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
         _config.MessagePackSerializerOptions = options;
-        _logger.Information("Configured default MessagePack serializer options.");
+        Logger.Information("Configured default MessagePack serializer options.");
         return this;
     }
 
     public SerializationBuilder WithDefaultConfiguration()
     {
-        _logger.Information("Configuring default serialization settings.");
+        Logger.Information("Configuring default serialization settings.");
         return WithJsonSerializerOptions(new JsonSerializerOptions { WriteIndented = true })
             .WithCompression<GZipCompressionProvider>();
     }
 
     public ISerializer Build()
     {
-        _logger.Information("Building the serializer.");
+        Logger.Information("Building the serializer.");
         _config.SerializerType = _config.SerializerType switch
         {
             null when _config.StreamSerializerType is null => throw new InvalidOperationException(
@@ -190,7 +197,7 @@ public class SerializationBuilder
 
         ValidateSerializerConfigurations();
 
-        _logger.Information($"Serializer built successfully with type: {_config.SerializerType?.Name}");
+        Logger.Information($"Serializer built successfully with type: {_config.SerializerType?.Name}");
         return SerializerFactory.CreateSerializer(_config);
     }
 
@@ -200,7 +207,7 @@ public class SerializationBuilder
         if (!typeof(T).IsAssignableFrom(providerType))
         {
             var message = $"The type must implement the {typeof(T).Name} interface.";
-            _logger.Error(message);
+            Logger.Error(message);
             throw new ArgumentException(message, paramName);
         }
     }
@@ -210,7 +217,7 @@ public class SerializationBuilder
         if (!File.Exists(path))
         {
             var message = $"{fileType} not found at path: {path}";
-            _logger.Error(message);
+            Logger.Error(message);
             throw new FileNotFoundException(message);
         }
     }
@@ -220,14 +227,14 @@ public class SerializationBuilder
         if (_config.SerializerType == typeof(JsonSerializer) && _config.JsonSerializerOptions is null)
         {
             var message = "JsonSerializerOptions must be specified for JsonSerializer.";
-            _logger.Error(message);
+            Logger.Error(message);
             throw new InvalidOperationException(message);
         }
 
         if (_config.SerializerType == typeof(MessagePackSerializer) && _config.MessagePackSerializerOptions is null)
         {
             var message = "MessagePackSerializerOptions must be specified for MessagePackSerializer.";
-            _logger.Error(message);
+            Logger.Error(message);
             throw new InvalidOperationException(message);
         }
     }

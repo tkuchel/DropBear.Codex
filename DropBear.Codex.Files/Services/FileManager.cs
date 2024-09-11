@@ -140,20 +140,86 @@ public sealed class FileManager
     /// <typeparam name="T">The type of the data to update. Supported types are DropBearFile and byte[].</typeparam>
     /// <param name="data">The data to update in the file.</param>
     /// <param name="identifier">The path of the file or blob name for blob storage.</param>
+    /// <param name="overwrite">Whether to overwrite the existing file or just update the content container.</param>
     /// <returns>A result indicating success or failure.</returns>
-    public async Task<Result> UpdateFileAsync<T>(T data, string identifier)
+    public async Task<Result> UpdateFileAsync<T>(T data, string identifier, bool overwrite = false)
     {
         _logger.Debug("Attempting to update {DataType} in file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
+            // Validate the file path
             var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
                 return validationResult;
             }
 
-            var streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
+            identifier = GetFullPath(identifier);
+
+            // Read the existing file (if it exists) if not overwriting
+            DropBearFile? existingFile = null;
+            if (!overwrite && typeof(T) == typeof(DropBearFile))
+            {
+                var readResult = await ReadFromFileAsync<DropBearFile>(identifier).ConfigureAwait(false);
+                if (readResult.IsSuccess)
+                {
+                    existingFile = readResult.Value;
+                }
+                else
+                {
+                    _logger.Warning("No existing file found for {FilePath}. Error: {ErrorMessage}", identifier,
+                        readResult.ErrorMessage);
+                }
+            }
+
+            // Check if the content should be added, updated, or removed
+            if (data is DropBearFile dropBearFile && existingFile != null)
+            {
+                foreach (var container in dropBearFile.ContentContainers)
+                {
+                    var existingContainer = existingFile.ContentContainers.FirstOrDefault(c => c.Equals(container));
+
+                    if (existingContainer == null)
+                    {
+                        // Adding new content container
+                        existingFile.ContentContainers.Add(container);
+                        _logger.Information("Added new content container to DropBearFile.");
+                    }
+                    else if (container.Data == null)
+                    {
+                        // Remove content container if data is null
+                        if (existingFile.ContentContainers.Count == 1)
+                        {
+                            throw new InvalidOperationException(
+                                "Cannot remove the last content container from the file.");
+                        }
+
+                        existingFile.ContentContainers.Remove(existingContainer);
+                        _logger.Information("Removed content container from DropBearFile.");
+                    }
+                    else
+                    {
+                        // Update existing content container
+                        existingContainer.Data = container.Data;
+                        existingContainer.SetHash(container.Hash);
+                        _logger.Information("Updated existing content container in DropBearFile.");
+                    }
+                }
+            }
+
+            Result<Stream> streamResult;
+            // Convert to stream and write the updated file or data
+            if (existingFile == null)
+            {
+                streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
+            }
+            else
+            {
+                streamResult = await ConvertToStreamAsync(existingFile).ConfigureAwait(false);
+            }
+
+
             if (!streamResult.IsSuccess)
             {
                 _logger.Warning("Failed to convert {DataType} to stream for update. Error: {ErrorMessage}",
@@ -161,7 +227,6 @@ public sealed class FileManager
                 return Result.Failure(streamResult.ErrorMessage);
             }
 
-            identifier = GetFullPath(identifier);
             var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
@@ -189,13 +254,17 @@ public sealed class FileManager
     ///     Deletes the specified file.
     /// </summary>
     /// <param name="identifier">The path of the file or blob name for blob storage.</param>
+    /// <param name="deleteFile">Whether to delete the entire file or just the content container.</param>
+    /// <param name="containerToDelete">The content container to delete.</param>
     /// <returns>A result indicating success or failure.</returns>
-    public async Task<Result> DeleteFileAsync(string identifier)
+    public async Task<Result> DeleteFileAsync(string identifier, bool deleteFile = true,
+        ContentContainer? containerToDelete = null)
     {
-        _logger.Debug("Attempting to delete file {FilePath}", identifier);
+        _logger.Debug("Attempting to delete file {FilePath} or content container", identifier);
 
         try
         {
+            // Validate the file path
             var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
@@ -204,22 +273,48 @@ public sealed class FileManager
 
             identifier = GetFullPath(identifier);
 
-            if (!File.Exists(identifier))
+            if (deleteFile || containerToDelete == null)
             {
-                _logger.Warning("File {FilePath} does not exist", identifier);
-                return Result.Failure("File does not exist.");
+                // Delete the entire file
+                var deleteResult = await _storageManager.DeleteAsync(identifier).ConfigureAwait(false);
+                if (deleteResult.IsSuccess)
+                {
+                    _logger.Information("Successfully deleted file {FilePath}", identifier);
+                    return Result.Success();
+                }
+
+                _logger.Warning("Failed to delete file {FilePath}. Error: {ErrorMessage}", identifier,
+                    deleteResult.ErrorMessage);
+                return deleteResult;
             }
 
-            var deleteResult = await _storageManager.DeleteAsync(identifier).ConfigureAwait(false);
-            if (deleteResult.IsSuccess)
+            // Read the existing file
+            var readResult = await ReadFromFileAsync<DropBearFile>(identifier).ConfigureAwait(false);
+            if (!readResult.IsSuccess)
             {
-                _logger.Information("Successfully deleted file {FilePath}", identifier);
-                return Result.Success();
+                return Result.Failure(readResult.ErrorMessage);
             }
 
-            _logger.Warning("Failed to delete file {FilePath}. Error: {ErrorMessage}", identifier,
-                deleteResult.ErrorMessage);
-            return deleteResult;
+            var dropBearFile = readResult.Value;
+
+            // Check if we are trying to remove the last content container
+            if (dropBearFile.ContentContainers.Count == 1 && containerToDelete != null)
+            {
+                throw new InvalidOperationException("Cannot delete the last content container in the file.");
+            }
+
+            // Remove the specific content container
+            var existingContainer = dropBearFile.ContentContainers.FirstOrDefault(c => c.Equals(containerToDelete));
+            if (existingContainer != null)
+            {
+                dropBearFile.ContentContainers.Remove(existingContainer);
+                _logger.Information("Deleted content container from file {FilePath}", identifier);
+
+                // Write the updated file
+                return await UpdateFileAsync(dropBearFile, identifier, true).ConfigureAwait(false);
+            }
+
+            return Result.Failure("Content container not found.");
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
@@ -344,4 +439,199 @@ public sealed class FileManager
 
         return Result<T>.Failure($"Unsupported type for read operation: {typeof(T).Name}");
     }
+
+    #region Content Container Helpers
+
+    /// <summary>
+    ///     Retrieves a specific <see cref="ContentContainer" /> by its content type.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to search for the content container.</param>
+    /// <param name="contentType">The content type of the container to find.</param>
+    /// <returns>The found <see cref="ContentContainer" />, or null if not found.</returns>
+    public ContentContainer? GetContainerByContentType(DropBearFile file, string contentType)
+    {
+        try
+        {
+            return file.ContentContainers.FirstOrDefault(c =>
+                c.ContentType.Equals(contentType, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error getting content container by content type: {ContentType}", contentType);
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Retrieves a specific <see cref="ContentContainer" /> by its computed hash.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to search for the content container.</param>
+    /// <param name="hash">The hash of the container to find.</param>
+    /// <returns>The found <see cref="ContentContainer" />, or null if not found.</returns>
+    public ContentContainer? GetContainerByHash(DropBearFile file, string hash)
+    {
+        try
+        {
+            return file.ContentContainers.FirstOrDefault(c => string.Equals(c.Hash, hash, StringComparison.Ordinal));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error getting content container by hash: {Hash}", hash);
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Lists all content types in the given <see cref="DropBearFile" />.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to list the content types from.</param>
+    /// <returns>A list of content types present in the file.</returns>
+    public IList<string> ListContainerTypes(DropBearFile file)
+    {
+        try
+        {
+            return file.ContentContainers.Select(c => c.ContentType).ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error listing content container types.");
+            return new List<string>();
+        }
+    }
+
+    /// <summary>
+    ///     Adds or updates a <see cref="ContentContainer" /> in the <see cref="DropBearFile" />.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to update.</param>
+    /// <param name="newContainer">The new content container to add or update.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    public Result AddOrUpdateContainer(DropBearFile file, ContentContainer newContainer)
+    {
+        try
+        {
+            var existingContainer = file.ContentContainers.FirstOrDefault(c => c.Equals(newContainer));
+
+            if (existingContainer != null)
+            {
+                // Update existing container
+                existingContainer.Data = newContainer.Data;
+                existingContainer.SetHash(newContainer.Hash);
+                _logger.Information("Updated existing content container.");
+                return Result.Success();
+            }
+
+            // Add new container
+            file.ContentContainers.Add(newContainer);
+            _logger.Information("Added new content container.");
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error adding or updating content container.");
+            return Result.Failure("Error adding or updating container.");
+        }
+    }
+
+    /// <summary>
+    ///     Removes a specific <see cref="ContentContainer" /> by its content type.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> from which to remove the container.</param>
+    /// <param name="contentType">The content type of the container to remove.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    public Result RemoveContainerByContentType(DropBearFile file, string contentType)
+    {
+        try
+        {
+            var containerToRemove = GetContainerByContentType(file, contentType);
+            if (containerToRemove == null)
+            {
+                return Result.Failure("Content container not found.");
+            }
+
+            if (file.ContentContainers.Count == 1)
+            {
+                return Result.Failure("Cannot remove the last content container.");
+            }
+
+            file.ContentContainers.Remove(containerToRemove);
+            _logger.Information("Removed content container with content type: {ContentType}", contentType);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error removing content container by content type: {ContentType}", contentType);
+            return Result.Failure("Error removing content container.");
+        }
+    }
+
+    /// <summary>
+    ///     Counts the total number of content containers in the given <see cref="DropBearFile" />.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to count content containers from.</param>
+    /// <returns>The number of content containers.</returns>
+    public int CountContainers(DropBearFile file)
+    {
+        try
+        {
+            return file.ContentContainers.Count;
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error counting content containers.");
+            return 0;
+        }
+    }
+
+    /// <summary>
+    ///     Counts the number of content containers of a specific type in the <see cref="DropBearFile" />.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to count from.</param>
+    /// <param name="contentType">The content type to count.</param>
+    /// <returns>The number of content containers of the specified type.</returns>
+    public int CountContainersByType(DropBearFile file, string contentType)
+    {
+        try
+        {
+            return file.ContentContainers.Count(c =>
+                c.ContentType.Equals(contentType, StringComparison.OrdinalIgnoreCase));
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error counting content containers by content type: {ContentType}", contentType);
+            return 0;
+        }
+    }
+
+    /// <summary>
+    ///     Replaces an existing <see cref="ContentContainer" /> with a new one.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to modify.</param>
+    /// <param name="oldContainer">The container to replace.</param>
+    /// <param name="newContainer">The new container to replace it with.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    public Result ReplaceContainer(DropBearFile file, ContentContainer oldContainer, ContentContainer newContainer)
+    {
+        try
+        {
+            var existingContainer = file.ContentContainers.FirstOrDefault(c => c.Equals(oldContainer));
+            if (existingContainer == null)
+            {
+                return Result.Failure("Content container not found.");
+            }
+
+            // Remove the old container and add the new one
+            file.ContentContainers.Remove(existingContainer);
+            file.ContentContainers.Add(newContainer);
+
+            _logger.Information("Replaced content container in DropBearFile.");
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error replacing content container.");
+            return Result.Failure("Error replacing content container.");
+        }
+    }
+
+    #endregion
 }

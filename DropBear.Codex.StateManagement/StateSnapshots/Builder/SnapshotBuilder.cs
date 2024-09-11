@@ -6,7 +6,7 @@ using DropBear.Codex.StateManagement.StateSnapshots.Interfaces;
 
 namespace DropBear.Codex.StateManagement.StateSnapshots.Builder;
 
-public class SnapshotBuilder<T> where T : ICloneable<T>
+public sealed class SnapshotBuilder<T> where T : ICloneable<T>
 {
     private bool _automaticSnapshotting;
     private TimeSpan _retentionTime = TimeSpan.FromHours(24);
@@ -42,6 +42,6 @@ public class SnapshotBuilder<T> where T : ICloneable<T>
 
     public ISimpleSnapshotManager<T> Build()
     {
-        return new SimpleSnapshotManager<T>();
+        return new SimpleSnapshotManager<T>(_snapshotInterval, _retentionTime, _automaticSnapshotting);
     }
 }
