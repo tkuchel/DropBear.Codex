@@ -45,7 +45,7 @@ public class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
     public void Dispose()
     {
         _logger.Information("Disposing AESGCMEncryptionProvider resources.");
-        _rsa?.Dispose();
+        _rsa.Dispose();
     }
 
     /// <summary>

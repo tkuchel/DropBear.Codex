@@ -23,7 +23,7 @@ public class CompressedSerializer : ISerializer
     /// </summary>
     /// <param name="innerSerializer">The inner serializer.</param>
     /// <param name="compressionProvider">The compression provider to use for compression and decompression.</param>
-    public CompressedSerializer(ISerializer innerSerializer, ICompressionProvider compressionProvider)
+    public CompressedSerializer(ISerializer innerSerializer, ICompressionProvider? compressionProvider)
     {
         _innerSerializer = innerSerializer ?? throw new ArgumentNullException(nameof(innerSerializer));
         _compressor = compressionProvider?.GetCompressor() ??

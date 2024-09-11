@@ -15,7 +15,9 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 public sealed partial class SectionComponent : DropBearComponentBase
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SectionComponent>();
+#pragma warning disable CS0414 // Field is assigned but its value is never used
     private bool _isLoading;
+#pragma warning restore CS0414 // Field is assigned but its value is never used
 
     private bool? _shouldRender;
 
@@ -79,14 +81,5 @@ public sealed partial class SectionComponent : DropBearComponentBase
         }
 
         await base.OnInitializedAsync();
-    }
-
-    /// <summary>
-    ///     Determines whether the section should render.
-    /// </summary>
-    private bool ShouldRenderSection()
-    {
-        // Section should render only if _shouldRender is true and it's not loading.
-        return _shouldRender.GetValueOrDefault(true) && !_isLoading;
     }
 }

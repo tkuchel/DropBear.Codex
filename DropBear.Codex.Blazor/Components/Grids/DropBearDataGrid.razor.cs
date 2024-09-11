@@ -55,6 +55,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private List<TItem> SelectedItems
     {
         get => _selectedItems ??= new List<TItem>();
+        // ReSharper disable once UnusedMember.Local
         set => _selectedItems = value;
     }
 
@@ -120,14 +121,24 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         SearchTerm = e.Value?.ToString() ?? string.Empty;
 
         _debounceTimer?.Dispose();
-        _debounceTimer = new Timer(async _ =>
+        _debounceTimer = new Timer(DebounceSearch, null, DebounceDelay, Timeout.Infinite);
+    }
+
+    private async void DebounceSearch(object? state)
+    {
+        try
         {
             await InvokeAsync(async () =>
             {
                 await PerformSearch();
                 StateHasChanged();
             });
-        }, null, DebounceDelay, Timeout.Infinite);
+        }
+        catch (Exception ex)
+        {
+            // Handle or log exception
+            Console.WriteLine($"An error occurred during the debounce search: {ex.Message}");
+        }
     }
 
     private async Task PerformSearch()
@@ -207,10 +218,13 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
         _currentSortColumn = column;
 
-        FilteredItems = column.CustomSort is not null
-            ? column.CustomSort(FilteredItems, _currentSortDirection is SortDirection.Ascending)
-            : FilteredItems.OrderBy(column.PropertySelector.Compile())
-                .ToList();
+        if (column.PropertySelector != null)
+        {
+            FilteredItems = column.CustomSort is not null
+                ? column.CustomSort(FilteredItems, _currentSortDirection is SortDirection.Ascending)
+                : FilteredItems.OrderBy(column.PropertySelector.Compile())
+                    .ToList();
+        }
 
         Logger.Information("Sorted by column: {Column}, Direction: {Direction}", column.PropertyName,
             _currentSortDirection);
@@ -336,6 +350,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         await OnRowClicked.InvokeAsync(item);
     }
 
+    // ReSharper disable once UnusedParameter.Local
     private async Task HandleRowContextMenu(MouseEventArgs e, TItem item)
     {
         await HandleRowClick(item);

@@ -34,7 +34,7 @@ public static class CollectionCloner
 
         var elementClone =
             ExpressionCloner.BuildCloneExpression(elementType, Expression.Property(collection, "Item", index), track);
-        var loop = CreateCollectionLoop(collection, countExpression, clonedCollection, addMethod, elementClone, index,
+        var loop = CreateCollectionLoop(countExpression, clonedCollection, addMethod, elementClone, index,
             loopBreak);
 
         return Expression.Block(new[] { clonedCollection },
@@ -106,9 +106,9 @@ public static class CollectionCloner
         return Expression.New(type);
     }
 
-    private static Expression CreateCollectionLoop(Expression collection, Expression countExpression,
-        ParameterExpression clonedCollection, MethodInfo addMethod, Expression elementClone, ParameterExpression index,
-        LabelTarget loopBreak)
+    private static Expression CreateCollectionLoop(Expression countExpression,
+        ParameterExpression clonedCollection, MethodInfo addMethod, Expression elementClone,
+        ParameterExpression index, LabelTarget loopBreak)
     {
         return Expression.Block(new[] { index },
             Expression.Assign(index, Expression.Constant(0)),
@@ -121,6 +121,7 @@ public static class CollectionCloner
                     Expression.Break(loopBreak)),
                 loopBreak));
     }
+
 
     private static Expression CreateElementCloneLoop(Expression sourceArray, Expression newArray, Type elementType,
         Expression track)

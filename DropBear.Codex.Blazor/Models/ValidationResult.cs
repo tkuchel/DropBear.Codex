@@ -21,10 +21,12 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     /// <param name="error">The error message associated with the result, if any.</param>
     /// <param name="exception">The exception associated with the result, if any.</param>
     private ValidationResult(IEnumerable<ValidationError> validationErrors, string? error, Exception? exception)
-        : base(validationErrors?.ToList() ?? new List<ValidationError>(), error, exception,
-            validationErrors?.Any() == true ? ResultState.Failure : ResultState.Success)
+        : base(validationErrors.ToList(), error, exception,
+            validationErrors.Any() ? ResultState.Failure : ResultState.Success)
     {
-        _errors = Value.ToList();
+        // Initialize _errors from the already enumerated collection (cached)
+        _errors = Value
+            .ToList(); // No need to call ToList() again as 'validationErrors' is already enumerated in base constructor
     }
 
     /// <summary>
@@ -113,6 +115,7 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     /// </summary>
     private void UpdateState()
     {
+        // Set Value to _errors directly, which is already a cached collection
         Value = _errors;
         State = _errors.Any() ? ResultState.Failure : ResultState.Success;
     }

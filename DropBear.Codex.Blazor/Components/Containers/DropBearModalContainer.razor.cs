@@ -12,10 +12,10 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// </summary>
 public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
 {
-    private string customHeight = "auto"; // Default height
-    private string customWidth = "auto"; // Default width
-    private string modalTransitionClass = "enter"; // Controls enter/leave animations
-    private string transitionDuration = "0.3s"; // Default transition duration
+    private string _customHeight = "auto"; // Default height
+    private string _customWidth = "auto"; // Default width
+    private string _modalTransitionClass = "enter"; // Controls enter/leave animations
+    private string _transitionDuration = "0.3s"; // Default transition duration
 
     /// <summary>
     ///     Cleanup on component disposal, ensuring event unsubscription.
@@ -25,6 +25,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         try
         {
             ModalService.OnChange -= StateHasChanged;
+            GC.SuppressFinalize(this);
             Log.Debug("Unsubscribed from ModalService OnChange event.");
         }
         catch (Exception ex)
@@ -47,23 +48,23 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
                 // Retrieve custom width, height, and transition duration if specified
                 if (ModalService.CurrentParameters.TryGetValue("CustomWidth", out var width))
                 {
-                    customWidth = width?.ToString() ?? "auto";
+                    _customWidth = width.ToString() ?? "auto";
                 }
 
                 if (ModalService.CurrentParameters.TryGetValue("CustomHeight", out var height))
                 {
-                    customHeight = height?.ToString() ?? "auto";
+                    _customHeight = height.ToString() ?? "auto";
                 }
 
                 if (ModalService.CurrentParameters.TryGetValue("TransitionDuration", out var duration))
                 {
-                    transitionDuration = duration?.ToString() ?? "0.3s";
+                    _transitionDuration = duration.ToString() ?? "0.3s";
                 }
             }
 
             Log.Debug(
                 "Modal container initialized with custom dimensions: Width = {Width}, Height = {Height}, Transition Duration = {Duration}",
-                customWidth, customHeight, transitionDuration);
+                _customWidth, _customHeight, _transitionDuration);
         }
         catch (Exception ex)
         {
@@ -74,7 +75,7 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
     /// <summary>
     ///     Handles clicking outside the modal to trigger its closure, if allowed.
     /// </summary>
-    private async Task HandleOutsideClick()
+    private Task HandleOutsideClick()
     {
         try
         {
@@ -86,6 +87,8 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         {
             Log.Error(ex, "Error handling outside click to close modal.");
         }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>
@@ -101,27 +104,6 @@ public partial class DropBearModalContainer : DropBearComponentBase, IDisposable
         catch (Exception ex)
         {
             Log.Error(ex, "Error triggering modal close.");
-        }
-    }
-
-    /// <summary>
-    ///     Starts the transition animation when opening or closing the modal.
-    /// </summary>
-    /// <param name="isOpening">Indicates if the modal is opening (true) or closing (false).</param>
-    private async Task StartTransition(bool isOpening)
-    {
-        try
-        {
-            modalTransitionClass = isOpening ? "enter" : "leave";
-            StateHasChanged();
-
-            // Delay to match the CSS transition duration (ensuring smooth animations).
-            await Task.Delay(300);
-            Log.Debug("Modal transition {Transition} started.", isOpening ? "enter" : "leave");
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error occurred during modal transition.");
         }
     }
 }

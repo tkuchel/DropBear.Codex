@@ -153,7 +153,7 @@ public static class ResultExtensions
         }
 
         var errorMessage =
-            $"{result1.ErrorMessage}{(result1.ErrorMessage != null && result2.ErrorMessage != null ? "; " : "")}{result2.ErrorMessage}";
+            $"{result1.ErrorMessage}{("; ")}{result2.ErrorMessage}";
         return Result<(T1, T2)>.Failure(errorMessage);
     }
 

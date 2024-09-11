@@ -196,7 +196,7 @@ public class DynamicFlagService : IDynamicFlagService
         }
 
         _flagMap.Clear();
-        foreach (var (key, value) in data!.Flags)
+        foreach (var (key, value) in data.Flags)
         {
             _flagMap[key] = value;
         }

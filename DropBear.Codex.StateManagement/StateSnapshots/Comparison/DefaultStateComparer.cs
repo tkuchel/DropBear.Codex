@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 
 #endregion
 
-namespace DropBear.Codex.StateManagement.StateSnapshots.Models;
+namespace DropBear.Codex.StateManagement.StateSnapshots.Comparison;
 
 /// <summary>
 ///     Provides a default implementation of <see cref="IStateComparer{T}" /> that compares state objects by serializing

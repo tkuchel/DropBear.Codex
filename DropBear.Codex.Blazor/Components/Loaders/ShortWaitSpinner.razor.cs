@@ -44,5 +44,6 @@ public sealed partial class ShortWaitSpinner : DropBearComponentBase
     /// <summary>
     ///     Renders the spinner with appropriate accessibility attributes.
     /// </summary>
+    // ReSharper disable once UnusedMember.Local
     private string GetSpinnerAriaLabel() => $"{Title}: {Message}";
 }

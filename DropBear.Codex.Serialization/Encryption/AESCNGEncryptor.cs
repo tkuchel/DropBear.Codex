@@ -41,7 +41,7 @@ public class AESCNGEncryptor : IEncryptor, IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        _aesCng?.Dispose();
+        _aesCng.Dispose();
         GC.SuppressFinalize(this);
     }
 

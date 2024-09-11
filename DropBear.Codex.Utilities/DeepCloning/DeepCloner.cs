@@ -33,7 +33,7 @@ public static class DeepCloner
     /// <param name="source">The object to clone.</param>
     /// <param name="settings">Optional JSON serializer settings for JSON-based cloning.</param>
     /// <returns>A <see cref="Result{T}" /> containing the cloned object or an error message.</returns>
-    public static Result<T> Clone<T>(T source, JsonSerializerSettings? settings = null) where T : class
+    public static Result<T> Clone<T>(T? source, JsonSerializerSettings? settings = null) where T : class
     {
         if (source == null)
         {

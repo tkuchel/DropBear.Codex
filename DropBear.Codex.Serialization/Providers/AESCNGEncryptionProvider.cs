@@ -41,7 +41,7 @@ public class AESCNGEncryptionProvider : IEncryptionProvider, IDisposable
         var rsaKeyProvider = new RSAKeyProvider(config.PublicKeyPath, config.PrivateKeyPath);
         _rsa = rsaKeyProvider.GetRsaProvider() ?? throw new InvalidOperationException("Failed to create RSA provider.");
 
-        _memoryStreamManager = config.RecyclableMemoryStreamManager ?? new RecyclableMemoryStreamManager();
+        _memoryStreamManager = config.RecyclableMemoryStreamManager;
         _logger.Information("AESCNGEncryptionProvider initialized successfully.");
     }
 
@@ -49,7 +49,7 @@ public class AESCNGEncryptionProvider : IEncryptionProvider, IDisposable
     public void Dispose()
     {
         _logger.Information("Disposing AESCNGEncryptionProvider resources.");
-        _rsa?.Dispose();
+        _rsa.Dispose();
     }
 
     /// <summary>

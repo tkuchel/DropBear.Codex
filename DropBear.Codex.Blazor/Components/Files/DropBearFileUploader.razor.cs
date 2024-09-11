@@ -58,7 +58,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
 
         try
         {
-            var files = await JSRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles",
+            var files = await JsRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles",
                 _dismissCancellationTokenSource.Token);
 
             foreach (var file in files)
@@ -85,7 +85,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         }
         finally
         {
-            await JSRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
+            await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
                 _dismissCancellationTokenSource.Token);
             StateHasChanged();
         }

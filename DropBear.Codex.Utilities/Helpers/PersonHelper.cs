@@ -12,7 +12,7 @@ public static class PersonHelper
     /// <param name="givenNames">The given names.</param>
     /// <param name="givenNameFirst">Whether to place the given names first. Defaults to false.</param>
     /// <returns>The formatted name, combining family name and given names.</returns>
-    public static string FormatName(string familyName, string givenNames, bool givenNameFirst = false)
+    public static string FormatName(string? familyName, string? givenNames, bool givenNameFirst = false)
     {
         if (string.IsNullOrWhiteSpace(familyName) && string.IsNullOrWhiteSpace(givenNames))
         {

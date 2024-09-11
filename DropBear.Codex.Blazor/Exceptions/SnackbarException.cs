@@ -45,7 +45,8 @@ public sealed class SnackbarException : Exception
     ///     The <see cref="StreamingContext" /> that contains contextual information about the source or
     ///     destination.
     /// </param>
-    protected SnackbarException(SerializationInfo info, StreamingContext context)
+    [Obsolete("Formatter-based serialization is obsolete and should not be used.", true)]
+    private SnackbarException(SerializationInfo info, StreamingContext context)
         : base(info, context)
     {
     }
@@ -61,6 +62,7 @@ public sealed class SnackbarException : Exception
     ///     The <see cref="StreamingContext" /> that contains contextual information about the source or
     ///     destination.
     /// </param>
+    [Obsolete("Formatter-based serialization is obsolete and should not be used.", true)]
     public override void GetObjectData(SerializationInfo info, StreamingContext context)
     {
         base.GetObjectData(info, context);

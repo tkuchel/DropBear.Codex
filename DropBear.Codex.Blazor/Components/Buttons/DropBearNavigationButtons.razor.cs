@@ -28,11 +28,11 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_isJsInitialized && JSRuntime is not null)
+        if (_isJsInitialized && JsRuntime is not null)
         {
             try
             {
-                await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
+                await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
                 Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
             }
             catch (Exception ex)
@@ -56,7 +56,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
 
             try
             {
-                await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.initialize", _objRef);
+                await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.initialize", _objRef);
                 _isJsInitialized = true;
                 Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
             }
@@ -74,7 +74,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.goBack");
+            await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.goBack");
             Logger.Information("Navigated back.");
         }
         catch (Exception ex)
@@ -106,7 +106,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     {
         try
         {
-            await JSRuntime.InvokeVoidAsync("DropBearNavigationButtons.scrollToTop");
+            await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.scrollToTop");
             Logger.Information("Page scrolled to top.");
         }
         catch (Exception ex)

@@ -48,7 +48,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
     /// <returns>True if the specified result is equal to the current result; otherwise, false.</returns>
     public bool Equals(Result<T>? other)
     {
-        return base.Equals(other) && EqualityComparer<T>.Default.Equals(Value, other!.Value);
+        return base.Equals(other) && EqualityComparer<T>.Default.Equals(Value, other.Value);
     }
 
     /// <inheritdoc />
@@ -60,6 +60,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
     /// <inheritdoc />
     public override int GetHashCode()
     {
+        // ReSharper disable once NonReadonlyMemberInGetHashCode
         return HashCode.Combine(base.GetHashCode(), Value);
     }
 
@@ -87,7 +88,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
         }
 
         throw new InvalidOperationException(
-            errorMessage ?? ErrorMessage ?? "Operation failed without an error message.");
+            errorMessage ?? ErrorMessage);
     }
 
     /// <summary>
@@ -105,7 +106,11 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
         return IsSuccess ? func(Value) : Result<TOut>.Failure(ErrorMessage, Exception);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Executes the specified action if the result is successful.
+    /// </summary>
+    /// <param name="action">The action to execute if the result is successful.</param>
+    /// <returns>The current result.</returns>
     public new Result OnSuccess(Action action)
     {
         base.OnSuccess(action);
@@ -137,7 +142,11 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
         return IsSuccess ? SafeExecute(() => func(Value)) : Result<TOut>.Failure(ErrorMessage, Exception);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Executes the specified action if the result is failed.
+    /// </summary>
+    /// <param name="action">The action to execute if the result is failed.</param>
+    /// <returns>The current result.</returns>
     public new Result<T> OnFailure(Action<string, Exception?> action)
     {
         base.OnFailure(action);
@@ -183,7 +192,7 @@ public class Result<T> : Result, IEquatable<Result<T>>, IEnumerable<T>
     /// <returns>The error message associated with the result, or the specified default error message if successful.</returns>
     public string UnwrapError(string defaultError = "")
     {
-        return IsSuccess ? defaultError : ErrorMessage ?? "An unknown error has occurred.";
+        return IsSuccess ? defaultError : ErrorMessage;
     }
 
     /// <inheritdoc />

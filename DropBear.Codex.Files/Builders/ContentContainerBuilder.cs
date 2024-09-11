@@ -135,8 +135,16 @@ public class ContentContainerBuilder
                     throw new InvalidOperationException("No data available for serialization.");
                 }
 
-                var serializedData = await serializer.SerializeAsync(data).ConfigureAwait(false);
-                _container.Data = serializedData;
+                if (serializer != null)
+                {
+                    var serializedData = await serializer.SerializeAsync(data).ConfigureAwait(false);
+                    _container.Data = serializedData;
+                }
+                else
+                {
+                    throw new InvalidOperationException("No serializer available for serialization.");
+                }
+
                 _logger.Debug("Serialized data for ContentContainer.");
             }
 

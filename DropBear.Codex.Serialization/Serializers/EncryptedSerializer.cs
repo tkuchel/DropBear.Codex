@@ -22,7 +22,7 @@ public class EncryptedSerializer : ISerializer
     /// </summary>
     /// <param name="innerSerializer">The inner serializer.</param>
     /// <param name="encryptionProvider">The encryption provider to use for encryption and decryption.</param>
-    public EncryptedSerializer(ISerializer innerSerializer, IEncryptionProvider encryptionProvider)
+    public EncryptedSerializer(ISerializer innerSerializer, IEncryptionProvider? encryptionProvider)
     {
         _innerSerializer = innerSerializer ?? throw new ArgumentNullException(nameof(innerSerializer));
         _encryptor = encryptionProvider?.GetEncryptor() ?? throw new ArgumentNullException(nameof(encryptionProvider));

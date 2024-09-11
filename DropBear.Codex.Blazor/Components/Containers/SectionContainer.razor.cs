@@ -81,7 +81,7 @@ public sealed partial class SectionContainer : DropBearComponentBase
 
                 // Register resize event listener
                 var dotnetRef = DotNetObjectReference.Create(this);
-                await JSRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", dotnetRef);
+                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", dotnetRef);
                 Logger.Debug("Resize event listener registered.");
             }
             catch (Exception ex)
@@ -100,7 +100,7 @@ public sealed partial class SectionContainer : DropBearComponentBase
         try
         {
             // Call the JavaScript function to get the window's width
-            var dimensions = await JSRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions");
+            var dimensions = await JsRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions");
             var windowWidth = dimensions.Width;
 
             // Check if the MaxWidth is a percentage (e.g., "70%") and calculate the actual width based on the window width

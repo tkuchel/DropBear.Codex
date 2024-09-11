@@ -40,7 +40,7 @@ public class Result : IEquatable<Result>
     /// <summary>
     ///     Gets the state of the result.
     /// </summary>
-    public ResultState State { get; protected set; }
+    public ResultState State { get; set; }
 
     /// <summary>
     ///     Gets the error message associated with the result, if any.
@@ -86,6 +86,7 @@ public class Result : IEquatable<Result>
     /// <inheritdoc />
     public override int GetHashCode()
     {
+        // ReSharper disable once NonReadonlyMemberInGetHashCode
         return HashCode.Combine(State, ErrorMessage, Exception);
     }
 
@@ -241,6 +242,7 @@ public class Result : IEquatable<Result>
     /// </summary>
     /// <param name="action">The asynchronous action to execute.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
+    // ReSharper disable once UnusedMember.Local
     private static async Task SafeExecuteAsync(Func<Task> action)
     {
         try

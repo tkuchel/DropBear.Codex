@@ -31,7 +31,7 @@ public sealed class ContextMenuItem
     /// <param name="isDanger">Indicates if this item should be styled as a danger item.</param>
     /// <param name="data">Custom data associated with the menu item.</param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="text" /> is null or empty for a non-separator item.</exception>
-    public ContextMenuItem(string text, string iconClass, bool isSeparator, bool isDanger, object data)
+    public ContextMenuItem(string text, string iconClass, bool isSeparator, bool isDanger, object? data)
     {
         if (!isSeparator && string.IsNullOrWhiteSpace(text))
         {

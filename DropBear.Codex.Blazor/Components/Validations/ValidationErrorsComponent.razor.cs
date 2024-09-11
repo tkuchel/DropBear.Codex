@@ -56,10 +56,12 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
     /// <summary>
     ///     Returns a CSS class based on whether the panel is collapsed.
     /// </summary>
+    // ReSharper disable once UnusedMember.Local
     private string GetPanelCssClass() => _isCollapsed ? "validation-errors-collapsed" : "validation-errors-expanded";
 
     /// <summary>
     ///     Gets a CSS class for the validation message list.
     /// </summary>
+    // ReSharper disable once UnusedMember.Local
     private string GetListCssClass() => _isCollapsed ? "hidden" : "visible";
 }

@@ -11,7 +11,7 @@ namespace DropBear.Codex.Serialization.Serializers;
 /// <summary>
 ///     Serializer that applies encoding to serialized data before serialization and decoding after deserialization.
 /// </summary>
-public class EncodedSerializer : ISerializer
+public sealed class EncodedSerializer : ISerializer
 {
     private readonly IEncoder _encoder;
     private readonly ISerializer _innerSerializer;
@@ -22,7 +22,7 @@ public class EncodedSerializer : ISerializer
     /// </summary>
     /// <param name="innerSerializer">The inner serializer.</param>
     /// <param name="encodingProvider">The encoding provider to use for encoding and decoding.</param>
-    public EncodedSerializer(ISerializer innerSerializer, IEncodingProvider encodingProvider)
+    public EncodedSerializer(ISerializer innerSerializer, IEncodingProvider? encodingProvider)
     {
         _innerSerializer = innerSerializer ?? throw new ArgumentNullException(nameof(innerSerializer));
         _encoder = encodingProvider?.GetEncoder() ?? throw new ArgumentNullException(nameof(encodingProvider));

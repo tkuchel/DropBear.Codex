@@ -24,9 +24,11 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
     private int _left;
     private DotNetObjectReference<DropBearContextMenu>? _objectReference;
     private int _top;
+    // ReSharper disable once NotAccessedField.Local
     private ElementReference _triggerElement;
 
     [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
+    // ReSharper disable once UnusedAutoPropertyAccessor.Local
     [Inject] private IDynamicContextMenuService? DynamicContextMenuService { get; set; }
     [Inject] private ILogger<DropBearContextMenu> Logger { get; set; } = null!;
 

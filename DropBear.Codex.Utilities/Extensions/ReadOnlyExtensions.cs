@@ -111,6 +111,6 @@ public static class ReadOnlyExtensions
             readOnlyProperty.SetGetMethod(getMethodBuilder);
         }
 
-        return typeBuilder.CreateType()!;
+        return typeBuilder.CreateType();
     }
 }

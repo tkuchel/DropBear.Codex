@@ -27,7 +27,7 @@ public sealed class ButtonConfig
     /// <param name="color">The type/color of the button.</param>
     /// <param name="icon">The icon displayed on the button.</param>
     /// <exception cref="ArgumentException">Thrown if <paramref name="id" /> or <paramref name="text" /> is null or empty.</exception>
-    public ButtonConfig(string id, string text, ButtonColor color, string icon)
+    public ButtonConfig(string id, string text, ButtonColor color, string? icon)
     {
         Id = string.IsNullOrWhiteSpace(id)
             ? throw new ArgumentException("Button ID cannot be null or empty.", nameof(id))
