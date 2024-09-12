@@ -7,16 +7,16 @@
 .dropbear-datagrid {
   border-radius: var(--br-md);
   overflow: hidden;
-  box-shadow: var(--bs-md);
+  box-shadow: var(--shadow-md);
   transition: box-shadow var(--transition-normal);
   animation: fadeIn var(--transition-normal);
   background-color: var( --clr-grey-100);
   color: var(--clr-text-primary);
-  border: var(--border-default);
+  border: var(--br-default);
 }
 
 .dropbear-datagrid:hover {
-  box-shadow: var(--bs-lg);
+  box-shadow: var(--shadow-lg);
 }
 
 /* Header */
@@ -200,14 +200,14 @@
 .datagrid-row.selected {
   background-color: var(--clr-information);
   animation: smoothPulse 6s ease-in-out infinite;
-  color: var(--clr-text-heading);
+  color: var(--clr-text-primary);
 }
 
 .datagrid-row:hover:not(.header) {
   background-color: var(--clr-information-dark);
   /*transform: translateY(-1px);*/
-  color: var(--clr-text-heading);
-  font-weight: var(--fw-600);
+  color: var(--clr-text-primary);
+  font-weight: var(--fw-semi-bold);
 }
 
 /* Footer */
@@ -223,7 +223,7 @@
 select {
   background-color: var(--clr-surface-secondary);
   color: var(--clr-text-primary);
-  border: 1px solid var(--border-default);
+  border: 1px solid var(--br-default);
   padding: 0.25rem 0.5rem;
   border-radius: var(--br-sm);
   transition: background-color var(--transition-normal);

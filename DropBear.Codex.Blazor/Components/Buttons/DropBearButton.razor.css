@@ -2,7 +2,7 @@
 .dropbear-btn {
   font-family: var(--ff-primary), sans-serif;
   font-size: var(--fs-sm);
-  font-weight: var(--fw-500);
+  font-weight: var(--fw-medium);
   line-height: var(--lh-md);
   padding: var(--spacing-sm);
   border-radius: var(--br-md);

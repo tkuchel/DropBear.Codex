@@ -13,7 +13,12 @@
   --clr-button-primary-hover: #4ec7b4;
   --clr-button-secondary-hover: #8fa0c1;
   --clr-card-background: var(--clr-white);
+  
   --clr-border: var(--clr-platinum);
+  --clr-border-hover: var(--clr-french-gray);
+  --clr-border-focus: var(--clr-malibu);
+  --clr-border-active: var(--clr-cadet-gray);
+  --clr-border-disabled: var(--clr-anti-flash-white);
 
   --header-gradient: linear-gradient(
     var(--deg-90),
@@ -42,7 +47,31 @@
     --clr-button-primary-hover: #76e0d1; /* Lighter than --clr-viking for dark mode */
     --clr-button-secondary-hover: #bbc6da; /* Lighter than --clr-rock-blue for dark mode */
     --clr-card-background: var(--clr-onyx);
+  
     --clr-border: var(--clr-dim-gray);
+    --clr-border-hover: var(--clr-cadet-gray);
+    --clr-border-focus: var(--clr-malibu);  /* Keep focus color consistent for accessibility */
+    --clr-border-active: var(--clr-french-gray);
+    --clr-border-disabled: var(--clr-onyx);
+
+    /* Adjust semantic colors for dark theme */
+    --clr-success: var(--clr-success-dark);
+    --clr-success-light: var(--clr-success);
+    --clr-success-dark: #4a9233; /* Even darker for emphasis */
+
+    --clr-warning: var(--clr-warning-dark);
+    --clr-warning-light: var(--clr-warning);
+    --clr-warning-dark: #b38d33; /* Even darker for emphasis */
+
+    --clr-error: var(--clr-error-dark);
+    --clr-error-light: var(--clr-error);
+    --clr-error-dark: #a83737; /* Even darker for emphasis */
+
+    --clr-information: var(--clr-information-dark);
+    --clr-information-light: var(--clr-information);
+    --clr-information-dark: #2f77aa; /* Even darker for emphasis */
+
+    
 
     --header-gradient: linear-gradient(
       var(--deg-90),
@@ -97,7 +126,29 @@
   --clr-button-primary-hover: #76e0d1; /* Lighter than --clr-viking for dark mode */
   --clr-button-secondary-hover: #bbc6da; /* Lighter than --clr-rock-blue for dark mode */
   --clr-card-background: var(--clr-onyx);
+
   --clr-border: var(--clr-dim-gray);
+  --clr-border-hover: var(--clr-cadet-gray);
+  --clr-border-focus: var(--clr-malibu);
+  --clr-border-active: var(--clr-french-gray);
+  --clr-border-disabled: var(--clr-onyx);
+
+  /* Adjust semantic colors for manual dark theme toggle */
+  --clr-success: var(--clr-success-dark);
+  --clr-success-light: var(--clr-success);
+  --clr-success-dark: #4a9233;
+
+  --clr-warning: var(--clr-warning-dark);
+  --clr-warning-light: var(--clr-warning);
+  --clr-warning-dark: #b38d33;
+
+  --clr-error: var(--clr-error-dark);
+  --clr-error-light: var(--clr-error);
+  --clr-error-dark: #a83737;
+
+  --clr-information: var(--clr-information-dark);
+  --clr-information-light: var(--clr-information);
+  --clr-information-dark: #2f77aa;
 
   --header-gradient: linear-gradient(
     var(--deg-90),

@@ -4,7 +4,7 @@
   align-items: center;
   border-radius: var(--br-md);
   padding: var(--spacing-sm);
-  box-shadow: var(--bs-md);
+  box-shadow: var(--shadow-md);
   animation: slideInUp 0.3s ease-out;
   position: relative;
   overflow: hidden;
@@ -14,7 +14,7 @@
   width: 100%; /* Ensures the snackbar takes full width of its container */
   box-sizing: border-box; /* Includes padding in the width calculation */
   background-color: var(--clr-surface-dark); /* Global surface color */
-  color: var(--clr-text-heading); /* Global text color */
+  color: var(--clr-text-primary); /* Global text color */
 }
 
 /* Type-Specific Borders */

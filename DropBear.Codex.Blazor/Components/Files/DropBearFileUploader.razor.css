@@ -7,7 +7,7 @@
 .file-upload-component {
   border-radius: var(--br-md);
   padding: var(--spacing-lg);
-  box-shadow: var(--bs-md);
+  box-shadow: var(--shadow-md);
   background-color: var(--clr-surface-primary); /* Use global surface color */
   color: var(--clr-text-primary); /* Use global text color */
 }

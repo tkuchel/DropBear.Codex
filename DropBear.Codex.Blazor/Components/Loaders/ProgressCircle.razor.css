@@ -30,6 +30,6 @@
   left: 50%;
   transform: translate(-50%, -50%);
   font-size: var(--fs-md, 20px); /* Use a global font size variable */
-  font-weight: var(--fw-600, bold); /* Use a global font weight variable */
+  font-weight: var(--fw-semi-bold, bold); /* Use a global font weight variable */
   color: var(--clr-primary, #2196f3); /* Use the primary color for the text */
 }

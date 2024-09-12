@@ -12,7 +12,7 @@
   font-family: "Poppins", sans-serif;
   font-size: calc(var(--fs-md));
   border-radius: var(--br-md);
-  box-shadow: var(--bs-md);
+  box-shadow: var(--shadow-md);
   overflow: hidden;
   transition: box-shadow var(--transition-normal);
   display: flex;
@@ -20,7 +20,7 @@
   height: 100%; /* Ensure the card takes full height of its container */
   animation: fadeIn 0.3s ease-in-out;
   background-color: var(--clr-surface-dark);
-  border: var(--border-default);
+  border: var(--br-default);
 }
 
 .card input.form-control {

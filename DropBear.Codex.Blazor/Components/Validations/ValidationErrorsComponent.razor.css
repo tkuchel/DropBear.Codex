@@ -1,7 +1,7 @@
 ﻿.validation-errors {
   background-color: var(--clr-surface-light, #fff);
   border-radius: var(--br-md);
-  box-shadow: var(--bs-md);
+  box-shadow: var(--shadow-md);
   margin-bottom: var(--spacing-md);
   overflow: hidden;
   transition: all var(--transition-normal);
@@ -19,7 +19,7 @@
 
 .validation-errors__title {
   font-size: var(--fs-md);
-  font-weight: var(--fw-600);
+  font-weight: var(--fw-semi-bold);
   margin: 0;
   display: flex;
   align-items: center;
@@ -78,7 +78,7 @@
   border-radius: 50%;
   opacity: 0.5;
   border: 4px solid var(--clr-error);
-  box-shadow: var(--bs-sm, 0px 2px 4px rgba(255, 255, 255, 0.75));
+  box-shadow: var(--shadow-sm, 0px 2px 4px rgba(255, 255, 255, 0.75));
 }
 
 .validation-errors__item-icon {
@@ -93,7 +93,7 @@
 }
 
 .validation-errors__item-parameter {
-  font-weight: var(--fw-600);
+  font-weight: var(--fw-semi-bold);
   margin-bottom: calc(var(--spacing-xs) / 2);
 }
 

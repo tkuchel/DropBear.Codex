@@ -8,7 +8,7 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
-  box-shadow: var(--bs-md);
+  box-shadow: var(--shadow-md);
   transition: var(--transition-normal);
   position: relative;
   overflow: hidden;
@@ -48,7 +48,7 @@
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 var(--spacing-xs) 0;
-  color: var(--clr-text-heading); /* Global heading color */
+  color: var(--clr-text-primary); /* Global heading color */
 }
 
 .alert-message {

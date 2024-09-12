@@ -49,10 +49,22 @@
   --clr-tertiary: var(--clr-cornflower-blue);
   --clr-accent: var(--clr-persimmon);
 
+  /* Semantic Colors Continued */
   --clr-success: var(--clr-pastel-green);
+  --clr-success-light: #a0e57c; /* Lighter version of pastel green */
+  --clr-success-dark: #5db740; /* Darker version of pastel green */
+
   --clr-warning: var(--clr-mustard);
+  --clr-warning-light: #ffe380; /* Lighter version of mustard */
+  --clr-warning-dark: #cca03a; /* Darker version of mustard */
+
   --clr-error: var(--clr-persimmon);
-  --clr-info: var(--clr-malibu);
+  --clr-error-light: #ff8a8a; /* Lighter version of persimmon */
+  --clr-error-dark: #cc4545; /* Darker version of persimmon */
+
+  --clr-information: var(--clr-malibu);
+  --clr-information-light: #80ccff; /* Lighter version of malibu */
+  --clr-information-dark: #3a8fcc; /* Darker version of malibu */
 
   --clr-background: var(--clr-white);
   --clr-surface-primary: var(--clr-seasalt);
@@ -82,6 +94,25 @@
   /* Card and Border Colors */
   --clr-card-background: var(--clr-white);
   --clr-border: var(--clr-platinum);
+  --clr-border-hover: var(
+    --clr-french-gray
+  ); /* Darker than --clr-border for visibility */
+  --clr-border-focus: var(
+    --clr-malibu
+  ); /* Using accent color for clear focus indication */
+  --clr-border-active: var(
+    --clr-cadet-gray
+  ); /* Slightly darker than hover for pressed state */
+  --clr-border-disabled: var(
+    --clr-anti-flash-white
+  ); /* Lighter than normal for disabled state */
+
+  /* Default Border */
+  --br-default: 1px solid var(--clr-border);
+  --br-default-hover: 1px solid var(--clr-border-hover);
+  --br-default-focus: 1px solid var(--clr-border-focus);
+  --br-default-active: 1px solid var(--clr-border-active);
+  --br-default-disabled: 1px solid var(--clr-border-disabled);
 
   /* Interactive State Colors */
   --clr-hover: rgba(0, 0, 0, 0.1);
@@ -163,8 +194,10 @@
 
   /* Box Shadows */
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+    0 4px 6px -2px rgba(0, 0, 0, 0.05);
 
   /* Z-index Scale */
   --z-index-dropdown: 1000;
@@ -180,5 +213,7 @@
   --transition-medium: 300ms ease-in-out;
   --transition-slow: 500ms ease-in-out;
 
+  /* Layout */
+  --container-max-width: 1200px; /* Or any other value that suits your design */
 
 }

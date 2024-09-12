@@ -1,5 +1,36 @@
 /* components.css */
 
+/* Alert components */
+.alert {
+  padding: var(--spacing-sm);
+  border-radius: var(--br-sm);
+  margin-bottom: var(--spacing-md);
+}
+
+.alert-success {
+  background-color: var(--clr-success-light);
+  color: var(--clr-success-dark);
+  border: 1px solid var(--clr-success);
+}
+
+.alert-warning {
+  background-color: var(--clr-warning-light);
+  color: var(--clr-warning-dark);
+  border: 1px solid var(--clr-warning);
+}
+
+.alert-error {
+  background-color: var(--clr-error-light);
+  color: var(--clr-error-dark);
+  border: 1px solid var(--clr-error);
+}
+
+.alert-info {
+  background-color: var(--clr-information-light);
+  color: var(--clr-information-dark);
+  border: 1px solid var(--clr-information);
+}
+
 /* Buttons */
 .btn {
   display: inline-block;
@@ -37,6 +68,51 @@
 .btn-secondary:hover {
   background-color: var(--clr-button-secondary-hover, #545b62);
   border-color: var(--clr-button-secondary-hover, #545b62);
+}
+
+/* Button variants */
+.btn-success {
+  background-color: var(--clr-success);
+  border-color: var(--clr-success);
+  color: var(--clr-white);
+}
+
+.btn-success:hover {
+  background-color: var(--clr-success-dark);
+  border-color: var(--clr-success-dark);
+}
+
+.btn-warning {
+  background-color: var(--clr-warning);
+  border-color: var(--clr-warning);
+  color: var(--clr-black);
+}
+
+.btn-warning:hover {
+  background-color: var(--clr-warning-dark);
+  border-color: var(--clr-warning-dark);
+}
+
+.btn-error {
+  background-color: var(--clr-error);
+  border-color: var(--clr-error);
+  color: var(--clr-white);
+}
+
+.btn-error:hover {
+  background-color: var(--clr-error-dark);
+  border-color: var(--clr-error-dark);
+}
+
+.btn-information {
+  background-color: var(--clr-information);
+  border-color: var(--clr-information);
+  color: var(--clr-white);
+}
+
+.btn-information:hover {
+  background-color: var(--clr-information-dark);
+  border-color: var(--clr-information-dark);
 }
 
 /* Forms */
@@ -95,6 +171,32 @@
 
 .card-text:last-child {
   margin-bottom: 0;
+}
+
+/* Input styles */
+.input {
+  border: var(--br-default);
+  transition: border-color var(--transition-fast);
+}
+
+.input:hover {
+  border: var(--br-default-hover);
+}
+
+.input:focus {
+  border: var(--br-default-focus);
+  outline: none;
+  box-shadow: 0 0 0 3px var(--clr-focus);
+}
+
+.input:active {
+  border: var(--br-default-active);
+}
+
+.input:disabled {
+  border: var(--br-default-disabled);
+  background-color: var(--clr-surface-secondary);
+  cursor: not-allowed;
 }
 
 /* Add more component styles as needed */

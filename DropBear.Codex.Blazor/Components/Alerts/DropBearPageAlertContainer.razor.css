@@ -8,7 +8,7 @@
   gap: var(--spacing-md);
   width: 100%;
   max-width: 500px; /* Adjust max-width as needed */
-  z-index: var(--z-50);
+  z-index: var(--z-index-dropdown);
   padding: var(--spacing-md);
 }
 

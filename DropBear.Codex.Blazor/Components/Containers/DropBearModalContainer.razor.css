@@ -8,14 +8,14 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: var(--z-90); /* High z-index for modal */
+  z-index: var(--z-index-modal-backdrop); /* High z-index for modal */
 }
 
 .modal-content {
   background-color: var(--clr-surface-primary); /* Light or dark surface based on theme */
   padding: var(--spacing-lg); /* Dynamic spacing */
   border-radius: var(--br-md); /* Use existing border radius */
-  box-shadow: var(--bs-md); /* Box shadow for depth */
+  box-shadow: var(--shadow-md); /* Box shadow for depth */
 
   /* Dynamic width with boundaries */
   width: min(max(var(--modal-width, 50%), 300px), 80%); /* Minimum 300px, max 80% of viewport width */
