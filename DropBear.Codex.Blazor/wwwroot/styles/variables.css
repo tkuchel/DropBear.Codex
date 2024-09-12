@@ -34,6 +34,15 @@
   --clr-onyx: #343639;
   --clr-black: #1e1f22;
 
+  --clr-grey-100: var(--clr-seasalt);
+  --clr-grey-200: var(--clr-anti-flash-white);
+  --clr-grey-300: var(--clr-platinum);
+  --clr-grey-400: var(--clr-french-gray);
+  --clr-grey-500: var(--clr-cadet-gray);
+  --clr-grey-600: var(--clr-dim-gray);
+  --clr-grey-700: var(--clr-davy-gray);
+  --clr-grey-800: var(--clr-onyx);
+
   /* Semantic Color Variables */
   --clr-primary: var(--clr-viking);
   --clr-secondary: var(--clr-rock-blue);
@@ -62,7 +71,17 @@
   --clr-input-border: var(--clr-french-gray);
   --clr-input-focus: var(--clr-malibu);
 
+  /* Link Colors */
   --clr-link: var(--clr-hyperlink-blue);
+  --clr-link-hover: var(--clr-cornflower-blue);
+
+  /* Button Hover Colors */
+  --clr-button-primary-hover: #4ec7b4; /* Slightly darker than --clr-viking */
+  --clr-button-secondary-hover: #8fa0c1; /* Slightly darker than --clr-rock-blue */
+
+  /* Card and Border Colors */
+  --clr-card-background: var(--clr-white);
+  --clr-border: var(--clr-platinum);
 
   /* Interactive State Colors */
   --clr-hover: rgba(0, 0, 0, 0.1);

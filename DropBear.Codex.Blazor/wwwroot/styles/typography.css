@@ -1,14 +1,14 @@
 /* typography.css */
 
 body {
-  font-family: var(--ff-primary, sans-serif);
+  font-family: var(--ff-primary, sans-serif), sans-serif;
   font-size: var(--fs-md, 1rem);
   line-height: var(--lh-md, 1.5);
   color: var(--clr-text-primary, #333);
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: var(--ff-secondary, sans-serif);
+  font-family: var(--ff-secondary, sans-serif), sans-serif;
   font-weight: var(--fw-bold, 700);
   line-height: 1.2;
   margin-bottom: var(--spacing-md, 1.5rem);
