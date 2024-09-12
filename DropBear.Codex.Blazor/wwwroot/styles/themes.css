@@ -7,13 +7,15 @@
   --clr-text-secondary: var(--clr-dim-gray, #666666);
   --clr-surface-primary: var(--clr-seasalt, #f6f6f7);
   --clr-surface-secondary: var(--clr-anti-flash-white, #e9eaec);
+  --clr-surface-dark: var(--clr-platinum, #dbdddf);
+  --clr-surface-light: var(--clr-white, #ffffff);
 
   --clr-link: var(--clr-hyperlink-blue);
   --clr-link-hover: var(--clr-cornflower-blue);
   --clr-button-primary-hover: #4ec7b4;
   --clr-button-secondary-hover: #8fa0c1;
   --clr-card-background: var(--clr-white);
-  
+
   --clr-border: var(--clr-platinum);
   --clr-border-hover: var(--clr-french-gray);
   --clr-border-focus: var(--clr-malibu);
@@ -41,13 +43,15 @@
     --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
     --clr-surface-primary: var(--clr-davy-gray, #4e5055);
     --clr-surface-secondary: var(--clr-onyx, #343639);
+    --clr-surface-dark: var(--clr-black, #1e1f22);
+    --clr-surface-light: var(--clr-dim-gray, #67696f);
 
     --clr-link: var(--clr-malibu);
     --clr-link-hover: var(--clr-viking);
     --clr-button-primary-hover: #76e0d1; /* Lighter than --clr-viking for dark mode */
     --clr-button-secondary-hover: #bbc6da; /* Lighter than --clr-rock-blue for dark mode */
     --clr-card-background: var(--clr-onyx);
-  
+
     --clr-border: var(--clr-dim-gray);
     --clr-border-hover: var(--clr-cadet-gray);
     --clr-border-focus: var(--clr-malibu);  /* Keep focus color consistent for accessibility */
@@ -70,8 +74,6 @@
     --clr-information: var(--clr-information-dark);
     --clr-information-light: var(--clr-information);
     --clr-information-dark: #2f77aa; /* Even darker for emphasis */
-
-    
 
     --header-gradient: linear-gradient(
       var(--deg-90),
@@ -120,6 +122,8 @@
   --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
   --clr-surface-primary: var(--clr-davy-gray, #4e5055);
   --clr-surface-secondary: var(--clr-onyx, #343639);
+  --clr-surface-dark: var(--clr-black, #1e1f22);
+  --clr-surface-light: var(--clr-dim-gray, #67696f);
 
   --clr-link: var(--clr-malibu);
   --clr-link-hover: var(--clr-viking);
