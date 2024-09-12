@@ -1,0 +1,122 @@
+/* print.css */
+
+@media print {
+  /* Reset all background colors and text colors */
+  * {
+    background: transparent !important;
+    color: #000 !important;
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+
+  /* Hide unnecessary elements */
+  nav,
+  aside,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  /* Ensure the content is printable */
+  body {
+    padding: 0;
+    margin: 0;
+  }
+
+  .container {
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Improve readability */
+  p, h2, h3 {
+    orphans: 3;
+    widows: 3;
+  }
+
+  h2, h3 {
+    page-break-after: avoid;
+  }
+
+  /* Handle links */
+  a,
+  a:visited {
+    text-decoration: underline;
+  }
+
+  a[href]:after {
+    content: " (" attr(href) ")";
+  }
+
+  a[href^="#"]:after,
+  a[href^="javascript:"]:after {
+    content: "";
+  }
+
+  /* Abbreviations */
+  abbr[title]:after {
+    content: " (" attr(title) ")";
+  }
+
+  /* Page breaks */
+  pre,
+  blockquote {
+    page-break-inside: avoid;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+
+  tr,
+  img {
+    page-break-inside: avoid;
+  }
+
+  img {
+    max-width: 100% !important;
+  }
+
+  /* Adjust font sizes for better readability */
+  body {
+    font-size: 12pt;
+  }
+
+  h1 {
+    font-size: 24pt;
+  }
+
+  h2 {
+    font-size: 20pt;
+  }
+
+  h3 {
+    font-size: 16pt;
+  }
+
+  /* Add page numbers */
+  @page {
+    margin: 2cm;
+  }
+
+  body:after {
+    content: counter(page);
+    counter-increment: page;
+    position: absolute;
+    bottom: 1cm;
+    right: 1cm;
+    font-size: 10pt;
+  }
+
+  /* Improve table readability */
+  table {
+    border-collapse: collapse !important;
+  }
+
+  table td,
+  table th {
+    background-color: #fff !important;
+    border: 1px solid #000 !important;
+  }
+}

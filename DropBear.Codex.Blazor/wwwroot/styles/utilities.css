@@ -1,0 +1,239 @@
+/* utilities.css */
+
+/* Text colors */
+.text-primary {
+  color: var(--clr-text-primary, #333);
+}
+
+.text-secondary {
+  color: var(--clr-text-secondary, #666);
+}
+
+.text-muted {
+  color: var(--clr-text-muted, #999);
+}
+
+/* Background colors */
+.bg-primary {
+  background-color: var(--clr-primary, #007bff);
+}
+
+.bg-secondary {
+  background-color: var(--clr-secondary, #6c757d);
+}
+
+.bg-surface {
+  background-color: var(--clr-surface-primary, #f8f9fa);
+}
+
+/* Spacing utilities */
+.m-0 {
+  margin: 0;
+}
+
+.mt-1 {
+  margin-top: var(--spacing-xs, 0.5rem);
+}
+
+.mr-1 {
+  margin-right: var(--spacing-xs, 0.5rem);
+}
+
+.mb-1 {
+  margin-bottom: var(--spacing-xs, 0.5rem);
+}
+
+.ml-1 {
+  margin-left: var(--spacing-xs, 0.5rem);
+}
+
+.p-0 {
+  padding: 0;
+}
+
+.pt-1 {
+  padding-top: var(--spacing-xs, 0.5rem);
+}
+
+.pr-1 {
+  padding-right: var(--spacing-xs, 0.5rem);
+}
+
+.pb-1 {
+  padding-bottom: var(--spacing-xs, 0.5rem);
+}
+
+.pl-1 {
+  padding-left: var(--spacing-xs, 0.5rem);
+}
+
+/* Add more margin and padding utilities as needed */
+
+/* Flexbox utilities */
+.d-flex {
+  display: flex;
+}
+
+.flex-column {
+  flex-direction: column;
+}
+
+.justify-content-center {
+  justify-content: center;
+}
+
+.align-items-center {
+  align-items: center;
+}
+
+.flex-wrap {
+  flex-wrap: wrap;
+}
+
+/* Text alignment */
+.text-left {
+  text-align: left;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.text-right {
+  text-align: right;
+}
+
+/* Font weights */
+.fw-light {
+  font-weight: var(--fw-light, 300);
+}
+
+.fw-normal {
+  font-weight: var(--fw-regular, 400);
+}
+
+.fw-bold {
+  font-weight: var(--fw-bold, 700);
+}
+
+/* Display */
+.d-none {
+  display: none;
+}
+
+.d-block {
+  display: block;
+}
+
+.d-inline-block {
+  display: inline-block;
+}
+
+/* Positioning */
+.position-relative {
+  position: relative;
+}
+
+.position-absolute {
+  position: absolute;
+}
+
+.position-fixed {
+  position: fixed;
+}
+
+/* Width and height */
+.w-100 {
+  width: 100%;
+}
+
+.h-100 {
+  height: 100%;
+}
+
+/* Overflow */
+.overflow-hidden {
+  overflow: hidden;
+}
+
+.overflow-auto {
+  overflow: auto;
+}
+
+/* Visibility */
+.visible {
+  visibility: visible;
+}
+
+.invisible {
+  visibility: hidden;
+}
+
+/* Opacity */
+.opacity-0 {
+  opacity: 0;
+}
+
+.opacity-50 {
+  opacity: 0.5;
+}
+
+.opacity-100 {
+  opacity: 1;
+}
+
+/* Accessibility */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Responsive utilities */
+@media (min-width: 640px) {
+  .sm\:d-none {
+    display: none;
+  }
+
+  .sm\:d-block {
+    display: block;
+  }
+
+  .sm\:d-flex {
+    display: flex;
+  }
+}
+
+@media (min-width: 768px) {
+  .md\:d-none {
+    display: none;
+  }
+
+  .md\:d-block {
+    display: block;
+  }
+
+  .md\:d-flex {
+    display: flex;
+  }
+}
+
+@media (min-width: 1024px) {
+  .lg\:d-none {
+    display: none;
+  }
+
+  .lg\:d-block {
+    display: block;
+  }
+
+  .lg\:d-flex {
+    display: flex;
+  }
+}

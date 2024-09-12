@@ -1,0 +1,91 @@
+/* typography.css */
+
+body {
+  font-family: var(--ff-primary, sans-serif);
+  font-size: var(--fs-md, 1rem);
+  line-height: var(--lh-md, 1.5);
+  color: var(--clr-text-primary, #333);
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--ff-secondary, sans-serif);
+  font-weight: var(--fw-bold, 700);
+  line-height: 1.2;
+  margin-bottom: var(--spacing-md, 1.5rem);
+}
+
+h1 {
+  font-size: var(--fs-xxl, 2.5rem);
+}
+
+h2 {
+  font-size: var(--fs-xl, 2rem);
+}
+
+h3 {
+  font-size: var(--fs-lg, 1.75rem);
+}
+
+h4 {
+  font-size: var(--fs-md, 1.5rem);
+}
+
+h5 {
+  font-size: var(--fs-sm, 1.25rem);
+}
+
+h6 {
+  font-size: var(--fs-xs, 1rem);
+}
+
+p {
+  margin-bottom: var(--spacing-md, 1.5rem);
+}
+
+a {
+  color: var(--clr-link, #0000ff);
+  text-decoration: none;
+  transition: color var(--transition-fast, 150ms) ease-in-out;
+}
+
+a:hover {
+  color: var(--clr-link-hover, #000099);
+  text-decoration: underline;
+}
+
+/* Responsive typography */
+@media (min-width: 640px) {
+  body {
+    font-size: calc(var(--fs-md, 1rem) * 1.125);
+  }
+
+  h1 {
+    font-size: calc(var(--fs-xxl, 2.5rem) * 1.125);
+  }
+
+  h2 {
+    font-size: calc(var(--fs-xl, 2rem) * 1.125);
+  }
+
+  h3 {
+    font-size: calc(var(--fs-lg, 1.75rem) * 1.125);
+  }
+}
+
+@media (min-width: 1024px) {
+  body {
+    font-size: calc(var(--fs-md, 1rem) * 1.25);
+  }
+
+  h1 {
+    font-size: calc(var(--fs-xxl, 2.5rem) * 1.25);
+  }
+
+  h2 {
+    font-size: calc(var(--fs-xl, 2rem) * 1.25);
+  }
+
+  h3 {
+    font-size: calc(var(--fs-lg, 1.75rem) * 1.25);
+  }
+}

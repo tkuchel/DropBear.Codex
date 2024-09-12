@@ -1,0 +1,81 @@
+/* themes.css */
+
+/* Light theme (default) */
+:root {
+  --clr-background: var(--clr-white, #ffffff);
+  --clr-text-primary: var(--clr-mine-shaft, #333333);
+  --clr-text-secondary: var(--clr-dim-gray, #666666);
+  --clr-surface-primary: var(--clr-seasalt, #f6f6f7);
+  --clr-surface-secondary: var(--clr-anti-flash-white, #e9eaec);
+}
+
+/* Dark theme */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --clr-background: var(--clr-black, #1e1f22);
+    --clr-text-primary: var(--clr-silver-sand, #bbbec3);
+    --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
+    --clr-surface-primary: var(--clr-davy-gray, #4e5055);
+    --clr-surface-secondary: var(--clr-onyx, #343639);
+  }
+
+  /* Adjust other colors for dark theme */
+  .btn-primary {
+    background-color: var(--clr-viking, #62dbc8);
+    border-color: var(--clr-viking, #62dbc8);
+    color: var(--clr-black, #1e1f22);
+  }
+
+  .btn-secondary {
+    background-color: var(--clr-rock-blue, #a4b1cd);
+    border-color: var(--clr-rock-blue, #a4b1cd);
+    color: var(--clr-black, #1e1f22);
+  }
+
+  .card {
+    background-color: var(--clr-surface-secondary, #343639);
+    border-color: var(--clr-dim-gray, #67696f);
+  }
+
+  a {
+    color: var(--clr-hot-pink, #ff6ed4);
+  }
+
+  a:hover {
+    color: var(--clr-heliotrope, #ad6fff);
+  }
+}
+
+/* Theme toggle class for JavaScript theme switching */
+.theme-dark {
+  --clr-background: var(--clr-black, #1e1f22);
+  --clr-text-primary: var(--clr-silver-sand, #bbbec3);
+  --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
+  --clr-surface-primary: var(--clr-davy-gray, #4e5055);
+  --clr-surface-secondary: var(--clr-onyx, #343639);
+}
+
+.theme-dark .btn-primary {
+  background-color: var(--clr-viking, #62dbc8);
+  border-color: var(--clr-viking, #62dbc8);
+  color: var(--clr-black, #1e1f22);
+}
+
+.theme-dark .btn-secondary {
+  background-color: var(--clr-rock-blue, #a4b1cd);
+  border-color: var(--clr-rock-blue, #a4b1cd);
+  color: var(--clr-black, #1e1f22);
+}
+
+.theme-dark .card {
+  background-color: var(--clr-surface-secondary, #343639);
+  border-color: var(--clr-dim-gray, #67696f);
+}
+
+.theme-dark a {
+  color: var(--clr-hot-pink, #ff6ed4);
+}
+
+.theme-dark a:hover {
+  color: var(--clr-heliotrope, #ad6fff);
+}

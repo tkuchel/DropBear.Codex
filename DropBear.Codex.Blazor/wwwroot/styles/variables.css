@@ -1,0 +1,140 @@
+/* variables.css */
+
+:root {
+  /* Golden Ratio */
+  --golden-ratio: 1.61803398875;
+  --golden-ratio-inverse: 0.61803398875;
+
+  /* Color Palette */
+  --clr-mine-shaft: #333;
+  --clr-silver-sand: #bbbec3;
+  --clr-viking: #62dbc8;
+  --clr-pastel-green: #7cd651;
+  --clr-japonica: #d58558;
+  --clr-mustard: #ffd14d;
+  --clr-coral: #ff8d48;
+  --clr-persimmon: #ff5757;
+  --clr-hot-pink: #ff6ed4;
+  --clr-heliotrope: #ad6fff;
+  --clr-malibu: #4ebafd;
+  --clr-cornflower-blue: #8552f8;
+  --clr-hyperlink-blue: #61afff;
+  --clr-lime: #a0f000;
+  --clr-rock-blue: #a4b1cd;
+
+  /* Shades of Gray */
+  --clr-white: #fbfbfb;
+  --clr-seasalt: #f6f6f7;
+  --clr-anti-flash-white: #e9eaec;
+  --clr-platinum: #dbdddf;
+  --clr-french-gray: #b9bbc0;
+  --clr-cadet-gray: #94979c;
+  --clr-dim-gray: #67696f;
+  --clr-davy-gray: #4e5055;
+  --clr-onyx: #343639;
+  --clr-black: #1e1f22;
+
+  /* Semantic Color Variables */
+  --clr-primary: var(--clr-viking);
+  --clr-secondary: var(--clr-rock-blue);
+  --clr-tertiary: var(--clr-cornflower-blue);
+  --clr-accent: var(--clr-persimmon);
+
+  --clr-success: var(--clr-pastel-green);
+  --clr-warning: var(--clr-mustard);
+  --clr-error: var(--clr-persimmon);
+  --clr-info: var(--clr-malibu);
+
+  --clr-background: var(--clr-white);
+  --clr-surface-primary: var(--clr-seasalt);
+  --clr-surface-secondary: var(--clr-anti-flash-white);
+  --clr-surface-dark: var(--clr-platinum);
+  --clr-surface-light: var(--clr-white);
+
+  --clr-text-primary: var(--clr-mine-shaft);
+  --clr-text-secondary: var(--clr-dim-gray);
+  --clr-text-muted: var(--clr-french-gray);
+
+  --clr-button-primary: var(--clr-viking);
+  --clr-button-secondary: var(--clr-rock-blue);
+  --clr-button-tertiary: var(--clr-cornflower-blue);
+
+  --clr-input-border: var(--clr-french-gray);
+  --clr-input-focus: var(--clr-malibu);
+
+  --clr-link: var(--clr-hyperlink-blue);
+
+  /* Interactive State Colors */
+  --clr-hover: rgba(0, 0, 0, 0.1);
+  --clr-active: rgba(0, 0, 0, 0.2);
+  --clr-focus: rgba(78, 186, 253, 0.4);
+
+  /* Typography */
+  --ff-primary: "Poppins", sans-serif;
+  --ff-secondary: "Open Sans", sans-serif;
+  --ff-tertiary: "Roboto", sans-serif;
+
+  /* Font Sizes */
+  --fs-base: 1rem;
+  --fs-xxs: calc(var(--fs-base) / var(--golden-ratio) / var(--golden-ratio));
+  --fs-xs: calc(var(--fs-base) / var(--golden-ratio));
+  --fs-sm: var(--fs-base);
+  --fs-md: calc(var(--fs-base) * var(--golden-ratio));
+  --fs-lg: calc(var(--fs-md) * var(--golden-ratio));
+  --fs-xl: calc(var(--fs-lg) * var(--golden-ratio));
+  --fs-xxl: calc(var(--fs-xl) * var(--golden-ratio));
+
+  /* Line Heights */
+  --lh-xxs: calc(var(--fs-xxs) * var(--golden-ratio));
+  --lh-xs: calc(var(--fs-xs) * var(--golden-ratio));
+  --lh-sm: calc(var(--fs-sm) * var(--golden-ratio));
+  --lh-md: calc(var(--fs-md) * var(--golden-ratio));
+  --lh-lg: calc(var(--fs-lg) * var(--golden-ratio));
+  --lh-xl: calc(var(--fs-xl) * var(--golden-ratio));
+  --lh-xxl: calc(var(--fs-xxl) * var(--golden-ratio));
+
+  /* Font Weights */
+  --fw-thin: 100;
+  --fw-extra-light: 200;
+  --fw-light: 300;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semi-bold: 600;
+  --fw-bold: 700;
+  --fw-extra-bold: 800;
+  --fw-black: 900;
+
+  /* Spacing */
+  --spacing-xxs: 0.25rem;
+  --spacing-xs: 0.5rem;
+  --spacing-sm: 1rem;
+  --spacing-md: 1.5rem;
+  --spacing-lg: 2rem;
+  --spacing-xl: 3rem;
+  --spacing-xxl: 4rem;
+
+  /* Border Radius */
+  --br-sm: 0.25rem;
+  --br-md: 0.5rem;
+  --br-lg: 1rem;
+  --br-full: 9999px;
+
+  /* Box Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+
+  /* Z-index Scale */
+  --z-index-dropdown: 1000;
+  --z-index-sticky: 1020;
+  --z-index-fixed: 1030;
+  --z-index-modal-backdrop: 1040;
+  --z-index-modal: 1050;
+  --z-index-popover: 1060;
+  --z-index-tooltip: 1070;
+
+  /* Transitions */
+  --transition-fast: 150ms ease-in-out;
+  --transition-medium: 300ms ease-in-out;
+  --transition-slow: 500ms ease-in-out;
+}

@@ -1,0 +1,100 @@
+/* components.css */
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: var(--spacing-xs, 0.5rem) var(--spacing-sm, 1rem);
+  font-size: var(--fs-sm, 1rem);
+  font-weight: var(--fw-medium, 500);
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  vertical-align: middle;
+  cursor: pointer;
+  user-select: none;
+  border: 1px solid transparent;
+  border-radius: var(--br-md, 0.25rem);
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.btn-primary {
+  color: var(--clr-white, #fff);
+  background-color: var(--clr-button-primary, #007bff);
+  border-color: var(--clr-button-primary, #007bff);
+}
+
+.btn-primary:hover {
+  background-color: var(--clr-button-primary-hover, #0056b3);
+  border-color: var(--clr-button-primary-hover, #0056b3);
+}
+
+.btn-secondary {
+  color: var(--clr-white, #fff);
+  background-color: var(--clr-button-secondary, #6c757d);
+  border-color: var(--clr-button-secondary, #6c757d);
+}
+
+.btn-secondary:hover {
+  background-color: var(--clr-button-secondary-hover, #545b62);
+  border-color: var(--clr-button-secondary-hover, #545b62);
+}
+
+/* Forms */
+.form-group {
+  margin-bottom: var(--spacing-md, 1rem);
+}
+
+.form-label {
+  display: inline-block;
+  margin-bottom: var(--spacing-xxs, 0.25rem);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  padding: var(--spacing-xs, 0.5rem) var(--spacing-sm, 0.75rem);
+  font-size: var(--fs-sm, 1rem);
+  line-height: 1.5;
+  color: var(--clr-text-primary, #212529);
+  background-color: var(--clr-white, #fff);
+  background-clip: padding-box;
+  border: 1px solid var(--clr-input-border, #ced4da);
+  border-radius: var(--br-sm, 0.25rem);
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.form-control:focus {
+  color: var(--clr-text-primary, #212529);
+  background-color: var(--clr-white, #fff);
+  border-color: var(--clr-input-focus, #80bdff);
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+/* Cards */
+.card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  word-wrap: break-word;
+  background-color: var(--clr-card-background, #fff);
+  background-clip: border-box;
+  border: 1px solid var(--clr-border, rgba(0, 0, 0, 0.125));
+  border-radius: var(--br-md, 0.25rem);
+}
+
+.card-body {
+  flex: 1 1 auto;
+  padding: var(--spacing-md, 1.25rem);
+}
+
+.card-title {
+  margin-bottom: var(--spacing-sm, 0.75rem);
+}
+
+.card-text:last-child {
+  margin-bottom: 0;
+}
+
+/* Add more component styles as needed */
