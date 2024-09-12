@@ -89,14 +89,14 @@
 /* Header */
 .header {
   padding: var(--spacing-md, 1rem) 0;
-  background-color: var(--clr-surface-primary, #f8f9fa);
+  background: var(--header-gradient);
 }
 
 /* Footer */
 .footer {
   padding: var(--spacing-md, 1rem) 0;
-  background-color: var(--clr-surface-dark, #343a40);
-  color: var(--clr-white, #fff);
+  background: var(--footer-gradient);
+  color: var(--clr-text-primary, #fff);
 }
 
 /* Main content */

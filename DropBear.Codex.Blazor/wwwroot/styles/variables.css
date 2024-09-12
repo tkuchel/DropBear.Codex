@@ -69,6 +69,29 @@
   --clr-active: rgba(0, 0, 0, 0.2);
   --clr-focus: rgba(78, 186, 253, 0.4);
 
+  /* Gradient Degrees */
+  --deg-0: 0deg;
+  --deg-45: 45deg;
+  --deg-90: 90deg;
+  --deg-135: 135deg;
+  --deg-180: 180deg;
+  --deg-225: 225deg;
+  --deg-270: 270deg;
+  --deg-315: 315deg;
+
+  /* Gradients */
+  --header-gradient: linear-gradient(
+    var(--deg-90),
+    var(--clr-grey-200),
+    var(--clr-grey-100)
+  );
+
+  --footer-gradient: linear-gradient(
+    var(--deg-90),
+    var(--clr-grey-200),
+    var(--clr-grey-100)
+  );
+
   /* Typography */
   --ff-primary: "Poppins", sans-serif;
   --ff-secondary: "Open Sans", sans-serif;
@@ -137,4 +160,6 @@
   --transition-fast: 150ms ease-in-out;
   --transition-medium: 300ms ease-in-out;
   --transition-slow: 500ms ease-in-out;
+
+
 }

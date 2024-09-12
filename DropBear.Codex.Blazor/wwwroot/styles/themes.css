@@ -7,6 +7,18 @@
   --clr-text-secondary: var(--clr-dim-gray, #666666);
   --clr-surface-primary: var(--clr-seasalt, #f6f6f7);
   --clr-surface-secondary: var(--clr-anti-flash-white, #e9eaec);
+
+  --header-gradient: linear-gradient(
+    var(--deg-90),
+    var(--clr-grey-200),
+    var(--clr-grey-100)
+  );
+
+  --footer-gradient: linear-gradient(
+    var(--deg-90),
+    var(--clr-grey-200),
+    var(--clr-grey-100)
+  );
 }
 
 /* Dark theme */
@@ -17,6 +29,18 @@
     --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
     --clr-surface-primary: var(--clr-davy-gray, #4e5055);
     --clr-surface-secondary: var(--clr-onyx, #343639);
+
+    --header-gradient: linear-gradient(
+      var(--deg-90),
+      var(--clr-black),
+      var(--clr-grey-800)
+    );
+
+    --footer-gradient: linear-gradient(
+      var(--deg-90),
+      var(--clr-black),
+      var(--clr-grey-800)
+    );
   }
 
   /* Adjust other colors for dark theme */
@@ -53,6 +77,18 @@
   --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
   --clr-surface-primary: var(--clr-davy-gray, #4e5055);
   --clr-surface-secondary: var(--clr-onyx, #343639);
+
+  --header-gradient: linear-gradient(
+    var(--deg-90),
+    var(--clr-black),
+    var(--clr-grey-800)
+  );
+
+  --footer-gradient: linear-gradient(
+    var(--deg-90),
+    var(--clr-black),
+    var(--clr-grey-800)
+  );
 }
 
 .theme-dark .btn-primary {
