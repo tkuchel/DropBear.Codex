@@ -9,20 +9,20 @@ namespace DropBear.Codex.Core.Logging;
 public static class LoggerFactory
 {
     private static ILogger _logger = new NoOpLogger();
-    private static readonly object _lock = new();
+    private static readonly object Lock = new();
 
     public static ILogger Logger
     {
         get
         {
-            lock (_lock)
+            lock (Lock)
             {
                 return _logger;
             }
         }
         private set
         {
-            lock (_lock)
+            lock (Lock)
             {
                 _logger = value;
             }
