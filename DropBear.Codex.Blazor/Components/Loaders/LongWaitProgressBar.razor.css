@@ -194,7 +194,7 @@
 
 /* Responsive adjustments */
 @media (max-width: 640px) {
-  .container {
+  .dropbear-container {
     padding: var(--spacing-sm);
   }
 }

@@ -1,7 +1,7 @@
 /* layout.css */
 
 /* Container */
-.container {
+.dropbear-container {
   width: 100%;
   padding-right: var(--spacing-sm, 15px);
   padding-left: var(--spacing-sm, 15px);
@@ -10,25 +10,25 @@
 }
 
 @media (min-width: 576px) {
-  .container {
+  .dropbear-container {
     max-width: 540px;
   }
 }
 
 @media (min-width: 768px) {
-  .container {
+  .dropbear-container {
     max-width: 720px;
   }
 }
 
 @media (min-width: 992px) {
-  .container {
+  .dropbear-container {
     max-width: 960px;
   }
 }
 
 @media (min-width: 1200px) {
-  .container {
+  .dropbear-container {
     max-width: 1140px;
   }
 }
