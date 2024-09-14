@@ -1,0 +1,44 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@using Microsoft.JSInterop
+@typeparam TItem
+@inject IJSRuntime Js
+
+<div class="report-viewer container">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+        <h3 class="card-title">Report Viewer</h3>
+        <button class="btn btn-primary" @onclick="ExportToExcelAsStream">Export to Excel</button>
+    </div>
+
+    <table class="table table-striped table-hover">
+        <thead>
+        <tr>
+            @foreach (var column in Columns)
+            {
+                <th class="sortable" @onclick="() => SortBy(column)">
+                    @column.DisplayName
+                    @(GetSortIndicator(column))
+                </th>
+            }
+        </tr>
+        <tr>
+            @foreach (var column in Columns)
+            {
+                <th>
+                    <input class="form-control" @bind="column.FilterValue" placeholder="Filter..."/>
+                </th>
+            }
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in FilteredData)
+        {
+            <tr>
+                @foreach (var column in Columns)
+                {
+                    <td>@GetPropertyValue(item, column.PropertyName)</td>
+                }
+            </tr>
+        }
+        </tbody>
+    </table>
+</div>
