@@ -43,6 +43,10 @@ else
                         {
                             <button class="btn-primary" @onclick="AddItem"><i class="fas fa-plus"></i> Add</button>
                         }
+                        @if(AllowExport)
+                        {
+                            <button class="btn-primary" @onclick="ExportData"><i class="fas fa-file-export"></i> Export</button>
+                        }
                     </div>
                 </div>
 

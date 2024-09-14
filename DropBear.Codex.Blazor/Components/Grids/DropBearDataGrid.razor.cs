@@ -39,6 +39,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     [Parameter] public bool AllowAdd { get; set; } = true;
     [Parameter] public bool AllowEdit { get; set; } = true;
     [Parameter] public bool AllowDelete { get; set; } = true;
+    [Parameter] public bool AllowExport { get; set; } = true;
+    [Parameter] public EventCallback<List<TItem>> OnExportData { get; set; }
     [Parameter] public EventCallback<TItem> OnAddItem { get; set; }
     [Parameter] public EventCallback<TItem> OnEditItem { get; set; }
     [Parameter] public EventCallback<TItem> OnDeleteItem { get; set; }
@@ -292,6 +294,12 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
         _ = OnSelectionChanged.InvokeAsync(SelectedItems.ToList());
         StateHasChanged();
+    }
+
+    private async Task ExportData()
+    {
+        Logger.Information("Export data triggered.");
+        await OnExportData.InvokeAsync(default!);
     }
 
     private async Task AddItem()
