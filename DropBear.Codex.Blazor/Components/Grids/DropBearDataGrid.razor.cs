@@ -39,7 +39,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     [Parameter] public bool AllowAdd { get; set; } = true;
     [Parameter] public bool AllowEdit { get; set; } = true;
     [Parameter] public bool AllowDelete { get; set; } = true;
-    [Parameter] public bool AllowExport { get; set; } = true;
+    [Parameter] public bool AllowExport { get; set; } = false;
     [Parameter] public EventCallback<List<TItem>> OnExportData { get; set; }
     [Parameter] public EventCallback<TItem> OnAddItem { get; set; }
     [Parameter] public EventCallback<TItem> OnEditItem { get; set; }
