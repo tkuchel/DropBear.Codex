@@ -226,16 +226,14 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
 
             Logger.Information("Data exported to Excel successfully.");
 
-            // Determine which method to use based on the file size
             if (ms.Length < FileSizeThreshold)
             {
-                // Use byte array method for smaller files
+                // Use Base64 string method for smaller files
                 byte[] fileBytes = ms.ToArray();
                 string base64 = Convert.ToBase64String(fileBytes);
 
                 await Js.InvokeVoidAsync("downloadFileFromStream", "ExportedData.xlsx", base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             }
-
             else
             {
                 // Use DotNetStreamReference for larger files
@@ -251,5 +249,6 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
             // Optionally display an alert to the user
         }
     }
+
 
 }

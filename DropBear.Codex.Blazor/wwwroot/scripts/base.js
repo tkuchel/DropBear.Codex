@@ -340,36 +340,22 @@ window.DropBearFileUploader = (function () {
  */
 window.downloadFileFromStream = async (fileName, content, contentType) => {
   try {
-    if (typeof fileName !== 'string' || fileName.trim() === '') {
-      console.error('downloadFileFromStream: fileName must be a non-empty string');
-      return;
-    }
-    if (!content) {
-      console.error('downloadFileFromStream: content must not be null or undefined');
-      return;
-    }
-    if (typeof contentType !== 'string' || contentType.trim() === '') {
-      console.error('downloadFileFromStream: contentType must be a non-empty string');
-      return;
-    }
-
     let blob;
 
-    if (content.arrayBuffer) {
+    if (content instanceof Blob) {
+      // content is already a Blob
+      blob = content;
+    } else if (content.arrayBuffer) {
       // content is a DotNetStreamReference
       const arrayBuffer = await content.arrayBuffer();
       blob = new Blob([arrayBuffer], {type: contentType});
+    } else if (typeof content === 'string') {
+      // content is a Base64 string
+      const response = await fetch(`data:${contentType};base64,${content}`);
+      blob = await response.blob();
     } else {
-      // content is a Base64 string (byte array)
-      const byteCharacters = atob(content);
-      const byteNumbers = new Array(byteCharacters.length);
-
-      for (let i = 0; i < byteCharacters.length; i++) {
-        byteNumbers[i] = byteCharacters.charCodeAt(i);
-      }
-
-      const byteArray = new Uint8Array(byteNumbers);
-      blob = new Blob([byteArray], {type: contentType});
+      console.error('downloadFileFromStream: Unsupported content type');
+      return;
     }
 
     const url = URL.createObjectURL(blob);
@@ -385,6 +371,7 @@ window.downloadFileFromStream = async (fileName, content, contentType) => {
     console.error('Error in downloadFileFromStream:', error);
   }
 };
+
 
 /**
  * DropBearContextMenu module
