@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Globalization;
 using System.Reflection;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
@@ -20,10 +21,10 @@ namespace DropBear.Codex.Blazor.Components.Reports;
 /// <typeparam name="TItem">The type of data items to display.</typeparam>
 public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TItem : class
 {
+    private const int FileSizeThreshold = 32 * 1024; // 32 KB
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ReportViewer<TItem>>();
     private readonly ExcelExporter<TItem> _excelExporter = new();
     private readonly Dictionary<string, PropertyInfo?> _propertyCache = new();
-    private const int FileSizeThreshold = 32 * 1024; // 32 KB
 
     /// <summary>
     ///     Gets or sets the data to display in the report viewer.
@@ -31,7 +32,19 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
     [Parameter]
     public IEnumerable<TItem> Data { get; set; } = Enumerable.Empty<TItem>();
 
+    /// <summary>
+    ///     Optionally provide specific columns to be rendered.
+    /// </summary>
+    [Parameter]
+    public List<ColumnDefinition>? ColumnDefinitions { get; set; }
+
     private List<ColumnDefinition> Columns { get; set; } = new();
+
+    /// <summary>
+    ///     Gets the columns used in the report, prioritizing custom definitions over auto-generated ones.
+    /// </summary>
+    private IEnumerable<ColumnDefinition> ResolvedColumns =>
+        ColumnDefinitions?.Any() == true ? ColumnDefinitions : Columns;
 
     /// <summary>
     ///     Gets the filtered and sorted data.
@@ -53,7 +66,6 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
         catch (Exception ex)
         {
             Logger.Error(ex, "An error occurred during component initialization.");
-            // Handle exception appropriately, e.g., show an error message to the user
         }
     }
 
@@ -70,7 +82,8 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
                 .Select(prop => new ColumnDefinition
                 {
                     PropertyName = prop.Name,
-                    DisplayName = prop.Name, // Customize display names as needed
+                    DisplayName = prop.Name,
+                    IsVisible = true, // By default, all columns are visible
                     FilterValue = string.Empty
                 })
                 .ToList();
@@ -108,7 +121,6 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
         catch (Exception ex)
         {
             Logger.Error(ex, "An error occurred while sorting by column '{ColumnName}'.", column.PropertyName);
-            // Optionally handle the exception, e.g., reset sorting
         }
     }
 
@@ -123,19 +135,19 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
             var query = Data.AsQueryable();
 
             // Apply filtering
-            foreach (var column in Columns.Where(c => !string.IsNullOrEmpty(c.FilterValue)))
+            foreach (var column in ResolvedColumns.Where(c => !string.IsNullOrEmpty(c.FilterValue)))
             {
                 try
                 {
-                    query = query.Where(item => GetPropertyValue(item, column.PropertyName)
-                        .ToString()
-                        .Contains(column.FilterValue, StringComparison.OrdinalIgnoreCase) == true);
+                    query = query.Where(item =>
+                        GetPropertyValue(item, column.PropertyName)
+                            .ToString()
+                            .Contains(column.FilterValue, StringComparison.OrdinalIgnoreCase) == true);
                 }
                 catch (Exception ex)
                 {
                     Logger.Error(ex, "An error occurred while applying filter on column '{ColumnName}'.",
                         column.PropertyName);
-                    // Optionally handle the exception, e.g., skip this filter
                 }
             }
 
@@ -151,7 +163,6 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
                 catch (Exception ex)
                 {
                     Logger.Error(ex, "An error occurred while sorting by column '{ColumnName}'.", CurrentSortColumn);
-                    // Optionally handle the exception, e.g., return unsorted data
                 }
             }
 
@@ -189,6 +200,34 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
         }
     }
 
+    /// <summary>
+    ///     Gets the formatted value for display, handling special cases like dates and phone numbers.
+    /// </summary>
+    /// <param name="item">The data item.</param>
+    /// <param name="propertyName">The property name.</param>
+    /// <returns>The formatted value as a string.</returns>
+    private string GetFormattedValue(TItem item, string propertyName)
+    {
+        var value = GetPropertyValue(item, propertyName);
+        if (value == null)
+        {
+            return string.Empty;
+        }
+
+        if (value is DateOnly dateValue)
+        {
+            // Format the date in AU format: dd/MM/yyyy
+            return dateValue.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
+        }
+
+        if (propertyName.Contains("MobileNumber") && value is string mobileNumber && !mobileNumber.StartsWith("0"))
+        {
+            // Add leading zero to mobile numbers
+            return $"0{mobileNumber}";
+        }
+
+        return value.ToString() ?? string.Empty;
+    }
 
     /// <summary>
     ///     Gets the sort indicator for a column.
@@ -220,7 +259,6 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
             if (ms == null || ms.Length == 0)
             {
                 Logger.Error("Excel export resulted in an empty file.");
-                // Optionally display an alert to the user
                 return;
             }
 
@@ -228,27 +266,24 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
 
             if (ms.Length < FileSizeThreshold)
             {
-                // Use Base64 string method for smaller files
-                byte[] fileBytes = ms.ToArray();
-                string base64 = Convert.ToBase64String(fileBytes);
+                var fileBytes = ms.ToArray();
+                var base64 = Convert.ToBase64String(fileBytes);
 
-                await Js.InvokeVoidAsync("downloadFileFromStream", "ExportedData.xlsx", base64, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                await Js.InvokeVoidAsync("downloadFileFromStream", "ExportedData.xlsx", base64,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             }
             else
             {
-                // Use DotNetStreamReference for larger files
-                ms.Position = 0; // Ensure the stream is at the beginning
-                using var streamRef = new DotNetStreamReference(stream: ms);
+                ms.Position = 0;
+                using var streamRef = new DotNetStreamReference(ms);
 
-                await Js.InvokeVoidAsync("downloadFileFromStream", "ExportedData.xlsx", streamRef, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+                await Js.InvokeVoidAsync("downloadFileFromStream", "ExportedData.xlsx", streamRef,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             }
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "An error occurred during Excel export.");
-            // Optionally display an alert to the user
         }
     }
-
-
 }

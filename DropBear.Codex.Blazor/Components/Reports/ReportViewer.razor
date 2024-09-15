@@ -12,32 +12,41 @@
     <table class="table table-striped table-hover">
         <thead>
         <tr>
-            @foreach (var column in Columns)
+            @foreach (var column in ResolvedColumns)
             {
-                <th class="sortable" @onclick="() => SortBy(column)">
-                    @column.DisplayName
-                    @(GetSortIndicator(column))
-                </th>
+            @if (column.IsVisible)
+            {
+            <th class="sortable" @onclick="() => SortBy(column)">
+                @column.DisplayName
+                @(GetSortIndicator(column))
+            </th>
+            }
             }
         </tr>
         <tr>
-            @foreach (var column in Columns)
+            @foreach (var column in ResolvedColumns)
             {
-                <th>
-                    <input class="form-control" @bind="column.FilterValue" placeholder="Filter..."/>
-                </th>
+            @if (column.IsVisible)
+            {
+            <th>
+                <input class="form-control" @bind="column.FilterValue" placeholder="Filter..." />
+            </th>
+            }
             }
         </tr>
         </thead>
         <tbody>
         @foreach (var item in FilteredData)
         {
-            <tr>
-                @foreach (var column in Columns)
-                {
-                    <td>@GetPropertyValue(item, column.PropertyName)</td>
-                }
-            </tr>
+        <tr>
+            @foreach (var column in ResolvedColumns)
+            {
+            @if (column.IsVisible)
+            {
+            <td>@GetFormattedValue(item, column.PropertyName)</td>
+            }
+            }
+        </tr>
         }
         </tbody>
     </table>

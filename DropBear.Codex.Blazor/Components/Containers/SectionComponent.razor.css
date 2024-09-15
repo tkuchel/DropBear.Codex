@@ -6,4 +6,5 @@
   border: var(--br-default, 1px solid var(--clr-border));
   border-radius: var(--br-md, 0.5rem);
   margin-bottom: var(--spacing-md, 1rem);
+  overflow: hidden;
 }
