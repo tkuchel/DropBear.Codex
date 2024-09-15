@@ -220,7 +220,7 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
             return dateValue.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
         }
 
-        if (propertyName.Contains("MobileNumber") && value is string mobileNumber && !mobileNumber.StartsWith("0"))
+        if (propertyName.Contains("MobileNumber") && value is string mobileNumber && !mobileNumber.StartsWith("0") && mobileNumber.Length == 9)
         {
             // Add leading zero to mobile numbers
             return $"0{mobileNumber}";

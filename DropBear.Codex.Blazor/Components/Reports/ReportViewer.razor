@@ -5,7 +5,7 @@
 
 <div class="report-viewer dropbear-container">
     <div class="d-flex justify-content-between align-items-center mb-2">
-        <h3 class="card-title">Report Viewer</h3>
+        <h3 class="card-title">Report Viewer (@FilteredData.Count() items)</h3>
         <button class="btn btn-primary" @onclick="ExportToExcelAsStream">Export to Excel</button>
     </div>
 
@@ -14,39 +14,39 @@
         <tr>
             @foreach (var column in ResolvedColumns)
             {
-            @if (column.IsVisible)
-            {
-            <th class="sortable" @onclick="() => SortBy(column)">
-                @column.DisplayName
-                @(GetSortIndicator(column))
-            </th>
-            }
+                @if (column.IsVisible)
+                {
+                    <th class="sortable" @onclick="() => SortBy(column)">
+                        @column.DisplayName
+                        @(GetSortIndicator(column))
+                    </th>
+                }
             }
         </tr>
         <tr>
             @foreach (var column in ResolvedColumns)
             {
-            @if (column.IsVisible)
-            {
-            <th>
-                <input class="form-control" @bind="column.FilterValue" placeholder="Filter..." />
-            </th>
-            }
+                @if (column.IsVisible)
+                {
+                    <th>
+                        <input class="form-control" @bind="column.FilterValue" placeholder="Filter..."/>
+                    </th>
+                }
             }
         </tr>
         </thead>
         <tbody>
         @foreach (var item in FilteredData)
         {
-        <tr>
-            @foreach (var column in ResolvedColumns)
-            {
-            @if (column.IsVisible)
-            {
-            <td>@GetFormattedValue(item, column.PropertyName)</td>
-            }
-            }
-        </tr>
+            <tr>
+                @foreach (var column in ResolvedColumns)
+                {
+                    @if (column.IsVisible)
+                    {
+                        <td>@GetFormattedValue(item, column.PropertyName)</td>
+                    }
+                }
+            </tr>
         }
         </tbody>
     </table>
