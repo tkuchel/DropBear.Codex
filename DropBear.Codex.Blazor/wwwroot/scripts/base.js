@@ -348,11 +348,14 @@ window.downloadFileFromStream = async (fileName, content, contentType) => {
     } else if (content.arrayBuffer) {
       // content is a DotNetStreamReference
       const arrayBuffer = await content.arrayBuffer();
-      blob = new Blob([arrayBuffer], {type: contentType});
+      blob = new Blob([arrayBuffer], { type: contentType });
     } else if (typeof content === 'string') {
       // content is a Base64 string
       const response = await fetch(`data:${contentType};base64,${content}`);
       blob = await response.blob();
+    } else if (content instanceof Uint8Array) {
+      // content is a byte array (Uint8Array)
+      blob = new Blob([content], { type: contentType });
     } else {
       console.error('downloadFileFromStream: Unsupported content type');
       return;
