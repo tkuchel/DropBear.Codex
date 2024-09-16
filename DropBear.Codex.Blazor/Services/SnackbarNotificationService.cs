@@ -1,10 +1,13 @@
 ﻿#region
 
-using DropBear.Codex.Blazor.Arguments.Events;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
+using DropBear.Codex.Blazor.Messaging.Models;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core;
+using DropBear.Codex.Core.Logging;
+using MessagePipe;
+using Serilog;
 
 #endregion
 
@@ -15,15 +18,18 @@ namespace DropBear.Codex.Blazor.Services;
 /// </summary>
 public sealed class SnackbarNotificationService : ISnackbarNotificationService
 {
-    /// <summary>
-    ///     Event triggered when a new snackbar should be shown.
-    /// </summary>
-    public event Func<object?, SnackbarNotificationEventArgs, Task>? OnShow;
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SnackbarNotificationService>();
+    private readonly IPublisher<HideAllSnackbarsMessage> _hideAllPublisher;
+    private readonly IPublisher<ShowSnackbarMessage> _showPublisher;
 
-    /// <summary>
-    ///     Event triggered when all snackbars should be hidden.
-    /// </summary>
-    public event Func<object?, EventArgs, Task>? OnHideAll;
+    public SnackbarNotificationService(
+        IPublisher<ShowSnackbarMessage> showPublisher,
+        IPublisher<HideAllSnackbarsMessage> hideAllPublisher)
+    {
+        _showPublisher = showPublisher;
+        _hideAllPublisher = hideAllPublisher;
+        Logger.Debug("SnackbarNotificationService initialized.");
+    }
 
     /// <summary>
     ///     Shows a snackbar notification with the specified message and options.
@@ -35,9 +41,8 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// <param name="actionText">The text of the action button on the snackbar notification.</param>
     /// <param name="onAction">The action to perform when the action button is clicked.</param>
     /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> ShowAsync(string message, SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
-        bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
+    public Task<Result> ShowAsync(string message, SnackbarType type = SnackbarType.Information,
+        int duration = 5000, bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
     {
         var options = new SnackbarNotificationOptions(
             "Notification",
@@ -49,7 +54,7 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
             onAction
         );
 
-        return await ShowInternalAsync(options).ConfigureAwait(false);
+        return ShowInternalAsync(options);
     }
 
     /// <summary>
@@ -63,9 +68,8 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// <param name="actionText">The text of the action button on the snackbar notification.</param>
     /// <param name="onAction">The action to perform when the action button is clicked.</param>
     /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> ShowAsync(string title,string message, SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
-        bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
+    public Task<Result> ShowAsync(string title, string message, SnackbarType type = SnackbarType.Information,
+        int duration = 5000, bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
     {
         var options = new SnackbarNotificationOptions(
             title,
@@ -77,27 +81,25 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
             onAction
         );
 
-        return await ShowInternalAsync(options).ConfigureAwait(false);
+        return ShowInternalAsync(options);
     }
 
     /// <summary>
     ///     Hides all snackbar notifications.
     /// </summary>
     /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> HideAllAsync()
+    public Task<Result> HideAllAsync()
     {
         try
         {
-            if (OnHideAll != null)
-            {
-                await OnHideAll.Invoke(this, EventArgs.Empty);
-            }
-
-            return Result.Success();
+            _hideAllPublisher.Publish(new HideAllSnackbarsMessage());
+            Logger.Debug("HideAllSnackbarsMessage published.");
+            return Task.FromResult(Result.Success());
         }
         catch (Exception ex)
         {
-            return Result.Failure("Error hiding all snackbars", ex);
+            Logger.Error(ex, "Error publishing HideAllSnackbarsMessage.");
+            return Task.FromResult(Result.Failure("Error hiding all snackbars", ex));
         }
     }
 
@@ -106,20 +108,18 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// </summary>
     /// <param name="options">The options for the snackbar notification.</param>
     /// <returns>A task representing the result of the operation.</returns>
-    private async Task<Result> ShowInternalAsync(SnackbarNotificationOptions options)
+    private Task<Result> ShowInternalAsync(SnackbarNotificationOptions options)
     {
         try
         {
-            if (OnShow != null)
-            {
-                await OnShow.Invoke(this, new SnackbarNotificationEventArgs(options));
-            }
-
-            return Result.Success();
+            _showPublisher.Publish(new ShowSnackbarMessage(options));
+            Logger.Debug("ShowSnackbarMessage published with options: {@Options}", options);
+            return Task.FromResult(Result.Success());
         }
         catch (Exception ex)
         {
-            return Result.Failure("Error showing snackbar", ex);
+            Logger.Error(ex, "Error publishing ShowSnackbarMessage.");
+            return Task.FromResult(Result.Failure("Error showing snackbar", ex));
         }
     }
 }

@@ -1,10 +1,10 @@
 ﻿#region
 
-using DropBear.Codex.Blazor.Arguments.Events;
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Blazor.Interfaces;
+using DropBear.Codex.Blazor.Messaging.Models;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
+using MessagePipe;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Serilog;
@@ -20,8 +20,11 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSnackbarNotificationContainer>();
     private readonly List<SnackbarInstance> _snackbars = new();
+    private IDisposable? _hideAllSubscription;
+    private IDisposable? _showSubscription;
 
-    [Inject] private ISnackbarNotificationService SnackbarService { get; set; } = null!;
+    [Inject] private ISubscriber<ShowSnackbarMessage> ShowSnackbarSubscriber { get; set; } = null!;
+    [Inject] private ISubscriber<HideAllSnackbarsMessage> HideAllSnackbarsSubscriber { get; set; } = null!;
 
     /// <summary>
     ///     Disposes of the snackbar notification container asynchronously.
@@ -30,7 +33,8 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     {
         Logger.Debug("Disposing SnackbarNotificationContainer...");
 
-        UnsubscribeSnackbarServiceEvents();
+        _showSubscription?.Dispose();
+        _hideAllSubscription?.Dispose();
 
         foreach (var snackbar in _snackbars)
         {
@@ -45,8 +49,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
             {
                 Logger.Warning(ex, "JSDisconnectedException occurred while disposing snackbar: {SnackbarId}",
                     snackbar.Id);
-                // The circuit is disconnected, so we can't invoke JavaScript.
-                // Snackbars will be removed when the page unloads.
             }
             catch (Exception ex)
             {
@@ -63,27 +65,20 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        SubscribeSnackbarServiceEvents();
+        SubscribeToMessages();
         Logger.Debug("SnackbarNotificationContainer initialized.");
     }
 
-    private void SubscribeSnackbarServiceEvents()
+    private void SubscribeToMessages()
     {
-        SnackbarService.OnShow += ShowSnackbarAsync;
-        SnackbarService.OnHideAll += HideAllSnackbars;
-        Logger.Debug("Subscribed to SnackbarService events.");
+        _showSubscription = ShowSnackbarSubscriber.Subscribe(ShowSnackbarAsync);
+        _hideAllSubscription = HideAllSnackbarsSubscriber.Subscribe(_ => HideAllSnackbarsAsync());
+        Logger.Debug("Subscribed to MessagePipe messages.");
     }
 
-    private void UnsubscribeSnackbarServiceEvents()
+    private async void ShowSnackbarAsync(ShowSnackbarMessage message)
     {
-        SnackbarService.OnShow -= ShowSnackbarAsync;
-        SnackbarService.OnHideAll -= HideAllSnackbars;
-        Logger.Debug("Unsubscribed from SnackbarService events.");
-    }
-
-    private async Task ShowSnackbarAsync(object? sender, SnackbarNotificationEventArgs e)
-    {
-        var options = e.Options;
+        var options = message.Options;
 
         var snackbar = new SnackbarInstance(options);
         _snackbars.Add(snackbar);
@@ -109,7 +104,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         catch (Exception ex)
         {
             Logger.Error(ex, "Error occurred while showing snackbar: {SnackbarId}", snackbar.Id);
-            throw;
         }
     }
 
@@ -130,36 +124,29 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error occurred while removing snackbar: {SnackbarId}", snackbar.Id);
-                throw;
             }
 
             await InvokeAsync(StateHasChanged);
         }
     }
 
-    private async Task HideAllSnackbars(object? sender, EventArgs e)
+    private async Task HideAllSnackbarsAsync()
     {
         Logger.Debug("Hiding all snackbars...");
 
         try
         {
-            await HideAllSnackbarsInternalAsync();
+            var tasks = _snackbars.Select(s => s.ComponentRef?.DismissAsync() ?? Task.CompletedTask);
+            await Task.WhenAll(tasks);
+            _snackbars.Clear();
+
+            Logger.Debug("All snackbars hidden and cleared.");
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error occurred while hiding all snackbars.");
-            throw;
         }
-    }
-
-    private async Task HideAllSnackbarsInternalAsync()
-    {
-        var tasks = _snackbars.Select(s => s.ComponentRef?.DismissAsync() ?? Task.CompletedTask);
-        await Task.WhenAll(tasks);
-        _snackbars.Clear();
-
-        Logger.Debug("All snackbars hidden and cleared.");
-        await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnSnackbarAction(SnackbarInstance snackbar)
@@ -174,7 +161,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         catch (Exception ex)
         {
             Logger.Error(ex, "Error occurred while handling snackbar action: {SnackbarId}", snackbar.Id);
-            throw;
         }
     }
 
