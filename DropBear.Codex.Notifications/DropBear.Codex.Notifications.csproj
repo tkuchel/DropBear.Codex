@@ -13,23 +13,23 @@
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Version>2024.8.0</Version>
     <PackageVersion>2024.9.0</PackageVersion> <!-- Specifies the version of the package -->
-    <PackageId>DropBear.Codex.Core</PackageId> <!-- Unique identifier for the package -->
-    <Title>DropBear Codex Core</Title>
-    <Description>The core set of classes used throughout the DropBear.Codex.* libraries</Description>
+    <PackageId>DropBear.Codex.Notifications</PackageId> <!-- Unique identifier for the package -->
+    <Title>DropBear Codex Notifications</Title>
+    <Description>Notification system for the DropBear Codex ecosystem, supporting user-specific notifications and optional serialization.</Description>
     <Authors>Terrence Kuchel</Authors> <!-- Specifies the authors of the package -->
     <Company>DropBear</Company> <!-- Company or individual responsible for the package -->
-    <PackageTags>DropBear, Codex, Core</PackageTags> <!-- Tags for easier discoverability -->
+    <PackageTags>DropBear, Codex, Notifications</PackageTags> <!-- Tags for easier discoverability -->
     <PackageLicenseExpression>MIT</PackageLicenseExpression> <!-- License under which the package is distributed -->
     <Copyright>2024 Terrence Kuchel (DropBear)</Copyright>
     <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex</RepositoryUrl>
     <RepositoryType>git</RepositoryType> <!-- Specifies the type of repository (git, svn, etc.) -->
     <!--    <PackageIconUrl>https://github.com/tkuchel/DropBear.Codex/raw/main/icon.png</PackageIconUrl> &lt;!&ndash; URL to the package icon &ndash;&gt;-->
-    <PackageReleaseNotes>Initial release of the DropBear Codex Core library, containing foundational classes for result handling and more.</PackageReleaseNotes> <!-- Release notes for the package -->
+    <PackageReleaseNotes>Initial release of the DropBear Codex Notifications library, providing notification services with optional serialization and buffering.</PackageReleaseNotes> <!-- Release notes for the package -->
 
     <!-- Build Options -->
-    <AssemblyName>DropBear.Codex.Core</AssemblyName>
-    <RootNamespace>DropBear.Codex.Core</RootNamespace>
+    <AssemblyName>DropBear.Codex.Notifications</AssemblyName>
+    <RootNamespace>DropBear.Codex.Notifications</RootNamespace>
     <Optimize>true</Optimize> <!-- Enables optimizations during build -->
     <Deterministic>true</Deterministic> <!-- Ensures deterministic builds -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors> <!-- Optionally ensure warnings are treated as errors -->
@@ -42,21 +42,36 @@
     <DebugType>embedded</DebugType> <!-- Embeds debugging information into the assembly -->
   </PropertyGroup>
 
-  <!-- Item Group for Source Files -->
+  <!-- Item Group for Dependencies -->
   <ItemGroup>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <!-- DropBear.Codex.Core is required since Notifications depends on it -->
+    <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
+    <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
+
+    <!-- Serilog for logging -->
     <PackageReference Include="Serilog" Version="4.0.1"/>
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0"/>
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0"/>
-    <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.6.143</Version>
+
+    <!-- MessagePipe for in-memory messaging -->
+    <PackageReference Include="MessagePipe" Version="1.8.1" />
+    <PackageReference Include="MessagePipe.Analyzer" Version="1.8.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+
+    <!-- For serialization support -->
+    <PackageReference Include="System.Text.Json" Version="8.0.0-preview.6" />
+
+    <!-- Optional: Any additional dependencies for the notification system -->
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
   </ItemGroup>
+
+  <!-- Folders (if required) -->
   <ItemGroup>
     <Folder Include="Services\" />
+    <Folder Include="Models\" />
+    <Folder Include="Enums\" />
   </ItemGroup>
 
 </Project>
