@@ -61,7 +61,7 @@
     </PackageReference>
 
     <!-- For serialization support -->
-    <PackageReference Include="System.Text.Json" Version="8.0.0-preview.6" />
+    <PackageReference Include="System.Text.Json" Version="8.0.4" />
 
     <!-- Optional: Any additional dependencies for the notification system -->
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
