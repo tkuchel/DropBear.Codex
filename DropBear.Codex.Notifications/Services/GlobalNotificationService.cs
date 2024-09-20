@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Text;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Notifications.Enums;
@@ -18,7 +17,7 @@ namespace DropBear.Codex.Notifications.Services;
 /// </summary>
 public sealed class GlobalNotificationService
 {
-    private const string GlobalUserId = "global";
+    private const string GlobalChannelId = "global";
     private readonly NotificationBatchService _batchService;
     private readonly ILogger _logger;
     private readonly NotificationPersistenceService _persistenceService;
@@ -46,16 +45,15 @@ public sealed class GlobalNotificationService
     ///     Publishes a notification for a specific user with optional serialization.
     /// </summary>
     public async Task<Result> PublishNotificationAsync(
-        string userId,
+        string channelId,
         AlertType alertType,
         string message,
         NotificationSeverity severity = NotificationSeverity.Info,
-        bool serialize = false,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(channelId))
         {
-            throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
         }
 
         if (string.IsNullOrEmpty(message))
@@ -64,35 +62,34 @@ public sealed class GlobalNotificationService
         }
 
         var notification = new Notification(alertType, message, severity);
-        _logger.Information("Publishing notification for user {UserId}: {Message}", userId, message);
+        _logger.Information("Publishing notification for channel {ChannelId}: {Message}", channelId, message);
 
         try
         {
-            var data = await SerializeNotificationAsync(notification, serialize, cancellationToken);
-            await PublishToChannelsAsync(userId, data, cancellationToken);
+            var data = await SerializeNotificationAsync(notification, cancellationToken);
+            await PublishToChannelsAsync(channelId, data, cancellationToken);
             return Result.Success();
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error publishing notification for user {UserId}", userId);
+            _logger.Error(ex, "Error publishing notification for channel {ChannelId}", channelId);
             return Result.Failure(ex.Message, ex);
         }
     }
 
     /// <summary>
-    ///     Retrieves the latest buffered notification for a specific user.
+    ///     Retrieves the latest buffered notification for a specific channel.
     /// </summary>
-    public async Task<Result<Notification?>> GetLatestNotificationForUserAsync(
-        string userId,
-        bool deserialize = false,
+    public async Task<Result<Notification?>> GetLatestNotificationForChannelAsync(
+        string channelId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(channelId))
         {
-            throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
         }
 
-        var data = _userBufferedPublisher.GetBufferedMessage(userId);
+        var data = _userBufferedPublisher.GetBufferedMessage(channelId);
         if (data == null)
         {
             return Result<Notification?>.Success(null);
@@ -100,15 +97,17 @@ public sealed class GlobalNotificationService
 
         try
         {
-            var notification = deserialize && _serializer != null
-                ? await _serializer.DeserializeAsync<Notification>(data, cancellationToken)
-                : new Notification(AlertType.Info, Encoding.UTF8.GetString(data), NotificationSeverity.Info);
+            if (_serializer == null)
+            {
+                throw new InvalidOperationException("Serializer is not available.");
+            }
 
+            var notification = await _serializer.DeserializeAsync<Notification>(data, cancellationToken);
             return Result<Notification?>.Success(notification);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error retrieving latest notification for user {UserId}", userId);
+            _logger.Error(ex, "Error retrieving latest notification for channel {ChannelId}", channelId);
             return Result<Notification?>.Failure(ex.Message, ex);
         }
     }
@@ -117,16 +116,15 @@ public sealed class GlobalNotificationService
     ///     Publishes notifications with retry logic.
     /// </summary>
     public async Task<Result> PublishNotificationWithRetryAsync(
-        string userId,
+        string channelId,
         AlertType alertType,
         string message,
         int maxRetries = 3,
-        bool serialize = false,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(channelId))
         {
-            throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
         }
 
         if (string.IsNullOrEmpty(message))
@@ -140,23 +138,25 @@ public sealed class GlobalNotificationService
         }
 
         var notification = new Notification(alertType, message, NotificationSeverity.Info);
-        _logger.Information("Attempting to publish notification for user {UserId}: {Message}", userId, message);
+        _logger.Information("Attempting to publish notification for channel {ChannelId}: {Message}", channelId,
+            message);
 
-        var data = await SerializeNotificationAsync(notification, serialize, cancellationToken);
+        var data = await SerializeNotificationAsync(notification, cancellationToken);
 
         for (var attempt = 1; attempt <= maxRetries; attempt++)
         {
             try
             {
-                await PublishToChannelsAsync(userId, data, cancellationToken);
-                _logger.Information("Notification published successfully on attempt {Attempt} for user {UserId}",
-                    attempt, userId);
+                await PublishToChannelsAsync(channelId, data, cancellationToken);
+                _logger.Information("Notification published successfully on attempt {Attempt} for channel {ChannelId}",
+                    attempt, channelId);
                 return Result.Success();
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Failed to publish notification on attempt {Attempt} for user {UserId}", attempt,
-                    userId);
+                _logger.Error(ex, "Failed to publish notification on attempt {Attempt} for channel {ChannelId}",
+                    attempt,
+                    channelId);
                 if (attempt < maxRetries)
                 {
                     await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, attempt)), cancellationToken);
@@ -164,8 +164,8 @@ public sealed class GlobalNotificationService
             }
         }
 
-        _logger.Error("Failed to publish notification after {MaxRetries} attempts for user {UserId}", maxRetries,
-            userId);
+        _logger.Error("Failed to publish notification after {MaxRetries} attempts for channel {ChannelId}", maxRetries,
+            channelId);
         return Result.Failure($"Failed to publish notification after {maxRetries} attempts.");
     }
 
@@ -173,14 +173,13 @@ public sealed class GlobalNotificationService
     ///     Publishes and persists critical notifications.
     /// </summary>
     public async Task<Result> PublishAndPersistCriticalNotificationAsync(
-        string userId,
+        string channelId,
         string message,
-        bool serialize = false,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(channelId))
         {
-            throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
         }
 
         if (string.IsNullOrEmpty(message))
@@ -188,13 +187,13 @@ public sealed class GlobalNotificationService
             throw new ArgumentException("Message cannot be null or empty.", nameof(message));
         }
 
-        var result = await PublishNotificationWithRetryAsync(userId, AlertType.SystemAlert, message, 5, serialize,
+        var result = await PublishNotificationWithRetryAsync(channelId, AlertType.SystemAlert, message, 5,
             cancellationToken);
 
         if (!result.IsSuccess)
         {
             var notification = new Notification(AlertType.SystemAlert, message, NotificationSeverity.Critical);
-            await PersistNotificationAsync(notification, serialize, cancellationToken);
+            await PersistNotificationAsync(notification, cancellationToken);
         }
 
         return result;
@@ -207,25 +206,23 @@ public sealed class GlobalNotificationService
         AlertType alertType,
         string message,
         NotificationSeverity severity = NotificationSeverity.Info,
-        bool serialize = false,
         CancellationToken cancellationToken = default)
     {
-        return PublishNotificationAsync(GlobalUserId, alertType, message, severity, serialize, cancellationToken);
+        return PublishNotificationAsync(GlobalChannelId, alertType, message, severity, cancellationToken);
     }
 
     /// <summary>
     ///     Publishes task progress updates.
     /// </summary>
     public async Task<Result> PublishTaskProgressAsync(
-        string userId,
+        string channelId,
         string taskName,
         int progress,
-        bool serialize = false,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(channelId))
         {
-            throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
         }
 
         if (string.IsNullOrEmpty(taskName))
@@ -233,13 +230,13 @@ public sealed class GlobalNotificationService
             throw new ArgumentException("Task name cannot be null or empty.", nameof(taskName));
         }
 
-        if (progress < 0 || progress > 100)
+        if (progress is < 0 or > 100)
         {
             throw new ArgumentOutOfRangeException(nameof(progress), "Progress must be between 0 and 100.");
         }
 
         var message = $"{taskName} is {progress}% complete.";
-        _logger.Information("Publishing task progress for user {UserId}: {Message}", userId, message);
+        _logger.Information("Publishing task progress for channel {ChannelId}: {Message}", channelId, message);
 
         try
         {
@@ -247,13 +244,13 @@ public sealed class GlobalNotificationService
             var notification =
                 new Notification(AlertType.TaskProgress, message, NotificationSeverity.Info, additionalData);
 
-            var data = await SerializeNotificationAsync(notification, serialize, cancellationToken);
-            await PublishToChannelsAsync(userId, data, cancellationToken);
+            var data = await SerializeNotificationAsync(notification, cancellationToken);
+            await PublishToChannelsAsync(channelId, data, cancellationToken);
             return Result.Success();
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error publishing task progress for user {UserId}", userId);
+            _logger.Error(ex, "Error publishing task progress for channel {ChannelId}", channelId);
             return Result.Failure(ex.Message, ex);
         }
     }
@@ -262,15 +259,14 @@ public sealed class GlobalNotificationService
     ///     Publishes task progress updates with batching support.
     /// </summary>
     public async Task<Result> PublishTaskProgressBatchAsync(
-        string userId,
+        string channelId,
         string taskName,
         int progress,
-        bool serialize = false,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrEmpty(userId))
+        if (string.IsNullOrEmpty(channelId))
         {
-            throw new ArgumentException("User ID cannot be null or empty.", nameof(userId));
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
         }
 
         if (string.IsNullOrEmpty(taskName))
@@ -278,13 +274,13 @@ public sealed class GlobalNotificationService
             throw new ArgumentException("Task name cannot be null or empty.", nameof(taskName));
         }
 
-        if (progress < 0 || progress > 100)
+        if (progress is < 0 or > 100)
         {
             throw new ArgumentOutOfRangeException(nameof(progress), "Progress must be between 0 and 100.");
         }
 
         var message = $"{taskName} is {progress}% complete.";
-        _logger.Information("Publishing task progress for user {UserId}: {Message}", userId, message);
+        _logger.Information("Publishing task progress for channel {ChannelId}: {Message}", channelId, message);
 
         try
         {
@@ -292,12 +288,12 @@ public sealed class GlobalNotificationService
             var notification =
                 new Notification(AlertType.TaskProgress, message, NotificationSeverity.Info, additionalData);
 
-            await _batchService.AddNotificationToBatchAsync(notification, serialize, cancellationToken);
+            await _batchService.AddNotificationToBatchAsync(notification, cancellationToken);
             return Result.Success();
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error publishing task progress for user {UserId}", userId);
+            _logger.Error(ex, "Error publishing task progress for channel {ChannelId}", channelId);
             return Result.Failure(ex.Message, ex);
         }
     }
@@ -320,12 +316,15 @@ public sealed class GlobalNotificationService
         }
     }
 
-    private async Task<byte[]> SerializeNotificationAsync(Notification notification, bool serialize,
+    private async Task<byte[]> SerializeNotificationAsync(Notification notification,
         CancellationToken cancellationToken)
     {
-        return serialize && _serializer != null
-            ? await _serializer.SerializeAsync(notification, cancellationToken)
-            : Encoding.UTF8.GetBytes(notification.Message);
+        if (_serializer == null)
+        {
+            throw new InvalidOperationException("Serializer is not available.");
+        }
+
+        return await _serializer.SerializeAsync(notification, cancellationToken);
     }
 
     private async Task PublishToChannelsAsync(string userId, byte[] data, CancellationToken cancellationToken)
@@ -334,10 +333,10 @@ public sealed class GlobalNotificationService
         await _userBufferedPublisher.PublishAsync(userId, data);
     }
 
-    private async Task PersistNotificationAsync(Notification notification, bool serialize,
+    private async Task PersistNotificationAsync(Notification notification,
         CancellationToken cancellationToken)
     {
-        if (serialize && _serializer != null)
+        if (_serializer != null)
         {
             var data = await _serializer.SerializeAsync(notification, cancellationToken);
             await _persistenceService.SaveSerializedNotificationAsync(data);

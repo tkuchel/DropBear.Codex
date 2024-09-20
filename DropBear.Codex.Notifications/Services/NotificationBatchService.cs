@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Text;
 using DropBear.Codex.Serialization.Interfaces;
 using MessagePipe;
 
@@ -56,47 +55,23 @@ public sealed class NotificationBatchService : IAsyncDisposable
     ///     Adds a notification to the batch and publishes the batch when the size is met.
     /// </summary>
     /// <param name="notification">The notification to add to the batch.</param>
-    /// <param name="serialize">Whether to serialize the notification.</param>
     /// <param name="cancellationToken">A cancellation token to observe while waiting for the task to complete.</param>
     /// <exception cref="ArgumentNullException">Thrown if notification is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown if serialization is requested but no serializer is available.</exception>
-    public async Task AddNotificationToBatchAsync(Notification notification, bool serialize = false,
+    public async Task AddNotificationToBatchAsync(Notification notification,
         CancellationToken cancellationToken = default)
     {
-        if (notification == null)
+        if (_serializer == null)
         {
-            throw new ArgumentNullException(nameof(notification));
+            throw new InvalidOperationException("Serializer is not available.");
         }
 
-        byte[] serializedData;
+        var serializedData = await _serializer.SerializeAsync(notification, cancellationToken);
+        _batchQueue.Add(serializedData);
 
-        if (serialize)
+        if (_batchQueue.Count >= _batchSize)
         {
-            if (_serializer == null)
-            {
-                throw new InvalidOperationException("Serialization requested but no serializer is available.");
-            }
-
-            serializedData = await _serializer.SerializeAsync(notification, cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            serializedData = Encoding.UTF8.GetBytes(notification.Message);
-        }
-
-        await _semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            _batchQueue.Add(serializedData);
-
-            if (_batchQueue.Count >= _batchSize)
-            {
-                await PublishBatchAsync(cancellationToken).ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            _semaphore.Release();
+            await PublishBatchAsync(cancellationToken);
         }
     }
 
