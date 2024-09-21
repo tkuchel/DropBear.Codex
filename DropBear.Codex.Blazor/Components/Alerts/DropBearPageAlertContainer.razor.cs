@@ -146,11 +146,12 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     {
         return severity switch
         {
-            NotificationSeverity.Info => AlertType.Information,
+            NotificationSeverity.Information => AlertType.Information,
             NotificationSeverity.Warning => AlertType.Warning,
             NotificationSeverity.Error => AlertType.Danger,
             NotificationSeverity.Critical => AlertType.Danger,
-            _ => AlertType.Information
+            NotificationSeverity.Success => AlertType.Success,
+            _ => AlertType.Notification
         };
     }
 }

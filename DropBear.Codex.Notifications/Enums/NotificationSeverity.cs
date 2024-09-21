@@ -6,9 +6,14 @@
 public enum NotificationSeverity
 {
     /// <summary>
+    ///     A success notification
+    /// </summary>
+    Success,
+
+    /// <summary>
     ///     An informational notification.
     /// </summary>
-    Info,
+    Information,
 
     /// <summary>
     ///     A warning notification.
