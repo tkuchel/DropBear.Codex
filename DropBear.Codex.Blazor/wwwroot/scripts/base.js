@@ -246,10 +246,27 @@ window.DropBearFileUploader = (function () {
   let droppedFiles = [];
 
   /**
-   * Handles the 'drop' event, capturing dropped files.
+   * Converts a file to an ArrayBuffer and returns it as a Uint8Array.
+   * @param {File} file - The file to convert.
+   * @returns {Promise<Uint8Array>} A promise that resolves to the file's content as a Uint8Array.
+   */
+  async function readFileAsArrayBuffer(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const arrayBuffer = e.target.result;
+        resolve(new Uint8Array(arrayBuffer));
+      };
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  /**
+   * Handles the 'drop' event, capturing dropped files and reading their contents.
    * @param {DragEvent} e - The drop event.
    */
-  function handleDrop(e) {
+  async function handleDrop(e) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -260,20 +277,24 @@ window.DropBearFileUploader = (function () {
         for (let i = 0; i < e.dataTransfer.items.length; i++) {
           if (e.dataTransfer.items[i].kind === 'file') {
             const file = e.dataTransfer.items[i].getAsFile();
+            const fileData = await readFileAsArrayBuffer(file);
             droppedFiles.push({
               name: file.name,
               size: file.size,
-              type: file.type
+              type: file.type,
+              fileData: Array.from(fileData) // Send as array of bytes
             });
           }
         }
       } else {
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const file = e.dataTransfer.files[i];
+          const fileData = await readFileAsArrayBuffer(file);
           droppedFiles.push({
             name: file.name,
             size: file.size,
-            type: file.type
+            type: file.type,
+            fileData: Array.from(fileData)
           });
         }
       }
@@ -286,22 +307,18 @@ window.DropBearFileUploader = (function () {
    * Initializes the module by adding event listeners for 'drop' and 'dragover' events.
    */
   function init() {
-    try {
-      document.addEventListener('drop', function (e) {
-        if (e.target.closest('.file-upload-dropzone')) {
-          handleDrop(e);
-        }
-      });
+    document.addEventListener('drop', function (e) {
+      if (e.target.closest('.file-upload-dropzone')) {
+        handleDrop(e);
+      }
+    });
 
-      document.addEventListener('dragover', function (e) {
-        if (e.target.closest('.file-upload-dropzone')) {
-          e.preventDefault();
-          e.stopPropagation();
-        }
-      });
-    } catch (error) {
-      console.error('Error initializing DropBearFileUploader:', error);
-    }
+    document.addEventListener('dragover', function (e) {
+      if (e.target.closest('.file-upload-dropzone')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
   }
 
   // Initialize when the DOM is ready
@@ -348,14 +365,14 @@ window.downloadFileFromStream = async (fileName, content, contentType) => {
     } else if (content.arrayBuffer) {
       // content is a DotNetStreamReference
       const arrayBuffer = await content.arrayBuffer();
-      blob = new Blob([arrayBuffer], { type: contentType });
+      blob = new Blob([arrayBuffer], {type: contentType});
     } else if (typeof content === 'string') {
       // content is a Base64 string
       const response = await fetch(`data:${contentType};base64,${content}`);
       blob = await response.blob();
     } else if (content instanceof Uint8Array) {
       // content is a byte array (Uint8Array)
-      blob = new Blob([content], { type: contentType });
+      blob = new Blob([content], {type: contentType});
     } else {
       console.error('downloadFileFromStream: Unsupported content type');
       return;

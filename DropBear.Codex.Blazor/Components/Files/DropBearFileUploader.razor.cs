@@ -68,8 +68,12 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                     Logger.Information("File added: {FileName} with size {FileSize}", file.Name,
                         FormatFileSize(file.Size));
 
-                    // Creating new UploadFile instances using the constructor
-                    var uploadFile = new UploadFile(file.Name, file.Size, file.Type, null);
+                    // Create new UploadFile instance and assign the byte[] file data to DroppedFileData
+                    var uploadFile = new UploadFile(
+                        file.Name,
+                        file.Size,
+                        file.Type,
+                        droppedFileData: file.Data); // Pass byte[] to DroppedFileData
 
                     _selectedFiles.Add(uploadFile);
                 }
@@ -90,6 +94,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
             StateHasChanged();
         }
     }
+
 
 #pragma warning disable CS1998 // Async method lacks 'await' operators and will run synchronously
     private async Task HandleFileSelection(InputFileChangeEventArgs e)
@@ -121,7 +126,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     private bool IsFileValid(IBrowserFile file)
     {
         // Create a DroppedFile instance using the constructor, then validate it
-        var droppedFile = new DroppedFile(file.Name, file.Size, file.ContentType);
+        var droppedFile = new DroppedFile(file.Name, file.Size, file.ContentType, null);
         return IsFileValid(droppedFile);
     }
 

@@ -5,11 +5,6 @@ using Microsoft.AspNetCore.Components.Forms;
 
 #endregion
 
-namespace DropBear.Codex.Blazor.Models;
-
-/// <summary>
-///     Represents a file to be uploaded.
-/// </summary>
 public sealed class UploadFile
 {
     private int _uploadProgress;
@@ -21,15 +16,15 @@ public sealed class UploadFile
     /// <param name="size">The size of the file in bytes.</param>
     /// <param name="contentType">The MIME type of the file.</param>
     /// <param name="fileData">The browser file data.</param>
+    /// <param name="droppedFileData">The byte array data for dropped files.</param>
     /// <param name="uploadStatus">The initial upload status of the file (optional).</param>
     /// <param name="uploadProgress">The initial upload progress percentage (optional, between 0 and 100).</param>
-    /// <exception cref="ArgumentNullException">Thrown when the file name or content type is null or empty.</exception>
-    /// <exception cref="ArgumentOutOfRangeException">Thrown when the file size or upload progress is invalid.</exception>
     public UploadFile(
         string name,
         long size,
         string contentType,
-        IBrowserFile? fileData,
+        IBrowserFile? fileData = null,
+        byte[]? droppedFileData = null,
         UploadStatus uploadStatus = UploadStatus.Ready,
         int uploadProgress = 0)
     {
@@ -56,7 +51,8 @@ public sealed class UploadFile
         Name = name;
         Size = size;
         ContentType = contentType;
-        FileData = fileData;
+        FileData = fileData; // Used for <InputFile>
+        DroppedFileData = droppedFileData; // Used for dropped files
         UploadStatus = uploadStatus;
         UploadProgress = uploadProgress;
     }
@@ -93,7 +89,12 @@ public sealed class UploadFile
     }
 
     /// <summary>
-    ///     Gets or sets the browser file data.
+    ///     Gets or sets the browser file data (used for files from InputFile).
     /// </summary>
     public IBrowserFile? FileData { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the dropped file data (used for dropped files as byte array).
+    /// </summary>
+    public byte[]? DroppedFileData { get; set; }
 }

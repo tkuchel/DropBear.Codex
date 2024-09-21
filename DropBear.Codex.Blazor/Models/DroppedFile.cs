@@ -11,8 +11,9 @@ public sealed class DroppedFile
     /// <param name="name">The name of the file.</param>
     /// <param name="size">The size of the file in bytes.</param>
     /// <param name="type">The MIME type of the file.</param>
+    /// <param name="data">The content of the file as byte array.</param>
     /// <exception cref="ArgumentException">Thrown when the name or MIME type is null or empty, or if size is negative.</exception>
-    public DroppedFile(string name, long size, string type)
+    public DroppedFile(string name, long size, string type, byte[]? data)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -32,6 +33,7 @@ public sealed class DroppedFile
         Name = name;
         Size = size;
         Type = type;
+        Data = data;
     }
 
     /// <summary>
@@ -48,4 +50,9 @@ public sealed class DroppedFile
     ///     Gets the MIME type of the file.
     /// </summary>
     public string Type { get; init; }
+
+    /// <summary>
+    ///     Gets the content of the file.
+    /// </summary>
+    public byte[]? Data { get; init; }
 }
