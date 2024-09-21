@@ -48,7 +48,7 @@ public sealed class GlobalNotificationService
         string channelId,
         AlertType alertType,
         string message,
-        NotificationSeverity severity = NotificationSeverity.Info,
+        NotificationSeverity severity = NotificationSeverity.Information,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(channelId))
@@ -137,7 +137,7 @@ public sealed class GlobalNotificationService
             throw new ArgumentOutOfRangeException(nameof(maxRetries), "Max retries must be greater than 0.");
         }
 
-        var notification = new Notification(alertType, message, NotificationSeverity.Info);
+        var notification = new Notification(alertType, message, NotificationSeverity.Information);
         _logger.Information("Attempting to publish notification for channel {ChannelId}: {Message}", channelId,
             message);
 
@@ -205,7 +205,7 @@ public sealed class GlobalNotificationService
     public Task<Result> PublishGlobalNotificationAsync(
         AlertType alertType,
         string message,
-        NotificationSeverity severity = NotificationSeverity.Info,
+        NotificationSeverity severity = NotificationSeverity.Information,
         CancellationToken cancellationToken = default)
     {
         return PublishNotificationAsync(GlobalChannelId, alertType, message, severity, cancellationToken);
@@ -242,7 +242,7 @@ public sealed class GlobalNotificationService
         {
             var additionalData = new Dictionary<string, object> { { "TaskName", taskName }, { "Progress", progress } };
             var notification =
-                new Notification(AlertType.TaskProgress, message, NotificationSeverity.Info, additionalData);
+                new Notification(AlertType.TaskProgress, message, NotificationSeverity.Information, additionalData);
 
             var data = await SerializeNotificationAsync(notification, cancellationToken);
             await PublishToChannelsAsync(channelId, data, cancellationToken);
@@ -286,7 +286,7 @@ public sealed class GlobalNotificationService
         {
             var additionalData = new Dictionary<string, object> { { "TaskName", taskName }, { "Progress", progress } };
             var notification =
-                new Notification(AlertType.TaskProgress, message, NotificationSeverity.Info, additionalData);
+                new Notification(AlertType.TaskProgress, message, NotificationSeverity.Information, additionalData);
 
             await _batchService.AddNotificationToBatchAsync(notification, cancellationToken);
             return Result.Success();
