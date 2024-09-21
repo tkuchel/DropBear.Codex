@@ -68,6 +68,12 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         Logger.Debug("Alert service and channel notifications subscription initialized.");
     }
 
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        Logger.Debug("Channel Id set to {ChannelId} for PageAlertContainer.",ChannelId);
+    }
+
     private void HandleAlertChange(object? sender, EventArgs e)
     {
         _ = DebouncedStateHasChanged();

@@ -19,7 +19,7 @@ public sealed class UploadResult : Result<string>
     /// <param name="status">The status of the upload operation.</param>
     /// <param name="message">The message associated with the upload result.</param>
     public UploadResult(UploadStatus status, string message)
-        : base(message, string.Empty, null, MapResultState(status))
+        : base(message, message, null, MapResultState(status))
     {
         Status = status;
     }

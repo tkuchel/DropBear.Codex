@@ -51,6 +51,12 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         Logger.Debug("SnackbarNotificationContainer initialized.");
     }
 
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        Logger.Debug("Channel Id set to {ChannelId} for SnackbarContainer.",ChannelId);
+    }
+
     private async Task DisposeSnackbarsAsync(List<SnackbarInstance> snackbars)
     {
         foreach (var snackbar in snackbars)
