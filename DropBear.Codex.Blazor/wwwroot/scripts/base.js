@@ -246,6 +246,49 @@ window.DropBearFileUploader = (function () {
   let droppedFiles = [];
 
   /**
+   * Converts a file to ArrayBuffer in chunks and returns each chunk.
+   * @param {File} file - The file to convert.
+   * @param {number} chunkSize - The size of each chunk in bytes.
+   * @returns {Promise<Array>} A promise that resolves to an array of Uint8Arrays.
+   */
+  async function readFileInChunks(file, chunkSize = 1024 * 64) { // Default to 64 KB
+    console.log(`Reading file in chunks: ${file.name}, size: ${file.size}`);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      const chunks = [];
+      let currentOffset = 0;
+
+      reader.onload = (e) => {
+        const arrayBuffer = e.target.result;
+        const chunk = new Uint8Array(arrayBuffer);
+        chunks.push(chunk);
+        currentOffset += chunk.byteLength;
+        console.log(`Processed chunk: ${currentOffset} bytes`);
+
+        if (currentOffset < file.size) {
+          readNextChunk();
+        } else {
+          console.log(`All chunks processed: ${chunks.length} total chunks`);
+          resolve(chunks);
+        }
+      };
+
+      reader.onerror = (error) => {
+        console.error('Error reading file in chunks:', error);
+        reject(error);
+      };
+
+      function readNextChunk() {
+        const slice = file.slice(currentOffset, currentOffset + chunkSize);
+        reader.readAsArrayBuffer(slice);
+      }
+
+      readNextChunk(); // Start reading the first chunk
+    });
+  }
+
+
+  /**
    * Converts a file to an ArrayBuffer and returns it as a Uint8Array.
    * @param {File} file - The file to convert.
    * @returns {Promise<Uint8Array>} A promise that resolves to the file's content as a Uint8Array.
@@ -285,13 +328,14 @@ window.DropBearFileUploader = (function () {
           if (e.dataTransfer.items[i].kind === 'file') {
             const file = e.dataTransfer.items[i].getAsFile();
             console.log(`Processing file: ${file.name}, size: ${file.size}`);
-            const fileData = await readFileAsArrayBuffer(file);
+            const fileDataChunks = await readFileInChunks(file);
             droppedFiles.push({
               name: file.name,
               size: file.size,
               type: file.type,
-              fileData: Array.from(fileData)
+              fileData: fileDataChunks // Store file in chunks
             });
+
           }
         }
       } else {
@@ -299,13 +343,14 @@ window.DropBearFileUploader = (function () {
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const file = e.dataTransfer.files[i];
           console.log(`Processing file: ${file.name}, size: ${file.size}`);
-          const fileData = await readFileAsArrayBuffer(file);
+          const fileDataChunks = await readFileInChunks(file);
           droppedFiles.push({
             name: file.name,
             size: file.size,
             type: file.type,
-            fileData: Array.from(fileData)
+            fileData: fileDataChunks // Store file in chunks
           });
+
         }
       }
       console.log("All files processed");
@@ -368,7 +413,6 @@ window.DropBearFileUploader = (function () {
   };
 })();
 
-
 /**
  * Utility function for file download.
  * Downloads a file from a content stream or byte array.
@@ -412,7 +456,6 @@ window.downloadFileFromStream = async (fileName, content, contentType) => {
     console.error('Error in downloadFileFromStream:', error);
   }
 };
-
 
 /**
  * DropBearContextMenu module

@@ -59,22 +59,22 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
 
         try
         {
+            Logger.Information("Calling DropBearFileUploader.getDroppedFiles");
             var files = await JsRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles",
                 _dismissCancellationTokenSource.Token);
+            Logger.Information("JavaScript call completed, processing files");
 
             foreach (var file in files)
             {
                 if (IsFileValid(file))
                 {
-                    Logger.Information("File added: {FileName} with size {FileSize}", file.Name,
-                        FormatFileSize(file.Size));
+                    Logger.Information("File added: {FileName} with size {FileSize}", file.Name, FormatFileSize(file.Size));
 
-                    // Create new UploadFile instance and assign the byte[] file data to DroppedFileData
                     var uploadFile = new UploadFile(
                         file.Name,
                         file.Size,
                         file.Type,
-                        droppedFileData: file.Data); // Pass byte[] to DroppedFileData
+                        droppedFileData: file.Data);
 
                     _selectedFiles.Add(uploadFile);
                 }
@@ -90,8 +90,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         }
         finally
         {
-            await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
-                _dismissCancellationTokenSource.Token);
+            Logger.Information("Clearing dropped files and updating UI");
+            await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles", _dismissCancellationTokenSource.Token);
             StateHasChanged();
         }
     }
