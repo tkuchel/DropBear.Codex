@@ -251,13 +251,18 @@ window.DropBearFileUploader = (function () {
    * @returns {Promise<Uint8Array>} A promise that resolves to the file's content as a Uint8Array.
    */
   async function readFileAsArrayBuffer(file) {
+    console.log(`Reading file as ArrayBuffer: ${file.name}, size: ${file.size}`);
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = e => {
         const arrayBuffer = e.target.result;
+        console.log(`File read successfully: ${file.name}`);
         resolve(new Uint8Array(arrayBuffer));
       };
-      reader.onerror = reject;
+      reader.onerror = (error) => {
+        console.error(`Error reading file: ${file.name}`, error);
+        reject(error);
+      };
       reader.readAsArrayBuffer(file);
     });
   }
@@ -270,25 +275,30 @@ window.DropBearFileUploader = (function () {
     e.preventDefault();
     e.stopPropagation();
 
+    console.log("Handling drop event");
     droppedFiles = [];
 
     try {
       if (e.dataTransfer.items) {
+        console.log("Using dataTransfer.items");
         for (let i = 0; i < e.dataTransfer.items.length; i++) {
           if (e.dataTransfer.items[i].kind === 'file') {
             const file = e.dataTransfer.items[i].getAsFile();
+            console.log(`Processing file: ${file.name}, size: ${file.size}`);
             const fileData = await readFileAsArrayBuffer(file);
             droppedFiles.push({
               name: file.name,
               size: file.size,
               type: file.type,
-              fileData: Array.from(fileData) // Send as array of bytes
+              fileData: Array.from(fileData)
             });
           }
         }
       } else {
+        console.log("Using dataTransfer.files");
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const file = e.dataTransfer.files[i];
+          console.log(`Processing file: ${file.name}, size: ${file.size}`);
           const fileData = await readFileAsArrayBuffer(file);
           droppedFiles.push({
             name: file.name,
@@ -298,6 +308,7 @@ window.DropBearFileUploader = (function () {
           });
         }
       }
+      console.log("All files processed");
     } catch (error) {
       console.error('Error handling dropped files:', error);
     }
@@ -307,8 +318,11 @@ window.DropBearFileUploader = (function () {
    * Initializes the module by adding event listeners for 'drop' and 'dragover' events.
    */
   function init() {
+    console.log("Initializing DropBearFileUploader");
+
     document.addEventListener('drop', function (e) {
       if (e.target.closest('.file-upload-dropzone')) {
+        console.log("Drop event detected in dropzone");
         handleDrop(e);
       }
     });
@@ -317,14 +331,17 @@ window.DropBearFileUploader = (function () {
       if (e.target.closest('.file-upload-dropzone')) {
         e.preventDefault();
         e.stopPropagation();
+        console.log("Dragover event detected in dropzone");
       }
     });
   }
 
   // Initialize when the DOM is ready
   if (document.readyState === 'loading') {
+    console.log("Document loading, adding DOMContentLoaded listener");
     document.addEventListener('DOMContentLoaded', init);
   } else {
+    console.log("Document already loaded, initializing immediately");
     init();
   }
 
@@ -334,6 +351,8 @@ window.DropBearFileUploader = (function () {
      * @returns {Array<Object>} An array of dropped file information.
      */
     getDroppedFiles() {
+      console.log("getDroppedFiles called");
+      console.log(`Returning ${droppedFiles.length} dropped files`);
       const files = droppedFiles;
       droppedFiles = [];
       return files;
@@ -343,10 +362,12 @@ window.DropBearFileUploader = (function () {
      * Clears the internal storage of dropped files.
      */
     clearDroppedFiles() {
+      console.log("clearDroppedFiles called");
       droppedFiles = [];
     }
   };
 })();
+
 
 /**
  * Utility function for file download.
