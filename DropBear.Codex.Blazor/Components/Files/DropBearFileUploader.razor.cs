@@ -4,7 +4,6 @@ using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Notifications.Services;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
@@ -24,8 +23,13 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     private readonly List<UploadFile> _selectedFiles = new();
     private readonly List<UploadFile> _uploadedFiles = new();
     private CancellationTokenSource? _dismissCancellationTokenSource;
+
+    private readonly Dictionary<string, (List<byte[]> Chunks, int CurrentProgress, long FileSize)> _fileUploadChunks =
+        new();
+
     private bool _isDragOver;
     private bool _isUploading;
+    private int _totalChunks; // Track total number of chunks for progress calculation
     private int _uploadProgress;
 
     [Parameter] public int MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB default
@@ -68,7 +72,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
             {
                 if (IsFileValid(file))
                 {
-                    Logger.Information("File added: {FileName} with size {FileSize}", file.Name, FormatFileSize(file.Size));
+                    Logger.Information("File added: {FileName} with size {FileSize}", file.Name,
+                        FormatFileSize(file.Size));
 
                     var uploadFile = new UploadFile(
                         file.Name,
@@ -91,7 +96,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         finally
         {
             Logger.Information("Clearing dropped files and updating UI");
-            await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles", _dismissCancellationTokenSource.Token);
+            await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
+                _dismissCancellationTokenSource.Token);
             StateHasChanged();
         }
     }
@@ -163,6 +169,134 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     }
 
     /// <summary>
+    ///     Uploads file chunks received via JavaScript interop.
+    /// </summary>
+    /// <param name="fileName">The name of the file being uploaded.</param>
+    /// <param name="chunk">The chunk of file data (as a byte array) being uploaded.</param>
+    /// <param name="totalChunks">The total number of chunks for this file.</param>
+    /// <param name="fileSize">The total size of the file.</param>
+    [JSInvokable]
+    public async Task UploadFileChunk(string fileName, byte[] chunk, int totalChunks, long fileSize)
+    {
+        _totalChunks = totalChunks;
+
+        // Initialize chunk list if this is the first chunk for the file
+        if (!_fileUploadChunks.ContainsKey(fileName))
+        {
+            _fileUploadChunks[fileName] = (new List<byte[]>(), 0, fileSize);
+            Logger.Information($"Started receiving chunks for file: {fileName} (size: {fileSize} bytes)");
+        }
+
+        // Add the current chunk to the file's chunk list
+        _fileUploadChunks[fileName].Chunks.Add(chunk);
+        _fileUploadChunks[fileName] = (_fileUploadChunks[fileName].Chunks,
+            _fileUploadChunks[fileName].CurrentProgress + 1, fileSize);
+
+        Logger.Information(
+            $"Received chunk {chunk.Length} bytes for file {fileName} ({_fileUploadChunks[fileName].CurrentProgress}/{totalChunks} chunks)");
+
+        // Check if all chunks have been received
+        if (_fileUploadChunks[fileName].CurrentProgress == totalChunks)
+        {
+            Logger.Information($"All chunks received for file: {fileName}. Merging and executing callback...");
+
+            try
+            {
+                // Combine all chunks into a single byte array
+                var completeFileData = MergeFileChunks(_fileUploadChunks[fileName].Chunks, fileSize);
+
+                // Create an UploadFile object
+                var uploadFile = new UploadFile(
+                    fileName,
+                    fileSize,
+                    "application/octet-stream", // Adjust MIME type as needed
+                    null, // Not using IBrowserFile, so set to null
+                    completeFileData // Pass the merged byte[] as droppedFileData
+                );
+
+                // Track upload progress
+                var progress = new Progress<int>(percent =>
+                {
+                    uploadFile.UploadProgress = percent;
+                    _uploadProgress = (int)(_fileUploadChunks[fileName].CurrentProgress / (float)_totalChunks * 100);
+                    Logger.Debug("File upload progress: {FileName} {Progress}%", fileName, percent);
+                    StateHasChanged();
+                });
+
+                // Execute the UploadFileAsync callback after merging
+                if (UploadFileAsync is not null)
+                {
+                    var result = await UploadFileAsync(uploadFile, progress);
+                    uploadFile.UploadStatus = result.Status;
+
+                    if (result.Status == UploadStatus.Success)
+                    {
+                        _uploadedFiles.Add(uploadFile);
+                        Logger.Information("File uploaded successfully: {FileName}", fileName);
+                    }
+                    else
+                    {
+                        Logger.Warning("File upload failed: {FileName}", fileName);
+                    }
+                }
+
+                // Clean up the chunk list for this file
+                _fileUploadChunks.Remove(fileName);
+
+                // Optionally update progress
+                _uploadProgress = 100;
+                StateHasChanged();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, $"Error finalizing file upload for {fileName}");
+            }
+        }
+        else
+        {
+            // Update progress based on the received chunks
+            var currentProgress = (int)(_fileUploadChunks[fileName].CurrentProgress / (float)_totalChunks * 100);
+            Logger.Debug($"Upload progress for file {fileName}: {currentProgress}%");
+
+            // Update file progress visually if needed
+            _uploadProgress = currentProgress;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    ///     Merges the file chunks into a single byte array.
+    /// </summary>
+    /// <param name="chunks">The list of file chunks to merge.</param>
+    /// <param name="fileSize">The total size of the final file.</param>
+    /// <returns>A byte array containing the merged file data.</returns>
+    private byte[] MergeFileChunks(List<byte[]> chunks, long fileSize)
+    {
+        var mergedFileData = new byte[fileSize];
+        var offset = 0;
+
+        foreach (var chunk in chunks)
+        {
+            Buffer.BlockCopy(chunk, 0, mergedFileData, offset, chunk.Length);
+            offset += chunk.Length;
+        }
+
+        Logger.Information($"Merged {chunks.Count} chunks into a single file of size {fileSize} bytes.");
+        return mergedFileData;
+    }
+
+    /// <summary>
+    ///     Cleans up uploaded files after completion.
+    /// </summary>
+    private void CleanupUploadedFiles()
+    {
+        _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
+        Logger.Information("Cleanup of successfully uploaded files complete.");
+        StateHasChanged();
+    }
+
+
+    /// <summary>
     ///     Uploads the selected files with progress tracking.
     /// </summary>
     private async Task UploadFiles()
@@ -200,26 +334,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                         Logger.Warning("File upload failed: {FileName}", file.Name);
                     }
                 }
-                else
-                {
-                    // Fallback simulated upload
-                    if (_dismissCancellationTokenSource is not null)
-                    {
-                        await Task.Delay(1000, _dismissCancellationTokenSource.Token);
-                    }
 
-                    file.UploadStatus = Random.Shared.Next(10) < 8 ? UploadStatus.Success : UploadStatus.Failure;
-
-                    if (file.UploadStatus == UploadStatus.Success)
-                    {
-                        _uploadedFiles.Add(file);
-                        Logger.Information("Simulated file upload successful: {FileName}", file.Name);
-                    }
-                    else
-                    {
-                        Logger.Warning("Simulated file upload failed: {FileName}", file.Name);
-                    }
-                }
+                Logger.Warning("File upload failed: {FileName}", file.Name);
             }
             catch (Exception ex)
             {

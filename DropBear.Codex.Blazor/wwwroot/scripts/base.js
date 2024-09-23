@@ -258,7 +258,7 @@ window.DropBearFileUploader = (function () {
       const chunks = [];
       let currentOffset = 0;
 
-      reader.onload = (e) => {
+      reader.onload = e => {
         const arrayBuffer = e.target.result;
         const chunk = new Uint8Array(arrayBuffer);
         chunks.push(chunk);
@@ -273,7 +273,7 @@ window.DropBearFileUploader = (function () {
         }
       };
 
-      reader.onerror = (error) => {
+      reader.onerror = error => {
         console.error('Error reading file in chunks:', error);
         reject(error);
       };
@@ -302,7 +302,7 @@ window.DropBearFileUploader = (function () {
         console.log(`File read successfully: ${file.name}`);
         resolve(new Uint8Array(arrayBuffer));
       };
-      reader.onerror = (error) => {
+      reader.onerror = error => {
         console.error(`Error reading file: ${file.name}`, error);
         reject(error);
       };
@@ -328,12 +328,21 @@ window.DropBearFileUploader = (function () {
           if (e.dataTransfer.items[i].kind === 'file') {
             const file = e.dataTransfer.items[i].getAsFile();
             console.log(`Processing file: ${file.name}, size: ${file.size}`);
+
             const fileDataChunks = await readFileInChunks(file);
+
+            // Upload each chunk to Blazor asynchronously
+            for (let chunkIndex = 0; chunkIndex < fileDataChunks.length; chunkIndex++) {
+              const chunk = fileDataChunks[chunkIndex];
+              console.log(`Uploading chunk ${chunkIndex + 1}/${fileDataChunks.length} of ${file.name}`);
+              await DotNet.invokeMethodAsync('YourAssemblyName', 'UploadFileChunk', chunk);
+            }
+
             droppedFiles.push({
               name: file.name,
               size: file.size,
               type: file.type,
-              fileData: fileDataChunks // Store file in chunks
+              fileData: fileDataChunks // Store file in chunks if needed later
             });
 
           }
@@ -343,14 +352,22 @@ window.DropBearFileUploader = (function () {
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const file = e.dataTransfer.files[i];
           console.log(`Processing file: ${file.name}, size: ${file.size}`);
+
           const fileDataChunks = await readFileInChunks(file);
+
+          // Upload each chunk to Blazor asynchronously
+          for (let chunkIndex = 0; chunkIndex < fileDataChunks.length; chunkIndex++) {
+            const chunk = fileDataChunks[chunkIndex];
+            console.log(`Uploading chunk ${chunkIndex + 1}/${fileDataChunks.length} of ${file.name}`);
+            await DotNet.invokeMethodAsync('YourAssemblyName', 'UploadFileChunk', chunk);
+          }
+
           droppedFiles.push({
             name: file.name,
             size: file.size,
             type: file.type,
-            fileData: fileDataChunks // Store file in chunks
+            fileData: fileDataChunks // Store file in chunks if needed later
           });
-
         }
       }
       console.log("All files processed");
@@ -358,6 +375,7 @@ window.DropBearFileUploader = (function () {
       console.error('Error handling dropped files:', error);
     }
   }
+
 
   /**
    * Initializes the module by adding event listeners for 'drop' and 'dragover' events.
