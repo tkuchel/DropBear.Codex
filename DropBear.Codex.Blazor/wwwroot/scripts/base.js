@@ -248,35 +248,29 @@ window.DropBearFileUploader = (function () {
   /**
    * Converts a file to ArrayBuffer in chunks and returns each chunk.
    * @param {File} file - The file to convert.
-   * @param {number} chunkSize - The size of each chunk in bytes.
+   * @param {number} chunkSize - The size of each chunk in bytes (default 64 KB).
    * @returns {Promise<Array>} A promise that resolves to an array of Uint8Arrays.
    */
-  async function readFileInChunks(file, chunkSize = 1024 * 64) { // Default to 64 KB
-    console.log(`Reading file in chunks: ${file.name}, size: ${file.size}`);
+  async function readFileInChunks(file, chunkSize = 1024 * 64) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       const chunks = [];
       let currentOffset = 0;
 
       reader.onload = e => {
-        const arrayBuffer = e.target.result;
-        const chunk = new Uint8Array(arrayBuffer);
+        const chunk = new Uint8Array(e.target.result);
         chunks.push(chunk);
         currentOffset += chunk.byteLength;
-        console.log(`Processed chunk: ${currentOffset} bytes`);
 
+        // Continue reading the next chunk
         if (currentOffset < file.size) {
           readNextChunk();
         } else {
-          console.log(`All chunks processed: ${chunks.length} total chunks`);
-          resolve(chunks);
+          resolve(chunks); // All chunks processed
         }
       };
 
-      reader.onerror = error => {
-        console.error('Error reading file in chunks:', error);
-        reject(error);
-      };
+      reader.onerror = error => reject(error);
 
       function readNextChunk() {
         const slice = file.slice(currentOffset, currentOffset + chunkSize);
@@ -295,64 +289,59 @@ window.DropBearFileUploader = (function () {
     e.preventDefault();
     e.stopPropagation();
 
-    console.log("Handling drop event");
     droppedFiles = [];
 
     try {
       if (e.dataTransfer.items) {
-        console.log("Using dataTransfer.items");
         for (let i = 0; i < e.dataTransfer.items.length; i++) {
-          if (e.dataTransfer.items[i].kind === 'file') {
-            const file = e.dataTransfer.items[i].getAsFile();
-            console.log(`Processing file: ${file.name}, size: ${file.size}`);
+          const item = e.dataTransfer.items[i];
+          if (item.kind === 'file') {
+            const file = item.getAsFile();
 
             const fileDataChunks = await readFileInChunks(file);
 
-            // Upload each chunk to Blazor asynchronously
-            for (let chunkIndex = 0; chunkIndex < fileDataChunks.length; chunkIndex++) {
-              const chunk = fileDataChunks[chunkIndex];
-              console.log(`Uploading chunk ${chunkIndex + 1}/${fileDataChunks.length} of ${file.name}`);
+            // Aggregate all chunks into a single Uint8Array
+            const fileData = new Uint8Array(file.size);
+            let offset = 0;
+            fileDataChunks.forEach(chunk => {
+              fileData.set(chunk, offset);
+              offset += chunk.length;
+            });
 
-              // Pass the additional parameters: fileName, chunk, totalChunks, fileSize
-              await DotNet.invokeMethodAsync('DropBear.Codex.Blazor', 'UploadFileChunk', file.name, chunk, fileDataChunks.length, file.size);
-            }
-
+            // Store file information along with its data
             droppedFiles.push({
               name: file.name,
               size: file.size,
               type: file.type,
-              fileData: fileDataChunks // Store file in chunks if needed later
+              data: fileData // Merged file data
             });
           }
         }
       } else {
-        console.log("Using dataTransfer.files");
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const file = e.dataTransfer.files[i];
-          console.log(`Processing file: ${file.name}, size: ${file.size}`);
 
           const fileDataChunks = await readFileInChunks(file);
 
-          // Upload each chunk to Blazor asynchronously
-          for (let chunkIndex = 0; chunkIndex < fileDataChunks.length; chunkIndex++) {
-            const chunk = fileDataChunks[chunkIndex];
-            console.log(`Uploading chunk ${chunkIndex + 1}/${fileDataChunks.length} of ${file.name}`);
+          // Aggregate chunks
+          const fileData = new Uint8Array(file.size);
+          let offset = 0;
+          fileDataChunks.forEach(chunk => {
+            fileData.set(chunk, offset);
+            offset += chunk.length;
+          });
 
-            // Pass the additional parameters: fileName, chunk, totalChunks, fileSize
-            await DotNet.invokeMethodAsync('DropBear.Codex.Blazor', 'UploadFileChunk', file.name, chunk, fileDataChunks.length, file.size);
-          }
-
+          // Store file information along with its data
           droppedFiles.push({
             name: file.name,
             size: file.size,
             type: file.type,
-            fileData: fileDataChunks // Store file in chunks if needed later
+            data: fileData
           });
         }
       }
-      console.log("All files processed");
     } catch (error) {
-      console.error('Error handling dropped files:', error);
+      console.error('Error processing dropped files:', error);
     }
   }
 
@@ -360,11 +349,8 @@ window.DropBearFileUploader = (function () {
    * Initializes the module by adding event listeners for 'drop' and 'dragover' events.
    */
   function init() {
-    console.log("Initializing DropBearFileUploader");
-
     document.addEventListener('drop', function (e) {
       if (e.target.closest('.file-upload-dropzone')) {
-        console.log("Drop event detected in dropzone");
         handleDrop(e);
       }
     });
@@ -373,17 +359,14 @@ window.DropBearFileUploader = (function () {
       if (e.target.closest('.file-upload-dropzone')) {
         e.preventDefault();
         e.stopPropagation();
-        console.log("Dragover event detected in dropzone");
       }
     });
   }
 
   // Initialize when the DOM is ready
   if (document.readyState === 'loading') {
-    console.log("Document loading, adding DOMContentLoaded listener");
     document.addEventListener('DOMContentLoaded', init);
   } else {
-    console.log("Document already loaded, initializing immediately");
     init();
   }
 
@@ -393,8 +376,6 @@ window.DropBearFileUploader = (function () {
      * @returns {Array<Object>} An array of dropped file information.
      */
     getDroppedFiles() {
-      console.log("getDroppedFiles called");
-      console.log(`Returning ${droppedFiles.length} dropped files`);
       const files = droppedFiles;
       droppedFiles = [];
       return files;
@@ -404,11 +385,11 @@ window.DropBearFileUploader = (function () {
      * Clears the internal storage of dropped files.
      */
     clearDroppedFiles() {
-      console.log("clearDroppedFiles called");
       droppedFiles = [];
     }
   };
 })();
+
 
 /**
  * Utility function for file download.
