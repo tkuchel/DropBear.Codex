@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
@@ -63,21 +64,26 @@ public sealed class ExecutionEngine
     /// </summary>
     /// <param name="task">The task to add.</param>
     /// <exception cref="ArgumentNullException">Thrown when <paramref name="task" /> is null.</exception>
-    public void AddTask(ITask task)
+    public Result AddTask(ITask task)
     {
-        if (task == null)
-        {
-            throw new ArgumentNullException(nameof(task));
-        }
+        ArgumentNullException.ThrowIfNull(task);
 
-        if (_tasks.Exists(t => string.Equals(t.Name, task.Name, StringComparison.Ordinal)))
+        try
         {
-            _logger.Warning("A task with the name '{TaskName}' already exists. Skipping addition.", task.Name);
-            return;
-        }
+            if (_tasks.Exists(t => string.Equals(t.Name, task.Name, StringComparison.Ordinal)))
+            {
+                _logger.Warning("A task with the name '{TaskName}' already exists. Skipping addition.", task.Name);
+                return Result.PartialSuccess("Task with the name '{TaskName}' already exists.");
+            }
 
-        _tasks.Add(task);
-        _logger.Information("Added task '{TaskName}' to the execution engine.", task.Name);
+            _tasks.Add(task);
+            _logger.Information("Added task '{TaskName}' to the execution engine.", task.Name);
+            return Result.Success();
+        }
+        catch (Exception e)
+        {
+            return Result.Failure(e.Message, e);
+        }
     }
 
     /// <summary>
@@ -86,12 +92,12 @@ public sealed class ExecutionEngine
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
     /// <exception cref="InvalidOperationException">Thrown when task execution fails and cannot continue.</exception>
-    public async Task ExecuteAsync(CancellationToken cancellationToken)
+    public async Task<Result> ExecuteAsync(CancellationToken cancellationToken)
     {
-        if (!_tasks.Any())
+        if (_tasks.Count == 0)
         {
             _logger.Warning("No tasks to execute.");
-            return;
+            return Result.PartialSuccess("No tasks to execute.");
         }
 
         var executionContext = new ExecutionContext(_logger, _options) { TotalTaskCount = _tasks.Count };
@@ -105,23 +111,24 @@ public sealed class ExecutionEngine
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to resolve task dependencies.");
-            throw new InvalidOperationException("Failed to resolve task dependencies.", ex);
+            return Result.Failure("Failed to resolve task dependencies.", ex);
         }
 
         try
         {
             await ExecuteTasksAsync(sortedTasks, executionContext, cancellationToken).ConfigureAwait(false);
             _logger.Information("All tasks executed successfully.");
+            return Result.Success();
         }
         catch (OperationCanceledException)
         {
             _logger.Warning("Task execution was canceled.");
-            throw;
+            return Result.Warning("Task execution was canceled.");
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "An error occurred during task execution.");
-            throw;
+            return Result.Failure("An error occurred during task execution.", ex);
         }
     }
 
@@ -168,7 +175,7 @@ public sealed class ExecutionEngine
         foreach (var dependencyName in task.Dependencies)
         {
             var dependencyTask =
-                _tasks.FirstOrDefault(t => string.Equals(t.Name, dependencyName, StringComparison.Ordinal));
+                _tasks.Find(t => string.Equals(t.Name, dependencyName, StringComparison.Ordinal));
             if (dependencyTask == null)
             {
                 throw new InvalidOperationException($"Task '{task.Name}' depends on unknown task '{dependencyName}'.");

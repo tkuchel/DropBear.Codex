@@ -10,7 +10,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// <summary>
 ///     Represents a simple task that can be executed within the execution engine.
 /// </summary>
-public class SimpleTask : ITask
+public sealed class SimpleTask : ITask
 {
     private readonly List<string> _dependencies = new();
     private readonly Action<ExecutionContext>? _execute;

@@ -36,13 +36,6 @@ public static class ServiceCollectionExtensions
         services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncLoggingFilter<>));
         services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncExceptionHandlingFilter<>));
         services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncPerformanceMonitoringFilter<>));
-        services.AddScoped(typeof(AsyncMessageHandlerFilter<>),
-            serviceProvider => ActivatorUtilities.CreateInstance(serviceProvider, typeof(AsyncThrottlingFilter<>), 5));
-        services.AddScoped(typeof(AsyncMessageHandlerFilter<>),
-            serviceProvider =>
-                ActivatorUtilities.CreateInstance(serviceProvider, typeof(AsyncRetryFilter<>), 3,
-                    TimeSpan.FromSeconds(1)));
-
 
 
         // Register MessagePipe with the desired configuration
@@ -54,7 +47,6 @@ public static class ServiceCollectionExtensions
             options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncLoggingFilter<>));
             options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncExceptionHandlingFilter<>));
             options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncPerformanceMonitoringFilter<>));
-            options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncThrottlingFilter<>));
             options.SetAutoRegistrationSearchAssemblies(Assembly.GetExecutingAssembly());
         });
 

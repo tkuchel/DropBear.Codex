@@ -1,5 +1,6 @@
 ﻿#region
 
+using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,7 +13,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// <summary>
 ///     Provides a factory for creating instances of <see cref="ExecutionEngine" />.
 /// </summary>
-public class ExecutionEngineFactory : IExecutionEngineFactory
+public sealed class ExecutionEngineFactory : IExecutionEngineFactory
 {
     private readonly ILogger _logger;
     private readonly IServiceProvider _serviceProvider;
@@ -32,12 +33,13 @@ public class ExecutionEngineFactory : IExecutionEngineFactory
     /// </summary>
     /// <param name="channelId">The channel ID associated with the execution engine.</param>
     /// <returns>A new instance of <see cref="ExecutionEngine" />.</returns>
-    public ExecutionEngine CreateExecutionEngine(Guid channelId)
+    public Result<ExecutionEngine> CreateExecutionEngine(Guid channelId)
     {
         if (channelId == Guid.Empty)
         {
             _logger.Error("Invalid channel ID provided to ExecutionEngineFactory.");
-            throw new ArgumentException("Channel ID cannot be empty.", nameof(channelId));
+            // throw new ArgumentException("Channel ID cannot be empty.", nameof(channelId));
+            return Result<ExecutionEngine>.Failure("Invalid channel ID provided to ExecutionEngineFactory.");
         }
 
         try
@@ -49,12 +51,12 @@ public class ExecutionEngineFactory : IExecutionEngineFactory
             _logger.Information("Successfully created ExecutionEngine instance for Channel ID: {ChannelId}",
                 channelId);
 
-            return executionEngine;
+            return Result<ExecutionEngine>.Success(executionEngine);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to create ExecutionEngine instance for Channel ID: {ChannelId}", channelId);
-            throw;
+            return Result<ExecutionEngine>.Failure("Failed to create ExecutionEngine instance.", ex);
         }
     }
 }

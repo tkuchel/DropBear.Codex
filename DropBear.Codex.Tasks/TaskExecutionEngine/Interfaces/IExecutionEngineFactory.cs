@@ -1,4 +1,6 @@
-﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
+﻿using DropBear.Codex.Core;
+
+namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
 /// <summary>
 ///     Defines a factory for creating instances of <see cref="ExecutionEngine" />.
@@ -9,6 +11,6 @@ public interface IExecutionEngineFactory
     ///     Creates a new instance of <see cref="ExecutionEngine" /> with the specified channel ID.
     /// </summary>
     /// <param name="channelId">The channel ID associated with the execution engine.</param>
-    /// <returns>A new instance of <see cref="ExecutionEngine" />.</returns>
-    ExecutionEngine CreateExecutionEngine(Guid channelId);
+    /// <returns>A ResultT containing a new instance of <see cref="ExecutionEngine" />.</returns>
+    Result<ExecutionEngine> CreateExecutionEngine(Guid channelId);
 }
