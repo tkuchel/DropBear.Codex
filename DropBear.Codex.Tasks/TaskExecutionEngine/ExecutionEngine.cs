@@ -25,11 +25,13 @@ public sealed class ExecutionEngine
     private readonly Guid _channelId;
     private readonly ILogger _logger;
     private readonly ExecutionOptions _options;
-    private readonly IPublisher<Guid, TaskProgressMessage> _progressPublisher;
-    private readonly IPublisher<Guid, TaskCompletedMessage> _taskCompletedPublisher;
-    private readonly IPublisher<Guid, TaskFailedMessage> _taskFailedPublisher;
+    private readonly IAsyncPublisher<Guid, TaskProgressMessage> _progressPublisher;
+    private readonly IAsyncPublisher<Guid, TaskCompletedMessage> _taskCompletedPublisher;
+    private readonly IAsyncPublisher<Guid, TaskFailedMessage> _taskFailedPublisher;
+
     private readonly List<ITask> _tasks = new();
-    private readonly IPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
+    private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
+
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ExecutionEngine" /> class.
@@ -44,10 +46,10 @@ public sealed class ExecutionEngine
     public ExecutionEngine(
         Guid channelId,
         IOptions<ExecutionOptions> options,
-        IPublisher<Guid, TaskProgressMessage> progressPublisher,
-        IPublisher<Guid, TaskStartedMessage> taskStartedPublisher,
-        IPublisher<Guid, TaskCompletedMessage> taskCompletedPublisher,
-        IPublisher<Guid, TaskFailedMessage> taskFailedPublisher)
+        IAsyncPublisher<Guid, TaskProgressMessage> progressPublisher,
+        IAsyncPublisher<Guid, TaskStartedMessage> taskStartedPublisher,
+        IAsyncPublisher<Guid, TaskCompletedMessage> taskCompletedPublisher,
+        IAsyncPublisher<Guid, TaskFailedMessage> taskFailedPublisher)
     {
         _channelId = channelId;
         _options = options.Value ?? throw new ArgumentNullException(nameof(options));
@@ -235,13 +237,13 @@ public sealed class ExecutionEngine
             finally
             {
                 context.IncrementCompletedTaskCount();
-                _progressPublisher.Publish(_channelId, new TaskProgressMessage(
+                await _progressPublisher.PublishAsync(_channelId, new TaskProgressMessage(
                     task.Name,
                     context.CompletedTaskCount,
                     context.TotalTaskCount,
                     TaskStatus.InProgress,
                     $"Task '{task.Name}' execution progress."
-                ));
+                ), cancellationToken).ConfigureAwait(false);
             }
         }
     }
@@ -271,31 +273,36 @@ public sealed class ExecutionEngine
             throw new InvalidOperationException($"Validation failed for task '{task.Name}'.");
         }
 
-        _taskStartedPublisher.Publish(_channelId, new TaskStartedMessage(task.Name));
+        await _taskStartedPublisher.PublishAsync(_channelId, new TaskStartedMessage(task.Name), cancellationToken)
+            .ConfigureAwait(false);
         _logger.Information("Starting task '{TaskName}'.", task.Name);
 
         try
         {
             await ExecuteWithRetryAsync(task, context, cancellationToken).ConfigureAwait(false);
-            _taskCompletedPublisher.Publish(_channelId, new TaskCompletedMessage(task.Name));
+            await _taskCompletedPublisher
+                .PublishAsync(_channelId, new TaskCompletedMessage(task.Name), cancellationToken).ConfigureAwait(false);
             _logger.Information("Task '{TaskName}' completed successfully.", task.Name);
         }
         catch (Exception ex)
         {
-            _taskFailedPublisher.Publish(_channelId, new TaskFailedMessage(task.Name, ex));
+            await _taskFailedPublisher.PublishAsync(_channelId, new TaskFailedMessage(task.Name, ex), cancellationToken)
+                .ConfigureAwait(false);
             _logger.Error(ex, "Task '{TaskName}' failed.", task.Name);
 
-            if (task.CompensationActionAsync != null)
+            if (task.CompensationActionAsync == null)
             {
-                try
-                {
-                    await task.CompensationActionAsync(context).ConfigureAwait(false);
-                    _logger.Information("Compensation action executed for task '{TaskName}'.", task.Name);
-                }
-                catch (Exception compEx)
-                {
-                    _logger.Error(compEx, "Compensation action for task '{TaskName}' failed.", task.Name);
-                }
+                throw; // Re-throw to be handled by the caller
+            }
+
+            try
+            {
+                await task.CompensationActionAsync(context).ConfigureAwait(false);
+                _logger.Information("Compensation action executed for task '{TaskName}'.", task.Name);
+            }
+            catch (Exception compEx)
+            {
+                _logger.Error(compEx, "Compensation action for task '{TaskName}' failed.", task.Name);
             }
 
             throw; // Re-throw to be handled by the caller
