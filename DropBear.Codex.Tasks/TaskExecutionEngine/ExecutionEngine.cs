@@ -147,7 +147,6 @@ public sealed class ExecutionEngine
             Visit(task, visited, sortedTasks);
         }
 
-        sortedTasks.Reverse();
         return sortedTasks;
     }
 
