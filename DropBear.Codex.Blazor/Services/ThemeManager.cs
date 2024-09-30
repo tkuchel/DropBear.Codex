@@ -28,7 +28,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
     {
         _jsRuntime = jsRuntime ?? throw new ArgumentNullException(nameof(jsRuntime));
         _invokeAsync = async action => await action();
-        Logger.Information("ThemeManager initialized.");
+        Logger.Debug("ThemeManager initialized.");
     }
 
     /// <summary>
@@ -40,7 +40,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
         {
             await _jsRuntime.InvokeVoidAsync("DropBearThemeManager.dispose");
             _objRef?.Dispose();
-            Logger.Information("ThemeManager disposed.");
+            Logger.Debug("ThemeManager disposed.");
         }
         catch (Exception ex)
         {
@@ -60,7 +60,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
             {
                 _objRef = DotNetObjectReference.Create(this);
                 await _jsRuntime.InvokeVoidAsync("DropBearThemeManager.initialize", _objRef);
-                Logger.Information("ThemeManager initialized in JavaScript.");
+                Logger.Debug("ThemeManager initialized in JavaScript.");
             }
             catch (Exception ex)
             {
@@ -102,7 +102,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
     public void SetInvokeAsync(Func<Func<Task>, Task> invokeAsync)
     {
         _invokeAsync = invokeAsync ?? throw new ArgumentNullException(nameof(invokeAsync));
-        Logger.Information("InvokeAsync method set.");
+        Logger.Debug("InvokeAsync method set.");
     }
 
     /// <summary>
@@ -118,7 +118,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
         try
         {
             await _jsRuntime.InvokeVoidAsync("DropBearThemeManager.toggleTheme");
-            Logger.Information("Theme toggled.");
+            Logger.Debug("Theme toggled.");
         }
         catch (Exception ex)
         {
@@ -135,7 +135,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
         try
         {
             await _jsRuntime.InvokeVoidAsync("DropBearThemeManager.setTheme", theme);
-            Logger.Information("Theme set to {Theme}.", theme);
+            Logger.Debug("Theme set to {Theme}.", theme);
         }
         catch (Exception ex)
         {
@@ -152,7 +152,7 @@ public sealed class ThemeManager : DropBearComponentBase, IAsyncDisposable
         try
         {
             var currentTheme = await _jsRuntime.InvokeAsync<string>("DropBearThemeManager.getCurrentTheme");
-            Logger.Information("Current theme retrieved: {CurrentTheme}.", currentTheme);
+            Logger.Debug("Current theme retrieved: {CurrentTheme}.", currentTheme);
             return currentTheme;
         }
         catch (Exception ex)

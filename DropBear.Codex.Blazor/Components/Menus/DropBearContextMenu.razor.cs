@@ -69,7 +69,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
             try
             {
                 await JsRuntime.InvokeVoidAsync("DropBearContextMenu.dispose", _contextMenuId);
-                Logger.LogInformation("Context menu JavaScript resources disposed for {ContextMenuId}", _contextMenuId);
+                // Logger.LogDebug("Context menu JavaScript resources disposed for {ContextMenuId}", _contextMenuId);
             }
             catch (JSException ex)
             {
@@ -96,7 +96,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
         {
             await JsRuntime.InvokeVoidAsync("DropBearContextMenu.initialize", _contextMenuId, _objectReference);
             _jsInitialized = true;
-            Logger.LogInformation("ContextMenu initialized with ID: {ContextMenuId}", _contextMenuId);
+            // Logger.LogDebug("ContextMenu initialized with ID: {ContextMenuId}", _contextMenuId);
         }
         catch (JSException ex)
         {

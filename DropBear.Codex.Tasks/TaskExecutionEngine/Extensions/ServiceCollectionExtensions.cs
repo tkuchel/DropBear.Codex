@@ -33,10 +33,9 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ExecutionEngine>();
 
         // Add your custom logging filter to the DI container
-        services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncLoggingFilter<>));
-        services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncExceptionHandlingFilter<>));
-        services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncPerformanceMonitoringFilter<>));
-
+        // services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncLoggingFilter<>));
+        // services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncExceptionHandlingFilter<>));
+        // services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncPerformanceMonitoringFilter<>));
 
         // Register MessagePipe with the desired configuration
         services.AddMessagePipe(options =>
@@ -44,9 +43,9 @@ public static class ServiceCollectionExtensions
             // Configure MessagePipe options as needed
             options.EnableCaptureStackTrace = false;
             options.EnableAutoRegistration = true;
-            options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncLoggingFilter<>));
-            options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncExceptionHandlingFilter<>));
-            options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncPerformanceMonitoringFilter<>));
+            // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncLoggingFilter<>));
+            // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncExceptionHandlingFilter<>));
+            // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncPerformanceMonitoringFilter<>));
             options.SetAutoRegistrationSearchAssemblies(Assembly.GetExecutingAssembly());
         });
 

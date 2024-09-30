@@ -36,11 +36,11 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
 
         if (ValidationResult is not null && ValidationResult.Errors.Any())
         {
-            Logger.Information("ValidationErrorsComponent initialized with {ErrorCount} errors.", ValidationResult.Errors.Count);
+            Logger.Debug("ValidationErrorsComponent initialized with {ErrorCount} errors.", ValidationResult.Errors.Count);
         }
         else
         {
-            Logger.Information("ValidationErrorsComponent initialized with no errors.");
+            Logger.Debug("ValidationErrorsComponent initialized with no errors.");
         }
     }
 

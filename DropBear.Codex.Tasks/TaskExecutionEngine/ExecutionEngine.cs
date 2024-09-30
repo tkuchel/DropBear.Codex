@@ -79,7 +79,7 @@ public sealed class ExecutionEngine
             }
 
             _tasks.Add(task);
-            _logger.Information("Added task '{TaskName}' to the execution engine.", task.Name);
+            _logger.Debug("Added task '{TaskName}' to the execution engine.", task.Name);
             return Result.Success();
         }
         catch (Exception e)
@@ -108,7 +108,7 @@ public sealed class ExecutionEngine
         try
         {
             sortedTasks = ResolveDependencies();
-            _logger.Information("Task dependencies resolved successfully.");
+            _logger.Debug("Task dependencies resolved successfully.");
         }
         catch (Exception ex)
         {
@@ -119,7 +119,7 @@ public sealed class ExecutionEngine
         try
         {
             await ExecuteTasksAsync(sortedTasks, executionContext, cancellationToken).ConfigureAwait(false);
-            _logger.Information("All tasks executed successfully.");
+            _logger.Debug("All tasks executed successfully.");
             return Result.Success();
         }
         catch (OperationCanceledException)
@@ -221,7 +221,7 @@ public sealed class ExecutionEngine
             {
                 await ExecuteTaskAsync(task, context, cancellationToken).ConfigureAwait(false);
                 taskStatus[task.Name] = true;
-                _logger.Information("Task '{TaskName}' executed successfully.", task.Name);
+                _logger.Debug("Task '{TaskName}' executed successfully.", task.Name);
             }
             catch (Exception ex)
             {
@@ -275,14 +275,14 @@ public sealed class ExecutionEngine
 
         await _taskStartedPublisher.PublishAsync(_channelId, new TaskStartedMessage(task.Name), cancellationToken)
             .ConfigureAwait(false);
-        _logger.Information("Starting task '{TaskName}'.", task.Name);
+        _logger.Debug("Starting task '{TaskName}'.", task.Name);
 
         try
         {
             await ExecuteWithRetryAsync(task, context, cancellationToken).ConfigureAwait(false);
             await _taskCompletedPublisher
                 .PublishAsync(_channelId, new TaskCompletedMessage(task.Name), cancellationToken).ConfigureAwait(false);
-            _logger.Information("Task '{TaskName}' completed successfully.", task.Name);
+            _logger.Debug("Task '{TaskName}' completed successfully.", task.Name);
         }
         catch (Exception ex)
         {

@@ -73,7 +73,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     {
         try
         {
-            Logger.Information("Button clicked: {ButtonText}", button.Text);
+            // Logger.Debug("Button clicked: {ButtonText}", button.Text);
             await OnButtonClicked.InvokeAsync(button);
         }
         catch (Exception ex)

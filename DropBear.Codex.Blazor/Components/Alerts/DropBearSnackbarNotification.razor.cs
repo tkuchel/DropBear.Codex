@@ -76,7 +76,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
             await InvokeAsync(StateHasChanged);
             await Task.Delay(50); // Small delay to ensure the DOM is updated
             await JsRuntime.InvokeVoidAsync("DropBearSnackbar.startProgress", SnackbarId, Duration);
-            Logger.Information("Snackbar shown successfully for SnackbarId: {SnackbarId}", SnackbarId);
+            Logger.Debug("Snackbar shown successfully for SnackbarId: {SnackbarId}", SnackbarId);
         }
         catch (JSException ex)
         {
@@ -109,7 +109,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
             await HideSnackbarAsync();
             IsVisible = false;
             _isDismissed = true;
-            Logger.Information("Snackbar dismissed successfully for SnackbarId: {SnackbarId}", SnackbarId);
+            Logger.Debug("Snackbar dismissed successfully for SnackbarId: {SnackbarId}", SnackbarId);
             StateHasChanged();
         }
         catch (JSException ex)

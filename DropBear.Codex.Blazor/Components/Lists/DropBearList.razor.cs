@@ -82,7 +82,7 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
     private async Task ToggleCollapse()
     {
         IsCollapsed = !IsCollapsed;
-        Logger.Information("List {Title} collapsed state toggled to {IsCollapsed}.", Title, IsCollapsed);
+        // Logger.Debug("List {Title} collapsed state toggled to {IsCollapsed}.", Title, IsCollapsed);
 
         // Trigger the OnToggle callback to notify parent components of the state change
         if (OnToggle.HasDelegate)

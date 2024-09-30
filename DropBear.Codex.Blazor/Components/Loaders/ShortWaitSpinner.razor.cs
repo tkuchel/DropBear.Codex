@@ -38,7 +38,7 @@ public sealed partial class ShortWaitSpinner : DropBearComponentBase
 
     protected override void OnInitialized()
     {
-        Logger.Information("ShortWaitSpinner initialized with title '{Title}' and message '{Message}'", Title, Message);
+        Logger.Debug("ShortWaitSpinner initialized with title '{Title}' and message '{Message}'", Title, Message);
     }
 
     /// <summary>

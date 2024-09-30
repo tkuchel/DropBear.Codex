@@ -100,7 +100,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         {
             IsLoading = true;
             StateHasChanged();
-            Logger.Information("Loading data for DropBearDataGrid.");
+            Logger.Debug("Loading data for DropBearDataGrid.");
 
             await Task.Delay(500); // Simulate data loading
 
@@ -139,7 +139,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         catch (Exception ex)
         {
             // Handle or log exception
-            Console.WriteLine($"An error occurred during the debounce search: {ex.Message}");
+            Logger.Error(ex, "Error occurred during debounce search.");
         }
     }
 
@@ -147,7 +147,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     {
         _isSearching = true;
         StateHasChanged();
-        Logger.Information("Performing search with term: {SearchTerm}", SearchTerm);
+        Logger.Debug("Performing search with term: {SearchTerm}", SearchTerm);
 
         try
         {
@@ -228,7 +228,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
                     .ToList();
         }
 
-        Logger.Information("Sorted by column: {Column}, Direction: {Direction}", column.PropertyName,
+        Logger.Debug("Sorted by column: {Column}, Direction: {Direction}", column.PropertyName,
             _currentSortDirection);
 
         UpdateDisplayedItems();
@@ -298,25 +298,25 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
     private async Task ExportData()
     {
-        Logger.Information("Export data triggered.");
+        Logger.Debug("Export data triggered.");
         await OnExportData.InvokeAsync(default!);
     }
 
     private async Task AddItem()
     {
-        Logger.Information("Add item triggered.");
+        Logger.Debug("Add item triggered.");
         await OnAddItem.InvokeAsync(default!);
     }
 
     private async Task EditItem(TItem item)
     {
-        Logger.Information("Edit item triggered for item: {Item}", item);
+        Logger.Debug("Edit item triggered for item: {Item}", item);
         await OnEditItem.InvokeAsync(item);
     }
 
     private async Task DeleteItem(TItem item)
     {
-        Logger.Information("Delete item triggered for item: {Item}", item);
+        Logger.Debug("Delete item triggered for item: {Item}", item);
         await OnDeleteItem.InvokeAsync(item);
     }
 
@@ -337,7 +337,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     public void ResetColumns()
     {
         _columns.Clear();
-        Logger.Information("Columns reset.");
+        Logger.Debug("Columns reset.");
         StateHasChanged();
     }
 

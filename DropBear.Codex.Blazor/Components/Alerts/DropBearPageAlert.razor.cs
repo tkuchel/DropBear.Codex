@@ -58,7 +58,7 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         try
         {
             await OnClose.InvokeAsync();
-            Logger.Information("Alert of type {AlertType} with title '{AlertTitle}' closed successfully.", Type, Title);
+            Logger.Debug("Alert of type {AlertType} with title '{AlertTitle}' closed successfully.", Type, Title);
         }
         catch (Exception ex)
         {

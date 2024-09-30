@@ -48,7 +48,7 @@ public sealed class PageAlertService : IPageAlertService
             }
 
             _alerts.RemoveAll(a => a.Id == id);
-            Logger.Information("Alert with ID {AlertId} removed successfully.", id);
+            Logger.Debug("Alert with ID {AlertId} removed successfully.", id);
             NotifyStateChanged();
             return Result.Success();
         }
@@ -68,7 +68,7 @@ public sealed class PageAlertService : IPageAlertService
         try
         {
             _alerts.Clear();
-            Logger.Information("All alerts cleared successfully.");
+            Logger.Debug("All alerts cleared successfully.");
             NotifyStateChanged();
             return Result.Success();
         }
@@ -94,7 +94,7 @@ public sealed class PageAlertService : IPageAlertService
         {
             var alert = new PageAlert(title, message, type, isDismissible);
             _alerts.Add(alert);
-            Logger.Information("Added new alert: {AlertTitle} - Type: {AlertType}, Dismissible: {IsDismissible}", title, type, isDismissible);
+            Logger.Debug("Added new alert: {AlertTitle} - Type: {AlertType}, Dismissible: {IsDismissible}", title, type, isDismissible);
 
             NotifyStateChanged();
 
@@ -150,7 +150,7 @@ public sealed class PageAlertService : IPageAlertService
             Logger.Debug("Starting delay of {Delay}ms for alert {AlertId} removal.", delayMs, id);
             await Task.Delay(delayMs).ConfigureAwait(false);
             await RemoveAlertAsync(id).ConfigureAwait(false);
-            Logger.Information("Alert {AlertId} removed after delay.", id);
+            Logger.Debug("Alert {AlertId} removed after delay.", id);
         }
         catch (Exception ex)
         {

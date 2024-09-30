@@ -54,7 +54,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
 
         try
         {
-            Logger.Information("Starting download for file: {FileName}", FileName);
+            Logger.Debug("Starting download for file: {FileName}", FileName);
 
             // Set up progress reporting
             var progress = new Progress<int>(percent =>
@@ -71,7 +71,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
             resultStream.Position = 0;
             var byteArray = resultStream.ToArray();
 
-            Logger.Information("Download completed for file: {FileName}, preparing to save file on client.", FileName);
+            Logger.Debug("Download completed for file: {FileName}, preparing to save file on client.", FileName);
 
             // Use JavaScript interop to trigger the download
             await JsRuntime.InvokeVoidAsync("downloadFileFromStream", _dismissCancellationTokenSource.Token, FileName,
@@ -94,7 +94,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
         {
             _isDownloading = false;
             _dismissCancellationTokenSource?.Dispose(); // Clean up the token source
-            Logger.Information("Download process finalized for file: {FileName}", FileName);
+            Logger.Debug("Download process finalized for file: {FileName}", FileName);
             StateHasChanged();
         }
     }

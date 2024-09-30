@@ -75,7 +75,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         try
         {
             await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.goBack");
-            Logger.Information("Navigated back.");
+            // Logger.Debug("Navigated back.");
         }
         catch (Exception ex)
         {
@@ -91,7 +91,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         try
         {
             NavigationManager.NavigateTo("/");
-            Logger.Information("Navigated to home.");
+            // Logger.Debug("Navigated to home.");
         }
         catch (Exception ex)
         {
@@ -107,7 +107,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         try
         {
             await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.scrollToTop");
-            Logger.Information("Page scrolled to top.");
+            // Logger.Debug("Page scrolled to top.");
         }
         catch (Exception ex)
         {
@@ -124,7 +124,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     public void UpdateVisibility(bool isVisible)
     {
         IsVisible = isVisible;
-        Logger.Debug("Scroll-to-top button visibility updated: {IsVisible}", isVisible);
+        // Logger.Debug("Scroll-to-top button visibility updated: {IsVisible}", isVisible);
         StateHasChanged();
     }
 }

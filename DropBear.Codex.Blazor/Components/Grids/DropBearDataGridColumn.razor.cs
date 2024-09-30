@@ -108,7 +108,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
 
             // Add the column to the parent grid
             ParentGrid.AddColumn(column);
-            Logger.Information("Column {PropertyName} added to the DropBearDataGrid.", PropertyName);
+            // Logger.Debug("Column {PropertyName} added to the DropBearDataGrid.", PropertyName);
 
             _isInitialized = true;
         }

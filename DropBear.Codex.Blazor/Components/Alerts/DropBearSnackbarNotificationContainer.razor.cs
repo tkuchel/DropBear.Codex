@@ -123,7 +123,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
                     return;
                 }
 
-                Logger.Information("Received snackbar notification for channel {ChannelId}: {Message}", channelId,
+                Logger.Debug("Received snackbar notification for channel {ChannelId}: {Message}", channelId,
                     notification.Message);
                 var snackbarOptions = new SnackbarNotificationOptions(
                     "New Notification",

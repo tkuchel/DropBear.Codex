@@ -76,7 +76,7 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
     {
         try
         {
-            Logger.Information("Initializing columns for type {TItem}.", typeof(TItem).Name);
+            Logger.Debug("Initializing columns for type {TItem}.", typeof(TItem).Name);
 
             Columns = typeof(TItem).GetProperties()
                 .Select(prop => new ColumnDefinition
@@ -115,7 +115,7 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
                 CurrentSortDirection = SortDirection.Ascending;
             }
 
-            Logger.Information("Sorting by column '{ColumnName}' in {SortDirection} order.", CurrentSortColumn,
+            Logger.Debug("Sorting by column '{ColumnName}' in {SortDirection} order.", CurrentSortColumn,
                 CurrentSortDirection);
         }
         catch (Exception ex)
@@ -252,7 +252,7 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
     {
         try
         {
-            Logger.Information("Exporting data to Excel.");
+            Logger.Debug("Exporting data to Excel.");
 
             var ms = _excelExporter.ExportToExcelStream(FilteredData.ToList());
 
@@ -262,7 +262,7 @@ public sealed partial class ReportViewer<TItem> : DropBearComponentBase where TI
                 return;
             }
 
-            Logger.Information("Data exported to Excel successfully.");
+            Logger.Debug("Data exported to Excel successfully.");
 
             if (ms.Length < FileSizeThreshold)
             {

@@ -112,7 +112,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
                     return;
                 }
 
-                Logger.Information("Received page alert for channel {ChannelId}: {Message}", channelId,
+                Logger.Debug("Received page alert for channel {ChannelId}: {Message}", channelId,
                     notification.Message);
                 var pageAlert = new PageAlert("Alert Notification", notification.Message,
                     MapAlertType(notification.Severity));

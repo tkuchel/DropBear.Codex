@@ -68,14 +68,14 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
     public void Dispose()
     {
         _timer?.Dispose();
-        Logger.Information("LongWaitProgressBar disposed.");
+        Logger.Debug("LongWaitProgressBar disposed.");
     }
 
     protected override void OnInitialized()
     {
         _currentProgress = Progress;
         _timer = new Timer(UpdateProgress, null, Timeout.Infinite, UpdateInterval);
-        Logger.Information("LongWaitProgressBar initialized with initial progress of {Progress}%", _currentProgress);
+        Logger.Debug("LongWaitProgressBar initialized with initial progress of {Progress}%", _currentProgress);
     }
 
     protected override void OnParametersSet()
@@ -96,7 +96,7 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
         if (_currentProgress >= 100)
         {
             StopTimer();
-            Logger.Information("Progress reached 100%.");
+            Logger.Debug("Progress reached 100%.");
         }
     }
 
@@ -152,7 +152,7 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
         {
             _isCanceled = true;
             StopTimer();
-            Logger.Information("Cancel button clicked. Progress bar canceled.");
+            Logger.Debug("Cancel button clicked. Progress bar canceled.");
 
             if (OnCancel.HasDelegate)
             {

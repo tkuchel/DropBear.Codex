@@ -51,7 +51,7 @@ public sealed class ModalService : IModalService
     {
         parameters ??= new Dictionary<string, object>();
 
-        Logger.Information("Show called for modal of type {ComponentType}.", typeof(T));
+        Logger.Debug("Show called for modal of type {ComponentType}.", typeof(T));
 
         if (IsModalVisible)
         {
@@ -97,7 +97,7 @@ public sealed class ModalService : IModalService
     private void EnqueueModal(Type componentType, IDictionary<string, object> parameters)
     {
         _modalQueue.Enqueue((componentType, parameters));
-        Logger.Information("Modal of type {ComponentType} has been enqueued.", componentType);
+        Logger.Debug("Modal of type {ComponentType} has been enqueued.", componentType);
     }
 
     /// <summary>
@@ -113,7 +113,7 @@ public sealed class ModalService : IModalService
             CurrentParameters = parameters;
             IsModalVisible = true;
 
-            Logger.Information("Displaying modal of type {ComponentType}.", componentType);
+            Logger.Debug("Displaying modal of type {ComponentType}.", componentType);
             NotifyStateChanged();
         }
         catch (Exception ex)

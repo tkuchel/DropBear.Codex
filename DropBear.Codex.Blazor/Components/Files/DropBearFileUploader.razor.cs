@@ -63,16 +63,16 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
 
         try
         {
-            Logger.Information("Calling DropBearFileUploader.getDroppedFiles");
+            Logger.Debug("Calling DropBearFileUploader.getDroppedFiles");
             var files = await JsRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles",
                 _dismissCancellationTokenSource.Token);
-            Logger.Information("JavaScript call completed, processing files");
+            Logger.Debug("JavaScript call completed, processing files");
 
             foreach (var file in files)
             {
                 if (IsFileValid(file))
                 {
-                    Logger.Information("File added: {FileName} with size {FileSize}", file.Name,
+                    Logger.Debug("File added: {FileName} with size {FileSize}", file.Name,
                         FormatFileSize(file.Size));
 
                     var uploadFile = new UploadFile(
@@ -95,7 +95,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         }
         finally
         {
-            Logger.Information("Clearing dropped files and updating UI");
+            Logger.Debug("Clearing dropped files and updating UI");
             await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles",
                 _dismissCancellationTokenSource.Token);
             StateHasChanged();
@@ -115,7 +115,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                 var uploadFile = new UploadFile(file.Name, file.Size, file.ContentType, file);
 
                 _selectedFiles.Add(uploadFile);
-                Logger.Information("File selected: {FileName} with size {FileSize}", file.Name,
+                Logger.Debug("File selected: {FileName} with size {FileSize}", file.Name,
                     FormatFileSize(file.Size));
             }
             else
@@ -164,7 +164,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     private void RemoveFile(UploadFile file)
     {
         _selectedFiles.Remove(file);
-        Logger.Information("File removed: {FileName}", file.Name);
+        Logger.Debug("File removed: {FileName}", file.Name);
         StateHasChanged();
     }
 
@@ -184,7 +184,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         if (!_fileUploadChunks.ContainsKey(fileName))
         {
             _fileUploadChunks[fileName] = (new List<byte[]>(), 0, fileSize);
-            Logger.Information($"Started receiving chunks for file: {fileName} (size: {fileSize} bytes)");
+            Logger.Debug($"Started receiving chunks for file: {fileName} (size: {fileSize} bytes)");
         }
 
         // Add the current chunk to the file's chunk list
@@ -192,13 +192,13 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         _fileUploadChunks[fileName] = (_fileUploadChunks[fileName].Chunks,
             _fileUploadChunks[fileName].CurrentProgress + 1, fileSize);
 
-        Logger.Information(
+        Logger.Debug(
             $"Received chunk {chunk.Length} bytes for file {fileName} ({_fileUploadChunks[fileName].CurrentProgress}/{totalChunks} chunks)");
 
         // Check if all chunks have been received
         if (_fileUploadChunks[fileName].CurrentProgress == totalChunks)
         {
-            Logger.Information($"All chunks received for file: {fileName}. Merging and executing callback...");
+            Logger.Debug($"All chunks received for file: {fileName}. Merging and executing callback...");
 
             try
             {
@@ -232,11 +232,11 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                     if (result.Status == UploadStatus.Success)
                     {
                         _uploadedFiles.Add(uploadFile);
-                        Logger.Information("File uploaded successfully: {FileName}", fileName);
+                        Logger.Debug("File uploaded successfully: {FileName}", fileName);
                     }
                     else
                     {
-                        Logger.Warning("File upload failed: {FileName}", fileName);
+                        Logger.Debug("File upload failed: {FileName}", fileName);
                     }
                 }
 
@@ -281,7 +281,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
             offset += chunk.Length;
         }
 
-        Logger.Information($"Merged {chunks.Count} chunks into a single file of size {fileSize} bytes.");
+        Logger.Debug($"Merged {chunks.Count} chunks into a single file of size {fileSize} bytes.");
         return mergedFileData;
     }
 
@@ -291,7 +291,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
     private void CleanupUploadedFiles()
     {
         _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
-        Logger.Information("Cleanup of successfully uploaded files complete.");
+        Logger.Debug("Cleanup of successfully uploaded files complete.");
         StateHasChanged();
     }
 
@@ -327,7 +327,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
                     if (result.Status == UploadStatus.Success)
                     {
                         _uploadedFiles.Add(file);
-                        Logger.Information("File uploaded successfully: {FileName}", file.Name);
+                        Logger.Debug("File uploaded successfully: {FileName}", file.Name);
                     }
                     else
                     {
@@ -355,7 +355,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase, IDispo
         // Remove successfully uploaded files from the selected files list
         _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
 
-        Logger.Information("File upload process completed.");
+        Logger.Debug("File upload process completed.");
         StateHasChanged();
     }
 
