@@ -59,12 +59,6 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
     [Parameter]
     public EventCallback OnCancel { get; set; }
 
-    /// <summary>
-    ///     The callback invoked when the progress changes. Includes the operation name and progress percentage.
-    /// </summary>
-    [Parameter]
-    public EventCallback<(string OperationName, int ProgressPercentage)> ProgressChanged { get; set; }
-
     public void Dispose()
     {
         _timer?.Dispose();
@@ -140,7 +134,6 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
             Logger.Debug("Progress updated to {Progress}%", _currentProgress);
 
             // Notify parent component of progress changes
-            _ = ProgressChanged.InvokeAsync((Title, _currentProgress));
             StateHasChanged(); // This is already inside InvokeAsync, no need for an extra call
         });
     }

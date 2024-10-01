@@ -89,6 +89,24 @@ public sealed class ExecutionEngine
     }
 
     /// <summary>
+    ///     Clears all tasks from the execution engine.
+    /// </summary>
+    /// <returns>A Result indicating the success or failure of the operation.</returns>
+    public Result ClearTasks()
+    {
+        try
+        {
+            _tasks.Clear();
+            _logger.Debug("Cleared all tasks from the execution engine.");
+            return Result.Success();
+        }
+        catch (Exception e)
+        {
+            return Result.Failure(e.Message, e);
+        }
+    }
+
+    /// <summary>
     ///     Executes the tasks managed by the execution engine asynchronously.
     /// </summary>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
