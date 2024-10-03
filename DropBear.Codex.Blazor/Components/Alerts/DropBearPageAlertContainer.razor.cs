@@ -108,6 +108,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
             var bag = DisposableBag.CreateBuilder();
 
             ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
+            Logger.Debug("Subscription created for channel: {ChannelId}", channelId);
 
             _disposable = bag.Build();
         }

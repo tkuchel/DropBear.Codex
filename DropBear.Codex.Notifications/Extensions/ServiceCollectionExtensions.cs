@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Reflection;
+using DropBear.Codex.Notifications.Interfaces;
 using DropBear.Codex.Notifications.Models;
 using DropBear.Codex.Notifications.Services;
 using DropBear.Codex.Serialization.Factories;
@@ -50,27 +51,24 @@ public static class ServiceCollectionExtensions
             throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be greater than 0.");
         }
 
-        ConfigureMessagePipe(services);
-        AddNotificationServices(services, configuration, batchSize);
+        // Configure core services
+        services.ConfigureMessagePipe();
+        services.AddNotificationBatching(configuration, batchSize);
 
+        // Configure serialization, if enabled
         if (enableSerialization)
         {
-            if (enableEncryption)
-            {
-                AddSerializationServicesWithEncryption(services, configuration);
-            }
-            else
-            {
-                AddSerializationServices(services);
-            }
+            services.AddSerializationServices(configuration, enableEncryption);
         }
 
-        AddGlobalNotificationService(services, enableSerialization);
+        // Register notification services
+        services.AddScoped<GlobalNotificationService>();
+        services.AddScoped<INotificationSerializationService, NotificationSerializationService>();
 
         return services;
     }
 
-    private static void ConfigureMessagePipe(IServiceCollection services)
+    private static void ConfigureMessagePipe(this IServiceCollection services)
     {
         services.AddMessagePipe(options =>
         {
@@ -78,26 +76,38 @@ public static class ServiceCollectionExtensions
         });
     }
 
-    private static void AddNotificationServices(IServiceCollection services, IConfiguration configuration,
+    private static void AddNotificationBatching(this IServiceCollection services, IConfiguration configuration,
         int batchSize)
     {
-        services.AddSingleton<UserBufferedPublisher<byte[]>>();
+        services.AddScoped<UserBufferedPublisher<byte[]>>();
 
-        services.AddSingleton<NotificationBatchService>(provider =>
+        services.AddScoped<NotificationBatchService>(provider =>
         {
             var batchPublisher = provider.GetRequiredService<IAsyncPublisher<List<byte[]>>>();
             return new NotificationBatchService(batchPublisher, batchSize);
         });
 
-        services.AddSingleton<NotificationPersistenceService>(provider =>
+        services.AddScoped<NotificationPersistenceService>(provider =>
         {
-            var filePath = configuration["Notifications:AuditLogFilePath"]
-                           ?? "backup_notifications_audit_log.json";
+            var filePath = configuration["Notifications:AuditLogFilePath"] ?? "backup_notifications_audit_log.json";
             return new NotificationPersistenceService(filePath);
         });
     }
 
-    private static void AddSerializationServices(IServiceCollection services)
+    private static void AddSerializationServices(this IServiceCollection services, IConfiguration configuration,
+        bool enableEncryption)
+    {
+        if (enableEncryption)
+        {
+            services.AddEncryptedSerializationServices(configuration);
+        }
+        else
+        {
+            services.AddBasicSerializationServices();
+        }
+    }
+
+    private static void AddBasicSerializationServices(this IServiceCollection services)
     {
         services.AddSingleton<ISerializer>(provider => new SerializationBuilder()
             .WithEncoding<Base64EncodingProvider>()
@@ -105,7 +115,7 @@ public static class ServiceCollectionExtensions
             .Build());
     }
 
-    private static void AddSerializationServicesWithEncryption(IServiceCollection services,
+    private static void AddEncryptedSerializationServices(this IServiceCollection services,
         IConfiguration configuration)
     {
         var publicKeyPath = configuration["Encryption:PublicKeyPath"];
@@ -122,20 +132,5 @@ public static class ServiceCollectionExtensions
             .WithKeys(publicKeyPath, privateKeyPath)
             .WithDefaultJsonSerializerOptions()
             .Build());
-    }
-
-    private static void AddGlobalNotificationService(IServiceCollection services, bool enableSerialization)
-    {
-        services.AddSingleton<GlobalNotificationService>(provider =>
-        {
-            var publisher = provider.GetRequiredService<IAsyncPublisher<string, byte[]>>();
-            var userBufferedPublisher = provider.GetRequiredService<UserBufferedPublisher<byte[]>>();
-            var persistenceService = provider.GetRequiredService<NotificationPersistenceService>();
-            var batchService = provider.GetRequiredService<NotificationBatchService>();
-            var serializer = enableSerialization ? provider.GetRequiredService<ISerializer>() : null;
-
-            return new GlobalNotificationService(publisher, userBufferedPublisher, persistenceService, batchService,
-                serializer);
-        });
     }
 }
