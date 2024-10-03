@@ -29,7 +29,7 @@ public class StateMachineBuilder<TState, TTrigger>
         _stateMachine =
             new Lazy<StateMachine<TState, TTrigger>>(() => new StateMachine<TState, TTrigger>(initialState));
         _logger = logger ?? Log.Logger.ForContext<StateMachineBuilder<TState, TTrigger>>();
-        _logger.Information("State machine initialized with initial state: {State}", initialState);
+        _logger.Debug("State machine initialized with initial state: {State}", initialState);
     }
 
     /// <summary>
@@ -41,7 +41,7 @@ public class StateMachineBuilder<TState, TTrigger>
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
-        _logger.Information("Configuring state: {State}", state);
+        _logger.Debug("Configuring state: {State}", state);
         return _stateMachine.Value.Configure(state);
     }
 
@@ -60,7 +60,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(destinationState, nameof(destinationState));
 
-        _logger.Information("Configuring transition: {State} --({Trigger})--> {DestinationState}",
+        _logger.Debug("Configuring transition: {State} --({Trigger})--> {DestinationState}",
             state, trigger, destinationState);
 
         _stateMachine.Value.Configure(state).Permit(trigger, destinationState);
@@ -79,7 +79,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
 
-        _logger.Information("Configuring reentry for state: {State} on trigger: {Trigger}", state, trigger);
+        _logger.Debug("Configuring reentry for state: {State} on trigger: {Trigger}", state, trigger);
 
         _stateMachine.Value.Configure(state).PermitReentry(trigger);
         return this;
@@ -100,7 +100,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(action, nameof(action));
 
-        _logger.Information("Configuring reentry for state: {State} on trigger: {Trigger} with action.", state,
+        _logger.Debug("Configuring reentry for state: {State} on trigger: {Trigger} with action.", state,
             trigger);
 
         _stateMachine.Value.Configure(state).PermitReentry(trigger).OnEntry(action);
@@ -119,7 +119,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
 
-        _logger.Information("Configuring state: {State} to ignore trigger: {Trigger}", state, trigger);
+        _logger.Debug("Configuring state: {State} to ignore trigger: {Trigger}", state, trigger);
 
         _stateMachine.Value.Configure(state).Ignore(trigger);
         return this;
@@ -142,7 +142,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(guard, nameof(guard));
 
-        _logger.Information(
+        _logger.Debug(
             "Configuring state: {State} to ignore trigger: {Trigger} if condition: {GuardDescription} is met.",
             state, trigger, guardDescription ?? "Unnamed guard");
 
@@ -166,7 +166,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(guards, nameof(guards));
 
-        _logger.Information("Configuring state: {State} to ignore trigger: {Trigger} if any guard conditions are met.",
+        _logger.Debug("Configuring state: {State} to ignore trigger: {Trigger} if any guard conditions are met.",
             state, trigger);
 
         _stateMachine.Value.Configure(state).IgnoreIf(trigger, guards);
@@ -185,7 +185,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(entryAction, nameof(entryAction));
 
-        _logger.Information("Configuring state: {State} to execute entry action.", state);
+        _logger.Debug("Configuring state: {State} to execute entry action.", state);
 
         _stateMachine.Value.Configure(state).OnEntry(entryAction);
         return this;
@@ -205,7 +205,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(entryAction, nameof(entryAction));
 
-        _logger.Information("Configuring state: {State} to execute entry action: {EntryActionDescription}.",
+        _logger.Debug("Configuring state: {State} to execute entry action: {EntryActionDescription}.",
             state, entryActionDescription ?? "Unnamed action");
 
         _stateMachine.Value.Configure(state).OnEntry(entryAction, entryActionDescription);
@@ -224,7 +224,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(exitAction, nameof(exitAction));
 
-        _logger.Information("Configuring state: {State} to execute exit action.", state);
+        _logger.Debug("Configuring state: {State} to execute exit action.", state);
 
         _stateMachine.Value.Configure(state).OnExit(exitAction);
         return this;
@@ -244,7 +244,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(exitAction, nameof(exitAction));
 
-        _logger.Information("Configuring state: {State} to execute exit action: {ExitActionDescription}.",
+        _logger.Debug("Configuring state: {State} to execute exit action: {ExitActionDescription}.",
             state, exitActionDescription ?? "Unnamed action");
 
         _stateMachine.Value.Configure(state).OnExit(exitAction, exitActionDescription);
@@ -263,7 +263,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(superstate, nameof(superstate));
 
-        _logger.Information("Configuring state: {State} as a substate of {Superstate}.", state, superstate);
+        _logger.Debug("Configuring state: {State} as a substate of {Superstate}.", state, superstate);
 
         _stateMachine.Value.Configure(state).SubstateOf(superstate);
         return this;
@@ -285,7 +285,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(transitionAction, nameof(transitionAction));
 
-        _logger.Information("Configuring internal transition for state: {State} on trigger: {Trigger}.",
+        _logger.Debug("Configuring internal transition for state: {State} on trigger: {Trigger}.",
             state, trigger);
 
         _stateMachine.Value.Configure(state).InternalTransition(trigger, transitionAction);
@@ -311,7 +311,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(destinationState, nameof(destinationState));
         ArgumentNullException.ThrowIfNull(guard, nameof(guard));
 
-        _logger.Information(
+        _logger.Debug(
             "Configuring transition for state: {State} to {DestinationState} on trigger: {Trigger} if condition: {GuardDescription} is met.",
             state, destinationState, trigger, guardDescription ?? "Unnamed guard");
 
@@ -337,7 +337,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(destinationState, nameof(destinationState));
         ArgumentNullException.ThrowIfNull(guards, nameof(guards));
 
-        _logger.Information(
+        _logger.Debug(
             "Configuring transition for state: {State} to {DestinationState} on trigger: {Trigger} if multiple guard conditions are met.",
             state, destinationState, trigger);
 
@@ -357,7 +357,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(initialState, nameof(initialState));
 
-        _logger.Information("Configuring initial transition for state: {State} to {InitialState}.", state,
+        _logger.Debug("Configuring initial transition for state: {State} to {InitialState}.", state,
             initialState);
 
         _stateMachine.Value.Configure(state).InitialTransition(initialState);
@@ -381,7 +381,7 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(entryAction, nameof(entryAction));
 
-        _logger.Information("Configuring OnEntryFrom action for state: {State} triggered by {Trigger}.", state,
+        _logger.Debug("Configuring OnEntryFrom action for state: {State} triggered by {Trigger}.", state,
             trigger);
 
         _stateMachine.Value.Configure(state).OnEntryFrom(trigger, entryAction, entryActionDescription);
@@ -399,7 +399,7 @@ public class StateMachineBuilder<TState, TTrigger>
             throw new InvalidOperationException("State machine has already been built.");
         }
 
-        _logger.Information("State machine build complete.");
+        _logger.Debug("State machine build complete.");
         _isBuilt = true;
         return _stateMachine.Value;
     }

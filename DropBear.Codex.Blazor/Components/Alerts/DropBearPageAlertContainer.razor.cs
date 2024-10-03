@@ -3,8 +3,8 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Notifications;
 using DropBear.Codex.Notifications.Enums;
+using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
 using Serilog;
@@ -71,7 +71,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        Logger.Debug("Channel Id set to {ChannelId} for PageAlertContainer.",ChannelId);
+        Logger.Debug("Channel Id set to {ChannelId} for PageAlertContainer.", ChannelId);
     }
 
     private void HandleAlertChange(object? sender, EventArgs e)
@@ -99,30 +99,29 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
 
         _disposable = bag.Build();
-        return;
+    }
 
-        async void Handler(byte[] message)
+    private async void Handler(byte[] message)
+    {
+        try
         {
-            try
+            var notification = await Serializer.DeserializeAsync<Notification>(message);
+
+            if (notification.Type != Notifications.Enums.AlertType.PageAlert)
             {
-                var notification = await Serializer.DeserializeAsync<Notification>(message);
-
-                if (notification.Type != Notifications.Enums.AlertType.PageAlert)
-                {
-                    return;
-                }
-
-                Logger.Debug("Received page alert for channel {ChannelId}: {Message}", channelId,
-                    notification.Message);
-                var pageAlert = new PageAlert("Alert Notification", notification.Message,
-                    MapAlertType(notification.Severity));
-
-                await InvokeAsync(() => AddChannelAlert(pageAlert));
+                return;
             }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error processing notification for channel {ChannelId}", channelId);
-            }
+
+            Logger.Debug("Received page alert for channel {ChannelId}: {Message}", ChannelId,
+                notification.Message);
+            var pageAlert = new PageAlert("Alert Notification", notification.Message,
+                MapAlertType(notification.Severity));
+
+            await InvokeAsync(() => AddChannelAlert(pageAlert));
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error processing notification for channel {ChannelId}", ChannelId);
         }
     }
 

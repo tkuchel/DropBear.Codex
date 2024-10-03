@@ -33,10 +33,10 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
         if (_automaticSnapshotting)
         {
             _snapshotTimer = new Timer(TakeAutomaticSnapshot, null, _snapshotInterval, _snapshotInterval);
-            _logger.Information("Automatic snapshotting enabled with interval: {SnapshotInterval}", snapshotInterval);
+            _logger.Debug("Automatic snapshotting enabled with interval: {SnapshotInterval}", snapshotInterval);
         }
 
-        _logger.Information(
+        _logger.Debug(
             "SimpleSnapshotManager initialized with interval: {SnapshotInterval}, retention: {RetentionTime}, automatic: {AutomaticSnapshotting}",
             snapshotInterval, retentionTime, automaticSnapshotting);
     }
@@ -59,7 +59,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
         {
             if (_automaticSnapshotting && DateTime.Now - _lastSnapshotTime < _snapshotInterval)
             {
-                _logger.Information("Automatic snapshotting skipped due to snapshot interval.");
+                _logger.Debug("Automatic snapshotting skipped due to snapshot interval.");
                 return Result.Failure("Snapshotting skipped due to interval.");
             }
 
@@ -70,7 +70,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
 
             RemoveExpiredSnapshots();
 
-            _logger.Information("Snapshot created successfully.");
+            _logger.Debug("Snapshot created successfully.");
             return Result.Success();
         }
         catch (Exception ex)
@@ -89,7 +89,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
 
         _currentState = snapshot.State.Clone();
         _currentVersion = version;
-        _logger.Information("State restored to version {Version}.", version);
+        _logger.Debug("State restored to version {Version}.", version);
         return Result.Success();
     }
 
@@ -117,7 +117,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
         foreach (var key in _snapshots.Keys.Where(key => _snapshots[key].Timestamp < expirationTime).ToList())
         {
             _snapshots.TryRemove(key, out _);
-            _logger.Information("Snapshot with version {Version} expired and was removed.", key);
+            _logger.Debug("Snapshot with version {Version} expired and was removed.", key);
         }
     }
 
@@ -128,7 +128,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
         if (_currentState != null)
         {
             SaveState(_currentState);
-            _logger.Information("Automatic snapshot taken.");
+            _logger.Debug("Automatic snapshot taken.");
         }
         else
         {

@@ -1,5 +1,6 @@
 ﻿#region
 
+using DropBear.Codex.Notifications.Models;
 using DropBear.Codex.Serialization.Interfaces;
 using MessagePipe;
 

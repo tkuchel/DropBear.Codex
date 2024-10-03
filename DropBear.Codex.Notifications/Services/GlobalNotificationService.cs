@@ -41,8 +41,42 @@ public sealed class GlobalNotificationService
         _logger = LoggerFactory.Logger.ForContext<GlobalNotificationService>();
     }
 
+
     /// <summary>
-    ///     Publishes a notification for a specific user with optional serialization.
+    ///     Publishes a notification to a specific channel.
+    /// </summary>
+    /// <param name="channelId">The ID of the channel to publish the notification to.</param>
+    /// <param name="notification">The notification to publish.</param>
+    /// <param name="cancellationToken">A cancellation token that can be used to cancel the operation.</param>
+    /// <returns>A <see cref="Result"/> indicating the success or failure of the operation.</returns>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="channelId"/> or <paramref name="notification.Message"/> is null or empty.</exception>
+    public async Task<Result> PublishNotificationAsync(string channelId , Notification notification, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(channelId))
+        {
+            throw new ArgumentException("Channel ID cannot be null or empty.", nameof(channelId));
+        }
+
+        if (string.IsNullOrEmpty(notification.Message))
+        {
+            throw new ArgumentException("Message cannot be null or empty.", nameof(notification.Message));
+        }
+        _logger.Information("Publishing notification for channel {ChannelId}: {Message}", channelId, notification.Message);
+        try
+        {
+            var data = await SerializeNotificationAsync(notification, cancellationToken);
+            await PublishToChannelsAsync(channelId, data, cancellationToken);
+            return Result.Success();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error publishing notification for channel {ChannelId}", channelId);
+            return Result.Failure(ex.Message, ex);
+        }
+    }
+
+    /// <summary>
+    ///     Publishes a notification to a specified channel with serialization.
     /// </summary>
     public async Task<Result> PublishNotificationAsync(
         string channelId,
@@ -327,10 +361,10 @@ public sealed class GlobalNotificationService
         return await _serializer.SerializeAsync(notification, cancellationToken);
     }
 
-    private async Task PublishToChannelsAsync(string userId, byte[] data, CancellationToken cancellationToken)
+    private async Task PublishToChannelsAsync(string channelId, byte[] data, CancellationToken cancellationToken)
     {
-        await _publisher.PublishAsync(userId, data, cancellationToken);
-        await _userBufferedPublisher.PublishAsync(userId, data);
+        await _publisher.PublishAsync(channelId, data, cancellationToken);
+        await _userBufferedPublisher.PublishAsync(channelId, data);
     }
 
     private async Task PersistNotificationAsync(Notification notification,

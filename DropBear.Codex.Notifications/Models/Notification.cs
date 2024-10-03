@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using DropBear.Codex.Notifications.Enums;
 
-namespace DropBear.Codex.Notifications
+namespace DropBear.Codex.Notifications.Models
 {
     /// <summary>
     /// Represents a notification in the DropBear Codex ecosystem.

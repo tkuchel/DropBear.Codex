@@ -54,7 +54,7 @@ public class HashBuilder : IHashBuilder
             throw new ArgumentException($"No hashing service registered for key: {key}", nameof(key));
         }
 
-        _logger.Information("Hasher for key: {Key} successfully retrieved.", key);
+        _logger.Debug("Hasher for key: {Key} successfully retrieved.", key);
         return constructor();
     }
 
@@ -72,6 +72,6 @@ public class HashBuilder : IHashBuilder
         }
 
         _serviceConstructors[key] = hasherFactory ?? throw new ArgumentNullException(nameof(hasherFactory));
-        _logger.Information("Hasher registered for key: {Key}", key);
+        _logger.Debug("Hasher registered for key: {Key}", key);
     }
 }

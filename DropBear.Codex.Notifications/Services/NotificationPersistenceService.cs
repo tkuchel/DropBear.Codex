@@ -3,6 +3,7 @@
 using System.Text;
 using System.Text.Json;
 using DropBear.Codex.Notifications.Exceptions;
+using DropBear.Codex.Notifications.Models;
 
 #endregion
 

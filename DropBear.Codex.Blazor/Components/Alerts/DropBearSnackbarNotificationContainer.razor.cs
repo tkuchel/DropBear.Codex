@@ -7,6 +7,7 @@ using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Notifications;
 using DropBear.Codex.Notifications.Enums;
+using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
