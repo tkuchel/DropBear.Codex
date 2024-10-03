@@ -118,30 +118,18 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         }
     }
 
-    private async void Handler(byte[] message)
+    private async void Handler(Notification notification)
     {
         try
         {
-            if (Serializer == null)
-            {
-                Logger.Error("Serializer is null. Cannot process notifications.");
-                return;
-            }
-
-            var notification = await Serializer.DeserializeAsync<Notification>(message);
-            Logger.Debug("Notification deserialized: {Message}", notification.Message);
-
-            if (notification.Type != Notifications.Enums.AlertType.PageAlert)
+            if (notification.Type is not NotificationType.PageAlert)
             {
                 return;
             }
 
-            Logger.Debug("Received page alert for channel {ChannelId}: {Message}", ChannelId,
-                notification.Message);
-            var pageAlert = new PageAlert("Alert Notification", notification.Message,
+            var pageAlert = new PageAlert(notification.Title, notification.Message,
                 MapAlertType(notification.Severity));
-
-            await InvokeAsync(() => AddChannelAlert(pageAlert));
+            AddChannelAlert(pageAlert);
         }
         catch (Exception ex)
         {
@@ -171,16 +159,22 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         );
     }
 
+    /// <summary>
+    ///     Maps NotificationSeverity to AlertType.
+    /// </summary>
+    /// <param name="severity">The severity of the notification.</param>
+    /// <returns>The corresponding AlertType.</returns>
     private AlertType MapAlertType(NotificationSeverity severity)
     {
         return severity switch
         {
             NotificationSeverity.Information => AlertType.Information,
+            NotificationSeverity.Success => AlertType.Success,
             NotificationSeverity.Warning => AlertType.Warning,
             NotificationSeverity.Error => AlertType.Danger,
             NotificationSeverity.Critical => AlertType.Danger,
-            NotificationSeverity.Success => AlertType.Success,
-            _ => AlertType.Notification
+            NotificationSeverity.NotSpecified => AlertType.Notification,
+            _ => throw new ArgumentOutOfRangeException(nameof(severity), severity, "Unknown NotificationSeverity value")
         };
     }
 }

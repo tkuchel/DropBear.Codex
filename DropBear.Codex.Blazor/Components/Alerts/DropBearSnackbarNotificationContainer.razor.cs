@@ -5,14 +5,12 @@ using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Notifications;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Serilog;
-using AlertType = DropBear.Codex.Notifications.Enums.AlertType;
 
 #endregion
 
@@ -55,7 +53,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        Logger.Debug("Channel Id set to {ChannelId} for SnackbarContainer.",ChannelId);
+        Logger.Debug("Channel Id set to {ChannelId} for SnackbarContainer.", ChannelId);
     }
 
     private async Task DisposeSnackbarsAsync(List<SnackbarInstance> snackbars)
@@ -113,26 +111,22 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
         _disposable = bag.Build();
 
-        async void Handler(byte[] message)
+        async void Handler(Notification notification)
         {
             try
             {
-                var notification = await Serializer.DeserializeAsync<Notification>(message);
-
-                if (notification.Type != AlertType.Snackbar)
+                if (notification.Type is not NotificationType.Toast)
                 {
                     return;
                 }
 
-                Logger.Debug("Received snackbar notification for channel {ChannelId}: {Message}", channelId,
-                    notification.Message);
-                var snackbarOptions = new SnackbarNotificationOptions(
-                    "New Notification",
-                    notification.Message,
-                    MapSnackbarType(notification.Severity),
-                    3000 // IsDismissible
-                );
-                await InvokeAsync(() => AddChannelSnackbar(new SnackbarInstance(snackbarOptions)));
+                var options = new SnackbarNotificationOptions(notification.Title ?? "Notification",
+                    notification.Message, MapSnackbarType(notification.Severity), 2500);
+                var snackbar = new SnackbarInstance(options);
+
+                AddChannelSnackbar(snackbar);
+                await DebouncedStateHasChanged();
+                await Task.Delay(50); // Small delay to ensure the DOM is updated
             }
             catch (Exception ex)
             {
@@ -261,15 +255,22 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         );
     }
 
+    /// <summary>
+    ///     Maps NotificationSeverity to SnackbarType.
+    /// </summary>
+    /// <param name="severity">The severity of the notification.</param>
+    /// <returns>The corresponding SnackbarType.</returns>
     private SnackbarType MapSnackbarType(NotificationSeverity severity)
     {
         return severity switch
         {
             NotificationSeverity.Information => SnackbarType.Information,
+            NotificationSeverity.Success => SnackbarType.Success,
             NotificationSeverity.Warning => SnackbarType.Warning,
             NotificationSeverity.Error => SnackbarType.Error,
             NotificationSeverity.Critical => SnackbarType.Error,
-            _ => SnackbarType.Information
+            NotificationSeverity.NotSpecified => SnackbarType.Information,
+            _ => throw new ArgumentOutOfRangeException(nameof(severity), severity, "Unknown NotificationSeverity value")
         };
     }
 

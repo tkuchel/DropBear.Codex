@@ -1,87 +1,103 @@
-﻿using System.Collections.ObjectModel;
+﻿#region
+
+using System.Collections.ObjectModel;
 using DropBear.Codex.Notifications.Enums;
 
-namespace DropBear.Codex.Notifications.Models
+#endregion
+
+namespace DropBear.Codex.Notifications.Models;
+
+/// <summary>
+///     Represents a notification with associated metadata and custom data.
+/// </summary>
+public sealed class Notification
 {
     /// <summary>
-    /// Represents a notification in the DropBear Codex ecosystem.
+    ///     Initializes a new instance of the Notification class.
     /// </summary>
-    public class Notification
+    public Notification(Guid channelId, NotificationType type, NotificationSeverity severity, string message,
+        string? title = null, IReadOnlyDictionary<string, object?>? data = null)
     {
-        private readonly Dictionary<string, object> _data;
+        ChannelId = channelId;
+        Type = type;
+        Severity = severity;
+        Message = message ?? throw new ArgumentNullException(nameof(message));
+        Title = title;
+        Timestamp = DateTime.UtcNow;
+        Data = data ?? new ReadOnlyDictionary<string, object?>(new Dictionary<string, object?>());
+    }
 
-        /// <summary>
-        /// Initializes a new instance of the <see cref="Notification"/> class.
-        /// </summary>
-        /// <param name="type">The type of the alert.</param>
-        /// <param name="message">The message content of the notification.</param>
-        /// <param name="severity">The severity level of the notification.</param>
-        /// <param name="data">Additional data associated with the notification (optional).</param>
-        /// <exception cref="ArgumentNullException">Thrown if message is null or empty.</exception>
-        public Notification(AlertType type, string message, NotificationSeverity severity,
-            Dictionary<string, object>? data = null)
+    /// <summary>
+    ///     Gets the type of the notification.
+    /// </summary>
+    public NotificationType Type { get; }
+
+    /// <summary>
+    ///     Gets the severity of the notification.
+    /// </summary>
+    public NotificationSeverity Severity { get; }
+
+    /// <summary>
+    ///     Gets the main message of the notification.
+    /// </summary>
+    public string Message { get; }
+
+    /// <summary>
+    ///     Gets the optional title of the notification.
+    /// </summary>
+    public string? Title { get; }
+
+    /// <summary>
+    ///     Gets the timestamp when the notification was created.
+    /// </summary>
+    public DateTime Timestamp { get; }
+
+    /// <summary>
+    ///     Gets the channel ID associated with the notification.
+    /// </summary>
+    public Guid ChannelId { get; }
+
+    /// <summary>
+    ///     Gets the custom data associated with the notification.
+    /// </summary>
+    public IReadOnlyDictionary<string, object?> Data { get; }
+
+    /// <summary>
+    ///     Creates a new Notification instance with updated data.
+    /// </summary>
+    public Notification WithUpdatedData(string key, object? value)
+    {
+        if (string.IsNullOrWhiteSpace(key))
         {
-            if (string.IsNullOrWhiteSpace(message))
-            {
-                throw new ArgumentNullException(nameof(message), "Message cannot be null or empty.");
-            }
-
-            Type = type;
-            Message = message;
-            Timestamp = DateTime.UtcNow;
-            Severity = severity;
-            _data = data ?? new Dictionary<string, object>();
+            throw new ArgumentException("Key cannot be null or whitespace.", nameof(key));
         }
 
-        /// <summary>
-        /// Gets the type of the alert.
-        /// </summary>
-        public AlertType Type { get; }
+        var newData = new Dictionary<string, object?>(Data) { [key] = value };
 
-        /// <summary>
-        /// Gets the message content of the notification.
-        /// </summary>
-        public string Message { get; }
+        return new Notification(ChannelId, Type, Severity, Message, Title, newData);
+    }
 
-        /// <summary>
-        /// Gets the UTC timestamp when the notification was created.
-        /// </summary>
-        public DateTime Timestamp { get; }
-
-        /// <summary>
-        /// Gets the severity level of the notification.
-        /// </summary>
-        public NotificationSeverity Severity { get; }
-
-        /// <summary>
-        /// Gets a read-only dictionary of additional data associated with the notification.
-        /// </summary>
-        public IReadOnlyDictionary<string, object> Data => new ReadOnlyDictionary<string, object>(_data);
-
-        /// <summary>
-        /// Adds or updates a key-value pair in the notification's data dictionary.
-        /// </summary>
-        /// <param name="key">The key of the element to add or update.</param>
-        /// <param name="value">The value of the element to add or update.</param>
-        /// <exception cref="ArgumentNullException">Thrown if key is null.</exception>
-        public void AddOrUpdateData(string key, object value)
+    /// <summary>
+    ///     Creates a new Notification instance with the specified key removed from the data.
+    /// </summary>
+    public Notification WithoutData(string key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
         {
-            if (key == null)
-            {
-                throw new ArgumentNullException(nameof(key));
-            }
-
-            _data[key] = value;
+            throw new ArgumentException("Key cannot be null or whitespace.", nameof(key));
         }
 
-        /// <summary>
-        /// Removes a key-value pair from the notification's data dictionary.
-        /// </summary>
-        /// <param name="key">The key of the element to remove.</param>
-        /// <returns>true if the element is successfully found and removed; otherwise, false.</returns>
-        public bool RemoveData(string key)
-        {
-            return _data.Remove(key);
-        }
+        var newData = new Dictionary<string, object?>(Data);
+        newData.Remove(key);
+
+        return new Notification(ChannelId, Type, Severity, Message, Title, newData);
+    }
+
+    /// <summary>
+    ///     Checks if the specified key exists in the custom data.
+    /// </summary>
+    public bool HasData(string key)
+    {
+        return Data.ContainsKey(key);
     }
 }

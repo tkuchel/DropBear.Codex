@@ -1,8 +1,9 @@
 ﻿@inject IPageAlertService AlertService
-@inject ISubscriber<string, byte[]> ChannelNotificationSubscriber
+@inject ISubscriber<string, Notification> ChannelNotificationSubscriber
 @inject ISerializer Serializer
 @inject IDebounceService DebounceService
 @using DropBear.Codex.Blazor.Interfaces
+@using DropBear.Codex.Notifications.Models
 @using DropBear.Codex.Serialization.Interfaces
 @using DropBear.Codex.Utilities.Interfaces
 @using MessagePipe

@@ -1,42 +1,27 @@
 ﻿namespace DropBear.Codex.Notifications.Enums;
 
 /// <summary>
-///     Represents the type of alert to be displayed to the user.
+/// Represents the type of notification to be displayed.
 /// </summary>
-public enum AlertType
+public enum NotificationType
 {
     /// <summary>
-    ///     An alert displayed on a page.
+    /// The notification type is not specified.
+    /// </summary>
+    NotSpecified = 0,
+
+    /// <summary>
+    /// An alert displayed on the page, typically more prominent.
     /// </summary>
     PageAlert,
 
     /// <summary>
-    ///     A temporary notification typically shown at the bottom of the screen.
+    /// A brief, non-modal notification that shows for a short time.
     /// </summary>
-    Snackbar,
+    Toast,
 
     /// <summary>
-    ///     An alert showing the progress of a task.
+    /// A notification indicating the progress of a task.
     /// </summary>
     TaskProgress,
-
-    /// <summary>
-    ///     A system-wide alert.
-    /// </summary>
-    SystemAlert,
-
-    /// <summary>
-    ///     An error notification.
-    /// </summary>
-    Error,
-
-    /// <summary>
-    ///     An informational notification.
-    /// </summary>
-    Info,
-
-    /// <summary>
-    ///     A success notification.
-    /// </summary>
-    Success
 }
