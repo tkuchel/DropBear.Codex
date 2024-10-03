@@ -11,8 +11,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2024.8.0</Version>
-    <PackageVersion>2024.9.0</PackageVersion> <!-- Specifies the version of the package -->
+    <Version>2024.10.0</Version>
+    <PackageVersion>2024.10.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.Core</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex Core</Title>
     <Description>The core set of classes used throughout the DropBear.Codex.* libraries</Description>
