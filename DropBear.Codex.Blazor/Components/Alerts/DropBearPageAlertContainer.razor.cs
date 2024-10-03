@@ -34,6 +34,8 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         try
         {
             AlertService.OnChange -= HandleAlertChange;
+            Logger.Debug("Disposing channel subscription for {ChannelId}.", ChannelId);
+
             _disposable?.Dispose();
             Logger.Debug("Alert service subscription disposed successfully.");
         }
@@ -64,6 +66,13 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     {
         base.OnInitialized();
         AlertService.OnChange += HandleAlertChange;
+
+        if (string.IsNullOrEmpty(ChannelId))
+        {
+            Logger.Error("ChannelId is null or empty during initialization.");
+            return;
+        }
+
         SubscribeToChannelNotifications(ChannelId);
         Logger.Debug("Alert service and channel notifications subscription initialized.");
     }
@@ -82,30 +91,44 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private void SubscribeToChannelNotifications(string channelId)
     {
-        if (string.IsNullOrEmpty(channelId))
+        try
         {
-            Logger.Warning("Channel ID is null or empty. Skipping channel subscription.");
-            return;
-        }
+            if (string.IsNullOrEmpty(channelId))
+            {
+                Logger.Warning("Channel ID is null or empty. Skipping channel subscription.");
+                return;
+            }
 
-        if (Serializer == null)
+            if (Serializer == null)
+            {
+                Logger.Error("Serializer is not available. Cannot subscribe to channel notifications.");
+                return;
+            }
+
+            var bag = DisposableBag.CreateBuilder();
+
+            ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
+
+            _disposable = bag.Build();
+        }
+        catch (Exception ex)
         {
-            Logger.Error("Serializer is not available. Cannot subscribe to channel notifications.");
-            return;
+            Logger.Error("Error subscribing to channel notifications: {Message}", ex.Message);
         }
-
-        var bag = DisposableBag.CreateBuilder();
-
-        ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
-
-        _disposable = bag.Build();
     }
 
     private async void Handler(byte[] message)
     {
         try
         {
+            if (Serializer == null)
+            {
+                Logger.Error("Serializer is null. Cannot process notifications.");
+                return;
+            }
+
             var notification = await Serializer.DeserializeAsync<Notification>(message);
+            Logger.Debug("Notification deserialized: {Message}", notification.Message);
 
             if (notification.Type != Notifications.Enums.AlertType.PageAlert)
             {
