@@ -72,6 +72,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddMessagePipe(options =>
         {
+            options.InstanceLifetime = InstanceLifetime.Scoped;
             options.SetAutoRegistrationSearchAssemblies(Assembly.GetExecutingAssembly());
         });
     }
