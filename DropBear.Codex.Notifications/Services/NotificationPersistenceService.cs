@@ -14,11 +14,11 @@ namespace DropBear.Codex.Notifications.Services;
 /// </summary>
 public sealed class NotificationPersistenceService : IDisposable
 {
+    // Lock object to ensure thread-safe writes
+    private readonly object _fileLock = new();
     private readonly string _filePath;
     private readonly JsonSerializerOptions _jsonOptions;
     private bool _disposed;
-    private FileStream? _fileStream;
-    private StreamWriter? _streamWriter;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="NotificationPersistenceService" /> class.
@@ -34,26 +34,12 @@ public sealed class NotificationPersistenceService : IDisposable
 
         _filePath = filePath;
         _jsonOptions = new JsonSerializerOptions { WriteIndented = true };
-        InitializeFileStream();
     }
 
     public void Dispose()
     {
         Dispose(true);
         GC.SuppressFinalize(this);
-    }
-
-    private void InitializeFileStream()
-    {
-        try
-        {
-            _fileStream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
-            _streamWriter = new StreamWriter(_fileStream, Encoding.UTF8);
-        }
-        catch (Exception ex)
-        {
-            throw new NotificationPersistenceException("Failed to initialize file stream.", ex);
-        }
     }
 
     /// <summary>
@@ -72,8 +58,7 @@ public sealed class NotificationPersistenceService : IDisposable
         try
         {
             var json = JsonSerializer.Serialize(notification, _jsonOptions);
-            await _streamWriter!.WriteLineAsync(json).ConfigureAwait(false);
-            await _streamWriter.FlushAsync().ConfigureAwait(false);
+            await WriteToFileAsync(json).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -97,12 +82,33 @@ public sealed class NotificationPersistenceService : IDisposable
         try
         {
             var base64Message = Convert.ToBase64String(serializedNotification);
-            await _streamWriter!.WriteLineAsync(base64Message).ConfigureAwait(false);
-            await _streamWriter.FlushAsync().ConfigureAwait(false);
+            await WriteToFileAsync(base64Message).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             throw new NotificationPersistenceException("Failed to save serialized notification.", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Writes data to the file in a thread-safe manner.
+    /// </summary>
+    private async Task WriteToFileAsync(string content)
+    {
+        lock (_fileLock)
+        {
+            try
+            {
+                using var fileStream = new FileStream(_filePath, FileMode.Append, FileAccess.Write, FileShare.Read);
+                using var streamWriter = new StreamWriter(fileStream, Encoding.UTF8);
+
+                streamWriter.WriteLine(content);
+                streamWriter.Flush();
+            }
+            catch (Exception ex)
+            {
+                throw new NotificationPersistenceException("Failed to write to the file.", ex);
+            }
         }
     }
 
@@ -115,8 +121,7 @@ public sealed class NotificationPersistenceService : IDisposable
 
         if (disposing)
         {
-            _streamWriter?.Dispose();
-            _fileStream?.Dispose();
+            // No need to manually dispose anything since we're not keeping long-lived streams
         }
 
         _disposed = true;
