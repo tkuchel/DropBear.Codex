@@ -137,8 +137,10 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task DebouncedStateUpdate()
     {
-        await DebounceService.DebounceAsync(() => InvokeAsync(StateHasChanged), "PageAlertContainerUpdate",
-            _debounceDuration);
+        // await DebounceService.DebounceAsync(() => InvokeAsync(StateHasChanged), "PageAlertContainerUpdate",
+        //     _debounceDuration);
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private AlertType MapAlertType(NotificationSeverity severity)

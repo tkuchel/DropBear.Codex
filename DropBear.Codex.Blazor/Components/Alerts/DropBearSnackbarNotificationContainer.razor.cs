@@ -194,11 +194,12 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 
     private async Task DebouncedStateUpdateAsync()
     {
-        await DebounceService.DebounceAsync(
-            () => InvokeAsync(StateHasChanged),
-            "SnackbarContainerStateUpdate",
-            _debounceDuration
-        );
+        // await DebounceService.DebounceAsync(
+        //     () => InvokeAsync(StateHasChanged),
+        //     "SnackbarContainerStateUpdate",
+        //     _debounceDuration
+        // );
+        await InvokeAsync(StateHasChanged);
     }
 
     private async Task DisposeSnackbarsAsync(List<SnackbarInstance> snackbars)
