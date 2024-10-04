@@ -117,7 +117,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         // Show the snackbar
         if (snackbar.ComponentRef is not null)
         {
-            snackbar.ComponentRef.ShowAsync();
+            _ = snackbar.ComponentRef.ShowAsync();
             Logger.Debug("Snackbar shown with ID: {SnackbarId}", snackbar.Id);
         }
         _ = DebouncedStateUpdateAsync();
