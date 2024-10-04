@@ -26,7 +26,7 @@ public static class ServiceCollectionExtensions
         services.AddMessagePipeInternal();
 
         // Register the NotificationService
-        services.AddScoped<NotificationService>();
+        services.AddSingleton<NotificationService>();
 
         return services;
     }
@@ -41,8 +41,9 @@ public static class ServiceCollectionExtensions
         services.AddMessagePipe(options =>
         {
             // Configure MessagePipe options, such as assembly scanning or logging
-            options.SetAutoRegistrationSearchAssemblies(Assembly.GetExecutingAssembly());
             options.EnableCaptureStackTrace = true;
+            options.EnableAutoRegistration = true;
+            options.SetAutoRegistrationSearchAssemblies(Assembly.GetExecutingAssembly());
         });
 
         return services;

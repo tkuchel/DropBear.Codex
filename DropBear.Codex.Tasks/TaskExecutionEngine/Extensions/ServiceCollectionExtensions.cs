@@ -41,7 +41,7 @@ public static class ServiceCollectionExtensions
         services.AddMessagePipe(options =>
         {
             // Configure MessagePipe options as needed
-            options.EnableCaptureStackTrace = false;
+            options.EnableCaptureStackTrace = true;
             options.EnableAutoRegistration = true;
             // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncLoggingFilter<>));
             // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncExceptionHandlingFilter<>));
