@@ -1,5 +1,5 @@
 ﻿@inject IPageAlertService AlertService
-@inject ISubscriber<string, Notification> ChannelNotificationSubscriber
+@inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject IDebounceService DebounceService
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models

@@ -9,6 +9,7 @@ using MessagePipe;
 using Microsoft.AspNetCore.Components;
 using Serilog;
 using AlertType = DropBear.Codex.Blazor.Enums.AlertType;
+using DisposableBag = MessagePipe.DisposableBag;
 
 #endregion
 
@@ -19,11 +20,11 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// </summary>
 public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, IDisposable
 {
-    private const int MaxChannelAlerts = 100; // Or whatever number is appropriate
+    private const int MaxChannelAlerts = 100;
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearPageAlertContainer>();
-    private readonly List<PageAlert> _channelAlerts = [];
-    private readonly TimeSpan _debounceTime = TimeSpan.FromMilliseconds(100); // Adjust as needed
-    private IDisposable? _disposable;
+    private readonly List<PageAlert> _channelAlerts = new();
+    private readonly TimeSpan _debounceDuration = TimeSpan.FromMilliseconds(100);
+    private IDisposable? _channelSubscription;
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
@@ -34,47 +35,26 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         try
         {
             AlertService.OnChange -= HandleAlertChange;
-            Logger.Debug("Disposing channel subscription for {ChannelId}.", ChannelId);
-
-            _disposable?.Dispose();
-            Logger.Debug("Alert service subscription disposed successfully.");
+            _channelSubscription?.Dispose();
+            Logger.Debug("Disposed of alert subscriptions for {ChannelId}.", ChannelId);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error occurred while disposing of the alert service subscription.");
+            Logger.Error(ex, "Error disposing alert service for {ChannelId}.", ChannelId);
         }
-    }
-
-    private void AddChannelAlert(PageAlert alert)
-    {
-        _channelAlerts.Add(alert);
-        if (_channelAlerts.Count > MaxChannelAlerts)
-        {
-            _channelAlerts.RemoveAt(0);
-        }
-
-        _ = DebouncedStateHasChanged();
-    }
-
-    public void ClearChannelAlerts()
-    {
-        _channelAlerts.Clear();
-        StateHasChanged();
     }
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        AlertService.OnChange += HandleAlertChange;
-
         if (string.IsNullOrEmpty(ChannelId))
         {
             Logger.Error("ChannelId is null or empty during initialization.");
             return;
         }
 
-        SubscribeToChannelNotifications(ChannelId);
-        Logger.Debug("Alert service and channel notifications subscription initialized.");
+        SubscribeToAlerts();
+        Logger.Debug("Alert service initialized for channel: {ChannelId}", ChannelId);
     }
 
     protected override void OnParametersSet()
@@ -83,81 +63,84 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         Logger.Debug("Channel Id set to {ChannelId} for PageAlertContainer.", ChannelId);
     }
 
+    private void SubscribeToAlerts()
+    {
+        try
+        {
+            AlertService.OnChange += HandleAlertChange;
+            _channelSubscription = SubscribeToChannelNotifications(ChannelId);
+            Logger.Debug("Subscribed to channel notifications for {ChannelId}.", ChannelId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to subscribe to alerts for channel {ChannelId}.", ChannelId);
+        }
+    }
+
+    private IDisposable SubscribeToChannelNotifications(string channelId)
+    {
+        var bag = DisposableBag.CreateBuilder();
+        NotificationSubscriber.Subscribe(channelId, HandleNotification)
+            .AddTo(bag);
+        return bag.Build();
+    }
+
+    private ValueTask HandleNotification(Notification notification, CancellationToken token)
+    {
+        if (notification.Type != NotificationType.PageAlert)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        var pageAlert = new PageAlert(notification.Title ?? "Alert", notification.Message,
+            MapAlertType(notification.Severity));
+        AddAlert(pageAlert);
+
+        return ValueTask.CompletedTask;
+    }
+
+    private void AddAlert(PageAlert alert)
+    {
+        if (_channelAlerts.Count >= MaxChannelAlerts)
+        {
+            _channelAlerts.RemoveAt(0);
+        }
+
+        _channelAlerts.Add(alert);
+        _ = DebouncedStateUpdate();
+    }
+
     private void HandleAlertChange(object? sender, EventArgs e)
     {
-        _ = DebouncedStateHasChanged();
-        Logger.Debug("Alert service state changed; UI update queued.");
+        _ = DebouncedStateUpdate();
+        Logger.Debug("Alert state change detected.");
     }
 
-    private void SubscribeToChannelNotifications(string channelId)
+    public void ClearAlerts()
     {
-        try
-        {
-            if (string.IsNullOrEmpty(channelId))
-            {
-                Logger.Warning("Channel ID is null or empty. Skipping channel subscription.");
-                return;
-            }
-
-            var bag = DisposableBag.CreateBuilder();
-
-            ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
-            Logger.Debug("Subscription created for channel: {ChannelId}", channelId);
-
-            _disposable = bag.Build();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error("Error subscribing to channel notifications: {Message}", ex.Message);
-        }
+        _channelAlerts.Clear();
+        StateHasChanged();
     }
 
-    private async void Handler(Notification notification)
+    public void ClearChannelAlerts()
     {
-        try
-        {
-            if (notification.Type is not NotificationType.PageAlert)
-            {
-                return;
-            }
-
-            var pageAlert = new PageAlert(notification.Title, notification.Message,
-                MapAlertType(notification.Severity));
-            AddChannelAlert(pageAlert);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error processing notification for channel {ChannelId}", ChannelId);
-        }
+        _channelAlerts.Clear();
+        _channelSubscription?.Dispose();
+        _channelSubscription = SubscribeToChannelNotifications(ChannelId);
     }
 
-    private void RemoveAlert(PageAlert alert)
+    public void RemoveAlert(PageAlert alert)
     {
-        if (AlertService.Alerts.Contains(alert))
-        {
-            AlertService.RemoveAlert(alert.Id);
-        }
-        else
-        {
-            _channelAlerts.Remove(alert);
-            StateHasChanged();
-        }
+        _channelAlerts.Remove(alert);
+        StateHasChanged();
     }
 
-    private async Task DebouncedStateHasChanged()
+    private async Task DebouncedStateUpdate()
     {
-        await DebounceService.DebounceAsync(
-            () => InvokeAsync(StateHasChanged),
-            "PageAlertContainerStateUpdate",
-            _debounceTime
-        );
+        await DebounceService.DebounceAsync(() => InvokeAsync(StateHasChanged), "PageAlertContainerUpdate",
+            _debounceDuration);
     }
 
-    /// <summary>
-    ///     Maps NotificationSeverity to AlertType.
-    /// </summary>
-    /// <param name="severity">The severity of the notification.</param>
-    /// <returns>The corresponding AlertType.</returns>
     private AlertType MapAlertType(NotificationSeverity severity)
     {
         return severity switch

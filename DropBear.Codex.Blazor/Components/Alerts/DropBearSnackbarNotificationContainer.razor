@@ -7,7 +7,7 @@
 @using DropBear.Codex.Serialization.Interfaces
 @using DropBear.Codex.Utilities.Interfaces
 @inject ISnackbarNotificationService SnackbarService
-@inject ISubscriber<string, Notification> ChannelNotificationSubscriber
+@inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject IDebounceService DebounceService
 
 <div class="snackbar-container">
