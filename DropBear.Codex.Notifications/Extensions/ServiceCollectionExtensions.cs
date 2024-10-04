@@ -23,14 +23,7 @@ public static class ServiceCollectionExtensions
     public static IServiceCollection AddNotificationServices(this IServiceCollection services)
     {
         // Ensure that MessagePipe or any similar message-passing framework is configured.
-        services.AddMessagePipe();
-
-        // Register the IAsyncPublisher<string, Notification> dependency (MessagePipe takes care of this).
-        services.AddSingleton<IAsyncPublisher<string, Notification>>(provider =>
-        {
-            var publisher = provider.GetRequiredService<IAsyncPublisher<string, Notification>>();
-            return publisher;
-        });
+        services.AddMessagePipeInternal();
 
         // Register the NotificationService
         services.AddScoped<NotificationService>();
@@ -43,7 +36,7 @@ public static class ServiceCollectionExtensions
     /// </summary>
     /// <param name="services">The IServiceCollection.</param>
     /// <returns>The IServiceCollection for chaining additional operations.</returns>
-    private static IServiceCollection AddMessagePipe(this IServiceCollection services)
+    private static IServiceCollection AddMessagePipeInternal(this IServiceCollection services)
     {
         services.AddMessagePipe(options =>
         {
