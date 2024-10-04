@@ -94,7 +94,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
             notification.Title ?? "Notification",
             notification.Message,
             MapSnackbarType(notification.Severity),
-            2500);
+            5000);
 
         var snackbar = new SnackbarInstance(snackbarOptions);
         AddChannelSnackbar(snackbar);
@@ -109,7 +109,17 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
             _channelSnackbars.RemoveAt(0);
         }
 
+        // Add the snackbar to the channel
+        Logger.Debug("Adding snackbar with ID {SnackbarId} to channel {ChannelId}", snackbar.Id, ChannelId);
         _channelSnackbars.Add(snackbar);
+
+
+        // Show the snackbar
+        if (snackbar.ComponentRef is not null)
+        {
+            snackbar.ComponentRef.ShowAsync();
+            Logger.Debug("Snackbar shown with ID: {SnackbarId}", snackbar.Id);
+        }
         _ = DebouncedStateUpdateAsync();
     }
 
@@ -267,6 +277,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
                 options.ActionText, options.OnAction)
         {
             Id = Guid.NewGuid();
+
         }
 
         public Guid Id { get; }
