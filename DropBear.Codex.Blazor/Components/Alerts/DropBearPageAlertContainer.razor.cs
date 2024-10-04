@@ -99,12 +99,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
                 return;
             }
 
-            if (Serializer == null)
-            {
-                Logger.Error("Serializer is not available. Cannot subscribe to channel notifications.");
-                return;
-            }
-
             var bag = DisposableBag.CreateBuilder();
 
             ChannelNotificationSubscriber.Subscribe(channelId, Handler).AddTo(bag);
