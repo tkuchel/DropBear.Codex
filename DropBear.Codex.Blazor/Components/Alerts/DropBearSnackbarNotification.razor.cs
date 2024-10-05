@@ -80,7 +80,11 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         }
         catch (JSException ex)
         {
-            Logger.Error(ex, "Error showing snackbar with SnackbarId: {SnackbarId}", SnackbarId);
+            Logger.Warning(ex, "Error showing snackbar with SnackbarId: {SnackbarId}", SnackbarId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error("Error showing snackbar with SnackbarId: {SnackbarId}", SnackbarId);
             throw new SnackbarException("Error showing snackbar", ex);
         }
     }

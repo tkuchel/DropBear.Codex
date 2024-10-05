@@ -17,7 +17,6 @@ namespace DropBear.Codex.Notifications.Services;
 /// </summary>
 public sealed class NotificationService
 {
-    private const string GlobalNotificationChannel = "GlobalNotificationChannel";
     private readonly ILogger _logger;
     private readonly IAsyncPublisher<string, Notification> _publisher;
     private readonly AsyncPolicy _retryPolicy;
@@ -41,9 +40,19 @@ public sealed class NotificationService
                 });
     }
 
-    private static string GetChannel(Guid channelId)
+    private static string GetChannel(bool isGlobal, Guid? channelId = null)
     {
-        return $"{GlobalNotificationChannel}.{channelId}";
+        if (isGlobal)
+        {
+            return GlobalConstants.GlobalNotificationChannel;
+        }
+
+        if (channelId is null)
+        {
+            throw new ArgumentNullException(nameof(channelId));
+        }
+
+        return $"{GlobalConstants.UserNotificationChannel}.{channelId}";
     }
 
     /// <summary>
@@ -101,7 +110,7 @@ public sealed class NotificationService
     public Task<Result> PublishNotificationAsync(Notification? notification,
         CancellationToken cancellationToken = default)
     {
-        return PublishNotificationInternalAsync(notification, GetChannel(notification?.ChannelId ?? Guid.Empty),
+        return PublishNotificationInternalAsync(notification, GetChannel(false, notification?.ChannelId ?? Guid.Empty),
             cancellationToken);
     }
 
@@ -111,6 +120,6 @@ public sealed class NotificationService
     public Task<Result> PublishGlobalNotificationAsync(Notification? notification,
         CancellationToken cancellationToken = default)
     {
-        return PublishNotificationInternalAsync(notification, GlobalNotificationChannel, cancellationToken);
+        return PublishNotificationInternalAsync(notification, GetChannel(true), cancellationToken);
     }
 }
