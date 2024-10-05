@@ -23,14 +23,12 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 {
     private const int MaxChannelSnackbars = 100;
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSnackbarNotificationContainer>();
-    private readonly List<SnackbarInstance> _channelSnackbars = new();
     private readonly TimeSpan _debounceDuration = TimeSpan.FromMilliseconds(100);
     private readonly List<SnackbarInstance> _snackbars = new();
     private IDisposable? _channelSubscription;
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
-    private IEnumerable<SnackbarInstance> CombinedSnackbars => _snackbars.Concat(_channelSnackbars);
 
     public async ValueTask DisposeAsync()
     {
@@ -38,7 +36,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         UnsubscribeFromSnackbarEvents();
         _channelSubscription?.Dispose();
         await DisposeSnackbarsAsync(_snackbars);
-        await DisposeSnackbarsAsync(_channelSnackbars);
         Logger.Debug("SnackbarNotificationContainer disposed.");
     }
 
@@ -93,35 +90,14 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         var snackbarOptions = new SnackbarNotificationOptions(
             notification.Title ?? "Notification",
             notification.Message,
-            MapSnackbarType(notification.Severity),
-            5000);
+            MapSnackbarType(notification.Severity));
 
-        var snackbar = new SnackbarInstance(snackbarOptions);
-        AddChannelSnackbar(snackbar);
+        var snackbar = new SnackbarNotificationEventArgs(snackbarOptions);
+        _ = ShowSnackbarAsync(this, snackbar);
 
         return ValueTask.CompletedTask;
     }
 
-    private void AddChannelSnackbar(SnackbarInstance snackbar)
-    {
-        if (_channelSnackbars.Count >= MaxChannelSnackbars)
-        {
-            _channelSnackbars.RemoveAt(0);
-        }
-
-        // Add the snackbar to the channel
-        Logger.Debug("Adding snackbar with ID {SnackbarId} to channel {ChannelId}", snackbar.Id, ChannelId);
-        _channelSnackbars.Add(snackbar);
-
-
-        // Show the snackbar
-        if (snackbar.ComponentRef is not null)
-        {
-            _ = snackbar.ComponentRef.ShowAsync();
-            Logger.Debug("Snackbar shown with ID: {SnackbarId}", snackbar.Id);
-        }
-        _ = DebouncedStateUpdateAsync();
-    }
 
     private async Task ShowSnackbarAsync(object? sender, SnackbarNotificationEventArgs e)
     {
@@ -158,10 +134,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         {
             _snackbars.Remove(snackbar);
         }
-        else if (_channelSnackbars.Contains(snackbar))
-        {
-            _channelSnackbars.Remove(snackbar);
-        }
 
         try
         {
@@ -194,10 +166,9 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 
     private async Task HideAllSnackbarsInternalAsync()
     {
-        var tasks = CombinedSnackbars.Select(s => s.ComponentRef?.DismissAsync() ?? Task.CompletedTask);
+        var tasks = _snackbars.Select(s => s.ComponentRef?.DismissAsync() ?? Task.CompletedTask);
         await Task.WhenAll(tasks);
         _snackbars.Clear();
-        _channelSnackbars.Clear();
         Logger.Debug("All snackbars hidden and cleared.");
         await DebouncedStateUpdateAsync();
     }
@@ -277,7 +248,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
                 options.ActionText, options.OnAction)
         {
             Id = Guid.NewGuid();
-
         }
 
         public Guid Id { get; }

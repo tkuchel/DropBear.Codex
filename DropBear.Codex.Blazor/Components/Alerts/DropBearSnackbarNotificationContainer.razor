@@ -1,17 +1,14 @@
-﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
-@using DropBear.Codex.Blazor.Interfaces
-@using DropBear.Codex.Notifications
-@using DropBear.Codex.Notifications.Enums
+﻿@using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
-@using MessagePipe
-@using DropBear.Codex.Serialization.Interfaces
 @using DropBear.Codex.Utilities.Interfaces
+@using MessagePipe
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @inject ISnackbarNotificationService SnackbarService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject IDebounceService DebounceService
 
 <div class="snackbar-container">
-    @foreach (var snackbar in CombinedSnackbars)
+    @foreach (var snackbar in _snackbars)
     {
         <DropBearSnackbarNotification @key="snackbar.Id"
                                       @ref="snackbar.ComponentRef"
@@ -26,5 +23,5 @@
 </div>
 
 @code {
- // Left blank on purpose
+    // Left blank on purpose
 }

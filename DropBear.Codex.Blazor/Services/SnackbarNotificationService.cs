@@ -63,7 +63,7 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     /// <param name="actionText">The text of the action button on the snackbar notification.</param>
     /// <param name="onAction">The action to perform when the action button is clicked.</param>
     /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> ShowAsync(string title,string message, SnackbarType type = SnackbarType.Information,
+    public async Task<Result> ShowAsync(string title, string message, SnackbarType type = SnackbarType.Information,
         int duration = 5000,
         bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
     {
