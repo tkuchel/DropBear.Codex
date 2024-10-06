@@ -75,7 +75,7 @@ public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
 
             await JsRuntime.InvokeVoidAsync(
                 "downloadFileFromStream",
-                _dismissCancellationTokenSource.Token,
+                _dismissCancellationTokenSource.Token, // Correct placement of the cancellation token
                 FileName,
                 streamRef,
                 ContentType);
