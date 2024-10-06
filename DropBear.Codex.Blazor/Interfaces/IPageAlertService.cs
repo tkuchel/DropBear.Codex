@@ -1,6 +1,7 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Blazor.Services;
 
 #endregion
@@ -12,6 +13,8 @@ namespace DropBear.Codex.Blazor.Interfaces;
 /// </summary>
 public interface IPageAlertService
 {
+    IEnumerable<PageAlert> Alerts { get; }
+
     /// <summary>
     ///     Occurs when an alert should be added.
     /// </summary>

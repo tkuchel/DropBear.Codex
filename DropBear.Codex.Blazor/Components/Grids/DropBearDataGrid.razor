@@ -179,7 +179,7 @@ else
                         </div>
                         <div class="items-per-page">
                             <label for="itemsPerPage">Items per page:</label>
-                            <select id="itemsPerPage" @bind="ItemsPerPage" @onchange="ItemsPerPageChanged">
+                            <select id="itemsPerPage" @bind="ItemsPerPage">
                                 @foreach (var option in ItemsPerPageOptions)
                                 {
                                     <option value="@option">@option</option>

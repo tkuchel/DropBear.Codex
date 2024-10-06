@@ -20,6 +20,7 @@ public sealed class PageAlertService : IPageAlertService
     private readonly ConcurrentDictionary<Guid, PageAlert> _alerts = new();
     private readonly object _eventLock = new();
 
+    public IEnumerable<PageAlert> Alerts => _alerts.Values;
     /// <summary>
     ///     Initializes a new instance of the <see cref="PageAlertService" /> class.
     /// </summary>

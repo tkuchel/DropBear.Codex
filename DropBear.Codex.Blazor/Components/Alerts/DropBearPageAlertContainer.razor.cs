@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Blazor.Services;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
@@ -40,7 +41,9 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     {
         if (_isSubscribed)
         {
-            AlertService.OnChange -= HandleAlertChange;
+            AlertService.OnAddAlert -= HandleAddAlert;
+            AlertService.OnRemoveAlert -= HandleRemoveAlert;
+            AlertService.OnClearAlerts -= HandleClearAlerts;
             _channelSubscription?.Dispose();
             Logger.Debug("Disposed of alert subscriptions for {ChannelId}.", ChannelId);
             _isSubscribed = false;
@@ -75,7 +78,10 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         DisposeResources(); // Clean up any existing subscriptions
         try
         {
-            AlertService.OnChange += HandleAlertChange;
+            AlertService.OnAddAlert += HandleAddAlert;
+            AlertService.OnRemoveAlert += HandleRemoveAlert;
+            AlertService.OnClearAlerts += HandleClearAlerts;
+
             _channelSubscription = SubscribeToChannelNotifications(ChannelId);
             _isSubscribed = true;
             Logger.Debug("Subscribed to channel notifications for {ChannelId}.", ChannelId);
@@ -84,6 +90,27 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         {
             Logger.Error(ex, "Failed to subscribe to alerts for channel {ChannelId}.", ChannelId);
         }
+    }
+
+    private Task HandleClearAlerts(object sender, EventArgs e)
+    {
+        // _channelAlerts.Clear();
+        _ = DebouncedStateUpdate();
+        return Task.CompletedTask;
+    }
+
+    private Task HandleRemoveAlert(object sender, PageAlertEventArgs e)
+    {
+        // _channelAlerts.Remove(e.Alert);
+        _ = DebouncedStateUpdate();
+        return Task.CompletedTask;
+    }
+
+    private Task HandleAddAlert(object sender, PageAlertEventArgs e)
+    {
+        // AddAlert(e.Alert);
+        _ = DebouncedStateUpdate();
+        return Task.CompletedTask;
     }
 
     private IDisposable SubscribeToChannelNotifications(string channelId)
@@ -120,11 +147,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         _ = DebouncedStateUpdate();
     }
 
-    private void HandleAlertChange(object? sender, EventArgs e)
-    {
-        _ = DebouncedStateUpdate();
-        Logger.Debug("Alert state change detected.");
-    }
 
     public void ClearAlerts()
     {
