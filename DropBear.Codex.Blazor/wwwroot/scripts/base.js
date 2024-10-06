@@ -279,31 +279,47 @@ window.DropBearFileUploader = (() => {
  */
 window.downloadFileFromStream = async (fileName, content, contentType) => {
   try {
+    console.log('downloadFileFromStream called with:', {fileName, content, contentType});
+
     let blob;
 
     if (content instanceof Blob) {
+      console.log('Content is a Blob.');
       blob = content;
     } else if (content.arrayBuffer) {
+      console.log('Content has arrayBuffer method (DotNetStreamReference detected).');
       const arrayBuffer = await content.arrayBuffer();
+      console.log('ArrayBuffer received, byte length:', arrayBuffer.byteLength);
       blob = new Blob([arrayBuffer], {type: contentType});
     } else if (content instanceof Uint8Array) {
+      console.log('Content is a Uint8Array.');
       blob = new Blob([content], {type: contentType});
     } else {
       throw new Error('Unsupported content type');
     }
 
+    console.log('Blob created, size:', blob.size);
+
     const url = URL.createObjectURL(blob);
     const anchorElement = document.createElement('a');
     anchorElement.href = url;
     anchorElement.download = fileName || 'download';
+
     document.body.appendChild(anchorElement);
-    anchorElement.click();
-    document.body.removeChild(anchorElement);
-    URL.revokeObjectURL(url);
+
+    // Use setTimeout to ensure the click event is not blocked by the browser
+    setTimeout(() => {
+      console.log('Triggering download...');
+      anchorElement.click();
+      document.body.removeChild(anchorElement);
+      URL.revokeObjectURL(url);
+      console.log('Download completed and cleanup done.');
+    }, 0);
   } catch (error) {
     console.error('Error in downloadFileFromStream:', error);
   }
 };
+
 /**
  * DropBearContextMenu module
  * Manages context menu interactions with Blazor components.
