@@ -175,73 +175,81 @@ window.DropBearSnackbar = (() => {
     },
   };
 })();
+// dropbear-file-uploader.js
+
 /**
  * DropBearFileUploader module
- * Handles file drag-and-drop functionality for elements with the class 'file-upload-dropzone'.
+ * Handles file drag-and-drop functionality by simulating a file input change event.
+ * This allows Blazor to handle the files via the InputFile component without large data transfers via JSInterop.
  */
-window.DropBearFileUploader = (() => {
-  let droppedFiles = [];
-
+(function () {
   /**
-   * Reads a file as an ArrayBuffer.
-   * @param {File} file - The file to read.
-   * @returns {Promise<Uint8Array>} A promise that resolves to a Uint8Array of the file data.
-   */
-  function readFileAsArrayBuffer(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(new Uint8Array(reader.result));
-      reader.onerror = () => reject(reader.error);
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  /**
-   * Handles the 'drop' event, capturing dropped files and reading their contents.
-   * @param {DragEvent} e - The drop event.
-   */
-  async function handleDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    droppedFiles = [];
-
-    try {
-      const items = e.dataTransfer.items || e.dataTransfer.files;
-      for (let i = 0; i < items.length; i++) {
-        const item = items[i];
-        const file = item.getAsFile ? item.getAsFile() : item;
-        if (file) {
-          const fileData = await readFileAsArrayBuffer(file);
-          droppedFiles.push({
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            data: fileData,
-          });
-        }
-      }
-    } catch (error) {
-      console.error('Error processing dropped files:', error);
-    }
-  }
-
-  /**
-   * Initializes the module by adding event listeners for 'drop' and 'dragover' events.
+   * Initializes the drag-and-drop event handlers for elements with the class 'file-upload-dropzone'.
    */
   function init() {
-    document.addEventListener('drop', function (e) {
-      if (e.target.closest('.file-upload-dropzone')) {
-        handleDrop(e);
-      }
-    });
+    console.log('Initializing DropBearFileUploader drag-and-drop functionality.');
 
+    // Handle dragover event to allow dropping
     document.addEventListener('dragover', function (e) {
       if (e.target.closest('.file-upload-dropzone')) {
         e.preventDefault();
         e.stopPropagation();
+        console.log('Drag over detected on drop zone.');
       }
     });
+
+    // Handle dragleave event to update UI if necessary
+    document.addEventListener('dragleave', function (e) {
+      if (e.target.closest('.file-upload-dropzone')) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Drag leave detected on drop zone.');
+      }
+    });
+
+    // Handle drop event to process dropped files
+    document.addEventListener('drop', function (e) {
+      if (e.target.closest('.file-upload-dropzone')) {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Files dropped on drop zone.');
+
+        // Get the drop zone element
+        const dropZone = e.target.closest('.file-upload-dropzone');
+
+        // Find the hidden file input within the drop zone
+        const fileInput = dropZone.querySelector('input[type="file"]');
+
+        if (fileInput) {
+          // Transfer the dropped files to the file input's FileList
+          transferFiles(fileInput, e.dataTransfer.files);
+
+          // Dispatch the change event to trigger Blazor's event handler
+          const event = new Event('change', {bubbles: true});
+          fileInput.dispatchEvent(event);
+
+          console.log('Files transferred to file input and change event dispatched.');
+        } else {
+          console.error('No file input found within the drop zone.');
+        }
+      }
+    });
+  }
+
+  /**
+   * Transfers files to the file input element by creating a DataTransfer object.
+   * @param {HTMLInputElement} fileInput - The file input element.
+   * @param {FileList} files - The list of files to transfer.
+   */
+  function transferFiles(fileInput, files) {
+    const dataTransfer = new DataTransfer();
+
+    for (let i = 0; i < files.length; i++) {
+      dataTransfer.items.add(files[i]);
+      console.log(`Added file to DataTransfer: ${files[i].name}`);
+    }
+
+    fileInput.files = dataTransfer.files;
   }
 
   // Initialize when the DOM is ready
@@ -250,26 +258,9 @@ window.DropBearFileUploader = (() => {
   } else {
     init();
   }
-
-  return {
-    /**
-     * Retrieves the dropped files and clears the internal storage.
-     * @returns {Array<Object>} An array of dropped file information.
-     */
-    getDroppedFiles() {
-      const files = [...droppedFiles];
-      droppedFiles = [];
-      return files;
-    },
-
-    /**
-     * Clears the internal storage of dropped files.
-     */
-    clearDroppedFiles() {
-      droppedFiles = [];
-    },
-  };
 })();
+
+
 /**
  * Utility function for file download.
  * Downloads a file from a content stream or byte array.

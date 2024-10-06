@@ -13,17 +13,12 @@ using Serilog;
 
 namespace DropBear.Codex.Blazor.Components.Files;
 
-/// <summary>
-///     A Blazor component for uploading files with drag-and-drop support and progress indication.
-/// </summary>
 public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileUploader>();
 
     private readonly List<UploadFile> _selectedFiles = new();
     private readonly List<UploadFile> _uploadedFiles = new();
-
-    private bool _isDragOver;
 
     [Parameter] public int MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB default
 
@@ -32,23 +27,6 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     [Parameter] public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }
 
     [Parameter] public Func<UploadFile, IProgress<int>, Task<UploadResult>>? UploadFileAsync { get; set; }
-
-
-    /// <summary>
-    ///     Gets or sets a value indicating whether a drag operation is over the drop zone.
-    /// </summary>
-    private bool IsDragOver
-    {
-        get => _isDragOver;
-        set
-        {
-            if (_isDragOver != value)
-            {
-                _isDragOver = value;
-                StateHasChanged();
-            }
-        }
-    }
 
     /// <summary>
     ///     Gets a value indicating whether files are currently being uploaded.
@@ -76,52 +54,6 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     public void Dispose()
     {
         // Implement any necessary disposal logic here
-    }
-
-    /// <summary>
-    ///     Handles the drop event for drag-and-drop file uploads.
-    /// </summary>
-    private async Task HandleDropAsync()
-    {
-        IsDragOver = false;
-        await HandleDroppedFilesAsync();
-    }
-
-    /// <summary>
-    ///     Handles processing of dropped files from JavaScript interop.
-    /// </summary>
-    private async Task HandleDroppedFilesAsync()
-    {
-        try
-        {
-            Logger.Debug("Invoking JavaScript to get dropped files.");
-            var files =
-                await JsRuntime.InvokeAsync<List<DroppedFile>>("DropBearFileUploader.getDroppedFiles");
-            Logger.Debug("Received {FileCount} files from JavaScript.", files.Count);
-
-            foreach (var file in files)
-            {
-                if (IsFileValid(file))
-                {
-                    var uploadFile = new UploadFile(file.Name, file.Size, file.Type, droppedFileData: file.Data);
-                    _selectedFiles.Add(uploadFile);
-                    Logger.Debug("Added file: {FileName} ({FileSize})", file.Name, FormatFileSize(file.Size));
-                }
-                else
-                {
-                    Logger.Warning("File {FileName} is invalid and was not added.", file.Name);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error occurred while handling dropped files.");
-        }
-        finally
-        {
-            await JsRuntime.InvokeVoidAsync("DropBearFileUploader.clearDroppedFiles");
-            StateHasChanged();
-        }
     }
 
     /// <summary>
@@ -154,15 +86,6 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
         return file.Size <= MaxFileSize &&
                (AllowedFileTypes.Count == 0 ||
                 AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase));
-    }
-
-    /// <summary>
-    ///     Validates a dropped file's size and type against allowed parameters.
-    /// </summary>
-    private bool IsFileValid(DroppedFile file)
-    {
-        return file.Size <= MaxFileSize &&
-               (AllowedFileTypes.Count == 0 || AllowedFileTypes.Contains(file.Type, StringComparer.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -268,5 +191,14 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
             UploadStatus.Warning => "fas fa-exclamation-circle text-warning",
             _ => "fas fa-question-circle text-muted"
         };
+    }
+
+    /// <summary>
+    ///     Opens the file dialog to select files.
+    /// </summary>
+    private void OpenFileDialog()
+    {
+        // Since the file input is hidden, we can trigger it using JavaScript
+        JsRuntime.InvokeVoidAsync("document.getElementById('fileInput').click");
     }
 }
