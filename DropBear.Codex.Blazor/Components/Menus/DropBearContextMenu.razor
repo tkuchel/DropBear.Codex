@@ -1,6 +1,6 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div @ref="_triggerElement" id="@_contextMenuId" @oncontextmenu="OnContextMenu" @oncontextmenu:preventDefault>
+<div @ref="_triggerElement" id="@_contextMenuId" @oncontextmenu="ShowContextMenuAsync" @oncontextmenu:preventDefault>
     @ChildContent
 </div>
 
@@ -16,7 +16,7 @@
             else
             {
                 <div class="context-menu-item @(item.IsDanger ? "danger" : "") @(item.HasSubmenu ? "has-submenu" : "")"
-                     @onclick="() => OnItemClick(item)">
+                     @onclick="() => OnItemClickAsync(item)">
                     @if (!string.IsNullOrEmpty(item.IconClass))
                     {
                         <i class="@item.IconClass"></i>
@@ -28,7 +28,7 @@
                         <div class="submenu">
                             @foreach (var subItem in item.Submenu)
                             {
-                                <div class="context-menu-item" @onclick="() => OnItemClick(subItem)">
+                                <div class="context-menu-item" @onclick="() => OnItemClickAsync(subItem)">
                                     @if (!string.IsNullOrEmpty(subItem.IconClass))
                                     {
                                         <i class="@subItem.IconClass"></i>

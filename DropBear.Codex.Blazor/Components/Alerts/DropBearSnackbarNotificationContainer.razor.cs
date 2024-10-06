@@ -29,7 +29,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
-
     public async ValueTask DisposeAsync()
     {
         Logger.Debug("Disposing SnackbarNotificationContainer...");
@@ -97,7 +96,6 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 
         return ValueTask.CompletedTask;
     }
-
 
     private async Task ShowSnackbarAsync(object? sender, SnackbarNotificationEventArgs e)
     {
@@ -175,12 +173,11 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 
     private async Task DebouncedStateUpdateAsync()
     {
-        // await DebounceService.DebounceAsync(
-        //     () => InvokeAsync(StateHasChanged),
-        //     "SnackbarContainerStateUpdate",
-        //     _debounceDuration
-        // );
-        await InvokeAsync(StateHasChanged);
+        await DebounceService.DebounceAsync(
+            () => InvokeAsync(StateHasChanged),
+            "SnackbarContainerStateUpdate",
+            _debounceDuration
+        );
     }
 
     private async Task DisposeSnackbarsAsync(List<SnackbarInstance> snackbars)

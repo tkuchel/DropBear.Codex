@@ -15,11 +15,9 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 public sealed partial class SectionComponent : DropBearComponentBase
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SectionComponent>();
-#pragma warning disable CS0414 // Field is assigned but its value is never used
-    private bool _isLoading;
-#pragma warning restore CS0414 // Field is assigned but its value is never used
 
     private bool? _shouldRender;
+    private bool ShouldRenderContent => _shouldRender == true;
 
     /// <summary>
     ///     A synchronous predicate function that determines whether the section should be rendered.
@@ -52,34 +50,46 @@ public sealed partial class SectionComponent : DropBearComponentBase
             throw new InvalidOperationException($"{nameof(ChildContent)} must be provided and cannot be null.");
         }
 
-        // If an asynchronous predicate is provided, evaluate it
-        if (AsyncPredicate is not null)
+        try
         {
-            Logger.Debug("Evaluating asynchronous predicate.");
-            _isLoading = true;
-            try
+            // Evaluate asynchronous predicate if provided
+            if (AsyncPredicate is not null)
             {
+                Logger.Debug("Evaluating asynchronous predicate.");
                 _shouldRender = await AsyncPredicate.Invoke();
                 Logger.Debug("Asynchronous predicate evaluated to: {ShouldRender}", _shouldRender);
             }
-            catch (Exception ex)
+            else
             {
-                Logger.Error(ex, "Error occurred during asynchronous predicate evaluation.");
-                _shouldRender = false;
-            }
-            finally
-            {
-                _isLoading = false;
-                StateHasChanged();
+                // Fallback to synchronous predicate
+                _shouldRender = Predicate?.Invoke() ?? true;
+                Logger.Debug("Synchronous predicate evaluated to: {ShouldRender}", _shouldRender);
             }
         }
-        else
+        catch (Exception ex)
         {
-            // If no async predicate, fall back to synchronous predicate
-            _shouldRender = Predicate?.Invoke() ?? true;
-            Logger.Debug("Synchronous predicate evaluated to: {ShouldRender}", _shouldRender);
+            Logger.Error(ex, "Error occurred during predicate evaluation.");
+            _shouldRender = false;
         }
 
         await base.OnInitializedAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (AsyncPredicate is null && Predicate is not null)
+        {
+            try
+            {
+                _shouldRender = Predicate.Invoke();
+                Logger.Debug("Synchronous predicate re-evaluated to: {ShouldRender}", _shouldRender);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error occurred during synchronous predicate re-evaluation.");
+                _shouldRender = false;
+            }
+        }
     }
 }

@@ -13,11 +13,27 @@ namespace DropBear.Codex.Notifications.Models;
 public sealed class Notification
 {
     /// <summary>
-    ///     Initializes a new instance of the Notification class.
+    ///     Initializes a new instance of the <see cref="Notification" /> class.
     /// </summary>
-    public Notification(Guid channelId, NotificationType type, NotificationSeverity severity, string message,
-        string? title = null, IReadOnlyDictionary<string, object?>? data = null)
+    /// <param name="channelId">The channel ID associated with the notification.</param>
+    /// <param name="type">The type of the notification.</param>
+    /// <param name="severity">The severity of the notification.</param>
+    /// <param name="message">The main message of the notification.</param>
+    /// <param name="title">The optional title of the notification.</param>
+    /// <param name="data">Custom data associated with the notification.</param>
+    public Notification(
+        Guid channelId,
+        NotificationType type,
+        NotificationSeverity severity,
+        string message,
+        string? title = null,
+        IReadOnlyDictionary<string, object?>? data = null)
     {
+        if (channelId == Guid.Empty)
+        {
+            throw new ArgumentException("ChannelId cannot be empty.", nameof(channelId));
+        }
+
         ChannelId = channelId;
         Type = type;
         Severity = severity;
@@ -63,8 +79,11 @@ public sealed class Notification
     public IReadOnlyDictionary<string, object?> Data { get; }
 
     /// <summary>
-    ///     Creates a new Notification instance with updated data.
+    ///     Creates a new <see cref="Notification" /> instance with updated data.
     /// </summary>
+    /// <param name="key">The key of the data to update.</param>
+    /// <param name="value">The new value.</param>
+    /// <returns>A new <see cref="Notification" /> instance with the updated data.</returns>
     public Notification WithUpdatedData(string key, object? value)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -78,8 +97,10 @@ public sealed class Notification
     }
 
     /// <summary>
-    ///     Creates a new Notification instance with the specified key removed from the data.
+    ///     Creates a new <see cref="Notification" /> instance with the specified key removed from the data.
     /// </summary>
+    /// <param name="key">The key to remove.</param>
+    /// <returns>A new <see cref="Notification" /> instance without the specified data key.</returns>
     public Notification WithoutData(string key)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -96,6 +117,8 @@ public sealed class Notification
     /// <summary>
     ///     Checks if the specified key exists in the custom data.
     /// </summary>
+    /// <param name="key">The key to check.</param>
+    /// <returns>True if the key exists; otherwise, false.</returns>
     public bool HasData(string key)
     {
         return Data.ContainsKey(key);

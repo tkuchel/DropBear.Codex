@@ -4,7 +4,8 @@ using DropBear.Codex.Blazor.Arguments.Events;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core;
+using DropBear.Codex.Core.Logging;
+using Serilog;
 
 #endregion
 
@@ -15,57 +16,51 @@ namespace DropBear.Codex.Blazor.Services;
 /// </summary>
 public sealed class SnackbarNotificationService : ISnackbarNotificationService
 {
-    /// <summary>
-    ///     Event triggered when a new snackbar should be shown.
-    /// </summary>
-    public event Func<object?, SnackbarNotificationEventArgs, Task>? OnShow;
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SnackbarNotificationService>();
+    private readonly object _eventLock = new();
 
     /// <summary>
-    ///     Event triggered when all snackbars should be hidden.
+    ///     Initializes a new instance of the <see cref="SnackbarNotificationService" /> class.
     /// </summary>
-    public event Func<object?, EventArgs, Task>? OnHideAll;
-
-    /// <summary>
-    ///     Shows a snackbar notification with the specified message and options.
-    /// </summary>
-    /// <param name="message">The message to display.</param>
-    /// <param name="type">The type of the snackbar.</param>
-    /// <param name="duration">The duration to display the snackbar in milliseconds.</param>
-    /// <param name="isDismissible">Indicates whether the snackbar notification is dismissible.</param>
-    /// <param name="actionText">The text of the action button on the snackbar notification.</param>
-    /// <param name="onAction">The action to perform when the action button is clicked.</param>
-    /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> ShowAsync(string message, SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
-        bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
+    public SnackbarNotificationService()
     {
-        var options = new SnackbarNotificationOptions(
-            "Notification",
-            message,
-            type,
-            duration,
-            isDismissible,
-            actionText,
-            onAction
-        );
-
-        return await ShowInternalAsync(options).ConfigureAwait(false);
     }
 
     /// <summary>
+    ///     Occurs when a new snackbar should be shown.
+    /// </summary>
+    public event AsyncEventHandler<SnackbarNotificationEventArgs>? OnShow;
+
+    /// <summary>
+    ///     Occurs when all snackbars should be hidden.
+    /// </summary>
+    public event AsyncEventHandler<EventArgs>? OnHideAll;
+
+    /// <summary>
     ///     Shows a snackbar notification with the specified message and options.
     /// </summary>
-    /// <param name="title">The title to display.</param>
-    /// <param name="message">The message to display.</param>
-    /// <param name="type">The type of the snackbar.</param>
-    /// <param name="duration">The duration to display the snackbar in milliseconds.</param>
-    /// <param name="isDismissible">Indicates whether the snackbar notification is dismissible.</param>
-    /// <param name="actionText">The text of the action button on the snackbar notification.</param>
-    /// <param name="onAction">The action to perform when the action button is clicked.</param>
-    /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> ShowAsync(string title, string message, SnackbarType type = SnackbarType.Information,
+    public Task<bool> ShowAsync(
+        string message,
+        SnackbarType type = SnackbarType.Information,
         int duration = 5000,
-        bool isDismissible = true, string actionText = "Dismiss", Func<Task>? onAction = null)
+        bool isDismissible = true,
+        string actionText = "Dismiss",
+        Func<Task>? onAction = null)
+    {
+        return ShowAsync("Notification", message, type, duration, isDismissible, actionText, onAction);
+    }
+
+    /// <summary>
+    ///     Shows a snackbar notification with the specified title, message, and options.
+    /// </summary>
+    public async Task<bool> ShowAsync(
+        string title,
+        string message,
+        SnackbarType type = SnackbarType.Information,
+        int duration = 5000,
+        bool isDismissible = true,
+        string actionText = "Dismiss",
+        Func<Task>? onAction = null)
     {
         var options = new SnackbarNotificationOptions(
             title,
@@ -74,52 +69,85 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
             duration,
             isDismissible,
             actionText,
-            onAction
-        );
+            onAction);
 
-        return await ShowInternalAsync(options).ConfigureAwait(false);
+        var result = await InvokeEventAsync(OnShow, new SnackbarNotificationEventArgs(options));
+        if (result)
+        {
+            Logger.Debug("Snackbar notification shown with title '{Title}' and message '{Message}'.", title,
+                message);
+        }
+        else
+        {
+            Logger.Warning("Snackbar notification could not be shown because there are no subscribers.");
+        }
+
+        return result;
     }
 
     /// <summary>
     ///     Hides all snackbar notifications.
     /// </summary>
-    /// <returns>A task representing the result of the operation.</returns>
-    public async Task<Result> HideAllAsync()
+    public async Task<bool> HideAllAsync()
     {
-        try
+        var result = await InvokeEventAsync(OnHideAll, EventArgs.Empty);
+        if (result)
         {
-            if (OnHideAll != null)
-            {
-                await OnHideAll.Invoke(this, EventArgs.Empty);
-            }
+            Logger.Debug("All snackbar notifications hidden.");
+        }
+        else
+        {
+            Logger.Warning("No subscribers for OnHideAll event.");
+        }
 
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            return Result.Failure("Error hiding all snackbars", ex);
-        }
+        return result;
     }
 
     /// <summary>
-    ///     Shows a snackbar notification using the specified options.
+    ///     Helper method to invoke events asynchronously and handle exceptions.
     /// </summary>
-    /// <param name="options">The options for the snackbar notification.</param>
-    /// <returns>A task representing the result of the operation.</returns>
-    private async Task<Result> ShowInternalAsync(SnackbarNotificationOptions options)
+    private async Task<bool> InvokeEventAsync<TEventArgs>(AsyncEventHandler<TEventArgs>? eventHandler, TEventArgs args)
     {
+        if (eventHandler == null)
+        {
+            Logger.Warning("No subscribers for event.");
+            return false;
+        }
+
+        Delegate[] invocationList;
+        lock (_eventLock)
+        {
+            invocationList = eventHandler.GetInvocationList();
+        }
+
+        var tasks = new List<Task>();
+        foreach (var handler in invocationList)
+        {
+            var func = (AsyncEventHandler<TEventArgs>)handler;
+            try
+            {
+                tasks.Add(func(this, args));
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error invoking event handler.");
+            }
+        }
+
+        if (tasks.Count == 0)
+        {
+            return false;
+        }
+
         try
         {
-            if (OnShow != null)
-            {
-                await OnShow.Invoke(this, new SnackbarNotificationEventArgs(options));
-            }
-
-            return Result.Success();
+            await Task.WhenAll(tasks);
+            return true;
         }
         catch (Exception ex)
         {
-            return Result.Failure("Error showing snackbar", ex);
+            Logger.Error(ex, "Error in event handlers.");
+            return false;
         }
     }
 }

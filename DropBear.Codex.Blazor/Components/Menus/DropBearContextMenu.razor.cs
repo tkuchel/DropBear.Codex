@@ -1,7 +1,6 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -18,19 +17,16 @@ namespace DropBear.Codex.Blazor.Components.Menus;
 public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncDisposable
 {
     private readonly string _contextMenuId = $"context-menu-{Guid.NewGuid()}";
-    private bool _isDisposed;
     private bool _isVisible;
     private bool _jsInitialized;
-    private int _left;
+    private double _left;
     private DotNetObjectReference<DropBearContextMenu>? _objectReference;
-    private int _top;
-    // ReSharper disable once NotAccessedField.Local
+    private double _top;
     private ElementReference _triggerElement;
 
-    [Inject] private IJSRuntime JsRuntime { get; set; } = null!;
-    // ReSharper disable once UnusedAutoPropertyAccessor.Local
-    [Inject] private IDynamicContextMenuService? DynamicContextMenuService { get; set; }
-    [Inject] private ILogger<DropBearContextMenu> Logger { get; set; } = null!;
+    [Inject] private IJSRuntime JsRuntime { get; set; } = default!;
+
+    [Inject] private ILogger<DropBearContextMenu> Logger { get; set; } = default!;
 
     /// <summary>
     ///     The menu items to display in the context menu.
@@ -42,19 +38,13 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
     ///     Triggered when a menu item is clicked.
     /// </summary>
     [Parameter]
-    public EventCallback<(ContextMenuItem, object)> OnItemClicked { get; set; }
+    public EventCallback<(ContextMenuItem, object?)> OnItemClicked { get; set; }
 
     /// <summary>
     ///     A function to get the current context when an item is clicked.
     /// </summary>
     [Parameter]
-    public Func<object> GetContext { get; set; } = () => new object();
-
-    /// <summary>
-    ///     Whether to use a dynamic context menu service for interactions.
-    /// </summary>
-    [Parameter]
-    public bool UseDynamicService { get; set; }
+    public Func<object?>? GetContext { get; set; }
 
     /// <summary>
     ///     Custom content to be rendered inside the context menu or the trigger element for the menu.
@@ -64,12 +54,12 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
 
     public async ValueTask DisposeAsync()
     {
-        if (!_isDisposed && _jsInitialized)
+        if (_jsInitialized)
         {
             try
             {
                 await JsRuntime.InvokeVoidAsync("DropBearContextMenu.dispose", _contextMenuId);
-                // Logger.LogDebug("Context menu JavaScript resources disposed for {ContextMenuId}", _contextMenuId);
+                Logger.LogDebug("Context menu JavaScript resources disposed for {ContextMenuId}", _contextMenuId);
             }
             catch (JSException ex)
             {
@@ -78,7 +68,6 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
         }
 
         _objectReference?.Dispose();
-        _isDisposed = true;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -96,7 +85,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
         {
             await JsRuntime.InvokeVoidAsync("DropBearContextMenu.initialize", _contextMenuId, _objectReference);
             _jsInitialized = true;
-            // Logger.LogDebug("ContextMenu initialized with ID: {ContextMenuId}", _contextMenuId);
+            Logger.LogDebug("ContextMenu initialized with ID: {ContextMenuId}", _contextMenuId);
         }
         catch (JSException ex)
         {
@@ -108,14 +97,8 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
     [JSInvokable]
     public void Show(double left, double top)
     {
-        if (_isDisposed)
-        {
-            Logger.LogWarning("Attempted to show disposed context menu.");
-            return;
-        }
-
-        _left = (int)Math.Round(left);
-        _top = (int)Math.Round(top);
+        _left = left;
+        _top = top;
         _isVisible = true;
         Logger.LogDebug("ContextMenu shown at coordinates: Left={Left}, Top={Top}", _left, _top);
         StateHasChanged();
@@ -129,14 +112,8 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
         StateHasChanged();
     }
 
-    private async Task OnContextMenu(MouseEventArgs e)
+    private async Task ShowContextMenuAsync(MouseEventArgs e)
     {
-        if (_isDisposed)
-        {
-            Logger.LogWarning("Attempted to show context menu, but component is disposed.");
-            return;
-        }
-
         if (!_jsInitialized)
         {
             Logger.LogWarning("Attempted to show context menu, but JavaScript is not initialized");
@@ -153,18 +130,16 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
         }
     }
 
-    private async Task OnItemClick(ContextMenuItem item)
+    private async Task OnItemClickAsync(ContextMenuItem item)
     {
-        if (_isDisposed)
-        {
-            Logger.LogWarning("Attempted to handle click on a disposed context menu.");
-            return;
-        }
-
-        var context = GetContext();
+        var context = GetContext?.Invoke();
         Logger.LogInformation("Menu item clicked: {ItemText} with context: {Context}", item.Text, context);
 
-        await OnItemClicked.InvokeAsync((item, context));
+        if (OnItemClicked.HasDelegate)
+        {
+            await OnItemClicked.InvokeAsync((item, context));
+        }
+
         Hide();
     }
 }

@@ -10,18 +10,21 @@
                 <p class="card-text">
                     @Description
                 </p>
-                <div class="button-group">
-                    @foreach (var button in Buttons)
-                    {
-                        <button type="button" class="@GetButtonClass(button.Color)" @onclick="@(() => OnButtonClick(button))">
-                            @if (!string.IsNullOrEmpty(button.Icon))
-                            {
-                                <i class="@button.Icon"></i>
-                            }
-                            @button.Text
-                        </button>
-                    }
-                </div>
+                @if (Buttons != null && Buttons.Any())
+                {
+                    <div class="button-group">
+                        @foreach (var button in Buttons)
+                        {
+                            <button type="button" class="@GetButtonClass(button.Color)" @onclick="@(() => HandleButtonClick(button))">
+                                @if (!string.IsNullOrEmpty(button.Icon))
+                                {
+                                    <i class="@button.Icon"></i>
+                                }
+                                @button.Text
+                            </button>
+                        }
+                    </div>
+                }
             </div>
         </div>
     </div>

@@ -43,11 +43,11 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     /// <returns>A string representing the CSS class.</returns>
     private string GetButtonClass(ButtonColor type)
     {
-        const string BaseClass = "prompt-btn";
+        const string baseClass = "prompt-btn";
         var typeClass = ButtonClasses.GetValueOrDefault(type, "prompt-btn-default");
 
         // Construct the full CSS class for the button
-        return $"{BaseClass} {typeClass}".Trim();
+        return $"{baseClass} {typeClass}".Trim();
     }
 
     /// <summary>
@@ -69,16 +69,23 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     ///     Handles the button click event.
     /// </summary>
     /// <param name="button">The button configuration.</param>
-    private async Task OnButtonClick(ButtonConfig button)
+    private async Task HandleButtonClick(ButtonConfig button)
     {
-        try
+        if (OnButtonClicked.HasDelegate)
         {
-            // Logger.Debug("Button clicked: {ButtonText}", button.Text);
-            await OnButtonClicked.InvokeAsync(button);
+            try
+            {
+                Logger.Debug("Button clicked: {ButtonText}", button.Text);
+                await OnButtonClicked.InvokeAsync(button);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error occurred while handling button click for button: {ButtonText}", button.Text);
+            }
         }
-        catch (Exception ex)
+        else
         {
-            Logger.Error(ex, "Error occurred while handling button click for button: {ButtonText}", button.Text);
+            Logger.Warning("No button click event handler provided for button: {ButtonText}", button.Text);
         }
     }
 }

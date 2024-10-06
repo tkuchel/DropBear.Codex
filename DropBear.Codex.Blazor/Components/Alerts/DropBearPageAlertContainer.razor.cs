@@ -25,6 +25,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     private readonly List<PageAlert> _channelAlerts = new();
     private readonly TimeSpan _debounceDuration = TimeSpan.FromMilliseconds(100);
     private IDisposable? _channelSubscription;
+    private bool _isSubscribed;
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
@@ -32,15 +33,17 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     public void Dispose()
     {
-        try
+        DisposeResources();
+    }
+
+    private void DisposeResources()
+    {
+        if (_isSubscribed)
         {
             AlertService.OnChange -= HandleAlertChange;
             _channelSubscription?.Dispose();
             Logger.Debug("Disposed of alert subscriptions for {ChannelId}.", ChannelId);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error disposing alert service for {ChannelId}.", ChannelId);
+            _isSubscribed = false;
         }
     }
 
@@ -60,15 +63,21 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        Logger.Debug("Channel Id set to {ChannelId} for PageAlertContainer.", ChannelId);
+        if (!string.IsNullOrEmpty(ChannelId) && !_isSubscribed)
+        {
+            SubscribeToAlerts();
+            Logger.Debug("Channel Id set to {ChannelId} for PageAlertContainer.", ChannelId);
+        }
     }
 
     private void SubscribeToAlerts()
     {
+        DisposeResources(); // Clean up any existing subscriptions
         try
         {
             AlertService.OnChange += HandleAlertChange;
             _channelSubscription = SubscribeToChannelNotifications(ChannelId);
+            _isSubscribed = true;
             Logger.Debug("Subscribed to channel notifications for {ChannelId}.", ChannelId);
         }
         catch (Exception ex)
@@ -107,6 +116,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         }
 
         _channelAlerts.Add(alert);
+        Logger.Debug("Added alert of type {AlertType} with title '{AlertTitle}'.", alert.Type, alert.Title);
         _ = DebouncedStateUpdate();
     }
 
@@ -127,6 +137,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         _channelAlerts.Clear();
         _channelSubscription?.Dispose();
         _channelSubscription = SubscribeToChannelNotifications(ChannelId);
+        StateHasChanged();
     }
 
     public void RemoveAlert(PageAlert alert)
@@ -137,10 +148,8 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task DebouncedStateUpdate()
     {
-        // await DebounceService.DebounceAsync(() => InvokeAsync(StateHasChanged), "PageAlertContainerUpdate",
-        //     _debounceDuration);
-
-        await InvokeAsync(StateHasChanged);
+        await DebounceService.DebounceAsync(() => InvokeAsync(StateHasChanged), "PageAlertContainerUpdate",
+            _debounceDuration);
     }
 
     private AlertType MapAlertType(NotificationSeverity severity)

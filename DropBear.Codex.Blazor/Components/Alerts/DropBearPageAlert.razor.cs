@@ -13,7 +13,7 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// <summary>
 ///     A Blazor component for displaying page alerts.
 /// </summary>
-public sealed partial class DropBearPageAlert : DropBearComponentBase
+public sealed partial class DropBearPageAlert : DropBearComponentBase, IDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearPageAlert>();
 
@@ -26,14 +26,37 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         { AlertType.Notification, "fas fa-bell" }
     };
 
+    private string _alertClassString = string.Empty;
+    private string _iconClassString = string.Empty;
+    private bool _shouldRender = true;
+
     [Parameter] public string Title { get; set; } = string.Empty;
     [Parameter] public string Message { get; set; } = string.Empty;
     [Parameter] public AlertType Type { get; set; } = AlertType.Information;
     [Parameter] public bool IsDismissible { get; set; } = true;
     [Parameter] public EventCallback OnClose { get; set; } = EventCallback.Empty;
 
-    private string AlertClassString => $"alert alert-{Type.ToString().ToLowerInvariant()}";
-    private string IconClassString => IconClasses[Type];
+    public void Dispose()
+    {
+        // Dispose logic here if needed in the future
+    }
+
+    protected override void OnParametersSet()
+    {
+        _alertClassString = $"alert alert-{Type.ToString().ToLowerInvariant()}";
+        _iconClassString = IconClasses[Type];
+    }
+
+    protected override bool ShouldRender()
+    {
+        return _shouldRender;
+    }
+
+    private void SetStateChanged()
+    {
+        _shouldRender = true;
+        StateHasChanged();
+    }
 
     /// <summary>
     ///     Handles the close button click event.

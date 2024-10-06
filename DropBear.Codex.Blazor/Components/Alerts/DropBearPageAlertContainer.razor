@@ -1,25 +1,32 @@
-﻿@inject IPageAlertService AlertService
+﻿// Razor Page Code
+@inject IPageAlertService AlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject IDebounceService DebounceService
 @using DropBear.Codex.Blazor.Interfaces
+@using DropBear.Codex.Blazor.Models
 @using DropBear.Codex.Notifications.Models
-@using DropBear.Codex.Serialization.Interfaces
 @using DropBear.Codex.Utilities.Interfaces
 @using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div class="page-alert-container">
-    @foreach (var alert in CombinedAlerts.OrderByDescending(a => a.CreatedAt))
+    @foreach (var alert in CombinedAlerts)
     {
         <DropBearPageAlert
+            @key="alert.CreatedAt"
             Title="@alert.Title"
             Message="@alert.Message"
             Type="@alert.Type"
             IsDismissible="@alert.IsDismissible"
-            OnClose="@(() => RemoveAlert(alert))"/>
+            OnClose="@(() => OnCloseAlert(alert))"/>
     }
 </div>
 
 @code {
-    // Left blank on purpose.
+
+    private void OnCloseAlert(PageAlert alert)
+    {
+        RemoveAlert(alert);
+    }
+
 }

@@ -1,8 +1,8 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="alert @AlertClassString" role="alert">
+<div @key="Type" class="alert @_alertClassString" role="alert">
     <div class="alert-icon">
-        <i class="@IconClassString"></i>
+        <i class="@_iconClassString"></i>
     </div>
     <div class="alert-content">
         <h4 class="alert-title">@Title</h4>

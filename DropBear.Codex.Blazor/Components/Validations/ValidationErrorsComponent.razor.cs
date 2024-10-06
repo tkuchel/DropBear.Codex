@@ -2,9 +2,8 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
@@ -15,8 +14,9 @@ namespace DropBear.Codex.Blazor.Components.Validations;
 /// </summary>
 public sealed partial class ValidationErrorsComponent : DropBearComponentBase
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ValidationErrorsComponent>();
-    private bool _isCollapsed;
+    [Inject] private ILogger<ValidationErrorsComponent> Logger { get; set; } = default!;
+
+    private bool IsCollapsed { get; set; }
 
     /// <summary>
     ///     The validation result containing errors to display.
@@ -30,17 +30,24 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
     [Parameter]
     public bool InitialCollapsed { get; set; }
 
+    /// <summary>
+    ///     Gets a value indicating whether there are validation errors to display.
+    /// </summary>
+    private bool HasErrors => ValidationResult?.IsValid == false && ValidationResult.Errors.Any();
+
     protected override void OnInitialized()
     {
-        _isCollapsed = InitialCollapsed;
+        base.OnInitialized();
+        IsCollapsed = InitialCollapsed;
 
-        if (ValidationResult is not null && ValidationResult.Errors.Any())
+        if (HasErrors)
         {
-            Logger.Debug("ValidationErrorsComponent initialized with {ErrorCount} errors.", ValidationResult.Errors.Count);
+            Logger.LogDebug("ValidationErrorsComponent initialized with {ErrorCount} errors.",
+                ValidationResult!.Errors.Count);
         }
         else
         {
-            Logger.Debug("ValidationErrorsComponent initialized with no errors.");
+            Logger.LogDebug("ValidationErrorsComponent initialized with no errors.");
         }
     }
 
@@ -49,19 +56,7 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
     /// </summary>
     private void ToggleCollapseState()
     {
-        _isCollapsed = !_isCollapsed;
-        Logger.Debug("ValidationErrorsComponent collapsed state toggled to {IsCollapsed}.", _isCollapsed);
+        IsCollapsed = !IsCollapsed;
+        Logger.LogDebug("ValidationErrorsComponent collapsed state toggled to {IsCollapsed}.", IsCollapsed);
     }
-
-    /// <summary>
-    ///     Returns a CSS class based on whether the panel is collapsed.
-    /// </summary>
-    // ReSharper disable once UnusedMember.Local
-    private string GetPanelCssClass() => _isCollapsed ? "validation-errors-collapsed" : "validation-errors-expanded";
-
-    /// <summary>
-    ///     Gets a CSS class for the validation message list.
-    /// </summary>
-    // ReSharper disable once UnusedMember.Local
-    private string GetListCssClass() => _isCollapsed ? "hidden" : "visible";
 }

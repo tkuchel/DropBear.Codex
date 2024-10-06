@@ -4,7 +4,9 @@
 @if (ModalService.IsModalVisible)
 {
     <div class="modal-overlay" @onclick="HandleOutsideClick">
-        <div class="modal-content @_modalTransitionClass" @onclick:stopPropagation="true">
+        <div class="modal-content @_modalTransitionClass"
+             style="width: @_customWidth; height: @_customHeight; transition-duration: @_transitionDuration;"
+             @onclick:stopPropagation="true">
             <DynamicComponent Type="ModalService.CurrentComponent" Parameters="ModalService.CurrentParameters"/>
         </div>
     </div>

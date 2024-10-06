@@ -78,7 +78,7 @@ public sealed partial class DropBearButton : DropBearComponentBase
         {
             try
             {
-                // Logger.Debug("Button clicked.");
+                Logger.Debug("Button clicked.");
                 await OnClick.InvokeAsync(args);
             }
             catch (Exception ex)

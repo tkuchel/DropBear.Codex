@@ -5,25 +5,25 @@
 
 <div class="file-upload-container">
     <div class="file-upload-component">
-        <div class="file-upload-dropzone @(_isDragOver ? "dragover" : "")"
+        <div class="file-upload-dropzone @(IsDragOver ? "dragover" : "")"
              @ondragenter:preventDefault
-             @ondragenter="() => _isDragOver = true"
+             @ondragenter="() => IsDragOver = true"
              @ondragleave:preventDefault
-             @ondragleave="() => _isDragOver = false"
+             @ondragleave="() => IsDragOver = false"
              @ondragover:preventDefault
              @ondrop:preventDefault
-             @ondrop="HandleDrop">
+             @ondrop="HandleDropAsync">
             <i class="fas fa-cloud-upload-alt fa-2x file-upload-icon"></i>
             <p>Drag & Drop files here or</p>
             <div class="file-input-wrapper">
-                <InputFile OnChange="HandleFileSelection" multiple id="fileInput" class="file-upload-input"/>
+                <InputFile OnChange="HandleFileSelectionAsync" multiple id="fileInput" class="file-upload-input"/>
             </div>
             <label for="fileInput" class="file-upload-label">
                 Choose Files
             </label>
         </div>
         <div class="file-upload-list">
-            @foreach (var file in _selectedFiles)
+            @foreach (var file in SelectedFiles)
             {
                 <div class="file-upload-item">
                     <div class="file-upload-info">
@@ -41,9 +41,9 @@
         </div>
         <div class="file-upload-footer">
             <button class="file-upload-btn"
-                    @onclick="UploadFiles"
-                    disabled="@(_selectedFiles.Count == 0 || _isUploading)">
-                @if (_isUploading)
+                    @onclick="UploadFilesAsync"
+                    disabled="@(SelectedFiles.Count == 0 || IsUploading)">
+                @if (IsUploading)
                 {
                     <i class="fas fa-spinner file-upload-spinner"></i>
                     <span>Uploading...</span>
@@ -54,17 +54,17 @@
                 }
             </button>
             <div class="file-upload-progress">
-                <div class="file-upload-progress-bar" style="width: @(_uploadProgress)%"></div>
+                <div class="file-upload-progress-bar" style="width: @(UploadProgress)%"></div>
             </div>
         </div>
     </div>
 
-    @if (_uploadedFiles.Any())
+    @if (UploadedFiles.Any())
     {
         <div class="file-upload-completed-list">
             <h4>Uploaded Files:</h4>
             <ul>
-                @foreach (var file in _uploadedFiles)
+                @foreach (var file in UploadedFiles)
                 {
                     <li>
                         <span class="file-status-icon @GetFileStatusIconClass(file.UploadStatus)"></span>

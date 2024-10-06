@@ -14,9 +14,11 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// <summary>
 ///     A container that dynamically adjusts its width and can center its content both vertically and horizontally.
 /// </summary>
-public sealed partial class SectionContainer : DropBearComponentBase
+public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SectionContainer>();
+    private DotNetObjectReference<SectionContainer>? _dotNetRef;
+    private bool _isJsInitialized;
 
     private string MaxWidthStyle { get; set; } = "100%"; // Default value if not set dynamically
 
@@ -48,23 +50,47 @@ public sealed partial class SectionContainer : DropBearComponentBase
     /// <summary>
     ///     Determines the CSS class applied to the container, adding centering classes if required.
     /// </summary>
-    private string ContainerClass
+    private string ContainerClass => BuildContainerClass();
+
+    /// <summary>
+    ///     Dispose of resources, including the JavaScript resize listener.
+    /// </summary>
+    public async ValueTask DisposeAsync()
     {
-        get
+        if (_isJsInitialized)
         {
-            var classes = "section-container";
-            if (IsHorizontalCentered)
+            try
             {
-                classes += " horizontal-centered";
+                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.dispose");
+                Logger.Debug("Resize event listener disposed.");
             }
-
-            if (IsVerticalCentered)
+            catch (Exception ex)
             {
-                classes += " vertical-centered";
+                Logger.Error(ex, "Error occurred during DisposeAsync.");
             }
-
-            return classes;
         }
+
+        _dotNetRef?.Dispose();
+    }
+
+    /// <summary>
+    ///     Builds the CSS class for the container based on the properties.
+    /// </summary>
+    /// <returns>A string representing the CSS class.</returns>
+    private string BuildContainerClass()
+    {
+        var classes = "section-container";
+        if (IsHorizontalCentered)
+        {
+            classes += " horizontal-centered";
+        }
+
+        if (IsVerticalCentered)
+        {
+            classes += " vertical-centered";
+        }
+
+        return classes;
     }
 
     /// <summary>
@@ -76,13 +102,14 @@ public sealed partial class SectionContainer : DropBearComponentBase
         {
             try
             {
-                // Call JavaScript to get the window size and calculate the max width
-                await SetMaxWidthBasedOnWindowSize();
-
-                // Register resize event listener
-                var dotnetRef = DotNetObjectReference.Create(this);
-                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", dotnetRef);
+                // Set up JavaScript interop for resizing
+                _dotNetRef = DotNetObjectReference.Create(this);
+                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", _dotNetRef);
+                _isJsInitialized = true;
                 Logger.Debug("Resize event listener registered.");
+
+                // Set the initial max width
+                await SetMaxWidthBasedOnWindowSize();
             }
             catch (Exception ex)
             {

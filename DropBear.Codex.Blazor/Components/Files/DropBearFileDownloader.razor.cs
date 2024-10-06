@@ -13,10 +13,9 @@ namespace DropBear.Codex.Blazor.Components.Files;
 /// <summary>
 ///     A Blazor component for downloading files with progress indication.
 /// </summary>
-public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
+public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileDownloader>();
-
     private CancellationTokenSource? _dismissCancellationTokenSource;
     private int _downloadProgress;
     private bool _isDownloading;
@@ -24,7 +23,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
     [Parameter] public string FileName { get; set; } = string.Empty;
     [Parameter] public string FileSize { get; set; } = string.Empty;
     [Parameter] public string FileIconClass { get; set; } = "fas fa-file-pdf";
-    [Parameter] public Func<IProgress<int>, CancellationToken, Task<MemoryStream>>? DownloadFileAsync { get; set; }
+    [Parameter] public Func<IProgress<int>, CancellationToken, Task<Stream>>? DownloadFileAsync { get; set; }
     [Parameter] public EventCallback<bool> OnDownloadComplete { get; set; }
     [Parameter] public string ContentType { get; set; } = "application/octet-stream";
 
@@ -33,7 +32,9 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
     /// </summary>
     public void Dispose()
     {
+        _dismissCancellationTokenSource?.Cancel();
         _dismissCancellationTokenSource?.Dispose();
+        _dismissCancellationTokenSource = null;
     }
 
     /// <summary>
@@ -61,21 +62,23 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
             {
                 _downloadProgress = percent;
                 Logger.Debug("Download progress updated: {Progress}%", percent);
-                StateHasChanged();
+                InvokeAsync(StateHasChanged);
             });
 
             // Call the download function, passing progress and cancellation token
-            var resultStream = await DownloadFileAsync(progress, _dismissCancellationTokenSource.Token);
+            using var resultStream = await DownloadFileAsync(progress, _dismissCancellationTokenSource.Token);
 
-            // Ensure the result stream is ready for use
-            resultStream.Position = 0;
-            var byteArray = resultStream.ToArray();
+            // Use JS interop to trigger the download using a stream reference
+            var streamRef = new DotNetStreamReference(resultStream);
 
             Logger.Debug("Download completed for file: {FileName}, preparing to save file on client.", FileName);
 
-            // Use JavaScript interop to trigger the download
-            await JsRuntime.InvokeVoidAsync("downloadFileFromStream", _dismissCancellationTokenSource.Token, FileName,
-                byteArray, ContentType);
+            await JsRuntime.InvokeVoidAsync(
+                "downloadFileFromStream",
+                _dismissCancellationTokenSource.Token,
+                FileName,
+                streamRef,
+                ContentType);
 
             // Notify completion with success
             await OnDownloadComplete.InvokeAsync(true);
@@ -93,9 +96,10 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IDis
         finally
         {
             _isDownloading = false;
-            _dismissCancellationTokenSource?.Dispose(); // Clean up the token source
+            _dismissCancellationTokenSource?.Dispose();
+            _dismissCancellationTokenSource = null;
             Logger.Debug("Download process finalized for file: {FileName}", FileName);
-            StateHasChanged();
+            InvokeAsync(StateHasChanged);
         }
     }
 }

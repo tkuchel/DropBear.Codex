@@ -14,51 +14,61 @@ namespace DropBear.Codex.Blazor.Components.Loaders;
 /// </summary>
 public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDisposable
 {
-    private const int UpdateInterval = 100; // Interval in milliseconds
-    private const int StepSize = 1; // Step size for progress increment
+    private const int DefaultUpdateInterval = 100; // Interval in milliseconds
+    private const int DefaultStepSize = 1; // Step size for progress increment
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<LongWaitProgressBar>();
-
-    private int _currentProgress;
     private bool _isCanceled;
-    private bool _isIndeterminate = true;
+    private bool _progressSet;
+
     private Timer? _timer;
 
     /// <summary>
-    ///     The title displayed above the progress bar.
+    ///     Gets or sets the title displayed above the progress bar.
     /// </summary>
     [Parameter]
     public string Title { get; set; } = "Please wait...";
 
     /// <summary>
-    ///     The message displayed below the title.
+    ///     Gets or sets the message displayed below the title.
     /// </summary>
     [Parameter]
     public string Message { get; set; } = "Processing your request...";
 
     /// <summary>
-    ///     The current progress percentage (0-100).
+    ///     Gets or sets the current progress percentage (0-100).
     /// </summary>
     [Parameter]
     public int Progress { get; set; }
 
     /// <summary>
-    ///     Whether the cancel button should be shown.
+    ///     Gets or sets a value indicating whether the cancel button should be shown.
     /// </summary>
     [Parameter]
     public bool ShowCancelButton { get; set; }
 
     /// <summary>
-    ///     The text displayed on the cancel button.
+    ///     Gets or sets the text displayed on the cancel button.
     /// </summary>
     [Parameter]
     public string CancelButtonText { get; set; } = "Cancel";
 
     /// <summary>
-    ///     The callback invoked when the user cancels the operation.
+    ///     Gets or sets the callback invoked when the user cancels the operation.
     /// </summary>
     [Parameter]
     public EventCallback OnCancel { get; set; }
 
+    /// <summary>
+    ///     Gets a value indicating whether the progress bar is indeterminate.
+    /// </summary>
+    private bool IsIndeterminate => !_progressSet;
+
+    /// <summary>
+    ///     Gets the current progress percentage.
+    /// </summary>
+    private int CurrentProgress { get; set; }
+
+    /// <inheritdoc />
     public void Dispose()
     {
         _timer?.Dispose();
@@ -67,27 +77,22 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
 
     protected override void OnInitialized()
     {
-        _currentProgress = Progress;
-        _timer = new Timer(UpdateProgress, null, Timeout.Infinite, UpdateInterval);
-        Logger.Debug("LongWaitProgressBar initialized with initial progress of {Progress}%", _currentProgress);
+        base.OnInitialized();
+        CurrentProgress = Progress;
+        Logger.Debug("LongWaitProgressBar initialized with initial progress of {Progress}%", CurrentProgress);
     }
 
     protected override void OnParametersSet()
     {
-        if (_isIndeterminate)
+        base.OnParametersSet();
+
+        if (Progress != CurrentProgress)
         {
-            if (Progress > 0)
-            {
-                _isIndeterminate = false;
-                StartTimer();
-            }
-        }
-        else if (Progress != _currentProgress)
-        {
+            _progressSet = true;
             StartTimer();
         }
 
-        if (_currentProgress >= 100)
+        if (Progress >= 100)
         {
             StopTimer();
             Logger.Debug("Progress reached 100%.");
@@ -96,13 +101,21 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
 
     private void StartTimer()
     {
-        _timer?.Change(0, UpdateInterval); // Start or restart the timer
-        Logger.Debug("Progress timer started or restarted.");
+        if (_timer == null)
+        {
+            _timer = new Timer(UpdateProgress, null, DefaultUpdateInterval, DefaultUpdateInterval);
+            Logger.Debug("Progress timer started.");
+        }
+        else
+        {
+            _timer.Change(DefaultUpdateInterval, DefaultUpdateInterval);
+            Logger.Debug("Progress timer restarted.");
+        }
     }
 
     private void StopTimer()
     {
-        _timer?.Change(Timeout.Infinite, UpdateInterval); // Stop the timer
+        _timer?.Change(Timeout.Infinite, Timeout.Infinite);
         Logger.Debug("Progress timer stopped.");
     }
 
@@ -117,29 +130,27 @@ public sealed partial class LongWaitProgressBar : DropBearComponentBase, IDispos
                 return;
             }
 
-            if (_currentProgress < Progress)
+            if (CurrentProgress < Progress)
             {
-                _currentProgress = Math.Min(_currentProgress + StepSize, Progress);
+                CurrentProgress = Math.Min(CurrentProgress + DefaultStepSize, Progress);
             }
-            else if (_currentProgress > Progress)
+            else if (CurrentProgress > Progress)
             {
-                _currentProgress = Math.Max(_currentProgress - StepSize, Progress);
+                CurrentProgress = Math.Max(CurrentProgress - DefaultStepSize, Progress);
             }
 
-            if (_currentProgress == Progress)
+            if (CurrentProgress == Progress)
             {
                 StopTimer();
             }
 
-            Logger.Debug("Progress updated to {Progress}%", _currentProgress);
+            Logger.Debug("Progress updated to {Progress}%", CurrentProgress);
 
-            // Notify parent component of progress changes
-            StateHasChanged(); // This is already inside InvokeAsync, no need for an extra call
+            StateHasChanged();
         });
     }
 
-
-    private async Task Cancel()
+    private async Task CancelAsync()
     {
         if (!_isCanceled)
         {

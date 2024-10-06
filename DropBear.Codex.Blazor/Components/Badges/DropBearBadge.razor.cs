@@ -2,7 +2,6 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -16,7 +15,7 @@ namespace DropBear.Codex.Blazor.Components.Badges;
 /// <summary>
 ///     A Blazor component for displaying badges with optional tooltips.
 /// </summary>
-public sealed partial class DropBearBadge : DropBearComponentBase
+public sealed partial class DropBearBadge : DropBearComponentBase, IAsyncDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearBadge>();
 
@@ -32,6 +31,23 @@ public sealed partial class DropBearBadge : DropBearComponentBase
     private string TooltipStyle { get; set; } = string.Empty;
 
     private string CssClass => BuildCssClass();
+
+    /// <summary>
+    ///     Handles component disposal, including JS interop cleanup.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            ShowTooltip = false;
+            TooltipStyle = string.Empty;
+            Logger.Debug("Disposing DropBearBadge component.");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during disposal of DropBearBadge component.");
+        }
+    }
 
     /// <summary>
     ///     Builds the CSS class for the badge based on its properties.
@@ -94,4 +110,10 @@ public sealed partial class DropBearBadge : DropBearComponentBase
         Logger.Debug("Tooltip hidden.");
         StateHasChanged();
     }
+}
+
+public struct WindowDimensions
+{
+    public int Width { get; set; }
+    public int Height { get; set; }
 }

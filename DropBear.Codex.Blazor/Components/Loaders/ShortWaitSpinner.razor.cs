@@ -14,36 +14,47 @@ namespace DropBear.Codex.Blazor.Components.Loaders;
 /// </summary>
 public sealed partial class ShortWaitSpinner : DropBearComponentBase
 {
+    /// <summary>
+    ///     Gets or sets the logger instance.
+    /// </summary>
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ShortWaitSpinner>();
 
     /// <summary>
-    ///     The title displayed above the spinner.
+    ///     Gets or sets the title displayed above the spinner.
     /// </summary>
-    [Parameter] public string Title { get; set; } = "Please Wait";
+    [Parameter]
+    public string Title { get; set; } = "Please Wait";
 
     /// <summary>
-    ///     The message displayed below the spinner.
+    ///     Gets or sets the message displayed below the spinner.
     /// </summary>
-    [Parameter] public string Message { get; set; } = "Processing your request";
+    [Parameter]
+    public string Message { get; set; } = "Processing your request";
 
     /// <summary>
-    ///     The size of the spinner (default is medium).
+    ///     Gets or sets the size of the spinner (e.g., "sm", "md", "lg"). Default is "md".
     /// </summary>
-    [Parameter] public string SpinnerSize { get; set; } = "md";
+    [Parameter]
+    public string SpinnerSize { get; set; } = "md";
 
     /// <summary>
-    ///     The color of the spinner (default is theme-based).
+    ///     Gets or sets the color of the spinner. Default is "primary".
     /// </summary>
-    [Parameter] public string SpinnerColor { get; set; } = "primary";
+    [Parameter]
+    public string SpinnerColor { get; set; } = "primary";
 
     protected override void OnInitialized()
     {
+        base.OnInitialized();
         Logger.Debug("ShortWaitSpinner initialized with title '{Title}' and message '{Message}'", Title, Message);
     }
 
     /// <summary>
-    ///     Renders the spinner with appropriate accessibility attributes.
+    ///     Generates the ARIA label for the spinner for accessibility.
     /// </summary>
-    // ReSharper disable once UnusedMember.Local
-    private string GetSpinnerAriaLabel() => $"{Title}: {Message}";
+    /// <returns>The ARIA label string.</returns>
+    private string GetSpinnerAriaLabel()
+    {
+        return $"{Title}: {Message}";
+    }
 }

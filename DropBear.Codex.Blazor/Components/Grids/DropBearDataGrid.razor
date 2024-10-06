@@ -1,5 +1,4 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
-@using DropBear.Codex.Blazor.Enums
 @typeparam TItem
 
 @if (IsLoading)
@@ -32,7 +31,8 @@ else
                         @if (EnableSearch)
                         {
                             <div class="search-wrapper">
-                                <input @ref="_searchInput" type="text" class="search-input" placeholder="Search..." @oninput="OnSearchInput" @bind="SearchTerm"/>
+                                <input @ref="_searchInput" type="text" class="search-input" placeholder="Search..."
+                                       @oninput="OnSearchInput" @bind="SearchTerm"/>
                                 @if (_isSearching)
                                 {
                                     <span class="search-indicator">Searching...</span>
@@ -41,11 +41,13 @@ else
                         }
                         @if (AllowAdd)
                         {
-                            <button class="btn-primary" @onclick="AddItem"><i class="fas fa-plus"></i> Add</button>
+                            <button class="btn-primary" @onclick="AddItemAsync"><i class="fas fa-plus"></i> Add</button>
                         }
-                        @if(AllowExport)
+                        @if (AllowExport)
                         {
-                            <button class="btn-secondary" @onclick="ExportData"><i class="fas fa-file-export"></i> Export</button>
+                            <button class="btn-secondary" @onclick="ExportDataAsync"><i class="fas fa-file-export"></i>
+                                Export
+                            </button>
                         }
                     </div>
                 </div>
@@ -59,18 +61,19 @@ else
                             @if (EnableMultiSelect)
                             {
                                 <th class="datagrid-cell" style="width: 40px;">
-                                    <input type="checkbox" @onchange="@(e => ToggleSelectAll(e.Value is bool and true))"/>
+                                    <input type="checkbox" @onchange="@(e => ToggleSelectAll(e.Value is bool b && b))"/>
                                 </th>
                             }
                             @foreach (var column in _columns)
                             {
-                                <th class="datagrid-cell" style="min-width: @(column.Width)px;" @onclick="@(() => SortBy(column))">
+                                <th class="datagrid-cell" style="min-width: @(column.Width)px;"
+                                    @onclick="@(() => SortBy(column))">
                                     <div class="datagrid-cell-content">
                                         @column.Title
                                         @if (column.Sortable)
                                         {
                                             var sortDirection = GetSortDirection(column);
-                                            <i class="fas @(sortDirection == SortDirection.Ascending ? "fa-sort-up" : sortDirection == SortDirection.Descending ? "fa-sort-down" : "fa-sort") datagrid-cell-sort-icon"></i>
+                                            <i class="fas @(GetSortIconClass(sortDirection)) datagrid-cell-sort-icon"></i>
                                         }
                                     </div>
                                 </th>
@@ -107,14 +110,17 @@ else
                         {
                             @foreach (var item in DisplayedItems)
                             {
-                                <tr @key="item" class="datagrid-row @(SelectedItems.Contains(item) ? "selected" : "")"
-                                    @onclick="() => HandleRowClick(item)"
-                                    @oncontextmenu="e => HandleRowContextMenu(e, item)"
+                                <tr @key="item" class="datagrid-row @(IsItemSelected(item) ? "selected" : "")"
+                                    @onclick="() => HandleRowClickAsync(item)"
+                                    @ondblclick="() => HandleRowDoubleClickAsync(item)"
+                                    @oncontextmenu="e => HandleRowContextMenuAsync(e, item)"
                                     @oncontextmenu:preventDefault>
                                     @if (EnableMultiSelect)
                                     {
                                         <td class="datagrid-cell" style="width: 40px;">
-                                            <input type="checkbox" checked="@SelectedItems.Contains(item)" @onchange="@(e => ToggleSelection(item, e.Value is bool and true))" @onclick:stopPropagation/>
+                                            <input type="checkbox" checked="@IsItemSelected(item)"
+                                                   @onchange="@(e => ToggleSelection(item, e.Value is bool b && b))"
+                                                   @onclick:stopPropagation="true"/>
                                         </td>
                                     }
                                     @foreach (var column in _columns)
@@ -137,13 +143,15 @@ else
                                         <td class="datagrid-cell datagrid-cell-actions">
                                             @if (AllowEdit)
                                             {
-                                                <button class="btn-icon" @onclick:stopPropagation="true" @onclick="@(() => EditItem(item))">
+                                                <button class="btn-icon" @onclick:stopPropagation="true"
+                                                        @onclick="@(() => EditItemAsync(item))">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
                                             }
                                             @if (AllowDelete)
                                             {
-                                                <button class="btn-icon" @onclick:stopPropagation="true" @onclick="@(() => DeleteItem(item))">
+                                                <button class="btn-icon" @onclick:stopPropagation="true"
+                                                        @onclick="@(() => DeleteItemAsync(item))">
                                                     <i class="fas fa-trash"></i>
                                                 </button>
                                             }
@@ -152,7 +160,6 @@ else
                                 </tr>
                             }
                         }
-
                         </tbody>
                     </table>
                 </div>
@@ -172,7 +179,7 @@ else
                         </div>
                         <div class="items-per-page">
                             <label for="itemsPerPage">Items per page:</label>
-                            <select id="itemsPerPage" @bind="ItemsPerPage">
+                            <select id="itemsPerPage" @bind="ItemsPerPage" @onchange="ItemsPerPageChanged">
                                 @foreach (var option in ItemsPerPageOptions)
                                 {
                                     <option value="@option">@option</option>
@@ -184,10 +191,4 @@ else
             </div>
         </div>
     }
-}
-
-
-@code {
-    // This empty @code block is necessary for the file to be recognized as a Razor component.
-    // All the logic is now in the separate DropBearDataGrid.razor.cs file.
 }

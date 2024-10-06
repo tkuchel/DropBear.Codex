@@ -7,21 +7,21 @@
             @Title
         </h3>
         <div class="progress-container">
-            @if (_isIndeterminate)
+            @if (IsIndeterminate)
             {
                 <div class="progress-bar indeterminate"></div>
             }
             else
             {
-                <div class="progress-bar" style="width: @_currentProgress%">
-                    <span class="progress-text">@_currentProgress%</span>
+                <div class="progress-bar" style="width: @(CurrentProgress)%">
+                    <span class="progress-text">@CurrentProgress%</span>
                 </div>
             }
         </div>
         <p>@Message</p>
         @if (ShowCancelButton)
         {
-            <button class="btn btn-primary" @onclick="Cancel">@CancelButtonText</button>
+            <button class="btn btn-primary" @onclick="CancelAsync">@CancelButtonText</button>
         }
     </div>
 </div>

@@ -1,9 +1,9 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
 using Serilog;
 
@@ -16,161 +16,157 @@ namespace DropBear.Codex.Blazor.Services;
 /// </summary>
 public sealed class PageAlertService : IPageAlertService
 {
-    // Logger for PageAlertService
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<PageAlertService>();
-
-    // Backing field for managing alerts.
-    private readonly List<PageAlert> _alerts = new();
+    private readonly ConcurrentDictionary<Guid, PageAlert> _alerts = new();
+    private readonly object _eventLock = new();
 
     /// <summary>
-    ///     Exposes alerts as read-only to ensure encapsulation.
+    ///     Initializes a new instance of the <see cref="PageAlertService" /> class.
     /// </summary>
-    public IReadOnlyList<PageAlert> Alerts => _alerts.AsReadOnly();
+    public PageAlertService()
+    {
+    }
 
-    // Event to notify the UI when alerts are updated.
-    public event EventHandler<EventArgs>? OnChange;
+    /// <summary>
+    ///     Occurs when an alert should be added.
+    /// </summary>
+    public event AsyncEventHandler<PageAlertEventArgs>? OnAddAlert;
+
+    /// <summary>
+    ///     Occurs when an alert should be removed.
+    /// </summary>
+    public event AsyncEventHandler<PageAlertEventArgs>? OnRemoveAlert;
+
+    /// <summary>
+    ///     Occurs when all alerts should be cleared.
+    /// </summary>
+    public event AsyncEventHandler<EventArgs>? OnClearAlerts;
+
+    /// <summary>
+    ///     Adds an alert with the specified details.
+    /// </summary>
+    public async Task<bool> AddAlertAsync(
+        string title,
+        string message,
+        AlertType type,
+        bool isDismissible,
+        int? durationMs = 5000)
+    {
+        var alert = new PageAlert(title, message, type, isDismissible);
+        if (!_alerts.TryAdd(alert.Id, alert))
+        {
+            Logger.Error("Failed to add alert with ID {AlertId}.", alert.Id);
+            return false;
+        }
+
+        Logger.Debug("Added new alert: {AlertTitle} - Type: {AlertType}, Dismissible: {IsDismissible}", title, type,
+            isDismissible);
+        var result = await InvokeEventAsync(OnAddAlert, new PageAlertEventArgs(alert));
+
+        if (durationMs.HasValue)
+        {
+            _ = RemoveAlertAfterDelayAsync(alert.Id, durationMs.Value);
+        }
+
+        return result;
+    }
 
     /// <summary>
     ///     Removes an alert by its ID.
     /// </summary>
-    /// <param name="id">The ID of the alert to remove.</param>
-    /// <returns>A result indicating success or failure.</returns>
-    public Result RemoveAlert(Guid id)
+    public async Task<bool> RemoveAlertAsync(Guid id)
     {
-        try
+        if (_alerts.TryRemove(id, out var alert))
         {
-            var alert = _alerts.Find(a => a.Id == id);
-
-            if (alert is not { IsDismissible: true })
-            {
-                Logger.Warning("Attempted to remove non-dismissible or non-existing alert with ID: {AlertId}", id);
-                return Result.Failure("Alert is not dismissible or does not exist.");
-            }
-
-            _alerts.RemoveAll(a => a.Id == id);
             Logger.Debug("Alert with ID {AlertId} removed successfully.", id);
-            NotifyStateChanged();
-            return Result.Success();
+            return await InvokeEventAsync(OnRemoveAlert, new PageAlertEventArgs(alert));
         }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error occurred while removing alert with ID {AlertId}.", id);
-            return Result.Failure("An error occurred while removing the alert.");
-        }
+
+        Logger.Warning("Attempted to remove non-existing alert with ID: {AlertId}", id);
+        return false;
     }
 
     /// <summary>
-    ///     Clears all alerts from the list.
+    ///     Clears all alerts.
     /// </summary>
-    /// <returns>A result indicating the success of the operation.</returns>
-    public Result ClearAlerts()
+    public async Task<bool> ClearAlertsAsync()
     {
-        try
-        {
-            _alerts.Clear();
-            Logger.Debug("All alerts cleared successfully.");
-            NotifyStateChanged();
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error occurred while clearing all alerts.");
-            return Result.Failure("An error occurred while clearing alerts.");
-        }
+        _alerts.Clear();
+        Logger.Debug("All alerts cleared successfully.");
+        return await InvokeEventAsync(OnClearAlerts, EventArgs.Empty);
+    }
+
+    private async Task RemoveAlertAfterDelayAsync(Guid id, int delayMs)
+    {
+        await Task.Delay(delayMs);
+        await RemoveAlertAsync(id);
     }
 
     /// <summary>
-    ///     Adds an alert to the list with optional duration.
+    ///     Helper method to invoke events asynchronously and handle exceptions.
     /// </summary>
-    /// <param name="title">The title of the alert.</param>
-    /// <param name="message">The message of the alert.</param>
-    /// <param name="type">The type of the alert.</param>
-    /// <param name="isDismissible">Indicates if the alert can be dismissed.</param>
-    /// <param name="durationMs">Optional duration in milliseconds before the alert is removed automatically.</param>
-    /// <returns>A result indicating success or failure.</returns>
-    public Result AddAlert(string title, string message, AlertType type, bool isDismissible, int? durationMs = 5000)
+    private async Task<bool> InvokeEventAsync<TEventArgs>(AsyncEventHandler<TEventArgs>? eventHandler, TEventArgs args)
     {
-        try
+        if (eventHandler == null)
         {
-            var alert = new PageAlert(title, message, type, isDismissible);
-            _alerts.Add(alert);
-            Logger.Debug("Added new alert: {AlertTitle} - Type: {AlertType}, Dismissible: {IsDismissible}", title, type, isDismissible);
+            Logger.Warning("No subscribers for event.");
+            return false;
+        }
 
-            NotifyStateChanged();
+        Delegate[] invocationList;
+        lock (_eventLock)
+        {
+            invocationList = eventHandler.GetInvocationList();
+        }
 
-            if (durationMs.HasValue)
+        var tasks = new List<Task>();
+        foreach (var handler in invocationList)
+        {
+            var func = (AsyncEventHandler<TEventArgs>)handler;
+            try
             {
-                // Removing the alert after a delay if a duration is specified.
-                Logger.Debug("Scheduling removal of alert {AlertId} after {Duration}ms", alert.Id, durationMs.Value);
-                _ = RemoveAlertAfterDelay(alert.Id, durationMs.Value);
+                tasks.Add(func(this, args));
             }
-
-            return Result.Success();
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error invoking event handler.");
+            }
         }
-        catch (Exception ex)
+
+        if (tasks.Count == 0)
         {
-            Logger.Error(ex, "Error occurred while adding a new alert: {AlertTitle}", title);
-            return Result.Failure("An error occurred while adding the alert.");
+            return false;
         }
-    }
 
-    /// <summary>
-    ///     Asynchronously adds an alert to the list.
-    /// </summary>
-    /// <param name="title">The title of the alert.</param>
-    /// <param name="message">The message of the alert.</param>
-    /// <param name="type">The type of the alert.</param>
-    /// <param name="isDismissible">Indicates if the alert can be dismissed.</param>
-    /// <param name="durationMs">Optional duration in milliseconds before the alert is removed.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task<Result> AddAlertAsync(string title, string message, AlertType type, bool isDismissible, int? durationMs = 5000)
-    {
-        return await Task.Run(() => AddAlert(title, message, type, isDismissible, durationMs)).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    ///     Asynchronously removes an alert by its ID.
-    /// </summary>
-    /// <param name="id">The ID of the alert to remove.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task<Result> RemoveAlertAsync(Guid id)
-    {
-        return await Task.Run(() => RemoveAlert(id)).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    ///     Removes an alert after a specified delay.
-    /// </summary>
-    /// <param name="id">The ID of the alert to remove.</param>
-    /// <param name="delayMs">The delay in milliseconds before removing the alert.</param>
-    private async Task RemoveAlertAfterDelay(Guid id, int delayMs)
-    {
         try
         {
-            Logger.Debug("Starting delay of {Delay}ms for alert {AlertId} removal.", delayMs, id);
-            await Task.Delay(delayMs).ConfigureAwait(false);
-            await RemoveAlertAsync(id).ConfigureAwait(false);
-            Logger.Debug("Alert {AlertId} removed after delay.", id);
+            await Task.WhenAll(tasks);
+            return true;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error occurred while removing alert {AlertId} after delay.", id);
+            Logger.Error(ex, "Error in event handlers.");
+            return false;
         }
+    }
+}
+
+/// <summary>
+///     Represents the event arguments for page alert events.
+/// </summary>
+public class PageAlertEventArgs : EventArgs
+{
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="PageAlertEventArgs" /> class.
+    /// </summary>
+    /// <param name="alert">The page alert associated with the event.</param>
+    public PageAlertEventArgs(PageAlert alert)
+    {
+        Alert = alert;
     }
 
     /// <summary>
-    ///     Notifies subscribers that the alerts have been updated.
+    ///     Gets the page alert associated with the event.
     /// </summary>
-    private void NotifyStateChanged()
-    {
-        try
-        {
-            OnChange?.Invoke(this, EventArgs.Empty);
-            Logger.Debug("PageAlertService state changed, notifying subscribers.");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error occurred while notifying state change.");
-        }
-    }
+    public PageAlert Alert { get; }
 }
