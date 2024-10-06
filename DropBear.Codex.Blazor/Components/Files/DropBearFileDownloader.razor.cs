@@ -66,7 +66,7 @@ public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
             });
 
             // Call the download function, passing progress and cancellation token
-            using var resultStream = await DownloadFileAsync(progress, _dismissCancellationTokenSource.Token);
+            await using var resultStream = await DownloadFileAsync(progress, _dismissCancellationTokenSource.Token);
 
             // Use JS interop to trigger the download using a stream reference
             var streamRef = new DotNetStreamReference(resultStream);
