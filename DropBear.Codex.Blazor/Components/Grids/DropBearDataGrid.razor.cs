@@ -143,7 +143,7 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         try
         {
             _isSearching = true;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
 
             Logger.Debug("Performing search with term: {SearchTerm}", SearchTerm);
 
