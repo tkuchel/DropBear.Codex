@@ -19,7 +19,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
 
     private readonly List<UploadFile> _selectedFiles = new();
     private readonly List<UploadFile> _uploadedFiles = new();
-
+    private ElementReference _fileInputRef;
     [Parameter] public int MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB default
 
     [Parameter] public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
@@ -196,9 +196,8 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     /// <summary>
     ///     Opens the file dialog to select files.
     /// </summary>
-    private void OpenFileDialog()
+    private async Task OpenFileDialog()
     {
-        // Since the file input is hidden, we can trigger it using JavaScript
-        JsRuntime.InvokeVoidAsync("document.getElementById('fileInput').click");
+        await JsRuntime.InvokeVoidAsync("clickElement", _fileInputRef);
     }
 }

@@ -643,3 +643,15 @@ window.getWindowDimensions = () => ({
   width: window.innerWidth,
   height: window.innerHeight,
 });
+
+window.clickElementById = function (id) {
+  console.log(`Attempting to click element with id: ${id}`);
+  let element = document.getElementById(id);
+  if (element) {
+    element.click();
+    console.log(`Clicked element with id: ${id}`);
+  } else {
+    console.error(`Element with id '${id}' not found.`);
+  }
+};
+

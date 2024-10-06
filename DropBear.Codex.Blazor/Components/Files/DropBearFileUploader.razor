@@ -9,11 +9,11 @@
         <div class="file-upload-dropzone">
             <i class="fas fa-cloud-upload-alt fa-2x file-upload-icon"></i>
             <p>Drag & Drop files here or</p>
+            <InputFile OnChange="HandleFileSelectionAsync" multiple id="fileInput" style="opacity:0; width:0; height:0; position:absolute;" />
+
             <button type="button" @onclick="OpenFileDialog" class="file-upload-label">
                 Choose Files
             </button>
-            <!-- Hidden InputFile -->
-            <InputFile OnChange="HandleFileSelectionAsync" multiple style="display:none" id="fileInput"/>
         </div>
 
         <!-- Selected Files List -->
