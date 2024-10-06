@@ -198,6 +198,6 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     /// </summary>
     private async Task OpenFileDialog()
     {
-        await JsRuntime.InvokeVoidAsync("fileInput", _fileInputRef);
+        await JsRuntime.InvokeVoidAsync("clickElementById", _fileInputRef);
     }
 }
