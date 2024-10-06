@@ -30,9 +30,11 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
     private Timer? _debounceTimer;
     private bool _isInitialized;
     private bool _isSearching;
+
+    private IEnumerable<TItem>? _previousItems = Enumerable.Empty<TItem>();
     private ElementReference _searchInput;
 
-    [Parameter] public IEnumerable<TItem> Items { get; set; } = Enumerable.Empty<TItem>();
+    [Parameter] public IEnumerable<TItem>? Items { get; set; } = Enumerable.Empty<TItem>();
 
     [Parameter] public string Title { get; set; } = "Data Grid";
 
@@ -101,22 +103,34 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        await LoadDataAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await base.OnParametersSetAsync();
+
+        if (!ReferenceEquals(_previousItems, Items))
+        {
+            _previousItems = Items;
+            await LoadDataAsync();
+        }
+
         _isInitialized = true;
     }
+
 
     private async Task LoadDataAsync()
     {
         try
         {
             IsLoading = true;
-            StateHasChanged();
-            Logger.Debug("Loading data for DropBearDataGrid.");
+            StateHasChanged(); // Notify the UI that loading has started
 
-            // Simulate data loading
+            // Simulate data loading delay if necessary
             await Task.Delay(200);
 
-            FilteredItems = Items.ToList();
+            FilteredItems = Items != null ? Items.ToList() : new List<TItem>();
+
             UpdateDisplayedItems();
         }
         catch (Exception ex)
@@ -126,9 +140,10 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         finally
         {
             IsLoading = false;
-            StateHasChanged();
+            StateHasChanged(); // Notify the UI that loading has completed
         }
     }
+
 
     private void OnSearchInput(ChangeEventArgs e)
     {
@@ -151,13 +166,21 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
 
             if (string.IsNullOrWhiteSpace(SearchTerm))
             {
-                FilteredItems = Items.ToList();
+                if (Items != null)
+                {
+                    FilteredItems = Items.ToList();
+                }
+
+
             }
             else
             {
                 var searchLower = SearchTerm.ToLowerInvariant();
-                FilteredItems = Items.Where(item => _columns.Any(column =>
-                    MatchesSearchTerm(column.PropertySelector, item, searchLower, column.Format))).ToList();
+                if (Items != null)
+                {
+                    FilteredItems = Items.Where(item => _columns.Any(column =>
+                        MatchesSearchTerm(column.PropertySelector, item, searchLower, column.Format))).ToList();
+                }
             }
 
             CurrentPage = 1;
