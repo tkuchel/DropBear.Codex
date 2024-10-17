@@ -40,7 +40,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="2.5.172"/>
+    <PackageReference Include="MessagePack" Version="2.5.187"/>
     <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
