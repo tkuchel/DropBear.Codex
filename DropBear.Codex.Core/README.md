@@ -6,133 +6,144 @@
 
 ## Overview
 
-**DropBear Codex Core** is a foundational .NET library that provides a set of core utilities, types, and base classes
-for handling results and operations within the DropBear Codex ecosystem. This library is designed to be lightweight,
-efficient, and easy to integrate into various applications.
-
-The core components of this library include result types for encapsulating the outcome of operations, ensuring that
-success, failure, and other states are handled consistently across your applications.
+**DropBear Codex Core** is a foundational .NET library that provides a comprehensive result handling system with strong type safety and functional programming patterns. The library offers a robust set of tools for managing operation outcomes, error handling, and data validation in a type-safe and composable manner.
 
 ## Features
 
-- **Result Handling**: Standardized classes (`Result`, `Result<T>`, `Result<TSuccess, TFailure>`, and
-  `ResultWithPayload<T>`) to represent the outcome of operations, including success, failure, warnings, partial success,
-  and more.
-- **Payload Management**: Support for compressing, hashing, and validating payloads in operations, making it easy to
-  handle large data sets efficiently.
-- **Extensible**: The library is designed with extensibility in mind, allowing you to build on top of the provided
-  result types and adapt them to your specific needs.
-- **Robust Error Handling**: Comprehensive error handling mechanisms to ensure that exceptions are captured, logged, and
-  managed appropriately.
+### Result Types
+- **Base Result Types**: Type-safe result handling with `Result<TError>` and `Result<T, TError>`
+- **Specialized Error Types**: Built-in error types for common scenarios (Validation, Database, Timeout)
+- **Backwards Compatibility**: Legacy support through `Result` and `Result<T>` classes
+- **Payload Handling**: Specialized `ResultWithPayload<T>` for compressed and validated data transfer
+
+### Functional Programming Support
+- **Monadic Operations**: `Map`, `Bind`, `Apply` for composable operations
+- **LINQ Integration**: Full LINQ support for result types
+- **Pattern Matching**: Comprehensive pattern matching capabilities
+- **Lazy Evaluation**: Support for deferred computation
+
+### Error Handling
+- **Type-safe Errors**: Strong typing for error scenarios
+- **Error Composition**: Ability to combine and transform errors
+- **Validation Chains**: Fluent validation API
+- **Async Support**: Full async/await integration
+
+### Extension Methods
+- **LINQ Extensions**: Query and transform results
+- **Validation Extensions**: Fluent validation API
+- **Async Extensions**: Comprehensive async operation support
+- **Combination Extensions**: Compose and combine results
 
 ## Getting Started
 
 ### Installation
 
-You can install the `DropBear.Codex.Core` package via NuGet:
-
 ```sh
 dotnet add package DropBear.Codex.Core
 ```
 
-Or via the NuGet Package Manager in Visual Studio:
+### Basic Usage
 
-```sh
-Install-Package DropBear.Codex.Core
-```
-
-### Usage
-
-#### Basic Result Handling
-
-The core of the library is the `Result` class, which encapsulates the outcome of an operation:
-
+#### Type-safe Error Handling
 ```csharp
-using DropBear.Codex.Core;
+public record ValidationError(string Field, string Message) : ResultError(Message);
 
-var result = Result.Success();
-if (result.IsSuccess)
+public Result<User, ValidationError> ValidateUser(UserInput input)
 {
-    // Handle success
-}
-else
-{
-    // Handle failure
+    return input.Username.Length < 3 
+        ? Result<User, ValidationError>.Failure(new ValidationError("username", "Too short"))
+        : Result<User, ValidationError>.Success(new User(input.Username));
 }
 ```
 
-#### Working with `Result<T>`
-
-For operations that return a value, use `Result<T>`:
-
+#### Chaining Operations
 ```csharp
-var result = Result<int>.Success(42);
-int value = result.ValueOrDefault();
+var result = await GetUserAsync()
+    .BindAsync(ValidateUserAsync)
+    .MapAsync(SaveUserAsync)
+    .MapError(err => new DatabaseError("SaveUser", err.Message));
 
-if (result.IsSuccess)
-{
-    Console.WriteLine($"Operation succeeded with value: {value}");
-}
-else
-{
-    Console.WriteLine("Operation failed.");
-}
+result.Match(
+    user => Console.WriteLine($"Saved user: {user.Id}"),
+    error => Console.WriteLine($"Failed: {error.Message}")
+);
 ```
 
-#### Handling Success and Failure in Operations
-
+#### Validation Chains
 ```csharp
-var result = Result<int>.Try(() => SomeOperationThatMayFail());
-
-result.OnSuccess(() =>
-{
-    // Handle success
-})
-.OnFailure((errorMessage, exception) =>
-{
-    // Handle failure, log errorMessage and exception
-});
+var result = await userInput
+    .ValidateAsync(
+        async u => await ValidateUsername(u),
+        async u => await ValidateEmail(u),
+        async u => await ValidatePassword(u)
+    );
 ```
 
-#### Result with Payload
-
-For operations involving payloads:
-
+#### Working with Collections
 ```csharp
-var payloadResult = ResultWithPayload<string>.SuccessWithPayload("Hello, World!");
+var results = await users
+    .TraverseAsync(async user => await ValidateUserAsync(user))
+    .MapAsync(validUsers => SaveUsersAsync(validUsers));
+```
 
+#### Payload Handling
+```csharp
+var payloadResult = await ResultWithPayload<UserData>.SuccessAsync(userData);
 if (payloadResult.IsValid)
 {
-    var decompressedResult = payloadResult.DecompressAndDeserialize();
-    Console.WriteLine(decompressedResult.ValueOrDefault());
-}
-else
-{
-    Console.WriteLine("Payload validation failed.");
+    var decompressed = await payloadResult
+        .DecompressAndDeserialize<UserData>()
+        .BindAsync(SaveUserDataAsync);
 }
 ```
+
+## Advanced Features
+
+### Custom Error Types
+```csharp
+public record DatabaseError : ResultError
+{
+    public DatabaseError(string operation, string message) 
+        : base($"{operation} failed: {message}") 
+    {
+        Operation = operation;
+    }
+
+    public string Operation { get; }
+}
+```
+
+### Async Operations with Timeout
+```csharp
+var result = await operation
+    .RetryAsync(maxAttempts: 3, delay: TimeSpan.FromSeconds(1))
+    .TimeoutAfter(TimeSpan.FromSeconds(5));
+```
+
+### Result Combination
+```csharp
+var combined = await Task.WhenAll(
+    ValidateUserAsync(user),
+    ValidateRolesAsync(roles),
+    ValidatePermissionsAsync(permissions)
+);
+```
+
+## Best Practices
+
+1. **Use Type-safe Errors**: Create specific error types for different scenarios
+2. **Leverage Async Operations**: Use async methods where appropriate
+3. **Chain Operations**: Use functional composition instead of nested if statements
+4. **Handle All States**: Always handle both success and failure cases
+5. **Validate Early**: Use the validation extensions for input validation
 
 ## Contributing
 
-Contributions are welcome! Please read
-the [CONTRIBUTING.md](https://github.com/tkuchel/DropBear.Codex/blob/main/CONTRIBUTING.md) for guidelines on how to
-contribute to this project.
+Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details on our code of conduct and the process for submitting pull requests.
 
 ## License
 
-This project is licensed under the MIT License - see
-the [LICENSE](https://github.com/tkuchel/DropBear.Codex/blob/main/LICENSE) file for details.
-
-## Acknowledgements
-
-Special thanks to the .NET community for their continuous support and contributions to the ecosystem.
-
-## Contact
-
-For any questions or suggestions, feel free to open an issue on GitHub or contact the project maintainer:
-
-- [GitHub Issues](https://github.com/tkuchel/DropBear.Codex/issues)
-- [Email](mailto:your.emailexample.com)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 

@@ -3,6 +3,7 @@
 using System.Reflection;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Utilities.Comparers.ComparisonStrategies;
 using DropBear.Codex.Utilities.Comparers.Models;
 using DropBear.Codex.Utilities.Interfaces;

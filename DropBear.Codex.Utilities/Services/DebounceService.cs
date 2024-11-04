@@ -1,8 +1,8 @@
 ﻿#region
 
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Utilities.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
 using Serilog;
