@@ -47,15 +47,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.177">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
-    <PackageReference Include="R3" Version="1.2.8"/>
+    <PackageReference Include="R3" Version="1.2.9" />
     <PackageReference Include="Stateless" Version="5.16.0"/>
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.6.143</Version>
+      <Version>3.6.146</Version>
     </PackageReference>
   </ItemGroup>
 

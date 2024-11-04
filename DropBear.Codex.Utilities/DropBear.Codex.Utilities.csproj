@@ -40,16 +40,16 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="ClosedXML" Version="0.102.3" />
+    <PackageReference Include="ClosedXML" Version="0.104.1" />
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.163">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.177">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.0"/>
+    <PackageReference Include="Microsoft.Extensions.Caching.Memory" Version="8.0.1" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.6.143</Version>
+      <Version>3.6.146</Version>
     </PackageReference>
   </ItemGroup>
 
