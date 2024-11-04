@@ -8,7 +8,7 @@
 
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Version>2024.10.0</Version>
-    <PackageVersion>2024.10.0</PackageVersion>
+    <PackageVersion>2024.11.0</PackageVersion>
     <PackageId>DropBear.Codex.Hashing</PackageId>
     <Title>DropBear Codex Hashing</Title>
     <Description>Provides various hashing implementations and utilities for the DropBear.Codex ecosystem</Description>
