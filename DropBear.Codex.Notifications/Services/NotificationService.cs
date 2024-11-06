@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Notifications.Exceptions;
 using DropBear.Codex.Notifications.Interfaces;
 using DropBear.Codex.Notifications.Models;

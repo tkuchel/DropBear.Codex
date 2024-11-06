@@ -4,6 +4,7 @@ using System.Text;
 using Blake3;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Hashing.Interfaces;
 using Serilog;
 

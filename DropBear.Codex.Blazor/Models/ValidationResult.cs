@@ -1,7 +1,7 @@
 ﻿#region
 
-using DropBear.Codex.Core;
 using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Results.Compatibility;
 
 #endregion
 
@@ -17,16 +17,11 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     /// <summary>
     ///     Initializes a new instance of the <see cref="ValidationResult" /> class.
     /// </summary>
-    /// <param name="validationErrors">A collection of validation errors.</param>
-    /// <param name="error">The error message associated with the result, if any.</param>
-    /// <param name="exception">The exception associated with the result, if any.</param>
-    private ValidationResult(IEnumerable<ValidationError> validationErrors, string? error, Exception? exception)
-        : base(validationErrors.ToList(), error, exception,
-            validationErrors.Any() ? ResultState.Failure : ResultState.Success)
+    private ValidationResult(IEnumerable<ValidationError> validationErrors, string? error, Exception? exception,
+        ResultState state)
+        : base(validationErrors.ToList(), error, exception, state)
     {
-        // Initialize _errors from the already enumerated collection (cached)
-        _errors = Value
-            .ToList(); // No need to call ToList() again as 'validationErrors' is already enumerated in base constructor
+        _errors = Value.ToList();
     }
 
     /// <summary>
@@ -40,46 +35,18 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
     public bool IsValid => !_errors.Any();
 
     /// <summary>
-    ///     Creates a successful validation result with no errors.
+    ///     Creates a new ValidationResult instance with the current errors.
     /// </summary>
-    /// <returns>A successful <see cref="ValidationResult" />.</returns>
-    public new static ValidationResult Success()
+    private ValidationResult CreateNewResult()
     {
-        return new ValidationResult(Enumerable.Empty<ValidationError>(), null, null);
-    }
-
-    /// <summary>
-    ///     Creates a failed validation result with the provided errors.
-    /// </summary>
-    /// <param name="errors">The validation errors.</param>
-    /// <param name="error">The error message associated with the result, if any.</param>
-    /// <param name="exception">The exception associated with the result, if any.</param>
-    /// <returns>A failed <see cref="ValidationResult" />.</returns>
-    public static ValidationResult Failure(IEnumerable<ValidationError> errors, string? error = null,
-        Exception? exception = null)
-    {
-        return new ValidationResult(errors, error, exception);
-    }
-
-    /// <summary>
-    ///     Creates a failed validation result with a single error.
-    /// </summary>
-    /// <param name="error">The validation error.</param>
-    /// <param name="errorMessage">The error message associated with the result, if any.</param>
-    /// <param name="exception">The exception associated with the result, if any.</param>
-    /// <returns>A failed <see cref="ValidationResult" />.</returns>
-    public static ValidationResult Failure(ValidationError error, string? errorMessage = null,
-        Exception? exception = null)
-    {
-        return new ValidationResult(new[] { error }, errorMessage, exception);
+        var state = _errors.Any() ? ResultState.Failure : ResultState.Success;
+        return new ValidationResult(_errors, ErrorMessage, Exception, state);
     }
 
     /// <summary>
     ///     Adds a single validation error to the ValidationResult.
     /// </summary>
-    /// <param name="parameter">The name of the parameter or property that caused the validation error.</param>
-    /// <param name="errorMessage">The error message describing the validation failure.</param>
-    public void AddError(string parameter, string errorMessage)
+    public ValidationResult AddError(string parameter, string errorMessage)
     {
         if (string.IsNullOrWhiteSpace(parameter))
         {
@@ -91,32 +58,40 @@ public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
             throw new ArgumentNullException(nameof(errorMessage), "Error message cannot be null or empty.");
         }
 
-        _errors.Add(new ValidationError(parameter, errorMessage));
-        UpdateState();
+        var newErrors = new List<ValidationError>(_errors) { new(parameter, errorMessage) };
+        return new ValidationResult(newErrors, ErrorMessage, Exception, ResultState.Failure);
     }
 
     /// <summary>
     ///     Adds multiple validation errors to the ValidationResult.
     /// </summary>
-    /// <param name="errors">An IEnumerable of ValidationError objects to be added.</param>
-    public void AddErrors(IEnumerable<ValidationError> errors)
+    public ValidationResult AddErrors(IEnumerable<ValidationError> errors)
     {
         if (errors == null || !errors.Any())
         {
             throw new ArgumentNullException(nameof(errors), "Errors cannot be null or empty.");
         }
 
-        _errors.AddRange(errors);
-        UpdateState();
+        var newErrors = new List<ValidationError>(_errors);
+        newErrors.AddRange(errors);
+        return new ValidationResult(newErrors, ErrorMessage, Exception, ResultState.Failure);
     }
 
-    /// <summary>
-    ///     Updates the internal state of the ValidationResult.
-    /// </summary>
-    private void UpdateState()
+    // Factory methods
+    public new static ValidationResult Success()
     {
-        // Set Value to _errors directly, which is already a cached collection
-        Value = _errors;
-        State = _errors.Any() ? ResultState.Failure : ResultState.Success;
+        return new ValidationResult(Enumerable.Empty<ValidationError>(), null, null, ResultState.Success);
+    }
+
+    public static ValidationResult Failure(IEnumerable<ValidationError> errors, string? error = null,
+        Exception? exception = null)
+    {
+        return new ValidationResult(errors, error, exception, ResultState.Failure);
+    }
+
+    public static ValidationResult Failure(ValidationError error, string? errorMessage = null,
+        Exception? exception = null)
+    {
+        return new ValidationResult(new[] { error }, errorMessage, exception, ResultState.Failure);
     }
 }

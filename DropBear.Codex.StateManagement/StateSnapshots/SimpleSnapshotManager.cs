@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.StateManagement.StateSnapshots.Interfaces;
 using DropBear.Codex.StateManagement.StateSnapshots.Models;
 using Serilog;

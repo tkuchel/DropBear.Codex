@@ -4,6 +4,7 @@ using System.Collections;
 using System.Text;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Hashing.Helpers;
 using DropBear.Codex.Hashing.Interfaces;
 using Konscious.Security.Cryptography;

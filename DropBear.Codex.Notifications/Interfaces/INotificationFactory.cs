@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 

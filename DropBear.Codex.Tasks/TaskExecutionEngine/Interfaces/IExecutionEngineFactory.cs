@@ -1,4 +1,5 @@
 ﻿using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Compatibility;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 

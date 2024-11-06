@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Hashing;
 using DropBear.Codex.Hashing.Interfaces;

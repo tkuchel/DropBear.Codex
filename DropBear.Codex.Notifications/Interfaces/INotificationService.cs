@@ -1,6 +1,7 @@
 ﻿#region
 
 using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Notifications.Models;
 
 #endregion

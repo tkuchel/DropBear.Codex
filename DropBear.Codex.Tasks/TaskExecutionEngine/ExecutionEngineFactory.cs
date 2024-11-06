@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;

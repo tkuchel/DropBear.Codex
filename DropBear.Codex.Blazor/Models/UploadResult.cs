@@ -3,6 +3,7 @@
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Results.Compatibility;
 
 #endregion
 

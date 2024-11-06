@@ -3,6 +3,7 @@
 using System.Diagnostics;
 using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Compatibility;
 using Serilog;
 
 #endregion

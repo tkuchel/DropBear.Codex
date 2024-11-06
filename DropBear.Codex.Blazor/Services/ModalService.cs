@@ -3,6 +3,7 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Compatibility;
 using Microsoft.Extensions.Logging;
 
 #endregion
