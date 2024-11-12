@@ -60,4 +60,8 @@
     <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Events\" />
+  </ItemGroup>
+
 </Project>

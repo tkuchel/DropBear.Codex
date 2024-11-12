@@ -13,14 +13,17 @@ using DropBear.Codex.Core.Results.Errors;
 namespace DropBear.Codex.Core.Results.Specialized;
 
 /// <summary>
-///     Represents the outcome of an operation that includes a payload, with support for compression, hashing, and
-///     validation.
+///     Represents a Result that includes a compressed and hashed payload
 /// </summary>
-public class ResultWithPayload<T> : Result<T, PayloadError>
+public sealed class ResultWithPayload<T> : Result<T, PayloadError>
 {
+    private const int BufferSize = 81920; // 80KB buffer for optimal compression performance
+
+    #region Constructor
+
     private ResultWithPayload(
         T? value,
-        byte[] payload,
+        ReadOnlyMemory<byte> payload,
         string hash,
         ResultState state,
         PayloadError? error = null,
@@ -31,36 +34,44 @@ public class ResultWithPayload<T> : Result<T, PayloadError>
         Hash = hash;
     }
 
-    public byte[] Payload { get; }
+    #endregion
 
-    public string Hash { get; }
+    #region Public Methods
 
-    public bool IsValid => IsSuccess && ValidateHash(Payload, Hash);
-
-    public Result<TOut, PayloadError> DecompressAndDeserialize<TOut>()
+    /// <summary>
+    ///     Decompresses and deserializes the payload to a new type
+    /// </summary>
+    public async ValueTask<Result<TOut, PayloadError>> DecompressAndDeserializeAsync<TOut>(
+        JsonSerializerOptions? options = null,
+        CancellationToken cancellationToken = default)
     {
         if (!IsSuccess)
         {
             return Result<TOut, PayloadError>.Failure(
-                new PayloadError("Operation failed, cannot decompress."));
+                new PayloadError("Cannot decompress failed result"));
+        }
+
+        if (!IsValid)
+        {
+            return Result<TOut, PayloadError>.Failure(
+                new PayloadError("Payload validation failed"));
         }
 
         try
         {
-            using var input = new MemoryStream(Payload);
-            using var gzip = new GZipStream(input, CompressionMode.Decompress);
-            using var reader = new StreamReader(gzip);
-            var decompressedJson = reader.ReadToEnd();
+            using var decompressedStream = await DecompressToStreamAsync(
+                Payload,
+                cancellationToken).ConfigureAwait(false);
 
-            if (!ValidateHash(Payload, Hash))
-            {
-                throw new InvalidOperationException("Data corruption detected during decompression.");
-            }
+            var result = await JsonSerializer.DeserializeAsync<TOut>(
+                decompressedStream,
+                options,
+                cancellationToken).ConfigureAwait(false);
 
-            var deserializedData = JsonSerializer.Deserialize<TOut>(decompressedJson);
-            return deserializedData is not null
-                ? Result<TOut, PayloadError>.Success(deserializedData)
-                : Result<TOut, PayloadError>.Failure(new PayloadError("Deserialization returned null."));
+            return result is not null
+                ? Result<TOut, PayloadError>.Success(result)
+                : Result<TOut, PayloadError>.Failure(
+                    new PayloadError("Deserialization returned null"));
         }
         catch (Exception ex)
         {
@@ -69,116 +80,153 @@ public class ResultWithPayload<T> : Result<T, PayloadError>
         }
     }
 
-    private static bool ValidateHash(byte[] data, string expectedHash)
+    #endregion
+
+    #region Properties
+
+    public ReadOnlyMemory<byte> Payload { get; }
+    public string Hash { get; }
+    public bool IsValid => IsSuccess && ValidateHash(Payload.Span, Hash);
+
+    #endregion
+
+    #region Public Factory Methods
+
+    /// <summary>
+    ///     Creates a new successful ResultWithPayload asynchronously
+    /// </summary>
+    public static async ValueTask<ResultWithPayload<T>> CreateAsync(
+        T value,
+        JsonSerializerOptions? options = null,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var jsonStream = new MemoryStream();
+            await JsonSerializer.SerializeAsync(jsonStream, value, options, cancellationToken)
+                .ConfigureAwait(false);
+
+            var compressedData = await CompressDataAsync(
+                jsonStream.ToArray(),
+                cancellationToken).ConfigureAwait(false);
+
+            var hash = ComputeHash(compressedData.Span);
+
+            return new ResultWithPayload<T>(
+                value,
+                compressedData,
+                hash,
+                ResultState.Success);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return CreateFailureResult(ex.Message);
+        }
+    }
+
+    /// <summary>
+    ///     Creates a new successful ResultWithPayload synchronously
+    /// </summary>
+    public static ResultWithPayload<T> Create(
+        T value,
+        JsonSerializerOptions? options = null)
+    {
+        try
+        {
+            var jsonData = JsonSerializer.Serialize(value, options);
+            var rawData = Encoding.UTF8.GetBytes(jsonData);
+            var compressedData = CompressData(rawData);
+            var hash = ComputeHash(compressedData.Span);
+
+            return new ResultWithPayload<T>(
+                value,
+                compressedData,
+                hash,
+                ResultState.Success);
+        }
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
+        {
+            return CreateFailureResult(ex.Message);
+        }
+    }
+
+    /// <summary>
+    ///     Creates a failure result with the specified error message
+    /// </summary>
+    public static ResultWithPayload<T> Failure(string errorMessage)
+    {
+        return CreateFailureResult(errorMessage);
+    }
+
+    #endregion
+
+    #region Private Helper Methods
+
+    private static bool ValidateHash(ReadOnlySpan<byte> data, string expectedHash)
     {
         var actualHash = ComputeHash(data);
         return string.Equals(actualHash, expectedHash, StringComparison.Ordinal);
     }
 
-    private static string ComputeHash(byte[] data)
+    private static string ComputeHash(ReadOnlySpan<byte> data)
     {
-        var hash = SHA256.HashData(data);
-        return Convert.ToBase64String(hash);
+        Span<byte> hashSpan = stackalloc byte[32]; // SHA256 = 32 bytes
+        if (SHA256.TryHashData(data, hashSpan, out _))
+        {
+            return Convert.ToBase64String(hashSpan);
+        }
+
+        throw new InvalidOperationException("Hash computation failed");
     }
 
-    private static async Task<byte[]> CompressAsync(byte[] data)
+    private static async ValueTask<ReadOnlyMemory<byte>> CompressDataAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken)
     {
         using var output = new MemoryStream();
-        using (var zip = new GZipStream(output, CompressionMode.Compress))
+        using (var zip = new GZipStream(output, CompressionLevel.Optimal))
         {
-            await zip.WriteAsync(data).ConfigureAwait(false);
+            await zip.WriteAsync(data, cancellationToken).ConfigureAwait(false);
         }
 
         return output.ToArray();
     }
 
-    private static byte[] Compress(byte[] data)
+    private static ReadOnlyMemory<byte> CompressData(ReadOnlyMemory<byte> data)
     {
         using var output = new MemoryStream();
-        using (var zip = new GZipStream(output, CompressionMode.Compress))
+        using (var zip = new GZipStream(output, CompressionLevel.Optimal))
         {
-            zip.Write(data, 0, data.Length);
+            zip.Write(data.Span);
         }
 
         return output.ToArray();
     }
 
-    public new static ResultWithPayload<T> Success(T data)
+    private static async ValueTask<MemoryStream> DecompressToStreamAsync(
+        ReadOnlyMemory<byte> compressedData,
+        CancellationToken cancellationToken)
     {
-        try
-        {
-            var jsonData = JsonSerializer.Serialize(data);
-            var compressedData = Compress(Encoding.UTF8.GetBytes(jsonData));
-            var hash = ComputeHash(compressedData);
+        var outputStream = new MemoryStream();
+        using var inputStream = new MemoryStream(compressedData.ToArray());
+        using var gzip = new GZipStream(inputStream, CompressionMode.Decompress);
 
-            return new ResultWithPayload<T>(
-                data,
-                compressedData,
-                hash,
-                ResultState.Success);
-        }
-        catch (JsonException)
-        {
-            return new ResultWithPayload<T>(
-                default,
-                Array.Empty<byte>(),
-                string.Empty,
-                ResultState.Failure,
-                new PayloadError("Serialization failed."));
-        }
-        catch (Exception ex)
-        {
-            return new ResultWithPayload<T>(
-                default,
-                Array.Empty<byte>(),
-                string.Empty,
-                ResultState.Failure,
-                new PayloadError(ex.Message));
-        }
+        await gzip.CopyToAsync(outputStream, BufferSize, cancellationToken)
+            .ConfigureAwait(false);
+
+        outputStream.Position = 0;
+        return outputStream;
     }
 
-    public static ResultWithPayload<T> Failure(string error)
+    private static ResultWithPayload<T> CreateFailureResult(string errorMessage)
     {
         return new ResultWithPayload<T>(
             default,
             Array.Empty<byte>(),
             string.Empty,
             ResultState.Failure,
-            new PayloadError(error));
+            new PayloadError(errorMessage));
     }
 
-    public static async Task<ResultWithPayload<T>> SuccessAsync(T data)
-    {
-        try
-        {
-            var jsonData = JsonSerializer.Serialize(data);
-            var compressedData = await CompressAsync(Encoding.UTF8.GetBytes(jsonData))
-                .ConfigureAwait(false);
-            var hash = ComputeHash(compressedData);
-
-            return new ResultWithPayload<T>(
-                data,
-                compressedData,
-                hash,
-                ResultState.Success);
-        }
-        catch (JsonException)
-        {
-            return new ResultWithPayload<T>(
-                default,
-                Array.Empty<byte>(),
-                string.Empty,
-                ResultState.PartialSuccess,
-                new PayloadError("Serialization partially failed."));
-        }
-        catch (Exception ex)
-        {
-            return new ResultWithPayload<T>(
-                default,
-                Array.Empty<byte>(),
-                string.Empty,
-                ResultState.Failure,
-                new PayloadError(ex.Message));
-        }
-    }
+    #endregion
 }

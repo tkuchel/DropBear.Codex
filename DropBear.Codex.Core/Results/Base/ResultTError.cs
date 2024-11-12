@@ -2,8 +2,7 @@
 
 using System.Collections.ObjectModel;
 using DropBear.Codex.Core.Enums;
-using DropBear.Codex.Core.Logging;
-using Serilog;
+using DropBear.Codex.Core.Interfaces;
 
 #endregion
 
@@ -12,92 +11,31 @@ namespace DropBear.Codex.Core.Results.Base;
 /// <summary>
 ///     Base Result class supporting generic error types
 /// </summary>
-public class Result<TError> : IEquatable<Result<TError>?> where TError : ResultError
+public class Result<TError> : ResultBase, IResult<TError> where TError : ResultError
 {
-    private protected static ILogger? Logger;
+    private readonly ReadOnlyCollection<Exception> _exceptions;
 
-    protected Result(ResultState state, TError? error, Exception? exception)
+    protected Result(ResultState state, TError? error = default, Exception? exception = null)
+        : base(state, exception)
     {
         if (state is ResultState.Failure or ResultState.PartialSuccess && error is null)
         {
-            throw new ArgumentException("An error must be provided for non-success results.", nameof(error));
+            throw new ArgumentException("Error required for non-success results", nameof(error));
         }
 
-        State = state;
         Error = error;
-        Exception = exception;
-        Exceptions = new ReadOnlyCollection<Exception>(new List<Exception>());
-        Logger = LoggerFactory.Logger.ForContext<Result<TError>>();
+        _exceptions = new ReadOnlyCollection<Exception>(
+            exception is null ? Array.Empty<Exception>() : new[] { exception });
     }
 
-    public ResultState State { get; }
     public TError? Error { get; }
-    public Exception? Exception { get; }
+    public override IReadOnlyCollection<Exception> Exceptions => _exceptions;
 
-    protected ReadOnlyCollection<Exception> Exceptions { get; init; }
-
-    public bool IsSuccess => State is ResultState.Success or ResultState.PartialSuccess;
-
-    public bool Equals(Result<TError>? other)
-    {
-        if (other is null)
-        {
-            return false;
-        }
-
-        if (ReferenceEquals(this, other))
-        {
-            return true;
-        }
-
-        return State == other.State &&
-               EqualityComparer<TError>.Default.Equals(Error, other.Error) &&
-               EqualityComparer<Exception>.Default.Equals(Exception, other.Exception) &&
-               Exceptions.SequenceEqual(other.Exceptions);
-    }
-
-    public Result<TError> Recover(Func<TError, Exception?, Result<TError>> recovery)
-    {
-        return IsSuccess ? this : recovery(Error!, Exception);
-    }
-
-    public Result<TError> Ensure(Func<bool> predicate, TError error)
-    {
-        if (!IsSuccess)
-        {
-            return this;
-        }
-
-        return predicate() ? this : Failure(error);
-    }
-
-    protected static void SafeExecute(Action action)
-    {
-        try
-        {
-            action();
-        }
-        catch (Exception ex)
-        {
-            Logger?.Error(ex, "Exception during action execution.");
-        }
-    }
-
-    protected static async Task SafeExecuteAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Logger?.Error(ex, "Exception during asynchronous action execution.");
-        }
-    }
+    #region Factory Methods
 
     public static Result<TError> Success()
     {
-        return new Result<TError>(ResultState.Success, default, null);
+        return new Result<TError>(ResultState.Success);
     }
 
     public static Result<TError> Failure(TError error, Exception? exception = null)
@@ -107,17 +45,57 @@ public class Result<TError> : IEquatable<Result<TError>?> where TError : ResultE
 
     public static Result<TError> Warning(TError error)
     {
-        return new Result<TError>(ResultState.Warning, error, null);
+        return new Result<TError>(ResultState.Warning, error);
     }
 
     public static Result<TError> PartialSuccess(TError error)
     {
-        return new Result<TError>(ResultState.PartialSuccess, error, null);
+        return new Result<TError>(ResultState.PartialSuccess, error);
     }
 
     public static Result<TError> Cancelled(TError error)
     {
-        return new Result<TError>(ResultState.Cancelled, error, null);
+        return new Result<TError>(ResultState.Cancelled, error);
+    }
+
+    #endregion
+
+    #region Operation Methods
+
+    public Result<TError> Recover(Func<TError, Exception?, Result<TError>> recovery)
+    {
+        if (IsSuccess)
+        {
+            return this;
+        }
+
+        try
+        {
+            return recovery(Error!, Exception);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during recovery");
+            return this;
+        }
+    }
+
+    public Result<TError> Ensure(Func<bool> predicate, TError error)
+    {
+        if (!IsSuccess)
+        {
+            return this;
+        }
+
+        try
+        {
+            return predicate() ? this : Failure(error);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during ensure predicate");
+            return Failure(error, ex);
+        }
     }
 
     public T Match<T>(
@@ -129,22 +107,82 @@ public class Result<TError> : IEquatable<Result<TError>?> where TError : ResultE
         Func<TError, T>? onPending = null,
         Func<TError, T>? onNoOp = null)
     {
-        return State switch
+        try
         {
-            ResultState.Success => onSuccess(),
-            ResultState.Failure => onFailure(Error!, Exception),
-            ResultState.Warning => InvokeOrDefault(onWarning, onFailure),
-            ResultState.PartialSuccess => InvokeOrDefault(onPartialSuccess, onFailure),
-            ResultState.Cancelled => InvokeOrDefault(onCancelled, onFailure),
-            ResultState.Pending => InvokeOrDefault(onPending, onFailure),
-            ResultState.NoOp => InvokeOrDefault(onNoOp, onFailure),
-            _ => throw new InvalidOperationException("Unhandled result state.")
-        };
+            return State switch
+            {
+                ResultState.Success => onSuccess(),
+                ResultState.Failure => onFailure(Error!, Exception),
+                ResultState.Warning => InvokeOrDefault(onWarning, onFailure),
+                ResultState.PartialSuccess => InvokeOrDefault(onPartialSuccess, onFailure),
+                ResultState.Cancelled => InvokeOrDefault(onCancelled, onFailure),
+                ResultState.Pending => InvokeOrDefault(onPending, onFailure),
+                ResultState.NoOp => InvokeOrDefault(onNoOp, onFailure),
+                _ => throw new InvalidOperationException($"Unhandled state: {State}")
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during match operation");
+            return onFailure(Error ?? CreateDefaultError(), ex);
+        }
 
         T InvokeOrDefault(Func<TError, T>? handler, Func<TError, Exception?, T> defaultHandler)
         {
-            return handler != null ? handler(Error!) : defaultHandler(Error!, Exception);
+            return handler is not null ? handler(Error!) : defaultHandler(Error!, Exception);
         }
+    }
+
+    #endregion
+
+    #region Protected Helper Methods
+
+    protected static async ValueTask SafeExecuteAsync(Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during asynchronous execution");
+        }
+    }
+
+    protected new static void SafeExecute(Action action)
+    {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during synchronous execution");
+        }
+    }
+
+    private TError CreateDefaultError()
+    {
+        return (TError)Activator.CreateInstance(typeof(TError), "Operation failed with unhandled exception")!;
+    }
+
+    #endregion
+
+    #region Equality Members
+
+    public bool Equals(TError? other)
+    {
+        if (other is null)
+        {
+            return false;
+        }
+
+        if (Error is null)
+        {
+            return false;
+        }
+
+        return Error.Equals(other);
     }
 
     public override bool Equals(object? obj)
@@ -159,16 +197,21 @@ public class Result<TError> : IEquatable<Result<TError>?> where TError : ResultE
             return true;
         }
 
-        if (obj.GetType() != GetType())
+        if (obj is not Result<TError> other)
         {
             return false;
         }
 
-        return Equals(obj as Result<TError>);
+        return State == other.State &&
+               EqualityComparer<TError?>.Default.Equals(Error, other.Error) &&
+               Equals(Exception, other.Exception) &&
+               _exceptions.SequenceEqual(other._exceptions);
     }
 
     public override int GetHashCode()
     {
-        return HashCode.Combine(State, Error, Exception, Exceptions);
+        return HashCode.Combine(State, Error, Exception, _exceptions);
     }
+
+    #endregion
 }

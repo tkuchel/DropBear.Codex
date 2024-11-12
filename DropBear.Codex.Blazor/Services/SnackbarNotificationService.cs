@@ -42,7 +42,7 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
     public Task<bool> ShowAsync(
         string message,
         SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
+        int duration = 1500,
         bool isDismissible = true,
         string actionText = "Dismiss",
         Func<Task>? onAction = null)
@@ -57,7 +57,7 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
         string title,
         string message,
         SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
+        int duration = 1500,
         bool isDismissible = true,
         string actionText = "Dismiss",
         Func<Task>? onAction = null)

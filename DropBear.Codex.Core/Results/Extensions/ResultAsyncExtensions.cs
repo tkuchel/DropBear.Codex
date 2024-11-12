@@ -132,7 +132,7 @@ public static class ResultAsyncExtensions
         }
     }
 
-    public static async Task<Result<IEnumerable<T>, TError>> WhenAll<T, TError>(
+    public static async Task<Result<IReadOnlyList<T>, TError>> WhenAll<T, TError>(
         this IEnumerable<Task<Result<T, TError>>> tasks)
         where TError : ResultError
     {
