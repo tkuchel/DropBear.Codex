@@ -137,7 +137,7 @@
   const DropBearSnackbar = (() => {
     const logger = DropBearUtils.createLogger('DropBearSnackbar');
     const snackbars = new Map();
-    const ANIMATION_DURATION = 300;
+    const ANIMATION_DURATION = 300 + 100; // Animation duration + extra time
 
     class SnackbarManager {
       constructor(id, element) {
@@ -353,7 +353,7 @@
           const isVisible = window.scrollY > 300;
           dotNetReference.invokeMethodAsync('UpdateVisibility', isVisible)
             .catch(error => logger.error('UpdateVisibility failed:', error));
-        }, 100);
+        }, 250);
 
         window.addEventListener('scroll', scrollHandler);
         scrollHandler(); // Initial check
@@ -399,7 +399,7 @@
 
         resizeHandler = DropBearUtils.debounce(() =>
           dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize')
-            .catch(error => logger.error('SetMaxWidthBasedOnWindowSize failed:', error)), 100);
+            .catch(error => logger.error('SetMaxWidthBasedOnWindowSize failed:', error)), 300);
 
         window.addEventListener('resize', resizeHandler);
         resizeHandler(); // Initial check
