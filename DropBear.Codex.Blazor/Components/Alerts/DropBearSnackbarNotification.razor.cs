@@ -26,7 +26,7 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     private bool _isDismissed;
     private bool _isDisposed;
 
-    [Inject] private IJSRuntime JsRuntime { get; } = null!;
+
 
     [Parameter] public string Title { get; set; } = string.Empty;
     [Parameter] public string Message { get; set; } = string.Empty;

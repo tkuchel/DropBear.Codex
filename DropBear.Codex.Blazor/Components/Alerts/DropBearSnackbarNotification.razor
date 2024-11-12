@@ -1,5 +1,6 @@
-﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
-
+﻿@using Microsoft.JSInterop
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@inject IJSRuntime JsRuntime
 @if (IsVisible)
 {
     <div id="@_snackbarId"
