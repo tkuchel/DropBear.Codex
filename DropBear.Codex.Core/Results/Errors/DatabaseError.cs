@@ -116,7 +116,7 @@ public sealed record DatabaseError : ResultError
     /// <summary>
     ///     Gets the UTC timestamp when the error occurred
     /// </summary>
-    public DateTime Timestamp { get; }
+    public new DateTime Timestamp { get; }
 
     /// <summary>
     ///     Gets whether this is a critical error

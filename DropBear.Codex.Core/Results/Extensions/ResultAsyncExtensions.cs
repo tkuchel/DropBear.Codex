@@ -22,6 +22,11 @@ public static class ResultAsyncExtensions
             return Result<TResult, TError>.Failure(result.Error!);
         }
 
+        if (result.Value == null)
+        {
+            return Result<TResult, TError>.Success(default!);
+        }
+
         var mappedValue = await mapper(result.Value).ConfigureAwait(false);
         return Result<TResult, TError>.Success(mappedValue);
     }
@@ -36,7 +41,12 @@ public static class ResultAsyncExtensions
             return Result<TResult, TError>.Failure(result.Error!);
         }
 
-        return await binder(result.Value).ConfigureAwait(false);
+        if (result.Value != null)
+        {
+            return await binder(result.Value).ConfigureAwait(false);
+        }
+
+        return Result<TResult, TError>.Success(default!);
     }
 
     public static async Task<Result<T, TError>> TimeoutAfter<T, TError>(
@@ -49,13 +59,13 @@ public static class ResultAsyncExtensions
 
         if (completedTask == task)
         {
-            cts.Cancel();
+            await cts.CancelAsync().ConfigureAwait(false);
             return await task.ConfigureAwait(false);
         }
 
         try
         {
-            cts.Cancel();
+            await cts.CancelAsync().ConfigureAwait(false);
             await task.ConfigureAwait(false); // Allow the task to clean up
         }
         catch (Exception)

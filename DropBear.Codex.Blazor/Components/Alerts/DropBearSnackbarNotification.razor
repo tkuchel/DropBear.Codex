@@ -2,29 +2,48 @@
 
 @if (IsVisible)
 {
-    <div id="@SnackbarId"
-         class="snackbar @GetSnackbarClasses()"
+    <div id="@_snackbarId"
+         class="snackbar @GetSnackbarClasses(Type)"
          role="alert"
          aria-live="assertive"
          @attributes="AdditionalAttributes">
+
         <div class="snackbar-icon" aria-hidden="true">
-            <i class="@GetIconClass()"></i>
+            <i class="@GetIconClass(Type)"></i>
         </div>
+
         <div class="snackbar-content">
             @if (!string.IsNullOrEmpty(Title))
             {
-                <div class="snackbar-title">@Title</div>
+                <div class="snackbar-title" role="heading" aria-level="2">@Title</div>
             }
             <p class="snackbar-message">@Message</p>
         </div>
+
         @if (!string.IsNullOrEmpty(ActionText))
         {
-            <button type="button" class="snackbar-action" @onclick="OnActionClick">@ActionText</button>
+            <button type="button"
+                    class="snackbar-action"
+                    @onclick="OnActionClick"
+                    disabled="@(_isAnimating || _isDismissed)">
+                @ActionText
+            </button>
         }
+
         @if (IsDismissible)
         {
-            <button type="button" class="snackbar-close" aria-label="Close" @onclick="Dismiss">&times;</button>
+            <button type="button"
+                    class="snackbar-close"
+                    aria-label="Close notification"
+                    @onclick="DismissAsync"
+                    disabled="@(_isAnimating || _isDismissed)">
+                &times;
+            </button>
         }
-        <div class="snackbar-progress" aria-hidden="true"></div>
+
+        @if (Duration > 0)
+        {
+            <div class="snackbar-progress" aria-hidden="true"></div>
+        }
     </div>
 }

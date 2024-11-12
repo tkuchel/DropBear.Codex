@@ -1,17 +1,30 @@
-﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+﻿@using Microsoft.JSInterop
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@inject IJSRuntime JsRuntime
+<div @key="Type"
+     class="@_alertClass"
+     role="alert"
+     aria-live="polite"
+     aria-label="@GetAriaLabel()"
+     @attributes="AdditionalAttributes">
 
-<div @key="Type" class="alert @_alertClassString" role="alert">
-    <div class="alert-icon">
-        <i class="@_iconClassString"></i>
+    <div class="alert-icon" aria-hidden="true">
+        <i class="@_iconClass"></i>
     </div>
+
     <div class="alert-content">
-        <h4 class="alert-title">@Title</h4>
-        <p class="alert-message">@Message</p>
+        <h4 class="alert-title" id="@($"alert-{Type}-title")">@Title</h4>
+        <p class="alert-message" id="@($"alert-{Type}-message")">@Message</p>
     </div>
+
     @if (IsDismissible)
     {
-        <button class="alert-close" @onclick="OnCloseClick" aria-label="Close alert">
-            <span aria-hidden="true">&times;</span>
+        <button type="button"
+                class="alert-close"
+                @onclick="HandleCloseClick"
+                aria-label="Close alert"
+                disabled="@_isClosing">
+            <span aria-hidden="true" class="alert-close-icon">&times;</span>
         </button>
     }
 </div>

@@ -2,30 +2,22 @@
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject IDebounceService DebounceService
 @using DropBear.Codex.Blazor.Interfaces
-@using DropBear.Codex.Blazor.Models
 @using DropBear.Codex.Notifications.Models
 @using DropBear.Codex.Utilities.Interfaces
 @using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="page-alert-container">
-    @foreach (var alert in CombinedAlerts)
-    {
-        <DropBearPageAlert
-            @key="alert.CreatedAt"
-            Title="@alert.Title"
-            Message="@alert.Message"
-            Type="@alert.Type"
-            IsDismissible="@alert.IsDismissible"
-            OnClose="@(() => OnCloseAlert(alert))"/>
-    }
+<div class="page-alert-container" role="alert" aria-live="polite">
+    <CascadingValue Value="this">
+        @foreach (var alert in CombinedAlerts)
+        {
+            <DropBearPageAlert
+                @key="alert.Id"
+                Title="@alert.Title"
+                Message="@alert.Message"
+                Type="@alert.Type"
+                IsDismissible="@alert.IsDismissible"
+                OnClose="@(() => OnCloseAlert(alert))"/>
+        }
+    </CascadingValue>
 </div>
-
-@code {
-
-    private void OnCloseAlert(PageAlert alert)
-    {
-        RemoveAlert(alert);
-    }
-
-}

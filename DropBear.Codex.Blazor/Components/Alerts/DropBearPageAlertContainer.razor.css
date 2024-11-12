@@ -7,14 +7,36 @@
   flex-direction: column;
   gap: var(--spacing-md);
   width: 100%;
-  max-width: 500px; /* Adjust max-width as needed */
+  max-width: 500px;
   z-index: var(--z-index-dropdown);
   padding: var(--spacing-md);
+  pointer-events: none; /* Allow clicking through container */
 }
 
+.page-alert-container > * {
+  pointer-events: auto; /* Re-enable for alerts */
+}
+
+/* Improved responsive design */
 @media (max-width: 768px) {
   .page-alert-container {
-    max-width: 90%; /* Adjust container width for smaller screens */
-    padding: var(--spacing-sm); /* Reduce padding on smaller screens */
+    max-width: 90%;
+    padding: var(--spacing-sm);
+    gap: var(--spacing-sm);
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .page-alert-container > * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* Print styles */
+@media print {
+  .page-alert-container {
+    display: none;
   }
 }

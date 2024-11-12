@@ -238,7 +238,7 @@ public static class ResultValidationExtensions
 
         if (min.CompareTo(max) > 0)
         {
-            throw new ArgumentException("Minimum value must be less than or equal to maximum value");
+            throw new ArgumentException("Minimum value must be less than or equal to maximum value", nameof(min));
         }
 
         return value.CompareTo(min) >= 0 && value.CompareTo(max) <= 0

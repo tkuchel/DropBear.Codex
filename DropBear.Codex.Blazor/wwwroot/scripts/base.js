@@ -1,542 +1,626 @@
 /**
- * Creates a debounced function that delays invoking the provided function until after the specified wait time.
- * @param {Function} func - The function to debounce.
- * @param {number} wait - The number of milliseconds to delay.
- * @returns {Function} A new debounced function.
+ * @file dropbear.js
+ * Core utilities and components for DropBear Blazor integration
  */
-function debounce(func, wait) {
-  if (typeof func !== 'function') {
-    throw new TypeError('First argument must be a function');
-  }
-  if (typeof wait !== 'number') {
-    throw new TypeError('Second argument must be a number');
-  }
-  let timeout;
-  return function (...args) {
-    clearTimeout(timeout);
-    timeout = setTimeout(() => func.apply(this, args), wait);
-  };
-}
 
-/**
- * Creates a throttled function that only invokes the provided function at most once per every limit milliseconds.
- * @param {Function} func - The function to throttle.
- * @param {number} limit - The number of milliseconds to throttle invocations to.
- * @returns {Function} A new throttled function.
- */
-function throttle(func, limit) {
-  if (typeof func !== 'function') {
-    throw new TypeError('First argument must be a function');
-  }
-  if (typeof limit !== 'number') {
-    throw new TypeError('Second argument must be a number');
-  }
-  let lastFunc;
-  let lastRan;
-  return function (...args) {
-    if (!lastRan) {
-      func.apply(this, args);
-      lastRan = Date.now();
-    } else {
-      clearTimeout(lastFunc);
-      lastFunc = setTimeout(() => {
-        if (Date.now() - lastRan >= limit) {
-          func.apply(this, args);
+(() => {
+  'use strict';
+
+  /**
+   * Core utilities namespace
+   * @namespace
+   */
+  const DropBearUtils = {
+    /**
+     * Enhanced logging utility
+     * @param {string} namespace - Module namespace for log prefixing
+     * @returns {Object} Logger instance
+     */
+    createLogger(namespace) {
+      const prefix = `[${namespace}]`;
+      return {
+        log: (message, ...args) => console.log(`${prefix} ${message}`, ...args),
+        warn: (message, ...args) => console.warn(`${prefix} ${message}`, ...args),
+        error: (message, ...args) => console.error(`${prefix} ${message}`, ...args),
+        debug: (message, ...args) => console.debug(`${prefix} ${message}`, ...args)
+      };
+    },
+
+    /**
+     * Enhanced debounce with improved timing accuracy
+     * @param {Function} func - Function to debounce
+     * @param {number} wait - Milliseconds to wait
+     * @returns {Function} Debounced function
+     */
+    debounce(func, wait) {
+      if (typeof func !== 'function' || typeof wait !== 'number') {
+        throw new TypeError('Invalid arguments: Expected (function, number)');
+      }
+
+      let timeout;
+      return function executedFunction(...args) {
+        const context = this;
+        const later = () => {
+          timeout = null;
+          func.apply(context, args);
+        };
+
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+      };
+    },
+
+    /**
+     * Enhanced throttle with better timing precision
+     * @param {Function} func - Function to throttle
+     * @param {number} limit - Throttle limit in milliseconds
+     * @returns {Function} Throttled function
+     */
+    throttle(func, limit) {
+      if (typeof func !== 'function' || typeof limit !== 'number') {
+        throw new TypeError('Invalid arguments: Expected (function, number)');
+      }
+
+      let inThrottle;
+      let lastRan;
+      let lastFunc;
+
+      return function executedFunction(...args) {
+        const context = this;
+
+        if (!inThrottle) {
+          func.apply(context, args);
           lastRan = Date.now();
+          inThrottle = true;
+        } else {
+          clearTimeout(lastFunc);
+          lastFunc = setTimeout(() => {
+            if (Date.now() - lastRan >= limit) {
+              func.apply(context, args);
+              lastRan = Date.now();
+            }
+          }, Math.max(0, limit - (Date.now() - lastRan)));
         }
-      }, limit - (Date.now() - lastRan));
+      };
+    },
+
+    /**
+     * Safely query DOM element
+     * @param {string} selector - DOM selector
+     * @param {Element} [context=document] - Context element
+     * @returns {Element|null} Found element or null
+     */
+    safeQuerySelector(selector, context = document) {
+      try {
+        return context.querySelector(selector);
+      } catch (error) {
+        console.error(`Invalid selector: ${selector}`, error);
+        return null;
+      }
+    },
+
+    /**
+     * Creates a one-time event listener
+     * @param {Element} element - DOM element
+     * @param {string} eventName - Event name
+     * @param {Function} handler - Event handler
+     * @param {number} [timeout] - Optional timeout
+     * @returns {Promise} Promise that resolves when event fires
+     */
+    createOneTimeListener(element, eventName, handler, timeout) {
+      return new Promise((resolve, reject) => {
+        const timeoutId = timeout && setTimeout(() => {
+          element.removeEventListener(eventName, wrappedHandler);
+          reject(new Error('Event listener timed out'));
+        }, timeout);
+
+        const wrappedHandler = (...args) => {
+          element.removeEventListener(eventName, wrappedHandler);
+          clearTimeout(timeoutId);
+          try {
+            const result = handler(...args);
+            resolve(result);
+          } catch (error) {
+            reject(error);
+          }
+        };
+
+        element.addEventListener(eventName, wrappedHandler, {once: true});
+      });
     }
+  };
+
+  /**
+   * Snackbar management module
+   * @namespace
+   */
+  const DropBearSnackbar = (() => {
+    const logger = DropBearUtils.createLogger('DropBearSnackbar');
+    const snackbars = new Map();
+    const ANIMATION_DURATION = 300;
+
+    class SnackbarManager {
+      constructor(id, element) {
+        this.id = id;
+        this.element = element;
+        this.progressBar = element.querySelector('.snackbar-progress');
+        this.timeout = null;
+        this.isDisposed = false;
+      }
+
+      async startProgress(duration) {
+        if (this.isDisposed || !this.progressBar) return;
+
+        try {
+          // Reset state
+          this.progressBar.style.transition = 'none';
+          this.progressBar.style.width = '100%';
+
+          // Force reflow
+          void this.progressBar.offsetWidth;
+
+          // Start animation
+          this.progressBar.style.transition = `width ${duration}ms linear`;
+          this.progressBar.style.width = '0%';
+
+          clearTimeout(this.timeout);
+          this.timeout = setTimeout(() => this.hide(), duration);
+
+          logger.debug(`Progress started: ${this.id}`);
+        } catch (error) {
+          logger.error(`Progress error: ${error.message}`);
+          await this.hide();
+        }
+      }
+
+      async hide() {
+        if (this.isDisposed) return;
+
+        try {
+          clearTimeout(this.timeout);
+          this.element.classList.add('snackbar-exit');
+
+          await DropBearUtils.createOneTimeListener(
+            this.element,
+            'animationend',
+            () => {
+            },
+            ANIMATION_DURATION + 100
+          );
+
+          this.dispose();
+        } catch (error) {
+          logger.error(`Hide error: ${error.message}`);
+          this.dispose();
+        }
+      }
+
+      dispose() {
+        if (this.isDisposed) return;
+
+        this.isDisposed = true;
+        clearTimeout(this.timeout);
+        this.element?.remove();
+        snackbars.delete(this.id);
+      }
+    }
+
+    return {
+      async startProgress(snackbarId, duration) {
+        if (!snackbarId || typeof duration !== 'number' || duration <= 0) {
+          throw new Error('Invalid arguments');
+        }
+
+        try {
+          const element = document.getElementById(snackbarId);
+          if (!element) return;
+
+          if (snackbars.has(snackbarId)) {
+            await this.disposeSnackbar(snackbarId);
+          }
+
+          const manager = new SnackbarManager(snackbarId, element);
+          snackbars.set(snackbarId, manager);
+          await manager.startProgress(duration);
+        } catch (error) {
+          logger.error('startProgress error:', error);
+        }
+      },
+
+      async hideSnackbar(snackbarId) {
+        try {
+          const manager = snackbars.get(snackbarId);
+          if (manager) await manager.hide();
+        } catch (error) {
+          logger.error('hideSnackbar error:', error);
+        }
+      },
+
+      async disposeSnackbar(snackbarId) {
+        const manager = snackbars.get(snackbarId);
+        if (manager) await manager.dispose();
+      }
+    };
+  })();
+
+  /**
+   * File upload module
+   * @namespace
+   */
+  const DropBearFileUploader = (() => {
+    const logger = DropBearUtils.createLogger('DropBearFileUploader');
+
+    class FileUploader {
+      constructor() {
+        this.boundHandlers = {
+          dragover: this.handleDragOver.bind(this),
+          dragleave: this.handleDragLeave.bind(this),
+          drop: this.handleDrop.bind(this)
+        };
+      }
+
+      initialize() {
+        document.addEventListener('dragover', this.boundHandlers.dragover);
+        document.addEventListener('dragleave', this.boundHandlers.dragleave);
+        document.addEventListener('drop', this.boundHandlers.drop);
+        logger.debug('FileUploader initialized');
+      }
+
+      handleDragOver(e) {
+        const dropZone = e.target.closest('.file-upload-dropzone');
+        if (!dropZone) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.add('dragover');
+      }
+
+      handleDragLeave(e) {
+        const dropZone = e.target.closest('.file-upload-dropzone');
+        if (!dropZone) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('dragover');
+      }
+
+      handleDrop(e) {
+        const dropZone = e.target.closest('.file-upload-dropzone');
+        if (!dropZone) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+        dropZone.classList.remove('dragover');
+
+        const fileInput = dropZone.querySelector('input[type="file"]');
+        if (!fileInput) {
+          logger.error('No file input found in dropzone');
+          return;
+        }
+
+        this.transferFiles(fileInput, e.dataTransfer.files);
+        fileInput.dispatchEvent(new Event('change', {bubbles: true}));
+      }
+
+      transferFiles(fileInput, files) {
+        const dataTransfer = new DataTransfer();
+        Array.from(files).forEach(file => {
+          dataTransfer.items.add(file);
+          logger.debug(`Added file: ${file.name}`);
+        });
+        fileInput.files = dataTransfer.files;
+      }
+
+      dispose() {
+        document.removeEventListener('dragover', this.boundHandlers.dragover);
+        document.removeEventListener('dragleave', this.boundHandlers.dragleave);
+        document.removeEventListener('drop', this.boundHandlers.drop);
+        logger.debug('FileUploader disposed');
+      }
+    }
+
+    const instance = new FileUploader();
+
+    return {
+      initialize() {
+        instance.initialize();
+      },
+      dispose() {
+        instance.dispose();
+      }
+    };
+  })();
+
+  /**
+   * Navigation buttons module
+   * @namespace
+   */
+  const DropBearNavigationButtons = (() => {
+    const logger = DropBearUtils.createLogger('DropBearNavigationButtons');
+    let dotNetReference = null;
+    let scrollHandler = null;
+
+    return {
+      initialize(dotNetRef) {
+        if (!dotNetRef) {
+          throw new Error('dotNetRef is required');
+        }
+
+        this.dispose();
+        dotNetReference = dotNetRef;
+
+        scrollHandler = DropBearUtils.throttle(() => {
+          const isVisible = window.scrollY > 300;
+          dotNetReference.invokeMethodAsync('UpdateVisibility', isVisible)
+            .catch(error => logger.error('UpdateVisibility failed:', error));
+        }, 100);
+
+        window.addEventListener('scroll', scrollHandler);
+        scrollHandler(); // Initial check
+        logger.debug('Navigation buttons initialized');
+      },
+
+      scrollToTop() {
+        window.scrollTo({top: 0, behavior: 'smooth'});
+      },
+
+      goBack() {
+        window.history.back();
+      },
+
+      dispose() {
+        if (scrollHandler) {
+          window.removeEventListener('scroll', scrollHandler);
+          scrollHandler = null;
+        }
+        dotNetReference = null;
+        logger.debug('Navigation buttons disposed');
+      }
+    };
+  })();
+
+  /**
+   * Resize manager module
+   * @namespace
+   */
+  const DropBearResizeManager = (() => {
+    const logger = DropBearUtils.createLogger('DropBearResizeManager');
+    let dotNetReference = null;
+    let resizeHandler = null;
+
+    return {
+      initialize(dotNetRef) {
+        if (!dotNetRef) {
+          throw new Error('dotNetRef is required');
+        }
+
+        this.dispose();
+        dotNetReference = dotNetRef;
+
+        resizeHandler = DropBearUtils.debounce(() =>
+          dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize')
+            .catch(error => logger.error('SetMaxWidthBasedOnWindowSize failed:', error)), 100);
+
+        window.addEventListener('resize', resizeHandler);
+        resizeHandler(); // Initial check
+        logger.debug('Resize manager initialized');
+      },
+
+      dispose() {
+        if (resizeHandler) {
+          window.removeEventListener('resize', resizeHandler);
+          resizeHandler = null;
+        }
+        dotNetReference = null;
+        logger.debug('Resize manager disposed');
+      }
+    };
+  })();
+
+  /**
+   * Context menu module
+   * @namespace
+   */
+  const DropBearContextMenu = (() => {
+    const logger = DropBearUtils.createLogger('DropBearContextMenu');
+    const menuInstances = new Map();
+
+    class ContextMenuManager {
+      constructor(element, dotNetReference) {
+        this.element = element;
+        this.dotNetReference = dotNetReference;
+        this.isDisposed = false;
+        this.boundHandlers = {
+          contextmenu: this.handleContextMenu.bind(this),
+          click: this.handleDocumentClick.bind(this)
+        };
+      }
+
+      initialize() {
+        this.element.addEventListener('contextmenu', this.boundHandlers.contextmenu);
+        document.addEventListener('click', this.boundHandlers.click);
+      }
+
+      handleContextMenu(e) {
+        e.preventDefault();
+        if (!this.isDisposed) {
+          this.show(e.pageX, e.pageY);
+        }
+      }
+
+      handleDocumentClick() {
+        if (!this.isDisposed) {
+          this.dotNetReference.invokeMethodAsync('Hide')
+            .catch(error => logger.error('Hide failed:', error));
+        }
+      }
+
+      async show(x, y) {
+        try {
+          await this.dotNetReference.invokeMethodAsync('Show', x, y);
+        } catch (error) {
+          logger.error('Show failed:', error);
+        }
+      }
+
+      dispose() {
+        if (this.isDisposed) return;
+
+        this.isDisposed = true;
+        this.element.removeEventListener('contextmenu', this.boundHandlers.contextmenu);
+        document.removeEventListener('click', this.boundHandlers.click);
+      }
+    }
+
+    return {
+      initialize(elementId, dotNetReference) {
+        if (!elementId || !dotNetReference) {
+          throw new Error('Invalid arguments');
+        }
+
+        const element = document.getElementById(elementId);
+        if (!element) {
+          logger.error(`Element not found: ${elementId}`);
+          return;
+        }
+
+        if (menuInstances.has(elementId)) {
+          this.dispose(elementId);
+        }
+
+        const manager = new ContextMenuManager(element, dotNetReference);
+        manager.initialize();
+        menuInstances.set(elementId, manager);
+        logger.debug(`Context menu initialized: ${elementId}`);
+      },
+
+      dispose(elementId) {
+        const manager = menuInstances.get(elementId);
+        if (manager) {
+          manager.dispose();
+          menuInstances.delete(elementId);
+          logger.debug(`Context menu disposed: ${elementId}`);
+        }
+      },
+
+      disposeAll() {
+        menuInstances.forEach(manager => manager.dispose());
+        menuInstances.clear();
+        logger.debug('All context menus disposed');
+      }
+    };
+  })();
+
+  /**
+   * File download utility
+   * @param {string} fileName - Name of the file to download
+   * @param {Blob|Uint8Array|DotNetStreamReference} content - File content
+   * @param {string} contentType - MIME type of the file
+   * @returns {Promise<void>}
+   */
+  async function downloadFileFromStream(fileName, content, contentType) {
+    const logger = DropBearUtils.createLogger('FileDownload');
+
+    try {
+      let blob;
+
+      if (content instanceof Blob) {
+        blob = content;
+      } else if (content.arrayBuffer) {
+        const arrayBuffer = await content.arrayBuffer();
+        blob = new Blob([arrayBuffer], {type: contentType});
+      } else if (content instanceof Uint8Array) {
+        blob = new Blob([content], {type: contentType});
+      } else {
+        throw new Error('Unsupported content type');
+      }
+
+      const url = URL.createObjectURL(blob);
+      const anchorElement = document.createElement('a');
+      anchorElement.href = url;
+      anchorElement.download = fileName || 'download';
+      document.body.appendChild(anchorElement);
+
+      try {
+        anchorElement.click();
+      } finally {
+        // Cleanup
+        requestAnimationFrame(() => {
+          document.body.removeChild(anchorElement);
+          URL.revokeObjectURL(url);
+        });
+      }
+
+      logger.debug(`File download initiated: ${fileName}`);
+    } catch (error) {
+      logger.error('Download failed:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Window dimension utility
+   * @returns {{width: number, height: number}}
+   */
+  function getWindowDimensions() {
+    return {
+      width: window.innerWidth,
+      height: window.innerHeight
+    };
+  }
+
+  /**
+   * Utility to click element by ID
+   * @param {string} id - Element ID
+   * @returns {boolean} Success status
+   */
+  function clickElementById(id) {
+    const logger = DropBearUtils.createLogger('ElementClick');
+
+    try {
+      const element = document.getElementById(id);
+      if (!element) {
+        logger.warn(`Element not found: ${id}`);
+        return false;
+      }
+
+      element.click();
+      logger.debug(`Clicked element: ${id}`);
+      return true;
+    } catch (error) {
+      logger.error(`Click failed for ${id}:`, error);
+      return false;
+    }
+  }
+
+  // Export all modules and utilities to window object
+  Object.assign(window, {
+    DropBearUtils,
+    DropBearSnackbar,
+    DropBearFileUploader,
+    DropBearNavigationButtons,
+    DropBearResizeManager,
+    DropBearContextMenu,
+    downloadFileFromStream,
+    getWindowDimensions,
+    clickElementById
+  });
+
+  // Initialize modules that need immediate setup
+  document.addEventListener('DOMContentLoaded', () => DropBearFileUploader.initialize());
+
+})();
+
+// Add support for module exports if needed
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = {
+    DropBearUtils,
+    DropBearSnackbar,
+    DropBearFileUploader,
+    DropBearNavigationButtons,
+    DropBearResizeManager,
+    DropBearContextMenu
   };
 }
 
-/**
- * DropBearSnackbar module
- * Provides functionality to manage snackbars with progress bars.
- */
-window.DropBearSnackbar = (() => {
-  const snackbars = new Map();
-
-  /**
-   * Logs a message to the console with a specific log level.
-   * @param {string} message - The message to log.
-   * @param {'log' | 'warn' | 'error'} [level='log'] - The console method to use.
-   */
-  function log(message, level = 'log') {
-    console[level](`[DropBearSnackbar] ${message}`);
-  }
-
-  /**
-   * Retrieves the snackbar DOM element by its ID.
-   * @param {string} snackbarId - The ID of the snackbar element.
-   * @returns {HTMLElement | null} The snackbar element or null if not found.
-   */
-  function getSnackbarElement(snackbarId) {
-    return document.getElementById(snackbarId);
-  }
-
-  /**
-   * Animates the progress bar of a snackbar.
-   * @param {HTMLElement} progressBar - The progress bar element.
-   * @param {number} duration - The duration of the animation in milliseconds.
-   */
-  function animateProgressBar(progressBar, duration) {
-    if (!progressBar) return;
-    progressBar.style.transition = 'none';
-    progressBar.style.width = '100%';
-
-    requestAnimationFrame(() => {
-      progressBar.style.transition = `width ${duration}ms linear`;
-      progressBar.style.width = '0%';
-    });
-  }
-
-  /**
-   * Removes a snackbar element from the DOM and the active snackbars map.
-   * @param {string} snackbarId - The ID of the snackbar to remove.
-   */
-  function removeSnackbar(snackbarId) {
-    const snackbar = getSnackbarElement(snackbarId);
-    if (snackbar) {
-      snackbar.addEventListener(
-        'animationend',
-        () => {
-          snackbar.remove();
-          snackbars.delete(snackbarId);
-        },
-        {once: true}
-      );
-      snackbar.style.animation = 'slideOutDown 0.3s ease-out forwards';
-    } else {
-      snackbars.delete(snackbarId);
-    }
-  }
-
-  return {
-    /**
-     * Starts the progress animation for a snackbar.
-     * @param {string} snackbarId - The ID of the snackbar.
-     * @param {number} duration - The duration of the progress animation in milliseconds.
-     */
-    startProgress(snackbarId, duration) {
-      if (!snackbarId || typeof duration !== 'number' || duration <= 0) {
-        throw new Error('Invalid arguments provided to startProgress');
-      }
-
-      const snackbar = getSnackbarElement(snackbarId);
-      if (!snackbar) {
-        setTimeout(() => this.startProgress(snackbarId, duration), 50);
-        return;
-      }
-
-      const progressBar = snackbar.querySelector('.snackbar-progress');
-      if (!progressBar) return;
-
-      animateProgressBar(progressBar, duration);
-
-      if (snackbars.has(snackbarId)) {
-        clearTimeout(snackbars.get(snackbarId));
-      }
-
-      snackbars.set(
-        snackbarId,
-        setTimeout(() => this.hideSnackbar(snackbarId), duration)
-      );
-    },
-
-    /**
-     * Hides the snackbar by removing it from the DOM and the active snackbars map.
-     * @param {string} snackbarId - The ID of the snackbar to hide.
-     */
-    hideSnackbar(snackbarId) {
-      if (!snackbarId) {
-        throw new Error('Invalid snackbarId provided to hideSnackbar');
-      }
-      if (snackbars.has(snackbarId)) {
-        clearTimeout(snackbars.get(snackbarId));
-        removeSnackbar(snackbarId);
-      }
-    },
-
-    /**
-     * Disposes of a snackbar by hiding it.
-     * @param {string} snackbarId - The ID of the snackbar to dispose.
-     */
-    disposeSnackbar(snackbarId) {
-      this.hideSnackbar(snackbarId);
-    },
-
-    /**
-     * Checks if a snackbar is currently active.
-     * @param {string} snackbarId - The ID of the snackbar to check.
-     * @returns {boolean} True if the snackbar is active, false otherwise.
-     */
-    isSnackbarActive(snackbarId) {
-      return snackbars.has(snackbarId);
-    },
-  };
-})();
-// dropbear-file-uploader.js
-
-/**
- * DropBearFileUploader module
- * Handles file drag-and-drop functionality by simulating a file input change event.
- * This allows Blazor to handle the files via the InputFile component without large data transfers via JSInterop.
- */
-(function () {
-  /**
-   * Initializes the drag-and-drop event handlers for elements with the class 'file-upload-dropzone'.
-   */
-  function init() {
-    console.log('Initializing DropBearFileUploader drag-and-drop functionality.');
-
-    // Handle dragover event to allow dropping
-    document.addEventListener('dragover', function (e) {
-      if (e.target.closest('.file-upload-dropzone')) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Drag over detected on drop zone.');
-      }
-    });
-
-    // Handle dragleave event to update UI if necessary
-    document.addEventListener('dragleave', function (e) {
-      if (e.target.closest('.file-upload-dropzone')) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Drag leave detected on drop zone.');
-      }
-    });
-
-    // Handle drop event to process dropped files
-    document.addEventListener('drop', function (e) {
-      if (e.target.closest('.file-upload-dropzone')) {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Files dropped on drop zone.');
-
-        // Get the drop zone element
-        const dropZone = e.target.closest('.file-upload-dropzone');
-
-        // Find the hidden file input within the drop zone
-        const fileInput = dropZone.querySelector('input[type="file"]');
-
-        if (fileInput) {
-          // Transfer the dropped files to the file input's FileList
-          transferFiles(fileInput, e.dataTransfer.files);
-
-          // Dispatch the change event to trigger Blazor's event handler
-          const event = new Event('change', {bubbles: true});
-          fileInput.dispatchEvent(event);
-
-          console.log('Files transferred to file input and change event dispatched.');
-        } else {
-          console.error('No file input found within the drop zone.');
-        }
-      }
-    });
-  }
-
-  /**
-   * Transfers files to the file input element by creating a DataTransfer object.
-   * @param {HTMLInputElement} fileInput - The file input element.
-   * @param {FileList} files - The list of files to transfer.
-   */
-  function transferFiles(fileInput, files) {
-    const dataTransfer = new DataTransfer();
-
-    for (let i = 0; i < files.length; i++) {
-      dataTransfer.items.add(files[i]);
-      console.log(`Added file to DataTransfer: ${files[i].name}`);
-    }
-
-    fileInput.files = dataTransfer.files;
-  }
-
-  // Initialize when the DOM is ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-})();
-
-
-/**
- * Utility function for file download.
- * Downloads a file from a content stream or byte array.
- * @param {string} fileName - The name of the file to be downloaded.
- * @param {Uint8Array | DotNetStreamReference} content - The content of the file.
- * @param {string} contentType - The MIME type of the file.
- */
-window.downloadFileFromStream = async (fileName, content, contentType) => {
-  try {
-    console.log('downloadFileFromStream called with:', {fileName, content, contentType});
-
-    let blob;
-
-    if (content instanceof Blob) {
-      console.log('Content is a Blob.');
-      blob = content;
-    } else if (content.arrayBuffer) {
-      console.log('Content has arrayBuffer method (DotNetStreamReference detected).');
-      const arrayBuffer = await content.arrayBuffer();
-      console.log('ArrayBuffer received, byte length:', arrayBuffer.byteLength);
-      blob = new Blob([arrayBuffer], {type: contentType});
-    } else if (content instanceof Uint8Array) {
-      console.log('Content is a Uint8Array.');
-      blob = new Blob([content], {type: contentType});
-    } else {
-      throw new Error('Unsupported content type');
-    }
-
-    console.log('Blob created, size:', blob.size);
-
-    const url = URL.createObjectURL(blob);
-    const anchorElement = document.createElement('a');
-    anchorElement.href = url;
-    anchorElement.download = fileName || 'download';
-
-    document.body.appendChild(anchorElement);
-
-    // Use setTimeout to ensure the click event is not blocked by the browser
-    setTimeout(() => {
-      console.log('Triggering download...');
-      anchorElement.click();
-      document.body.removeChild(anchorElement);
-      URL.revokeObjectURL(url);
-      console.log('Download completed and cleanup done.');
-    }, 0);
-  } catch (error) {
-    console.error('Error in downloadFileFromStream:', error);
-  }
-};
-
-/**
- * DropBearContextMenu module
- * Manages context menu interactions with Blazor components.
- */
-window.DropBearContextMenu = (() => {
-  class ContextMenu {
-    constructor(element, dotNetReference) {
-      if (!(element instanceof HTMLElement)) {
-        throw new TypeError('element must be a valid HTMLElement');
-      }
-      if (!dotNetReference) {
-        throw new TypeError('dotNetReference must not be null or undefined');
-      }
-      this.element = element;
-      this.dotNetReference = dotNetReference;
-      this.isDisposed = false;
-      this.initialize();
-    }
-
-    initialize() {
-      this.handleContextMenu = this.handleContextMenu.bind(this);
-      this.handleDocumentClick = this.handleDocumentClick.bind(this);
-
-      this.element.addEventListener('contextmenu', this.handleContextMenu);
-      document.addEventListener('click', this.handleDocumentClick);
-    }
-
-    handleContextMenu(e) {
-      e.preventDefault();
-      const x = e.pageX;
-      const y = e.pageY;
-      this.show(x, y);
-    }
-
-    handleDocumentClick() {
-      if (this.isDisposed) return;
-      this.dotNetReference.invokeMethodAsync('Hide').catch(() => {
-      });
-    }
-
-    show(x, y) {
-      this.dotNetReference.invokeMethodAsync('Show', x, y).catch(() => {
-      });
-    }
-
-    dispose() {
-      this.element.removeEventListener('contextmenu', this.handleContextMenu);
-      document.removeEventListener('click', this.handleDocumentClick);
-      this.isDisposed = true;
-    }
-  }
-
-  const menuInstances = new Map();
-
-  return {
-    /**
-     * Initializes a context menu for a specific element.
-     * @param {string} elementId - The ID of the DOM element.
-     * @param {DotNetObjectReference} dotNetReference - The .NET object reference.
-     */
-    initialize(elementId, dotNetReference) {
-      if (!elementId || !dotNetReference) {
-        throw new Error('Invalid arguments provided to initialize');
-      }
-
-      const element = document.getElementById(elementId);
-      if (!element) {
-        console.error(`Element with id '${elementId}' not found.`);
-        return;
-      }
-
-      if (menuInstances.has(elementId)) {
-        this.dispose(elementId);
-      }
-
-      const menuInstance = new ContextMenu(element, dotNetReference);
-      menuInstances.set(elementId, menuInstance);
-    },
-
-    /**
-     * Disposes of the context menu for a specific element.
-     * @param {string} elementId - The ID of the element.
-     */
-    dispose(elementId) {
-      const menuInstance = menuInstances.get(elementId);
-      if (menuInstance) {
-        menuInstance.dispose();
-        menuInstances.delete(elementId);
-      }
-    },
-
-    /**
-     * Disposes of all context menu instances.
-     */
-    disposeAll() {
-      menuInstances.forEach(instance => instance.dispose());
-      menuInstances.clear();
-    },
-  };
-})();
-/**
- * DropBearNavigationButtons module
- * Manages navigation buttons like 'scroll to top' and 'go back'.
- */
-window.DropBearNavigationButtons = (() => {
-  let dotNetReference = null;
-  let throttledHandleScroll;
-
-  function handleScroll() {
-    if (!dotNetReference) return;
-    const isVisible = window.scrollY > 300;
-    dotNetReference.invokeMethodAsync('UpdateVisibility', isVisible).catch(() => {
-    });
-  }
-
-  return {
-    /**
-     * Initializes the navigation buttons with a .NET object reference.
-     * @param {DotNetObjectReference} dotNetRef - The .NET object reference.
-     */
-    initialize(dotNetRef) {
-      if (!dotNetRef) {
-        throw new Error('dotNetRef must not be null or undefined');
-      }
-      if (dotNetReference) {
-        this.dispose();
-      }
-
-      dotNetReference = dotNetRef;
-      throttledHandleScroll = throttle(handleScroll, 100);
-      window.addEventListener('scroll', throttledHandleScroll);
-
-      // Trigger initial check
-      handleScroll();
-    },
-
-    /**
-     * Scrolls the window to the top.
-     */
-    scrollToTop() {
-      window.scrollTo({top: 0, behavior: 'smooth'});
-    },
-
-    /**
-     * Navigates back in browser history.
-     */
-    goBack() {
-      window.history.back();
-    },
-
-    /**
-     * Disposes of the navigation buttons by removing event listeners.
-     */
-    dispose() {
-      if (dotNetReference) {
-        window.removeEventListener('scroll', throttledHandleScroll);
-        dotNetReference = null;
-      }
-    },
-  };
-})();
-/**
- * DropBearResizeManager module
- * Manages window resize events to adjust component sizing.
- */
-window.DropBearResizeManager = (() => {
-  let dotNetReference = null;
-  let debouncedHandleResize;
-
-  function handleResize() {
-    if (dotNetReference) {
-      dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize').catch(() => {
-      });
-    }
-  }
-
-  return {
-    /**
-     * Initializes the resize manager with a .NET object reference.
-     * @param {DotNetObjectReference} dotNetRef - The .NET object reference.
-     */
-    initialize(dotNetRef) {
-      if (!dotNetRef) {
-        throw new Error('dotNetRef must not be null or undefined');
-      }
-      if (dotNetReference) {
-        this.dispose();
-      }
-
-      dotNetReference = dotNetRef;
-      debouncedHandleResize = debounce(handleResize, 100);
-      window.addEventListener('resize', debouncedHandleResize);
-
-      // Trigger an initial call to SetMaxWidthBasedOnWindowSize
-      handleResize();
-    },
-
-    /**
-     * Disposes of the resize manager by removing event listeners.
-     */
-    dispose() {
-      if (dotNetReference) {
-        window.removeEventListener('resize', debouncedHandleResize);
-        dotNetReference = null;
-      }
-    },
-  };
-})();
-
-/**
- * Utility function for getting the window dimensions.
- * @returns {{width: number, height: number}} An object containing the width and height of the window.
- */
-window.getWindowDimensions = () => ({
-  width: window.innerWidth,
-  height: window.innerHeight,
-});
-
-window.clickElementById = function (id) {
-  console.log(`Attempting to click element with id: ${id}`);
-  let element = document.getElementById(id);
-  if (element) {
-    element.click();
-    console.log(`Clicked element with id: ${id}`);
-  } else {
-    console.error(`Element with id '${id}' not found.`);
-  }
-};
 

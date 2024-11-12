@@ -1,7 +1,7 @@
-﻿/* Alert Component Styles with Global Theme Support */
+﻿.alert {
+  --alert-border-width: 4px;
+  --alert-animation-duration: 0.3s;
 
-/* Core Alert Styles */
-.alert {
   border-radius: var(--br-md);
   padding: var(--spacing-sm);
   margin: var(--spacing-sm);
@@ -9,12 +9,18 @@
   align-items: center;
   gap: var(--spacing-sm);
   box-shadow: var(--shadow-md);
-  transition: var(--transition-normal);
   position: relative;
   overflow: hidden;
-  animation: slideInDown var(--transition-normal) ease-out;
-  background-color: var(--clr-background); /* Global background */
-  color: var(--clr-text-primary); /* Global text color */
+  animation: alertEntry var(--alert-animation-duration) ease-out;
+  background-color: var(--clr-background);
+  color: var(--clr-text-primary);
+  border: 1px solid transparent;
+}
+
+/* Enhanced focus styles */
+.alert:focus-within {
+  outline: 2px solid var(--clr-focus, #4a90e2);
+  outline-offset: 2px;
 }
 
 .alert::before {
@@ -23,12 +29,11 @@
   top: 0;
   left: 0;
   height: 100%;
-  width: 4px;
-  background-color: var(--clr-accent); /* Global accent color */
+  width: var(--alert-border-width);
+  background-color: var(--clr-accent);
 }
 
 .alert-icon {
-  font-size: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -36,96 +41,92 @@
   height: 48px;
   border-radius: 50%;
   flex-shrink: 0;
-  color: var(--clr-icon); /* Global icon color */
-  background-color: var(--clr-icon-bg); /* Global icon background */
+  transition: transform 0.2s ease;
+}
+
+.alert:hover .alert-icon {
+  transform: scale(1.05);
 }
 
 .alert-content {
   flex-grow: 1;
+  min-width: 0; /* Prevent text overflow */
 }
 
 .alert-title {
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 var(--spacing-xs) 0;
-  color: var(--clr-text-primary); /* Global heading color */
+  color: var(--clr-text-primary);
 }
 
 .alert-message {
   margin: 0;
   font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  hyphens: auto;
 }
 
-/* Close Button */
+/* Enhanced close button styles */
 .alert-close {
   background: none;
   border: none;
-  font-size: 20px;
   cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  transition: var(--transition-fast);
-  align-self: flex-start;
+  padding: var(--spacing-xs);
+  color: var(--clr-text-primary);
+  opacity: 0.7;
+  transition: all 0.2s ease;
+  border-radius: var(--br-sm);
   margin-left: var(--spacing-sm);
-  color: var(--clr-text-primary); /* Global text color */
+  align-self: flex-start;
 }
 
-.alert-close:hover {
-  color: var(--clr-primary); /* Global hover color */
+.alert-close:not(:disabled):hover {
+  opacity: 1;
+  background-color: rgba(0, 0, 0, 0.1);
 }
 
-/* Specific Alert Type Styles */
+.alert-close:focus {
+  outline: 2px solid var(--clr-focus, #4a90e2);
+  outline-offset: 2px;
+}
+
+.alert-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* Alert type variations */
 .alert-information {
   --clr-accent: var(--clr-information);
-  --clr-icon-bg: var(--clr-information-light);
-  --clr-icon: var(--clr-black);
-  background-color: var(--clr-background);
-  color: var(--clr-text-primary);
-  border: 1px solid var(--clr-information);
+  border-color: var(--clr-information);
 }
 
 .alert-success {
   --clr-accent: var(--clr-success);
-  --clr-icon-bg: var(--clr-success-light);
-  --clr-icon: var(--clr-black);
-  background-color: var(--clr-surface-primary);
-  color: var(--clr-text-primary);
-  border: 1px solid var(--clr-success);
+  border-color: var(--clr-success);
 }
 
 .alert-warning {
   --clr-accent: var(--clr-warning);
-  --clr-icon-bg: var(--clr-warning-light);
-  --clr-icon: var(--clr-black);
-  background-color: var(--clr-surface-primary);
-  color: var(--clr-text-primary);
-  border: 1px solid var(--clr-warning);
+  border-color: var(--clr-warning);
 }
 
 .alert-danger {
   --clr-accent: var(--clr-error);
-  --clr-icon-bg: var(--clr-error-light);
-  --clr-icon: var(--clr-black);
-  background-color: var(--clr-surface-primary);
-  color: var(--clr-text-primary);
-  border: 1px solid var(--clr-error);
+  border-color: var(--clr-error);
 }
 
 .alert-notification {
   --clr-accent: var(--clr-primary);
-  --clr-icon-bg: var(--clr-primary);
-  --clr-icon: var(--clr-black);
-  background-color: var(--clr-surface-primary);
-  color: var(--clr-text-primary);
-  border: 1px solid var(--clr-primary);
+  border-color: var(--clr-primary);
 }
 
-
-
-/* Animations */
-@keyframes slideInDown {
+/* Enhanced animations */
+@keyframes alertEntry {
   from {
-    transform: translateY(-100%);
+    transform: translateY(-20px);
     opacity: 0;
   }
   to {
@@ -134,32 +135,49 @@
   }
 }
 
-/* Accessibility */
-.alert-close:focus {
-  outline: 2px solid var(--clr-primary);
-  outline-offset: 2px;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
-/* Responsive adjustments */
-@media (width < 768px) {
+/* Responsive design */
+@media (max-width: 768px) {
   .alert {
     flex-direction: column;
     align-items: flex-start;
+    padding: var(--spacing-xs);
   }
 
   .alert-icon {
+    width: 36px;
+    height: 36px;
     margin-bottom: var(--spacing-xs);
+  }
+
+  .alert-close {
+    position: absolute;
+    top: var(--spacing-xs);
+    right: var(--spacing-xs);
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .alert {
+    animation: none;
+  }
+
+  .alert-icon {
+    transition: none;
+  }
+
+  .alert-close {
+    transition: none;
+  }
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+  .alert {
+    border: 2px solid CanvasText;
+  }
+
+  .alert::before {
+    background-color: CanvasText;
   }
 }

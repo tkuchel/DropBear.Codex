@@ -9,7 +9,7 @@ namespace DropBear.Codex.Blazor.Models;
 /// <summary>
 ///     Represents the options for displaying a snackbar notification.
 /// </summary>
-public class SnackbarNotificationOptions
+public record SnackbarNotificationOptions
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="SnackbarNotificationOptions" /> class.
@@ -26,7 +26,7 @@ public class SnackbarNotificationOptions
         string title,
         string message,
         SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
+        int duration = 1500,
         bool isDismissible = true,
         string actionText = "Dismiss",
         Func<Task>? onAction = null)

@@ -15,6 +15,7 @@
   box-sizing: border-box; /* Includes padding in the width calculation */
   background-color: var(--clr-surface-dark); /* Global surface color */
   color: var(--clr-text-primary); /* Global text color */
+  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
 }
 
 /* Type-Specific Borders */
@@ -70,6 +71,20 @@
 
 .snackbar-action:hover {
   background: var(--clr-surface-primary);
+}
+
+/* Disabled state styles */
+.snackbar-action:disabled,
+.snackbar-close:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Focus states for accessibility */
+.snackbar-action:focus,
+.snackbar-close:focus {
+  outline: 2px solid var(--clr-focus, #4a90e2);
+  outline-offset: 2px;
 }
 
 .snackbar-close {
@@ -128,5 +143,20 @@
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .snackbar {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Print styles */
+@media print {
+  .snackbar {
+    display: none;
   }
 }
