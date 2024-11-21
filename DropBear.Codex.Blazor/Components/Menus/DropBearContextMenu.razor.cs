@@ -61,6 +61,10 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase, IAsyncD
                 await JsRuntime.InvokeVoidAsync("DropBearContextMenu.dispose", _contextMenuId);
                 Logger.LogDebug("Context menu JavaScript resources disposed for {ContextMenuId}", _contextMenuId);
             }
+            catch (JSDisconnectedException ex)
+            {
+                Logger.LogWarning(ex, "Failed to dispose context menu JavaScript resources due to disconnection");
+            }
             catch (JSException ex)
             {
                 Logger.LogError(ex, "Failed to dispose context menu JavaScript resources");

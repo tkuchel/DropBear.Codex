@@ -35,6 +35,10 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
                 await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
                 Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
             }
+            catch (JSDisconnectedException disconex)
+            {
+                Logger.Warning(disconex, "JS interop for DropBearNavigationButtons is already disposed.");
+            }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error during JS interop disposal.");

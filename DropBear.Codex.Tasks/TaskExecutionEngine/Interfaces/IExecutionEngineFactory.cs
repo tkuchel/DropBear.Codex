@@ -1,17 +1,19 @@
-﻿using DropBear.Codex.Core;
-using DropBear.Codex.Core.Results.Compatibility;
+﻿#region
+
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Tasks.Errors;
+
+#endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
 /// <summary>
-///     Defines a factory for creating instances of <see cref="ExecutionEngine" />.
+///     Interface for the execution engine factory
 /// </summary>
 public interface IExecutionEngineFactory
 {
     /// <summary>
-    ///     Creates a new instance of <see cref="ExecutionEngine" /> with the specified channel ID.
+    ///     Creates a new instance of <see cref="ExecutionEngine" />.
     /// </summary>
-    /// <param name="channelId">The channel ID associated with the execution engine.</param>
-    /// <returns>A ResultT containing a new instance of <see cref="ExecutionEngine" />.</returns>
-    Result<ExecutionEngine> CreateExecutionEngine(Guid channelId);
+    Result<ExecutionEngine, ExecutionEngineError> CreateExecutionEngine(Guid channelId);
 }

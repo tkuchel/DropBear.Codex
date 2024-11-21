@@ -64,6 +64,10 @@ public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisp
                 await JsRuntime.InvokeVoidAsync("DropBearResizeManager.dispose");
                 Logger.Debug("Resize event listener disposed.");
             }
+            catch (JSDisconnectedException disconex)
+            {
+                Logger.Warning(disconex, "Resize event listener is already disposed.");
+            }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error occurred during DisposeAsync.");
