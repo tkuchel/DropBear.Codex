@@ -25,8 +25,6 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 public sealed class ExecutionEngine
 {
     private readonly Guid _channelId;
-    private readonly DependencyGraph _dependencyGraph = new();
-    private readonly TaskExecutionTracker _executionTracker = new();
     private readonly ILogger _logger;
     private readonly ExecutionOptions _options;
     private readonly IAsyncPublisher<Guid, TaskProgressMessage> _progressPublisher;
@@ -36,6 +34,8 @@ public sealed class ExecutionEngine
 
     private readonly List<ITask> _tasks = new();
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
+    private DependencyGraph _dependencyGraph = new();
+    private TaskExecutionTracker _executionTracker = new();
 
 
     /// <summary>
@@ -67,6 +67,36 @@ public sealed class ExecutionEngine
             taskCompletedPublisher ?? throw new ArgumentNullException(nameof(taskCompletedPublisher));
         _taskFailedPublisher = taskFailedPublisher ?? throw new ArgumentNullException(nameof(taskFailedPublisher));
         _logger = LoggerFactory.Logger.ForContext<ExecutionEngine>();
+    }
+
+    /// <summary>
+    ///     Clears all tasks from the execution engine.
+    /// </summary>
+    /// <returns>A Result indicating the success or failure of the operation.</returns>
+    public Result<Unit, TaskExecutionError> ClearTasks()
+    {
+        try
+        {
+            if (_tasks.Count == 0)
+            {
+                _logger.Debug("No tasks to clear from the execution engine.");
+                return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+            }
+
+            var taskCount = _tasks.Count;
+            _tasks.Clear();
+            _dependencyGraph = new DependencyGraph(); // Reset dependency graph
+            _executionTracker = new TaskExecutionTracker(); // Reset execution tracker
+
+            _logger.Information("Cleared {Count} tasks from the execution engine.", taskCount);
+            return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to clear tasks from the execution engine.");
+            return Result<Unit, TaskExecutionError>.Failure(
+                new TaskExecutionError("Failed to clear tasks", null, ex));
+        }
     }
 
     /// <summary>
