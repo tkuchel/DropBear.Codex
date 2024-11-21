@@ -48,7 +48,7 @@
     <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
     <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.10" />
-    <PackageReference Include="Polly" Version="8.4.2" />
+    <PackageReference Include="Polly" Version="8.5.0" />
 
     <!-- Serilog for logging -->
     <PackageReference Include="Serilog" Version="4.1.0" />
