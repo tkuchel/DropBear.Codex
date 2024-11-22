@@ -56,10 +56,11 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     {
         if (firstRender)
         {
-            _objRef = DotNetObjectReference.Create(this);
-
             try
             {
+                await WaitForJsInitializationAsync("DropBearNavigationButtons");
+
+                _objRef = DotNetObjectReference.Create(this);
                 await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.initialize", _objRef);
                 _isJsInitialized = true;
                 Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
@@ -130,5 +131,30 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
         IsVisible = isVisible;
         Logger.Debug("Scroll-to-top button visibility updated: {IsVisible}", isVisible);
         StateHasChanged();
+    }
+
+    private async Task WaitForJsInitializationAsync(string objectName, int maxAttempts = 50)
+    {
+        for (int i = 0; i < maxAttempts; i++)
+        {
+            try
+            {
+                var isLoaded = await JsRuntime.InvokeAsync<bool>("eval",
+                    $"typeof window.{objectName} !== 'undefined' && window.{objectName} !== null");
+
+                if (isLoaded)
+                {
+                    return;
+                }
+
+                await Task.Delay(100);  // Wait 100ms before next attempt
+            }
+            catch
+            {
+                await Task.Delay(100);
+            }
+        }
+
+        throw new JSException($"JavaScript object {objectName} failed to initialize after {maxAttempts} attempts");
     }
 }

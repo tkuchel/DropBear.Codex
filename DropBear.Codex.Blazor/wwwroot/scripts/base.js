@@ -446,9 +446,47 @@
     };
   })();
 
+  // Add this to your base.js before the global assignments
+  const DropBearUtilities = (() => {
+    const logger = DropBearUtils.createLogger('DropBearUtilities');
+
+    return {
+      getWindowDimensions() {
+        try {
+          return {
+            width: window.innerWidth,
+            height: window.innerHeight
+          };
+        } catch (error) {
+          logger.error('Error getting window dimensions:', error);
+          return {width: 0, height: 0};
+        }
+      }
+    };
+  })();
+
+// Add this to your window assignments
+  window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
+
   // Initialization sequence
   const initializeDropBear = async () => {
     try {
+      // Wait for Blazor to be ready
+      await new Promise((resolve, reject) => {
+        let attempts = 0;
+        const checkBlazor = setInterval(() => {
+          attempts++;
+          if (window.Blazor) {
+            clearInterval(checkBlazor);
+            resolve();
+          }
+          if (attempts > 50) { // 5 second timeout
+            clearInterval(checkBlazor);
+            reject(new Error('Blazor not initialized after 5 seconds'));
+          }
+        }, 100);
+      });
+
       PerformanceMonitor.start('dropbear-initialization');
 
       if (DropBearState.initialized) {

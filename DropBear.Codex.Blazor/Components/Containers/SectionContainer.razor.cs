@@ -106,13 +106,13 @@ public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisp
         {
             try
             {
-                // Set up JavaScript interop for resizing
+                await WaitForJsInitializationAsync("DropBearResizeManager");
+
                 _dotNetRef = DotNetObjectReference.Create(this);
                 await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", _dotNetRef);
                 _isJsInitialized = true;
                 Logger.Debug("Resize event listener registered.");
 
-                // Set the initial max width
                 await SetMaxWidthBasedOnWindowSize();
             }
             catch (Exception ex)
@@ -164,5 +164,30 @@ public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisp
             Logger.Error(ex, "Error occurred while setting max width based on window size.");
             MaxWidthStyle = "100%"; // Fallback in case of error
         }
+    }
+
+    private async Task WaitForJsInitializationAsync(string objectName, int maxAttempts = 50)
+    {
+        for (var i = 0; i < maxAttempts; i++)
+        {
+            try
+            {
+                var isLoaded = await JsRuntime.InvokeAsync<bool>("eval",
+                    $"typeof window.{objectName} !== 'undefined' && window.{objectName} !== null");
+
+                if (isLoaded)
+                {
+                    return;
+                }
+
+                await Task.Delay(100); // Wait 100ms before next attempt
+            }
+            catch
+            {
+                await Task.Delay(100);
+            }
+        }
+
+        throw new JSException($"JavaScript object {objectName} failed to initialize after {maxAttempts} attempts");
     }
 }
