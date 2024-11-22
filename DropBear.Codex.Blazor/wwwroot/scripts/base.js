@@ -465,7 +465,163 @@
     };
   })();
 
-// Add this to your window assignments
+  const DropBearContextMenu = (() => {
+    const logger = DropBearUtils.createLogger('DropBearContextMenu');
+    const menuInstances = new Map();
+    const ANIMATION_DURATION = 150;
+    class ContextMenuManager {
+      constructor(id, dotNetRef) {
+        DropBearUtils.validateArgs([id, dotNetRef], ['string', 'object'], 'ContextMenuManager');
+
+        this.id = id;
+        this.element = document.getElementById(id);
+        this.dotNetRef = dotNetRef;
+        this.isDisposed = false;
+
+        if (!DropBearUtils.isElement(this.element)) {
+          throw new TypeError('Invalid element provided to ContextMenuManager');
+        }
+
+        this.handleContextMenu = this.handleContextMenu.bind(this);
+        this.handleDocumentClick = this.handleDocumentClick.bind(this);
+
+        this.initialize();
+        EventEmitter.emit('context-menu:created', { id });
+        logger.debug(`Context menu initialized: ${id}`);
+      }
+
+      initialize() {
+        this.element.addEventListener('contextmenu', this.handleContextMenu);
+        document.addEventListener('click', this.handleDocumentClick);
+      }
+
+      async handleContextMenu(e) {
+        e.preventDefault();
+
+        if (this.isDisposed) return;
+
+        await retryOperation(async () => {
+          try {
+            PerformanceMonitor.start(`context-menu-show-${this.id}`);
+
+            const x = e.pageX;
+            const y = e.pageY;
+            await this.show(x, y);
+
+            logger.debug(`Context menu triggered at X: ${x}, Y: ${y}`);
+          } catch (error) {
+            logger.error(`Context menu show error: ${error.message}`);
+            throw error;
+          } finally {
+            PerformanceMonitor.end(`context-menu-show-${this.id}`);
+          }
+        });
+      }
+
+      async handleDocumentClick() {
+        if (this.isDisposed) {
+          logger.debug('Context menu instance already disposed, skipping hide.');
+          return;
+        }
+
+        try {
+          await this.dotNetRef.invokeMethodAsync('Hide');
+          logger.debug('Context menu hidden via document click');
+        } catch (error) {
+          if (error.message.includes('There is no tracked object with id')) {
+            logger.warn('DotNetObjectReference was disposed before hide could be invoked');
+          } else {
+            logger.error('Error hiding context menu:', error);
+          }
+        }
+      }
+
+      async show(x, y) {
+        if (this.isDisposed) return;
+
+        try {
+          await this.dotNetRef.invokeMethodAsync('Show', x, y);
+          logger.debug(`Context menu shown at X: ${x}, Y: ${y}`);
+        } catch (error) {
+          logger.error('Error showing context menu:', error);
+          throw error;
+        }
+      }
+
+      dispose() {
+        if (this.isDisposed) return;
+
+        this.isDisposed = true;
+        this.element.removeEventListener('contextmenu', this.handleContextMenu);
+        document.removeEventListener('click', this.handleDocumentClick);
+        this.dotNetRef = null;
+
+        logger.debug(`Context menu disposed: ${this.id}`);
+        EventEmitter.emit('context-menu:disposed', { id: this.id });
+      }
+    }
+
+    return {
+      initialize(menuId, dotNetRef) {
+        DropBearUtils.validateArgs([menuId, dotNetRef], ['string', 'object'], 'initialize');
+
+        try {
+          if (menuInstances.has(menuId)) {
+            logger.warn(`Context menu already exists for ${menuId}, disposing old instance`);
+            this.dispose(menuId);
+          }
+
+          const manager = new ContextMenuManager(menuId, dotNetRef);
+          menuInstances.set(menuId, manager);
+          logger.debug(`Context menu initialized: ${menuId}`);
+        } catch (error) {
+          logger.error('Context menu initialization error:', error);
+          throw error;
+        }
+      },
+
+      show(menuId, x, y) {
+        DropBearUtils.validateArgs([menuId, x, y], ['string', 'number', 'number'], 'show');
+
+        try {
+          const manager = menuInstances.get(menuId);
+          if (manager) {
+            return manager.show(x, y);
+          }
+          logger.warn(`No context menu found for ${menuId}`);
+        } catch (error) {
+          logger.error('Error showing context menu:', error);
+          throw error;
+        }
+      },
+
+      dispose(menuId) {
+        try {
+          const manager = menuInstances.get(menuId);
+          if (manager) {
+            manager.dispose();
+            menuInstances.delete(menuId);
+          }
+        } catch (error) {
+          logger.error('Error disposing context menu:', error);
+          throw error;
+        }
+      },
+
+      disposeAll() {
+        try {
+          menuInstances.forEach((instance, id) => this.dispose(id));
+          menuInstances.clear();
+          logger.debug('All context menus disposed');
+        } catch (error) {
+          logger.error('Error disposing all context menus:', error);
+          throw error;
+        }
+      }
+    };
+  })();
+
+  // Add this to your window assignments
   window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
 
   // Initialization sequence
@@ -517,6 +673,11 @@
           value: DropBearNavigationButtons,
           writable: false,
           configurable: false
+        },
+        DropBearContextMenu: {                // Add this
+          value: DropBearContextMenu,
+          writable: false,
+          configurable: false
         }
       });
 
@@ -545,6 +706,7 @@
       DropBearSnackbar.dispose();
       DropBearResizeManager.dispose();
       DropBearNavigationButtons.dispose();
+      DropBearContextMenu.disposeAll();
       console.log("DropBear cleanup complete");
     } catch (error) {
       console.error("Error during DropBear cleanup:", error);
