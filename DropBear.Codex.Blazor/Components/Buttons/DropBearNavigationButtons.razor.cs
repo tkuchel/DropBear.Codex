@@ -12,6 +12,8 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearNavigationButtons>();
+    private readonly SemaphoreSlim _initializationLock = new(1, 1);
+    private volatile bool _isDisposed;
     private bool _isJsInitialized;
     private DotNetObjectReference<DropBearNavigationButtons>? _objRef;
     private bool IsVisible { get; set; }
@@ -28,25 +30,50 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_isJsInitialized && JsRuntime is not null)
+        if (_isDisposed)
         {
-            try
-            {
-                await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
-                Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
-            }
-            catch (JSDisconnectedException disconex)
-            {
-                Logger.Warning(disconex, "JS interop for DropBearNavigationButtons is already disposed.");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error during JS interop disposal.");
-            }
+            return;
         }
 
-        _objRef?.Dispose();
-        Logger.Debug("DotNetObjectReference for DropBearNavigationButtons disposed.");
+        await _initializationLock.WaitAsync();
+        try
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
+
+            if (_isJsInitialized && JsRuntime is not null)
+            {
+                try
+                {
+                    var isConnected = await JsRuntime.InvokeAsync<bool>("eval", "typeof window !== 'undefined'");
+                    if (isConnected)
+                    {
+                        await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.dispose");
+                        Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
+                    }
+                }
+                catch (JSDisconnectedException disconex)
+                {
+                    Logger.Warning(disconex, "JS interop for DropBearNavigationButtons is already disposed.");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error during JS interop disposal.");
+                }
+            }
+
+            _objRef?.Dispose();
+            Logger.Debug("DotNetObjectReference for DropBearNavigationButtons disposed.");
+        }
+        finally
+        {
+            _initializationLock.Release();
+            _initializationLock.Dispose();
+        }
     }
 
     /// <summary>
@@ -54,12 +81,17 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender && !_isDisposed)
         {
+            await _initializationLock.WaitAsync();
             try
             {
-                await WaitForJsInitializationAsync("DropBearNavigationButtons");
+                if (_isDisposed)
+                {
+                    return;
+                }
 
+                await WaitForJsInitializationAsync("DropBearNavigationButtons");
                 _objRef = DotNetObjectReference.Create(this);
                 await JsRuntime.InvokeVoidAsync("DropBearNavigationButtons.initialize", _objRef);
                 _isJsInitialized = true;
@@ -68,6 +100,10 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error initializing JS interop for DropBearNavigationButtons.");
+            }
+            finally
+            {
+                _initializationLock.Release();
             }
         }
     }
@@ -135,7 +171,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
 
     private async Task WaitForJsInitializationAsync(string objectName, int maxAttempts = 50)
     {
-        for (int i = 0; i < maxAttempts; i++)
+        for (var i = 0; i < maxAttempts; i++)
         {
             try
             {
@@ -147,7 +183,7 @@ public sealed partial class DropBearNavigationButtons : ComponentBase, IAsyncDis
                     return;
                 }
 
-                await Task.Delay(100);  // Wait 100ms before next attempt
+                await Task.Delay(100); // Wait 100ms before next attempt
             }
             catch
             {

@@ -17,9 +17,10 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisposable
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SectionContainer>();
+    private readonly SemaphoreSlim _initializationLock = new(1, 1);
     private DotNetObjectReference<SectionContainer>? _dotNetRef;
+    private volatile bool _isDisposed;
     private bool _isJsInitialized;
-
     private string MaxWidthStyle { get; set; } = "100%"; // Default value if not set dynamically
 
     /// <summary>
@@ -57,24 +58,49 @@ public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisp
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_isJsInitialized)
+        if (_isDisposed)
         {
-            try
-            {
-                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.dispose");
-                Logger.Debug("Resize event listener disposed.");
-            }
-            catch (JSDisconnectedException disconex)
-            {
-                Logger.Warning(disconex, "Resize event listener is already disposed.");
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error occurred during DisposeAsync.");
-            }
+            return;
         }
 
-        _dotNetRef?.Dispose();
+        await _initializationLock.WaitAsync();
+        try
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
+
+            if (_isJsInitialized)
+            {
+                try
+                {
+                    var isConnected = await JsRuntime.InvokeAsync<bool>("eval", "typeof window !== 'undefined'");
+                    if (isConnected)
+                    {
+                        await JsRuntime.InvokeVoidAsync("DropBearResizeManager.dispose");
+                        Logger.Debug("Resize event listener disposed.");
+                    }
+                }
+                catch (JSDisconnectedException disconex)
+                {
+                    Logger.Warning(disconex, "Resize event listener is already disposed.");
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error during JS interop disposal.");
+                }
+            }
+
+            _dotNetRef?.Dispose();
+        }
+        finally
+        {
+            _initializationLock.Release();
+            _initializationLock.Dispose();
+        }
     }
 
     /// <summary>
@@ -102,12 +128,17 @@ public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisp
     /// </summary>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender && !_isDisposed)
         {
+            await _initializationLock.WaitAsync();
             try
             {
-                await WaitForJsInitializationAsync("DropBearResizeManager");
+                if (_isDisposed)
+                {
+                    return;
+                }
 
+                await WaitForJsInitializationAsync("DropBearResizeManager");
                 _dotNetRef = DotNetObjectReference.Create(this);
                 await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", _dotNetRef);
                 _isJsInitialized = true;
@@ -117,7 +148,11 @@ public sealed partial class SectionContainer : DropBearComponentBase, IAsyncDisp
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error occurred during OnAfterRenderAsync.");
+                Logger.Error(ex, "Error during initialization: {Error}", ex.Message);
+            }
+            finally
+            {
+                _initializationLock.Release();
             }
         }
     }

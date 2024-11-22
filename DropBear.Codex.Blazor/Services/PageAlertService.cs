@@ -19,13 +19,14 @@ public sealed class PageAlertService : IPageAlertService
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<PageAlertService>();
     private readonly ConcurrentDictionary<Guid, PageAlert> _alerts = new();
     private readonly IAlertChannelManager _channelManager;
-    private readonly object _eventLock = new();
+    private readonly SemaphoreSlim _eventLock = new(1, 1);
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="PageAlertService" /> class.
     /// </summary>
     public PageAlertService()
     {
+        _channelManager = new AlertChannelManager();
     }
 
     public PageAlertService(IAlertChannelManager channelManager)
@@ -123,33 +124,30 @@ public sealed class PageAlertService : IPageAlertService
             return false;
         }
 
-        Delegate[] invocationList;
-        lock (_eventLock)
-        {
-            invocationList = eventHandler.GetInvocationList();
-        }
-
-        var tasks = new List<Task>();
-        foreach (var handler in invocationList)
-        {
-            var func = (AsyncEventHandler<TEventArgs>)handler;
-            try
-            {
-                tasks.Add(func(this, args));
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error invoking event handler.");
-            }
-        }
-
-        if (tasks.Count == 0)
-        {
-            return false;
-        }
-
+        await _eventLock.WaitAsync();
         try
         {
+            var handlers = eventHandler.GetInvocationList()
+                .Cast<AsyncEventHandler<TEventArgs>>()
+                .ToArray();
+
+            if (handlers.Length == 0) return false;
+
+            var tasks = new List<Task>();
+            foreach (var handler in handlers)
+            {
+                try
+                {
+                    tasks.Add(handler(this, args));
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error invoking event handler.");
+                }
+            }
+
+            if (tasks.Count == 0) return false;
+
             await Task.WhenAll(tasks);
             return true;
         }
@@ -157,6 +155,10 @@ public sealed class PageAlertService : IPageAlertService
         {
             Logger.Error(ex, "Error in event handlers.");
             return false;
+        }
+        finally
+        {
+            _eventLock.Release();
         }
     }
 }

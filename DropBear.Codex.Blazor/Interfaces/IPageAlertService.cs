@@ -36,6 +36,7 @@ public interface IPageAlertService
     Task<bool> AddAlertAsync(string title, string message, AlertType type, bool isDismissible, string? channelId = null,
         int? durationMs = 5000);
 
+
     /// <summary>
     ///     Removes an alert by its ID.
     /// </summary>

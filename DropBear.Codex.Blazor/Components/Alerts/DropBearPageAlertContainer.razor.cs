@@ -25,20 +25,32 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         .ForContext<DropBearPageAlertContainer>();
 
     private readonly CancellationTokenSource _disposalTokenSource = new();
+    private readonly ConcurrentDictionary<Guid, PageAlert> _localAlerts = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
 
     private ConcurrentQueue<PageAlert> _channelAlerts = new();
-
     private IDisposable? _channelSubscription;
     private bool _isDisposed;
     private bool _isSubscribed;
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
-    private IEnumerable<PageAlert> CombinedAlerts =>
-        AlertService.Alerts.Concat(_channelAlerts)
-            .OrderByDescending(a => a.CreatedAt)
-            .Take(MaxChannelAlerts);
+    private IEnumerable<PageAlert> CombinedAlerts
+    {
+        get
+        {
+            if (!AlertChannelManager.IsValidChannel(ChannelId))
+            {
+                return Enumerable.Empty<PageAlert>();
+            }
+
+            return AlertService.Alerts
+                .Concat(_localAlerts.Values)
+                .DistinctBy(a => a.Id)
+                .OrderByDescending(a => a.CreatedAt)
+                .Take(MaxChannelAlerts);
+        }
+    }
 
     public void Dispose()
     {
@@ -74,10 +86,73 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
-        if (!string.IsNullOrEmpty(ChannelId) && !_isSubscribed)
+        if (!string.IsNullOrEmpty(ChannelId) && AlertChannelManager.IsValidChannel(ChannelId) && !_isSubscribed)
         {
             InitializeContainer();
         }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.IsNullOrEmpty(ChannelId) && AlertChannelManager.IsValidChannel(ChannelId))
+        {
+            await InitializeContainerAsync();
+        }
+    }
+
+    private async Task InitializeContainerAsync()
+    {
+        if (string.IsNullOrEmpty(ChannelId))
+        {
+            Logger.Error("ChannelId is null or empty during initialization.");
+            return;
+        }
+
+        try
+        {
+            await SubscribeToAlertsAsync();
+            Logger.Debug("Alert container initialized for channel: {ChannelId}", ChannelId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to initialize alert container for channel: {ChannelId}", ChannelId);
+            throw;
+        }
+    }
+
+    private async Task SubscribeToAlertsAsync()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        UnsubscribeFromAlerts();
+
+        try
+        {
+            AlertService.OnAddAlert += HandleAddAlert;
+            AlertService.OnRemoveAlert += HandleRemoveAlert;
+            AlertService.OnClearAlerts += HandleClearAlerts;
+
+            _channelSubscription = await SubscribeToChannelNotificationsAsync(ChannelId);
+            _isSubscribed = true;
+
+            Logger.Debug("Subscribed to alerts for channel: {ChannelId}", ChannelId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to subscribe to alerts for channel: {ChannelId}", ChannelId);
+            throw;
+        }
+    }
+
+    private async Task<IDisposable> SubscribeToChannelNotificationsAsync(string channelId)
+    {
+        var bag = DisposableBag.CreateBuilder();
+        NotificationSubscriber.Subscribe<string, Notification>(channelId, HandleNotification)
+            .AddTo(bag);
+        return bag.Build();
     }
 
     private void InitializeContainer()

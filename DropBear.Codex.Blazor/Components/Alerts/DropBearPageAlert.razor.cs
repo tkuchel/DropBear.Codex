@@ -83,10 +83,21 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase, IDisposab
 
             if (OnClose.HasDelegate)
             {
-                await JsRuntime.InvokeVoidAsync("alert.startExitAnimation", Type);
-                await Task.Delay(300); // Match animation duration
-                await OnClose.InvokeAsync();
-                Logger.Debug("Alert closed successfully - Type: {Type}, Title: {Title}", Type, Title);
+                try
+                {
+                    await JsRuntime.InvokeVoidAsync("alert.startExitAnimation", Type);
+                }
+                catch (JSDisconnectedException)
+                {
+                    // Circuit disconnected, proceed with close
+                }
+
+                if (!_isDisposed)
+                {
+                    await Task.Delay(300); // Match animation duration
+                    await OnClose.InvokeAsync();
+                    Logger.Debug("Alert closed successfully - Type: {Type}, Title: {Title}", Type, Title);
+                }
             }
             else
             {
