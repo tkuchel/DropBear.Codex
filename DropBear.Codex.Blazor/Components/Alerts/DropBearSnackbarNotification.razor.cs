@@ -27,7 +27,6 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     private bool _isDisposed;
 
 
-
     [Parameter] public string Title { get; set; } = string.Empty;
     [Parameter] public string Message { get; set; } = string.Empty;
     [Parameter] public SnackbarType Type { get; set; } = SnackbarType.Information;
@@ -55,6 +54,19 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
             if (!_isDismissed && IsVisible)
             {
                 await DismissAsync();
+            }
+
+            // First try to unsubscribe from events if available
+            try
+            {
+                await JsRuntime.InvokeVoidAsync(
+                    "eval",
+                    "if (window.EventEmitter) { window.EventEmitter.emit('snackbar:cleanup', '" + _snackbarId + "'); }"
+                );
+            }
+            catch
+            {
+                // Ignore event cleanup errors
             }
 
             await JsRuntime.InvokeVoidAsync(
@@ -100,6 +112,8 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         await _stateUpdateLock.WaitAsync(_disposalTokenSource.Token);
         try
         {
+            await WaitForJsInitializationAsync();
+
             _isAnimating = true;
             IsVisible = true;
             await InvokeAsync(StateHasChanged);
@@ -128,6 +142,33 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         finally
         {
             _stateUpdateLock.Release();
+        }
+    }
+
+    private async Task WaitForJsInitializationAsync()
+    {
+        try
+        {
+            // Try multiple times with increasing delays
+            for (var i = 0; i < 3; i++)
+            {
+                var isLoaded = await JsRuntime.InvokeAsync<bool>("eval",
+                    "typeof window.DropBearSnackbar !== 'undefined' && typeof window.DropBearSnackbar.startProgress === 'function'");
+
+                if (isLoaded)
+                {
+                    return;
+                }
+
+                await Task.Delay(100 * (i + 1), _disposalTokenSource.Token);
+            }
+
+            throw new JSException("DropBearSnackbar failed to initialize after multiple attempts");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error waiting for JS initialization: {SnackbarId}", _snackbarId);
+            throw;
         }
     }
 
@@ -170,6 +211,16 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     {
         try
         {
+            // Check if JS is loaded
+            var isLoaded = await JsRuntime.InvokeAsync<bool>("eval",
+                "typeof window.DropBearSnackbar !== 'undefined' && typeof window.DropBearSnackbar.startProgress === 'function'");
+
+            if (!isLoaded)
+            {
+                Logger.Warning("DropBearSnackbar not properly initialized: {SnackbarId}", _snackbarId);
+                throw new JSException("DropBearSnackbar not initialized");
+            }
+
             if (Duration > 0)
             {
                 await JsRuntime.InvokeVoidAsync(

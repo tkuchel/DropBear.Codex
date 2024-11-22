@@ -1,13 +1,89 @@
 /**
- * @file dropbear.js
+ * @file base.js
  * Core utilities and components for DropBear Blazor integration
  */
 
 (() => {
   'use strict';
 
+  // Global state management
+  const DropBearState = {
+    initialized: false,
+    initializationError: null
+  };
+
+  // Performance monitoring
+  const PerformanceMonitor = {
+    timings: new Map(),
+
+    start(operation) {
+      this.timings.set(operation, performance.now());
+    },
+
+    end(operation) {
+      const startTime = this.timings.get(operation);
+      if (startTime) {
+        const duration = performance.now() - startTime;
+        this.timings.delete(operation);
+        console.debug(`[Performance] ${operation}: ${duration.toFixed(2)}ms`);
+      }
+    }
+  };
+
+  // Event handling system
+  const EventEmitter = {
+    events: new Map(),
+
+    on(event, callback) {
+      if (!this.events.has(event)) {
+        this.events.set(event, new Set());
+      }
+      this.events.get(event).add(callback);
+      return () => this.off(event, callback); // Return cleanup function
+    },
+
+    off(event, callback) {
+      const callbacks = this.events.get(event);
+      if (callbacks) {
+        callbacks.delete(callback);
+      }
+    },
+
+    emit(event, data) {
+      const callbacks = this.events.get(event);
+      if (callbacks) {
+        callbacks.forEach(callback => {
+          try {
+            callback(data);
+          } catch (error) {
+            console.error(`Error in event handler for ${event}:`, error);
+          }
+        });
+      }
+    }
+  };
+
+  // Retry operation utility
+  const retryOperation = async (operation, retries = 3, delay = 1000) => {
+    let lastError;
+
+    for (let i = 0; i < retries; i++) {
+      try {
+        return await operation();
+      } catch (error) {
+        lastError = error;
+        console.warn(`Operation failed, attempt ${i + 1} of ${retries}:`, error);
+        if (i < retries - 1) {
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
+    }
+
+    throw lastError;
+  };
+
   /**
-   * Core utilities namespace
+   * Enhanced Core utilities namespace
    * @namespace
    */
   const DropBearUtils = {
@@ -26,21 +102,37 @@
       };
     },
 
+    validateArgs(args, types, functionName) {
+      args.forEach((arg, index) => {
+        const expectedType = types[index];
+        const actualType = typeof arg;
+        if (actualType !== expectedType) {
+          throw new TypeError(
+            `Invalid argument for ${functionName}: Expected ${expectedType}, got ${actualType}`
+          );
+        }
+      });
+    },
+
+    isElement(element) {
+      return element instanceof Element || element instanceof HTMLDocument;
+    },
+
     debounce(func, wait) {
-      if (typeof func !== 'function' || typeof wait !== 'number') {
-        throw new TypeError('Invalid arguments: Expected (function, number)');
-      }
+      this.validateArgs([func, wait], ['function', 'number'], 'debounce');
       let timeout;
       return function executedFunction(...args) {
+        const later = () => {
+          clearTimeout(timeout);
+          func.apply(this, args);
+        };
         clearTimeout(timeout);
-        timeout = setTimeout(() => func.apply(this, args), wait);
+        timeout = setTimeout(later, wait);
       };
     },
 
     throttle(func, limit) {
-      if (typeof func !== 'function' || typeof limit !== 'number') {
-        throw new TypeError('Invalid arguments: Expected (function, number)');
-      }
+      this.validateArgs([func, limit], ['function', 'number'], 'throttle');
       let inThrottle;
       let lastRan;
       let lastFunc;
@@ -65,6 +157,9 @@
 
     safeQuerySelector(selector, context = document) {
       try {
+        if (typeof selector !== 'string') {
+          throw new TypeError('Selector must be a string');
+        }
         return context.querySelector(selector);
       } catch (error) {
         console.error(`Invalid selector: ${selector}`, error);
@@ -73,6 +168,10 @@
     },
 
     createOneTimeListener(element, eventName, handler, timeout) {
+      if (!this.isElement(element)) {
+        throw new TypeError('Invalid element provided');
+      }
+
       return new Promise((resolve, reject) => {
         const timeoutId = timeout && setTimeout(() => {
           try {
@@ -102,34 +201,63 @@
     const logger = DropBearUtils.createLogger('DropBearSnackbar');
     const snackbars = new Map();
     const ANIMATION_DURATION = 300;
+    const CLEANUP_INTERVAL = 60000; // 1 minute
+
+    // Periodic cleanup of inactive snackbars
+    const cleanupInactiveSnackbars = () => {
+      for (const [id, manager] of snackbars.entries()) {
+        if (manager.isDisposed || !document.getElementById(id)) {
+          manager.dispose();
+          snackbars.delete(id);
+        }
+      }
+    };
+
+    // Start cleanup interval
+    const cleanupInterval = setInterval(cleanupInactiveSnackbars, CLEANUP_INTERVAL);
 
     class SnackbarManager {
       constructor(id, element) {
+        DropBearUtils.validateArgs([id, element], ['string', 'object'], 'SnackbarManager');
+        if (!DropBearUtils.isElement(element)) {
+          throw new TypeError('Invalid element provided to SnackbarManager');
+        }
+
         this.id = id;
         this.element = element;
         this.progressBar = element.querySelector('.snackbar-progress');
         this.timeout = null;
         this.isDisposed = false;
+        this.createTime = Date.now();
+
+        EventEmitter.emit('snackbar:created', {id, element});
       }
 
       async startProgress(duration) {
         if (this.isDisposed || !this.progressBar) return;
 
-        try {
-          this.progressBar.style.transition = 'none';
-          this.progressBar.style.width = '100%';
-          void this.progressBar.offsetWidth;
+        await retryOperation(async () => {
+          try {
+            PerformanceMonitor.start(`snackbar-progress-${this.id}`);
 
-          this.progressBar.style.transition = `width ${duration}ms linear`;
-          this.progressBar.style.width = '0%';
+            this.progressBar.style.transition = 'none';
+            this.progressBar.style.width = '100%';
+            void this.progressBar.offsetWidth;
 
-          clearTimeout(this.timeout);
-          this.timeout = setTimeout(() => this.hide(), duration);
-          logger.debug(`Progress started: ${this.id}`);
-        } catch (error) {
-          logger.error(`Progress error: ${error.message}`);
-          await this.hide();
-        }
+            this.progressBar.style.transition = `width ${duration}ms linear`;
+            this.progressBar.style.width = '0%';
+
+            clearTimeout(this.timeout);
+            this.timeout = setTimeout(() => this.hide(), duration);
+
+            PerformanceMonitor.end(`snackbar-progress-${this.id}`);
+            logger.debug(`Progress started: ${this.id}`);
+          } catch (error) {
+            logger.error(`Progress error: ${error.message}`);
+            await this.hide();
+            throw error;
+          }
+        });
       }
 
       async hide() {
@@ -167,14 +295,18 @@
           logger.warn("Error disposing snackbar element:", error);
         }
         snackbars.delete(this.id);
+        EventEmitter.emit('snackbar:disposed', {id: this.id});
       }
     }
 
     return {
       async startProgress(snackbarId, duration) {
+        PerformanceMonitor.start(`snackbar-operation-${snackbarId}`);
+
         if (!snackbarId || typeof duration !== 'number' || duration <= 0) {
           throw new Error('Invalid arguments');
         }
+
         try {
           const element = document.getElementById(snackbarId);
           if (!element) return;
@@ -188,6 +320,9 @@
           await manager.startProgress(duration);
         } catch (error) {
           logger.error('startProgress error:', error);
+          throw error;
+        } finally {
+          PerformanceMonitor.end(`snackbar-operation-${snackbarId}`);
         }
       },
 
@@ -197,12 +332,19 @@
           if (manager) await manager.hide();
         } catch (error) {
           logger.error('hideSnackbar error:', error);
+          throw error;
         }
       },
 
       async disposeSnackbar(snackbarId) {
         const manager = snackbars.get(snackbarId);
         if (manager) await manager.dispose();
+      },
+
+      dispose() {
+        clearInterval(cleanupInterval);
+        snackbars.forEach(manager => manager.dispose());
+        snackbars.clear();
       }
     };
   })();
@@ -215,12 +357,19 @@
       constructor(dotNetReference) {
         this.dotNetReference = dotNetReference;
         this.resizeHandler = DropBearUtils.debounce(() =>
-            dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize')
-              .catch(error => logger.error('SetMaxWidthBasedOnWindowSize failed:', error)),
+            this.handleResize().catch(error =>
+              logger.error('SetMaxWidthBasedOnWindowSize failed:', error)
+            ),
           300
         );
+
         window.addEventListener('resize', this.resizeHandler);
         logger.debug('Resize manager initialized');
+        EventEmitter.emit('resize-manager:created');
+      }
+
+      async handleResize() {
+        await retryOperation(async () => await this.dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize'));
       }
 
       dispose() {
@@ -228,6 +377,7 @@
           window.removeEventListener('resize', this.resizeHandler);
           this.resizeHandler = null;
           logger.debug('Resize manager disposed');
+          EventEmitter.emit('resize-manager:disposed');
         }
       }
     }
@@ -238,6 +388,7 @@
           instance = new ResizeManager(dotNetRef);
         }
       },
+
       dispose() {
         if (instance) {
           instance.dispose();
@@ -270,14 +421,17 @@
         window.addEventListener('scroll', scrollHandler);
         scrollHandler();
         logger.debug('Navigation buttons initialized');
+        EventEmitter.emit('navigation:initialized');
       },
 
       scrollToTop() {
         window.scrollTo({top: 0, behavior: 'smooth'});
+        EventEmitter.emit('navigation:scrolled-to-top');
       },
 
       goBack() {
         window.history.back();
+        EventEmitter.emit('navigation:went-back');
       },
 
       dispose() {
@@ -287,19 +441,76 @@
         }
         dotNetReference = null;
         logger.debug('Navigation buttons disposed');
+        EventEmitter.emit('navigation:disposed');
       }
     };
   })();
 
-  Object.assign(window, {
-    DropBearUtils,
-    DropBearSnackbar,
-    DropBearResizeManager,
-    DropBearNavigationButtons,
-    downloadFileFromStream,
-    getWindowDimensions,
-    clickElementById
+  // Initialization sequence
+  const initializeDropBear = async () => {
+    try {
+      PerformanceMonitor.start('dropbear-initialization');
+
+      if (DropBearState.initialized) {
+        console.warn('DropBear already initialized');
+        return;
+      }
+
+      console.log("DropBear initialization starting...");
+
+      // Define immutable global objects
+      Object.defineProperties(window, {
+        DropBearSnackbar: {
+          value: DropBearSnackbar,
+          writable: false,
+          configurable: false
+        },
+        DropBearUtils: {
+          value: DropBearUtils,
+          writable: false,
+          configurable: false
+        },
+        DropBearResizeManager: {
+          value: DropBearResizeManager,
+          writable: false,
+          configurable: false
+        },
+        DropBearNavigationButtons: {
+          value: DropBearNavigationButtons,
+          writable: false,
+          configurable: false
+        }
+      });
+
+      DropBearState.initialized = true;
+      EventEmitter.emit('dropbear:initialized');
+
+      PerformanceMonitor.end('dropbear-initialization');
+      console.log("DropBear initialization complete");
+    } catch (error) {
+      DropBearState.initializationError = error;
+      console.error("DropBear initialization failed:", error);
+      throw error;
+    }
+  };
+
+  // Initialize when DOM is ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeDropBear);
+  } else {
+    initializeDropBear();
+  }
+
+  // Add cleanup handler for page unload
+  window.addEventListener('unload', () => {
+    try {
+      DropBearSnackbar.dispose();
+      DropBearResizeManager.dispose();
+      DropBearNavigationButtons.dispose();
+      console.log("DropBear cleanup complete");
+    } catch (error) {
+      console.error("Error during DropBear cleanup:", error);
+    }
   });
 
-  document.addEventListener('DOMContentLoaded', () => DropBearFileUploader.initialize());
 })();
