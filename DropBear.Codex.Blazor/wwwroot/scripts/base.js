@@ -469,6 +469,7 @@
     const logger = DropBearUtils.createLogger('DropBearContextMenu');
     const menuInstances = new Map();
     const ANIMATION_DURATION = 150;
+
     class ContextMenuManager {
       constructor(id, dotNetRef) {
         DropBearUtils.validateArgs([id, dotNetRef], ['string', 'object'], 'ContextMenuManager');
@@ -486,7 +487,7 @@
         this.handleDocumentClick = this.handleDocumentClick.bind(this);
 
         this.initialize();
-        EventEmitter.emit('context-menu:created', { id });
+        EventEmitter.emit('context-menu:created', {id});
         logger.debug(`Context menu initialized: ${id}`);
       }
 
@@ -557,7 +558,7 @@
         this.dotNetRef = null;
 
         logger.debug(`Context menu disposed: ${this.id}`);
-        EventEmitter.emit('context-menu:disposed', { id: this.id });
+        EventEmitter.emit('context-menu:disposed', {id: this.id});
       }
     }
 

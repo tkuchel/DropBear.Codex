@@ -18,15 +18,22 @@ public sealed class PageAlertService : IPageAlertService
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<PageAlertService>();
     private readonly ConcurrentDictionary<Guid, PageAlert> _alerts = new();
+    private readonly IAlertChannelManager _channelManager;
     private readonly object _eventLock = new();
 
-    public IEnumerable<PageAlert> Alerts => _alerts.Values;
     /// <summary>
     ///     Initializes a new instance of the <see cref="PageAlertService" /> class.
     /// </summary>
     public PageAlertService()
     {
     }
+
+    public PageAlertService(IAlertChannelManager channelManager)
+    {
+        _channelManager = channelManager;
+    }
+
+    public IEnumerable<PageAlert> Alerts => _alerts.Values;
 
     /// <summary>
     ///     Occurs when an alert should be added.
@@ -46,14 +53,16 @@ public sealed class PageAlertService : IPageAlertService
     /// <summary>
     ///     Adds an alert with the specified details.
     /// </summary>
-    public async Task<bool> AddAlertAsync(
-        string title,
-        string message,
-        AlertType type,
-        bool isDismissible,
-        int? durationMs = 5000)
+    public async Task<bool> AddAlertAsync(string title, string message, AlertType type, bool isDismissible,
+        string? channelId = null, int? durationMs = 5000)
     {
-        var alert = new PageAlert(title, message, type, isDismissible);
+        if (channelId != null && !_channelManager.IsValidChannel(channelId))
+        {
+            Logger.Warning("Attempted to add alert to invalid channel: {ChannelId}", channelId);
+            return false;
+        }
+
+        var alert = new PageAlert(title, message, type, isDismissible, channelId);
         if (!_alerts.TryAdd(alert.Id, alert))
         {
             Logger.Error("Failed to add alert with ID {AlertId}.", alert.Id);

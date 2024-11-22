@@ -33,11 +33,7 @@ public interface IPageAlertService
     /// <summary>
     ///     Adds an alert with the specified details.
     /// </summary>
-    Task<bool> AddAlertAsync(
-        string title,
-        string message,
-        AlertType type,
-        bool isDismissible,
+    Task<bool> AddAlertAsync(string title, string message, AlertType type, bool isDismissible, string? channelId = null,
         int? durationMs = 5000);
 
     /// <summary>
