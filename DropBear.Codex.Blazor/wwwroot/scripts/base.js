@@ -2,7 +2,6 @@
  * @file base.js
  * Core utilities and components for DropBear Blazor integration
  */
-
 (() => {
   'use strict';
 
@@ -39,7 +38,7 @@
         this.events.set(event, new Set());
       }
       this.events.get(event).add(callback);
-      return () => this.off(event, callback); // Return cleanup function
+      return () => this.off(event, callback);
     },
 
     off(event, callback) {
@@ -65,33 +64,24 @@
 
   // Retry operation utility
   const retryOperation = async (operation, retries = 3, delay = 1000) => {
-    let lastError;
-
     for (let i = 0; i < retries; i++) {
       try {
         return await operation();
       } catch (error) {
-        lastError = error;
         console.warn(`Operation failed, attempt ${i + 1} of ${retries}:`, error);
         if (i < retries - 1) {
           await new Promise(resolve => setTimeout(resolve, delay));
+        } else {
+          throw error;
         }
       }
     }
-
-    throw lastError;
   };
 
   /**
    * Enhanced Core utilities namespace
-   * @namespace
    */
   const DropBearUtils = {
-    /**
-     * Enhanced logging utility
-     * @param {string} namespace - Module namespace for log prefixing
-     * @returns {Object} Logger instance
-     */
     createLogger(namespace) {
       const prefix = `[${namespace}]`;
       return {
@@ -155,18 +145,6 @@
       };
     },
 
-    safeQuerySelector(selector, context = document) {
-      try {
-        if (typeof selector !== 'string') {
-          throw new TypeError('Selector must be a string');
-        }
-        return context.querySelector(selector);
-      } catch (error) {
-        console.error(`Invalid selector: ${selector}`, error);
-        return null;
-      }
-    },
-
     createOneTimeListener(element, eventName, handler, timeout) {
       if (!this.isElement(element)) {
         throw new TypeError('Invalid element provided');
@@ -174,18 +152,14 @@
 
       return new Promise((resolve, reject) => {
         const timeoutId = timeout && setTimeout(() => {
-          try {
-            element.removeEventListener(eventName, wrappedHandler);
-          } catch (error) {
-            console.warn("Error removing event listener:", error);
-          }
+          element.removeEventListener(eventName, wrappedHandler);
           reject(new Error('Event listener timed out'));
         }, timeout);
 
         const wrappedHandler = (...args) => {
-          clearTimeout(timeoutId);
+          if (timeoutId) clearTimeout(timeoutId);
+          element.removeEventListener(eventName, wrappedHandler);
           try {
-            element.removeEventListener(eventName, wrappedHandler);
             const result = handler(...args);
             resolve(result);
           } catch (error) {
@@ -200,10 +174,8 @@
   const DropBearSnackbar = (() => {
     const logger = DropBearUtils.createLogger('DropBearSnackbar');
     const snackbars = new Map();
-    const ANIMATION_DURATION = 300;
     const CLEANUP_INTERVAL = 60000; // 1 minute
 
-    // Periodic cleanup of inactive snackbars
     const cleanupInactiveSnackbars = () => {
       for (const [id, manager] of snackbars.entries()) {
         if (manager.isDisposed || !document.getElementById(id)) {
@@ -213,7 +185,6 @@
       }
     };
 
-    // Start cleanup interval
     const cleanupInterval = setInterval(cleanupInactiveSnackbars, CLEANUP_INTERVAL);
 
     class SnackbarManager {
@@ -228,7 +199,6 @@
         this.progressBar = element.querySelector('.snackbar-progress');
         this.timeout = null;
         this.isDisposed = false;
-        this.createTime = Date.now();
 
         EventEmitter.emit('snackbar:created', {id, element});
       }
@@ -251,9 +221,7 @@
             this.timeout = setTimeout(() => this.hide(), duration);
 
             PerformanceMonitor.end(`snackbar-progress-${this.id}`);
-            logger.debug(`Progress started: ${this.id}`);
           } catch (error) {
-            logger.error(`Progress error: ${error.message}`);
             await this.hide();
             throw error;
           }
@@ -263,21 +231,18 @@
       async hide() {
         if (this.isDisposed) return;
 
-        try {
-          clearTimeout(this.timeout);
-          this.element.classList.add('snackbar-exit');
+        clearTimeout(this.timeout);
+        this.element.classList.add('snackbar-exit');
 
+        try {
           await DropBearUtils.createOneTimeListener(
             this.element,
             'animationend',
             () => {
             },
-            ANIMATION_DURATION + 500
+            500
           );
-
-          this.dispose();
-        } catch (error) {
-          logger.error(`Hide error: ${error.message}`);
+        } finally {
           this.dispose();
         }
       }
@@ -287,58 +252,51 @@
 
         this.isDisposed = true;
         clearTimeout(this.timeout);
-        try {
-          if (this.element && this.element.parentNode) {
-            this.element.parentNode.removeChild(this.element);
-          }
-        } catch (error) {
-          logger.warn("Error disposing snackbar element:", error);
+
+        if (this.element?.parentNode) {
+          this.element.parentNode.removeChild(this.element);
         }
-        snackbars.delete(this.id);
         EventEmitter.emit('snackbar:disposed', {id: this.id});
       }
     }
 
     return {
-      async startProgress(snackbarId, duration) {
+      startProgress(snackbarId, duration) {
         PerformanceMonitor.start(`snackbar-operation-${snackbarId}`);
 
         if (!snackbarId || typeof duration !== 'number' || duration <= 0) {
           throw new Error('Invalid arguments');
         }
 
-        try {
-          const element = document.getElementById(snackbarId);
-          if (!element) return;
+        return retryOperation(async () => {
+          try {
+            const element = document.getElementById(snackbarId);
+            if (!element) return;
 
-          if (snackbars.has(snackbarId)) {
-            await this.disposeSnackbar(snackbarId);
+            if (snackbars.has(snackbarId)) {
+              await this.disposeSnackbar(snackbarId);
+            }
+
+            const manager = new SnackbarManager(snackbarId, element);
+            snackbars.set(snackbarId, manager);
+            await manager.startProgress(duration);
+          } catch (error) {
+            logger.error('startProgress error:', error);
+            throw error;
+          } finally {
+            PerformanceMonitor.end(`snackbar-operation-${snackbarId}`);
           }
-
-          const manager = new SnackbarManager(snackbarId, element);
-          snackbars.set(snackbarId, manager);
-          await manager.startProgress(duration);
-        } catch (error) {
-          logger.error('startProgress error:', error);
-          throw error;
-        } finally {
-          PerformanceMonitor.end(`snackbar-operation-${snackbarId}`);
-        }
+        });
       },
 
-      async hideSnackbar(snackbarId) {
-        try {
-          const manager = snackbars.get(snackbarId);
-          if (manager) await manager.hide();
-        } catch (error) {
-          logger.error('hideSnackbar error:', error);
-          throw error;
-        }
-      },
-
-      async disposeSnackbar(snackbarId) {
+      hideSnackbar(snackbarId) {
         const manager = snackbars.get(snackbarId);
-        if (manager) await manager.dispose();
+        if (manager) return manager.hide();
+      },
+
+      disposeSnackbar(snackbarId) {
+        const manager = snackbars.get(snackbarId);
+        if (manager) manager.dispose();
       },
 
       dispose() {
@@ -369,7 +327,9 @@
       }
 
       async handleResize() {
-        await retryOperation(async () => await this.dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize'));
+        await retryOperation(async () =>
+          await this.dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize')
+        );
       }
 
       dispose() {
@@ -446,7 +406,6 @@
     };
   })();
 
-  // Add this to your base.js before the global assignments
   const DropBearUtilities = (() => {
     const logger = DropBearUtils.createLogger('DropBearUtilities');
 
@@ -468,7 +427,6 @@
   const DropBearContextMenu = (() => {
     const logger = DropBearUtils.createLogger('DropBearContextMenu');
     const menuInstances = new Map();
-    const ANIMATION_DURATION = 150;
 
     class ContextMenuManager {
       constructor(id, dotNetRef) {
@@ -498,40 +456,20 @@
 
       async handleContextMenu(e) {
         e.preventDefault();
-
         if (this.isDisposed) return;
 
-        await retryOperation(async () => {
-          try {
-            PerformanceMonitor.start(`context-menu-show-${this.id}`);
-
-            const x = e.pageX;
-            const y = e.pageY;
-            await this.show(x, y);
-
-            logger.debug(`Context menu triggered at X: ${x}, Y: ${y}`);
-          } catch (error) {
-            logger.error(`Context menu show error: ${error.message}`);
-            throw error;
-          } finally {
-            PerformanceMonitor.end(`context-menu-show-${this.id}`);
-          }
-        });
+        const x = e.pageX;
+        const y = e.pageY;
+        await this.show(x, y);
       }
 
       async handleDocumentClick() {
-        if (this.isDisposed) {
-          logger.debug('Context menu instance already disposed, skipping hide.');
-          return;
-        }
+        if (this.isDisposed) return;
 
         try {
           await this.dotNetRef.invokeMethodAsync('Hide');
-          logger.debug('Context menu hidden via document click');
         } catch (error) {
-          if (error.message.includes('There is no tracked object with id')) {
-            logger.warn('DotNetObjectReference was disposed before hide could be invoked');
-          } else {
+          if (!error.message.includes('There is no tracked object with id')) {
             logger.error('Error hiding context menu:', error);
           }
         }
@@ -542,7 +480,6 @@
 
         try {
           await this.dotNetRef.invokeMethodAsync('Show', x, y);
-          logger.debug(`Context menu shown at X: ${x}, Y: ${y}`);
         } catch (error) {
           logger.error('Error showing context menu:', error);
           throw error;
@@ -582,17 +519,9 @@
       },
 
       show(menuId, x, y) {
-        DropBearUtils.validateArgs([menuId, x, y], ['string', 'number', 'number'], 'show');
-
-        try {
-          const manager = menuInstances.get(menuId);
-          if (manager) {
-            return manager.show(x, y);
-          }
-          logger.warn(`No context menu found for ${menuId}`);
-        } catch (error) {
-          logger.error('Error showing context menu:', error);
-          throw error;
+        const manager = menuInstances.get(menuId);
+        if (manager) {
+          return manager.show(x, y);
         }
       },
 
@@ -602,33 +531,161 @@
           if (manager) {
             manager.dispose();
             menuInstances.delete(menuId);
+            logger.debug(`Context menu disposed: ${menuId}`);
           }
         } catch (error) {
-          logger.error('Error disposing context menu:', error);
-          throw error;
+          logger.error(`Error disposing context menu ${menuId}:`, error);
         }
       },
 
       disposeAll() {
         try {
-          menuInstances.forEach((instance, id) => this.dispose(id));
+          const ids = Array.from(menuInstances.keys());
+          ids.forEach(id => this.dispose(id));
           menuInstances.clear();
           logger.debug('All context menus disposed');
         } catch (error) {
           logger.error('Error disposing all context menus:', error);
-          throw error;
         }
       }
     };
   })();
 
-  // Add this to your window assignments
+  const DropBearValidationErrors = (() => {
+    const logger = DropBearUtils.createLogger('DropBearValidationErrors');
+    const validationContainers = new Map();
+
+    class ValidationErrorsManager {
+      constructor(id) {
+        DropBearUtils.validateArgs([id], ['string'], 'ValidationErrorsManager');
+
+        this.id = id;
+        this.element = document.getElementById(id);
+        this.isDisposed = false;
+        this.list = this.element?.querySelector('.validation-errors__list');
+        this.header = this.element?.querySelector('.validation-errors__header');
+
+        if (!DropBearUtils.isElement(this.element)) {
+          throw new TypeError('Invalid element provided to ValidationErrorsManager');
+        }
+
+        this.initialize();
+        EventEmitter.emit('validation-errors:created', {id});
+        logger.debug(`Validation errors container initialized: ${id}`);
+      }
+
+      initialize() {
+        try {
+          this.header?.addEventListener('keydown', this.handleKeydown.bind(this));
+          logger.debug(`Validation container ${this.id} initialized`);
+        } catch (error) {
+          logger.error(`Error initializing validation container: ${error.message}`);
+          throw error;
+        }
+      }
+
+      handleKeydown(event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          this.header.click();
+        }
+      }
+
+      async updateAriaAttributes(isCollapsed) {
+        if (this.isDisposed) return;
+
+        await retryOperation(async () => {
+          try {
+            PerformanceMonitor.start(`validation-aria-update-${this.id}`);
+
+            if (this.list) {
+              this.list.setAttribute('aria-hidden', isCollapsed.toString());
+
+              const items = this.list.querySelectorAll('.validation-errors__item');
+              items.forEach(item => item.setAttribute('tabindex', isCollapsed ? '-1' : '0'));
+            }
+
+            if (this.header) {
+              this.header.setAttribute('aria-expanded', (!isCollapsed).toString());
+            }
+
+            logger.debug(`Aria attributes updated for ${this.id}, collapsed: ${isCollapsed}`);
+          } catch (error) {
+            logger.error(`Error updating aria attributes: ${error.message}`);
+            throw error;
+          } finally {
+            PerformanceMonitor.end(`validation-aria-update-${this.id}`);
+          }
+        });
+      }
+
+      dispose() {
+        if (this.isDisposed) return;
+
+        this.isDisposed = true;
+        this.header?.removeEventListener('keydown', this.handleKeydown.bind(this));
+
+        logger.debug(`Validation errors container disposed: ${this.id}`);
+        EventEmitter.emit('validation-errors:disposed', {id: this.id});
+      }
+    }
+
+    return {
+      initialize(containerId) {
+        DropBearUtils.validateArgs([containerId], ['string'], 'initialize');
+
+        try {
+          if (validationContainers.has(containerId)) {
+            logger.warn(`Validation container already exists for ${containerId}, disposing old instance`);
+            this.dispose(containerId);
+          }
+
+          const manager = new ValidationErrorsManager(containerId);
+          validationContainers.set(containerId, manager);
+          logger.debug(`Validation container initialized: ${containerId}`);
+        } catch (error) {
+          logger.error('Validation container initialization error:', error);
+          throw error;
+        }
+      },
+
+      async updateAriaAttributes(containerId, isCollapsed) {
+        const manager = validationContainers.get(containerId);
+        if (manager) {
+          await manager.updateAriaAttributes(isCollapsed);
+        }
+      },
+
+      dispose(containerId) {
+        try {
+          const manager = validationContainers.get(containerId);
+          if (manager) {
+            manager.dispose();
+            validationContainers.delete(containerId);
+            logger.debug(`Validation container disposed: ${containerId}`);
+          }
+        } catch (error) {
+          logger.error(`Error disposing validation container ${containerId}:`, error);
+        }
+      },
+
+      disposeAll() {
+        try {
+          const ids = Array.from(validationContainers.keys());
+          ids.forEach(id => this.dispose(id));
+          validationContainers.clear();
+          logger.debug('All validation containers disposed');
+        } catch (error) {
+          logger.error('Error disposing all validation containers:', error);
+        }
+      }
+    };
+  })();
+
   window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
 
-  // Initialization sequence
   const initializeDropBear = async () => {
     try {
-      // Wait for Blazor to be ready
       await new Promise((resolve, reject) => {
         let attempts = 0;
         const checkBlazor = setInterval(() => {
@@ -637,49 +694,27 @@
             clearInterval(checkBlazor);
             resolve();
           }
-          if (attempts > 50) { // 5 second timeout
+          if (attempts > 50) {
             clearInterval(checkBlazor);
             reject(new Error('Blazor not initialized after 5 seconds'));
           }
         }, 100);
       });
 
-      PerformanceMonitor.start('dropbear-initialization');
-
       if (DropBearState.initialized) {
         console.warn('DropBear already initialized');
         return;
       }
 
-      console.log("DropBear initialization starting...");
+      PerformanceMonitor.start('dropbear-initialization');
 
-      // Define immutable global objects
       Object.defineProperties(window, {
-        DropBearSnackbar: {
-          value: DropBearSnackbar,
-          writable: false,
-          configurable: false
-        },
-        DropBearUtils: {
-          value: DropBearUtils,
-          writable: false,
-          configurable: false
-        },
-        DropBearResizeManager: {
-          value: DropBearResizeManager,
-          writable: false,
-          configurable: false
-        },
-        DropBearNavigationButtons: {
-          value: DropBearNavigationButtons,
-          writable: false,
-          configurable: false
-        },
-        DropBearContextMenu: {                // Add this
-          value: DropBearContextMenu,
-          writable: false,
-          configurable: false
-        }
+        DropBearSnackbar: {value: DropBearSnackbar, writable: false, configurable: false},
+        DropBearUtils: {value: DropBearUtils, writable: false, configurable: false},
+        DropBearResizeManager: {value: DropBearResizeManager, writable: false, configurable: false},
+        DropBearNavigationButtons: {value: DropBearNavigationButtons, writable: false, configurable: false},
+        DropBearContextMenu: {value: DropBearContextMenu, writable: false, configurable: false},
+        DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false}
       });
 
       DropBearState.initialized = true;
@@ -694,24 +729,22 @@
     }
   };
 
-  // Initialize when DOM is ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeDropBear);
+    document.addEventListener('DOMContentLoaded', () => initializeDropBear().catch(error => console.error("Failed to initialize DropBear:", error)));
   } else {
-    initializeDropBear();
+    initializeDropBear().catch(error => console.error("Failed to initialize DropBear:", error));
   }
 
-  // Add cleanup handler for page unload
   window.addEventListener('unload', () => {
     try {
       DropBearSnackbar.dispose();
       DropBearResizeManager.dispose();
       DropBearNavigationButtons.dispose();
-      DropBearContextMenu.disposeAll();
+      if (DropBearContextMenu) DropBearContextMenu.disposeAll();
+      if (DropBearValidationErrors) DropBearValidationErrors.disposeAll();
       console.log("DropBear cleanup complete");
     } catch (error) {
       console.error("Error during DropBear cleanup:", error);
     }
   });
-
 })();

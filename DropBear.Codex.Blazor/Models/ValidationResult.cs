@@ -1,97 +1,256 @@
 ﻿#region
 
 using DropBear.Codex.Core.Enums;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Logging;
+using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents the result of a validation operation, inheriting from the base Result class.
+///     Represents the result of a validation operation.
 /// </summary>
-public sealed class ValidationResult : Result<IEnumerable<ValidationError>>
+public sealed class ValidationResult
 {
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ValidationResult>();
     private readonly List<ValidationError> _errors;
+    private readonly ResultState _state;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="ValidationResult" /> class.
-    /// </summary>
-    private ValidationResult(IEnumerable<ValidationError> validationErrors, string? error, Exception? exception,
-        ResultState state)
-        : base(validationErrors.ToList(), error, exception, state)
+    private ValidationResult(
+        IEnumerable<ValidationError> errors,
+        string? message = null,
+        Exception? exception = null,
+        ResultState state = ResultState.Success)
     {
-        _errors = Value.ToList();
+        ArgumentNullException.ThrowIfNull(errors);
+
+        _errors = errors.ToList();
+        Message = message;
+        Exception = exception;
+        _state = state;
+
+        // If we have errors but state is Success, override to Failure
+        if (_errors.Any() && state == ResultState.Success)
+        {
+            _state = ResultState.Failure;
+        }
     }
 
     /// <summary>
-    ///     Gets the validation errors in a read-only format.
+    ///     Gets whether the validation was successful.
+    /// </summary>
+    public bool IsSuccess => _state == ResultState.Success;
+
+    /// <summary>
+    ///     Gets whether the validation failed.
+    /// </summary>
+    public bool IsFailure => !IsSuccess;
+
+    /// <summary>
+    ///     Gets whether the validation has any errors.
+    /// </summary>
+    public bool HasErrors => _errors.Any();
+
+    /// <summary>
+    ///     Gets the validation error message if any.
+    /// </summary>
+    public string? Message { get; }
+
+    /// <summary>
+    ///     Gets the exception that occurred during validation if any.
+    /// </summary>
+    public Exception? Exception { get; }
+
+    /// <summary>
+    ///     Gets the collection of validation errors.
     /// </summary>
     public IReadOnlyList<ValidationError> Errors => _errors.AsReadOnly();
 
     /// <summary>
-    ///     Gets a value indicating whether the validation passed.
+    ///     Creates a successful validation result.
     /// </summary>
-    public bool IsValid => !_errors.Any();
-
-    /// <summary>
-    ///     Creates a new ValidationResult instance with the current errors.
-    /// </summary>
-    private ValidationResult CreateNewResult()
+    public static ValidationResult Success()
     {
-        var state = _errors.Any() ? ResultState.Failure : ResultState.Success;
-        return new ValidationResult(_errors, ErrorMessage, Exception, state);
+        return new ValidationResult(Enumerable.Empty<ValidationError>());
     }
 
     /// <summary>
-    ///     Adds a single validation error to the ValidationResult.
+    ///     Creates a failed validation result with multiple errors.
     /// </summary>
-    public ValidationResult AddError(string parameter, string errorMessage)
+    public static ValidationResult Failure(
+        IEnumerable<ValidationError> errors,
+        string? message = null,
+        Exception? exception = null)
     {
-        if (string.IsNullOrWhiteSpace(parameter))
-        {
-            throw new ArgumentNullException(nameof(parameter), "Parameter cannot be null or empty.");
-        }
-
-        if (string.IsNullOrWhiteSpace(errorMessage))
-        {
-            throw new ArgumentNullException(nameof(errorMessage), "Error message cannot be null or empty.");
-        }
-
-        var newErrors = new List<ValidationError>(_errors) { new(parameter, errorMessage) };
-        return new ValidationResult(newErrors, ErrorMessage, Exception, ResultState.Failure);
+        return new ValidationResult(errors, message, exception, ResultState.Failure);
     }
 
     /// <summary>
-    ///     Adds multiple validation errors to the ValidationResult.
+    ///     Creates a failed validation result with a single error.
+    /// </summary>
+    public static ValidationResult Failure(
+        string parameter,
+        string errorMessage,
+        Exception? exception = null)
+    {
+        return new ValidationResult(
+            new[] { new ValidationError(parameter, errorMessage) },
+            errorMessage,
+            exception,
+            ResultState.Failure);
+    }
+
+    /// <summary>
+    ///     Creates a new ValidationResult by combining multiple results.
+    /// </summary>
+    public static ValidationResult Combine(params ValidationResult[] results)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+
+        var allErrors = results.SelectMany(r => r.Errors).ToList();
+        var anyFailure = results.Any(r => r.IsFailure);
+        var exceptions = results
+            .Where(r => r.Exception != null)
+            .Select(r => r.Exception!)
+            .ToList();
+
+        var exception = exceptions.Count switch
+        {
+            0 => null,
+            1 => exceptions[0],
+            _ => new AggregateException(exceptions)
+        };
+
+        var message = allErrors.Any()
+            ? string.Join("\n", allErrors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"))
+            : null;
+
+        return new ValidationResult(
+            allErrors,
+            message,
+            exception,
+            anyFailure ? ResultState.Failure : ResultState.Success);
+    }
+
+    /// <summary>
+    ///     Adds additional errors to the current validation result.
     /// </summary>
     public ValidationResult AddErrors(IEnumerable<ValidationError> errors)
     {
-        if (errors == null || !errors.Any())
-        {
-            throw new ArgumentNullException(nameof(errors), "Errors cannot be null or empty.");
-        }
+        ArgumentNullException.ThrowIfNull(errors);
 
         var newErrors = new List<ValidationError>(_errors);
         newErrors.AddRange(errors);
-        return new ValidationResult(newErrors, ErrorMessage, Exception, ResultState.Failure);
+
+        return new ValidationResult(
+            newErrors,
+            Message,
+            Exception,
+            ResultState.Failure);
     }
 
-    // Factory methods
-    public new static ValidationResult Success()
+    /// <summary>
+    ///     Adds a single error to the current validation result.
+    /// </summary>
+    public ValidationResult AddError(string parameter, string errorMessage)
     {
-        return new ValidationResult(Enumerable.Empty<ValidationError>(), null, null, ResultState.Success);
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameter);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        return AddErrors(new[] { new ValidationError(parameter, errorMessage) });
     }
 
-    public static ValidationResult Failure(IEnumerable<ValidationError> errors, string? error = null,
-        Exception? exception = null)
+    /// <summary>
+    ///     Executes different actions based on the validation state.
+    /// </summary>
+    public TResult Match<TResult>(
+        Func<TResult> onSuccess,
+        Func<IReadOnlyList<ValidationError>, string?, Exception?, TResult> onFailure)
     {
-        return new ValidationResult(errors, error, exception, ResultState.Failure);
+        ArgumentNullException.ThrowIfNull(onSuccess);
+        ArgumentNullException.ThrowIfNull(onFailure);
+
+        try
+        {
+            return IsSuccess
+                ? onSuccess()
+                : onFailure(Errors, Message, Exception);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during validation result match operation");
+            throw;
+        }
     }
 
-    public static ValidationResult Failure(ValidationError error, string? errorMessage = null,
-        Exception? exception = null)
+    /// <summary>
+    ///     Executes different async actions based on the validation state.
+    /// </summary>
+    public async Task<TResult> MatchAsync<TResult>(
+        Func<Task<TResult>> onSuccess,
+        Func<IReadOnlyList<ValidationError>, string?, Exception?, Task<TResult>> onFailure)
     {
-        return new ValidationResult(new[] { error }, errorMessage, exception, ResultState.Failure);
+        ArgumentNullException.ThrowIfNull(onSuccess);
+        ArgumentNullException.ThrowIfNull(onFailure);
+
+        try
+        {
+            return IsSuccess
+                ? await onSuccess().ConfigureAwait(false)
+                : await onFailure(Errors, Message, Exception).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during validation result async match operation");
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Ensures a condition is met or adds an error.
+    /// </summary>
+    public ValidationResult Ensure(Func<bool> predicate, string parameter, string errorMessage)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameter);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        try
+        {
+            return predicate()
+                ? this
+                : AddError(parameter, errorMessage);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during validation ensure operation");
+            return AddError(parameter, $"Validation check failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    ///     Gets a formatted string containing all validation errors.
+    /// </summary>
+    public string GetErrorsAsString(string separator = "\n")
+    {
+        return string.Join(separator,
+            _errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"));
+    }
+
+    /// <summary>
+    ///     Gets all errors for a specific parameter.
+    /// </summary>
+    public IEnumerable<ValidationError> GetErrorsFor(string parameter)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(parameter);
+        return _errors.Where(e => e.Parameter.Equals(parameter, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public override string ToString()
+    {
+        return IsSuccess
+            ? "Validation succeeded"
+            : $"Validation failed: {GetErrorsAsString()}";
     }
 }
