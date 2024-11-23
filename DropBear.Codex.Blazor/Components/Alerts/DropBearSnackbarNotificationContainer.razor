@@ -7,17 +7,27 @@
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject IDebounceService DebounceService
 
-<div class="snackbar-container">
-    @foreach (var snackbar in _snackbars)
-    {
-        <DropBearSnackbarNotification @key="snackbar.Id"
-                                      @ref="snackbar.ComponentRef"
-                                      Title="@snackbar.Title"
-                                      Message="@snackbar.Message"
-                                      Type="snackbar.Type"
-                                      Duration="snackbar.Duration"
-                                      IsDismissible="snackbar.IsDismissible"
-                                      ActionText="@snackbar.ActionText"
-                                      OnAction="@(() => OnSnackbarAction(snackbar))"/>
-    }
+<div id="@_containerId"
+     class="snackbar-container"
+     role="status"
+     aria-live="polite"
+     aria-relevant="additions removals"
+     aria-atomic="true">
+
+    <CascadingValue Value="this">
+        @foreach (var snackbar in _activeSnackbars)
+        {
+            <DropBearSnackbarNotification
+                @key="snackbar.Id"
+                @ref="snackbar.ComponentRef"
+                Title="@snackbar.Title"
+                Message="@snackbar.Message"
+                Type="@snackbar.Type"
+                Duration="@snackbar.Duration"
+                IsDismissible="@snackbar.IsDismissible"
+                ActionText="@snackbar.ActionText"
+                OnAction="@(() => OnSnackbarActionAsync(snackbar))"
+                class="@GetSnackbarClass(snackbar)" />
+        }
+    </CascadingValue>
 </div>

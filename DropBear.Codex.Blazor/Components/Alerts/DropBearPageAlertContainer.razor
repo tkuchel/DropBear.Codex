@@ -8,7 +8,10 @@
 @using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="page-alert-container" role="alert" aria-live="polite">
+<div id="@_containerId"
+     class="page-alert-container"
+     role="alert"
+     aria-live="polite">
     <CascadingValue Value="this">
         @foreach (var alert in CombinedAlerts)
         {

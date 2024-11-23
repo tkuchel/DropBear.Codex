@@ -1,45 +1,44 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Arguments.Events;
+using DropBear.Codex.Blazor.Components.Alerts;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Services;
 
-/// <summary>
-///     Service to manage snackbar notifications.
-/// </summary>
-public sealed class SnackbarNotificationService : ISnackbarNotificationService
+public sealed class SnackbarNotificationService : ISnackbarNotificationService, IAsyncDisposable
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SnackbarNotificationService>();
-    private readonly object _eventLock = new();
+    private readonly Serilog.ILogger _logger = LoggerFactory.Logger.ForContext<SnackbarNotificationService>();
+    private readonly ConcurrentDictionary<Guid, SnackbarInstance> _activeSnackbars = new();
+    private readonly SemaphoreSlim _eventLock = new(1, 1);
+    private bool _isDisposed;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="SnackbarNotificationService" /> class.
-    /// </summary>
-    public SnackbarNotificationService()
+    public IEnumerable<SnackbarInstance> ActiveSnackbars => _activeSnackbars.Values;
+
+    public async ValueTask DisposeAsync()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+
+        await HideAllAsync();
+        _eventLock.Dispose();
+        _activeSnackbars.Clear();
     }
 
-    /// <summary>
-    ///     Occurs when a new snackbar should be shown.
-    /// </summary>
     public event AsyncEventHandler<SnackbarNotificationEventArgs>? OnShow;
-
-    /// <summary>
-    ///     Occurs when all snackbars should be hidden.
-    /// </summary>
     public event AsyncEventHandler<EventArgs>? OnHideAll;
 
-    /// <summary>
-    ///     Shows a snackbar notification with the specified message and options.
-    /// </summary>
-    public Task<bool> ShowAsync(
+    public async Task<bool> ShowAsync(
         string message,
         SnackbarType type = SnackbarType.Information,
         int duration = 1500,
@@ -47,12 +46,9 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
         string actionText = "Dismiss",
         Func<Task>? onAction = null)
     {
-        return ShowAsync("Notification", message, type, duration, isDismissible, actionText, onAction);
+        return await ShowAsync("Notification", message, type, duration, isDismissible, actionText, onAction);
     }
 
-    /// <summary>
-    ///     Shows a snackbar notification with the specified title, message, and options.
-    /// </summary>
     public async Task<bool> ShowAsync(
         string title,
         string message,
@@ -62,6 +58,11 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
         string actionText = "Dismiss",
         Func<Task>? onAction = null)
     {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(SnackbarNotificationService));
+        }
+
         var options = new SnackbarNotificationOptions(
             title,
             message,
@@ -71,83 +72,99 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService
             actionText,
             onAction);
 
+        var snackbar = new SnackbarInstance(options);
+        _activeSnackbars.TryAdd(snackbar.Id, snackbar);
+
         var result = await InvokeEventAsync(OnShow, new SnackbarNotificationEventArgs(options));
         if (result)
         {
-            Logger.Debug("Snackbar notification shown with title '{Title}' and message '{Message}'.", title,
-                message);
+            _logger.Debug("Snackbar notification shown with title '{Title}' and message '{Message}'.", title, message);
         }
         else
         {
-            Logger.Warning("Snackbar notification could not be shown because there are no subscribers.");
+            _logger.Warning("Snackbar notification could not be shown because there are no subscribers.");
+            _activeSnackbars.TryRemove(snackbar.Id, out _);
         }
 
         return result;
     }
 
-    /// <summary>
-    ///     Hides all snackbar notifications.
-    /// </summary>
     public async Task<bool> HideAllAsync()
     {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(SnackbarNotificationService));
+        }
+
         var result = await InvokeEventAsync(OnHideAll, EventArgs.Empty);
         if (result)
         {
-            Logger.Debug("All snackbar notifications hidden.");
+            _activeSnackbars.Clear();
+            _logger.Debug("All snackbar notifications hidden.");
         }
         else
         {
-            Logger.Warning("No subscribers for OnHideAll event.");
+            _logger.Warning("No subscribers for OnHideAll event.");
         }
 
         return result;
     }
 
-    /// <summary>
-    ///     Helper method to invoke events asynchronously and handle exceptions.
-    /// </summary>
+    public async Task<bool> RemoveAsync(Guid snackbarId)
+    {
+        if (!_activeSnackbars.TryRemove(snackbarId, out _))
+        {
+            return false;
+        }
+
+        _logger.Debug("Snackbar {Id} removed", snackbarId);
+        return true;
+
+    }
+
     private async Task<bool> InvokeEventAsync<TEventArgs>(AsyncEventHandler<TEventArgs>? eventHandler, TEventArgs args)
     {
         if (eventHandler == null)
         {
-            Logger.Warning("No subscribers for event.");
             return false;
         }
 
-        Delegate[] invocationList;
-        lock (_eventLock)
-        {
-            invocationList = eventHandler.GetInvocationList();
-        }
-
-        var tasks = new List<Task>();
-        foreach (var handler in invocationList)
-        {
-            var func = (AsyncEventHandler<TEventArgs>)handler;
-            try
-            {
-                tasks.Add(func(this, args));
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error invoking event handler.");
-            }
-        }
-
-        if (tasks.Count == 0)
-        {
-            return false;
-        }
-
+        await _eventLock.WaitAsync();
         try
         {
+            var handlers = eventHandler.GetInvocationList()
+                .Cast<AsyncEventHandler<TEventArgs>>()
+                .ToArray();
+
+            if (handlers.Length == 0)
+            {
+                return false;
+            }
+
+            var tasks = new List<Task>();
+            foreach (var handler in handlers)
+            {
+                try
+                {
+                    tasks.Add(handler(this, args));
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Error invoking event handler.");
+                }
+            }
+
+            if (tasks.Count == 0)
+            {
+                return false;
+            }
+
             await Task.WhenAll(tasks);
             return true;
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error in event handlers.");
-            return false;
+            _eventLock.Release();
         }
     }
 }

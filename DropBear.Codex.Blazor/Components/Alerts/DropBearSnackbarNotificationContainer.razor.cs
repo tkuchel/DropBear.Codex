@@ -5,92 +5,51 @@ using DropBear.Codex.Blazor.Arguments.Events;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
-using Microsoft.JSInterop;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
-public sealed partial class DropBearSnackbarNotificationContainer : DropBearComponentBase, IAsyncDisposable
+public sealed partial class DropBearSnackbarNotificationContainer : DropBearComponentBase
 {
     private const int MaxChannelSnackbars = 100;
     private const int StateUpdateDebounceMs = 100;
     private const int DomUpdateDelayMs = 50;
+    private readonly string _containerId;
 
-    private static readonly ILogger Logger = LoggerFactory.Logger
-        .ForContext<DropBearSnackbarNotificationContainer>();
-
-    private readonly CancellationTokenSource _disposalTokenSource = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
-
+    private ConcurrentQueue<SnackbarInstance> _activeSnackbars = new();
     private IDisposable? _channelSubscription;
-    private bool _isDisposed;
+    private bool _isSubscribed;
 
-    private ConcurrentQueue<SnackbarInstance> _snackbars = new();
+    public DropBearSnackbarNotificationContainer()
+    {
+        _containerId = $"snackbar-container-{ComponentId}";
+    }
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
-    public async ValueTask DisposeAsync()
+    protected override async Task OnInitializedAsync()
     {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _isDisposed = true;
-        Logger.Debug("Disposing SnackbarNotificationContainer...");
-
-        try
-        {
-            await _disposalTokenSource.CancelAsync();
-            UnsubscribeFromSnackbarEvents();
-            _channelSubscription?.Dispose();
-            await DisposeSnackbarsAsync(_snackbars.ToList());
-
-            _updateLock.Dispose();
-            _disposalTokenSource.Dispose();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during disposal");
-            throw;
-        }
-
-        Logger.Debug("SnackbarNotificationContainer disposed.");
+        await base.OnInitializedAsync();
+        await InitializeSubscriptionsAsync();
     }
 
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        InitializeSubscriptions();
-    }
-
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-        if (!string.IsNullOrEmpty(ChannelId))
-        {
-            Logger.Debug("Channel Id set to {ChannelId} for SnackbarContainer.", ChannelId);
-        }
-    }
-
-    private void InitializeSubscriptions()
+    private async Task InitializeSubscriptionsAsync()
     {
         try
         {
             SubscribeToSnackbarEvents();
             if (!string.IsNullOrEmpty(ChannelId))
             {
-                SubscribeToChannelNotifications(ChannelId);
+                await SubscribeToChannelNotificationsAsync();
             }
 
-            Logger.Debug("SnackbarNotificationContainer initialized.");
+            Logger.Debug("SnackbarNotificationContainer initialized");
         }
         catch (Exception ex)
         {
@@ -101,40 +60,36 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
 
     private void SubscribeToSnackbarEvents()
     {
-        SnackbarService.OnShow += ShowSnackbarAsync;
-        SnackbarService.OnHideAll += HideAllSnackbarsAsync;
-        Logger.Debug("Subscribed to SnackbarService events.");
-    }
-
-    private void UnsubscribeFromSnackbarEvents()
-    {
-        if (SnackbarService != null)
+        if (_isSubscribed)
         {
-            SnackbarService.OnShow -= ShowSnackbarAsync;
-            SnackbarService.OnHideAll -= HideAllSnackbarsAsync;
-            Logger.Debug("Unsubscribed from SnackbarService events.");
-        }
-    }
-
-    private void SubscribeToChannelNotifications(string channelId)
-    {
-        if (string.IsNullOrEmpty(channelId))
-        {
-            Logger.Warning("Channel ID is null or empty. Skipping channel subscription.");
             return;
         }
 
-        var bag = DisposableBag.CreateBuilder();
-        NotificationSubscriber.Subscribe(channelId, HandleNotification).AddTo(bag);
-        _channelSubscription = bag.Build();
-        Logger.Debug("Subscribed to channel notifications for {ChannelId}", channelId);
+        SnackbarService.OnShow += ShowSnackbarAsync;
+        SnackbarService.OnHideAll += HideAllSnackbarsAsync;
+        _isSubscribed = true;
+        Logger.Debug("Subscribed to SnackbarService events");
     }
 
-    private ValueTask HandleNotification(Notification notification, CancellationToken token)
+    private async Task SubscribeToChannelNotificationsAsync()
     {
-        if (_isDisposed || notification.Type != NotificationType.Toast)
+        var bag = DisposableBag.CreateBuilder();
+        await InvokeAsync(() =>
         {
-            return ValueTask.CompletedTask;
+            NotificationSubscriber.Subscribe<string, Notification>(
+                ChannelId,
+                HandleNotificationAsync
+            ).AddTo(bag);
+        });
+        _channelSubscription = bag.Build();
+        Logger.Debug("Subscribed to channel notifications for {ChannelId}", ChannelId);
+    }
+
+    private async ValueTask HandleNotificationAsync(Notification notification, CancellationToken token)
+    {
+        if (IsDisposed || notification.Type != NotificationType.Toast)
+        {
+            return;
         }
 
         try
@@ -144,137 +99,77 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
                 notification.Message,
                 MapSnackbarType(notification.Severity));
 
-            var snackbar = new SnackbarNotificationEventArgs(snackbarOptions);
-            _ = ShowSnackbarAsync(this, snackbar);
-
-            return ValueTask.CompletedTask;
+            await ShowSnackbarAsync(this, new SnackbarNotificationEventArgs(snackbarOptions));
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error handling notification");
-            return ValueTask.CompletedTask;
         }
     }
 
     private async Task ShowSnackbarAsync(object? sender, SnackbarNotificationEventArgs e)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync(_disposalTokenSource.Token);
+        await _updateLock.WaitAsync();
         try
         {
-            if (_snackbars.Count >= MaxChannelSnackbars)
-            {
-                await RemoveOldestSnackbarAsync();
-            }
-
             var snackbar = new SnackbarInstance(e.Options);
-            _snackbars.Enqueue(snackbar);
-            Logger.Debug("Snackbar added with ID: {SnackbarId}", snackbar.Id);
-
+            await ManageSnackbarQueueAsync(snackbar);
             await DebouncedStateUpdateAsync();
-
-            if (snackbar.ComponentRef is not null)
-            {
-                await Task.Delay(DomUpdateDelayMs, _disposalTokenSource.Token);
-                await snackbar.ComponentRef.ShowAsync();
-
-                if (snackbar.Duration > 0)
-                {
-                    _ = AutoHideSnackbarAsync(snackbar);
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Disposal in progress, ignore
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error showing snackbar");
-            throw;
         }
         finally
         {
             _updateLock.Release();
+        }
+    }
+
+    private async Task ManageSnackbarQueueAsync(SnackbarInstance snackbar)
+    {
+        while (_activeSnackbars.Count >= MaxChannelSnackbars)
+        {
+            if (_activeSnackbars.TryDequeue(out var oldSnackbar))
+            {
+                await RemoveSnackbarAsync(oldSnackbar);
+            }
+        }
+
+        _activeSnackbars.Enqueue(snackbar);
+        Logger.Debug("Snackbar added: {Id}", snackbar.Id);
+
+        if (snackbar.Duration > 0)
+        {
+            _ = AutoHideSnackbarAsync(snackbar);
         }
     }
 
     private async Task RemoveSnackbarAsync(SnackbarInstance snackbar)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync(_disposalTokenSource.Token);
         try
         {
-            var updatedSnackbars = new ConcurrentQueue<SnackbarInstance>(
-                _snackbars.Where(s => s.Id != snackbar.Id)
-            );
-
-            if (snackbar.ComponentRef is not null)
+            if (snackbar.ComponentRef != null)
             {
                 await snackbar.ComponentRef.DismissAsync();
-                Logger.Debug("Snackbar dismissed with ID: {SnackbarId}", snackbar.Id);
             }
 
-            Interlocked.Exchange(ref _snackbars, updatedSnackbars);
+            _activeSnackbars = new ConcurrentQueue<SnackbarInstance>(
+                _activeSnackbars.Where(s => s.Id != snackbar.Id)
+            );
+
+            await SnackbarService.RemoveAsync(snackbar.Id);
             await DebouncedStateUpdateAsync();
-        }
-        catch (OperationCanceledException)
-        {
-            // Disposal in progress, ignore
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error removing snackbar: {SnackbarId}", snackbar.Id);
-            throw;
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-    }
-
-    private async Task HideAllSnackbarsAsync(object? sender, EventArgs e)
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        Logger.Debug("Hiding all snackbars...");
-        await _updateLock.WaitAsync(_disposalTokenSource.Token);
-        try
-        {
-            var snackbars = _snackbars.ToList();
-            var dismissTasks = snackbars
-                .Where(s => s.ComponentRef != null)
-                .Select(s => s.ComponentRef!.DismissAsync());
-
-            await Task.WhenAll(dismissTasks);
-            _snackbars.Clear();
-
-            Logger.Debug("All snackbars hidden and cleared.");
-            await DebouncedStateUpdateAsync();
-        }
-        catch (OperationCanceledException)
-        {
-            // Disposal in progress, ignore
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error occurred while hiding all snackbars.");
-            throw;
-        }
-        finally
-        {
-            _updateLock.Release();
+            Logger.Error(ex, "Error removing snackbar: {Id}", snackbar.Id);
         }
     }
 
@@ -282,92 +177,100 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     {
         try
         {
-            await Task.Delay(snackbar.Duration, _disposalTokenSource.Token);
-            await RemoveSnackbarAsync(snackbar);
-        }
-        catch (OperationCanceledException)
-        {
-            // Disposal in progress, ignore
+            await Task.Delay(snackbar.Duration);
+            if (!IsDisposed)
+            {
+                await RemoveSnackbarAsync(snackbar);
+            }
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error auto-hiding snackbar: {SnackbarId}", snackbar.Id);
+            Logger.Error(ex, "Error auto-hiding snackbar: {Id}", snackbar.Id);
         }
     }
 
-    private async Task RemoveOldestSnackbarAsync()
+    private async Task HideAllSnackbarsAsync(object? sender, EventArgs e)
     {
-        if (_snackbars.TryDequeue(out var oldest))
+        if (IsDisposed)
         {
-            await RemoveSnackbarAsync(oldest);
+            return;
+        }
+
+        await _updateLock.WaitAsync();
+        try
+        {
+            var tasks = _activeSnackbars
+                .Where(s => s.ComponentRef != null)
+                .Select(s => s.ComponentRef!.DismissAsync());
+
+            await Task.WhenAll(tasks);
+            _activeSnackbars.Clear();
+            await DebouncedStateUpdateAsync();
+        }
+        finally
+        {
+            _updateLock.Release();
         }
     }
 
     private async Task DebouncedStateUpdateAsync()
     {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        await DebounceService.DebounceAsync(
-            async () =>
-            {
-                if (!_isDisposed)
-                {
-                    await InvokeAsync(StateHasChanged);
-                }
-            },
-            "SnackbarContainerStateUpdate",
-            TimeSpan.FromMilliseconds(StateUpdateDebounceMs)
-        );
-    }
-
-    private async Task DisposeSnackbarsAsync(IEnumerable<SnackbarInstance> snackbars)
-    {
-        foreach (var snackbar in snackbars)
-        {
-            try
-            {
-                if (snackbar.ComponentRef is not null)
-                {
-                    await snackbar.ComponentRef.DisposeAsync();
-                }
-            }
-            catch (JSDisconnectedException ex)
-            {
-                Logger.Warning(ex, "JSDisconnectedException occurred while disposing snackbar: {SnackbarId}",
-                    snackbar.Id);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Unexpected error occurred while disposing snackbar: {SnackbarId}", snackbar.Id);
-            }
-        }
-    }
-
-    private async Task OnSnackbarAction(SnackbarInstance snackbar)
-    {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
         try
         {
-            if (snackbar.OnAction is not null)
-            {
-                await snackbar.OnAction.Invoke();
-                Logger.Debug("Snackbar action invoked for SnackbarId: {SnackbarId}", snackbar.Id);
-            }
-
-            await RemoveSnackbarAsync(snackbar);
+            await DebounceService.DebounceAsync(
+                async () =>
+                {
+                    if (!IsDisposed)
+                    {
+                        await InvokeAsync(StateHasChanged);
+                    }
+                },
+                "SnackbarContainerStateUpdate",
+                TimeSpan.FromMilliseconds(StateUpdateDebounceMs)
+            );
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error occurred while handling snackbar action: {SnackbarId}", snackbar.Id);
-            throw;
+            Logger.Error(ex, "Error in debounced state update");
         }
+    }
+
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            await SafeJsVoidInteropAsync("snackbarContainer.cleanup", _containerId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(ex, "Error during snackbar container cleanup: {ContainerId}", _containerId);
+        }
+        finally
+        {
+            UnsubscribeFromEvents();
+            _updateLock.Dispose();
+        }
+    }
+
+    private void UnsubscribeFromEvents()
+    {
+        if (!_isSubscribed)
+        {
+            return;
+        }
+
+        SnackbarService.OnShow -= ShowSnackbarAsync;
+        SnackbarService.OnHideAll -= HideAllSnackbarsAsync;
+        _channelSubscription?.Dispose();
+        _channelSubscription = null;
+        _isSubscribed = false;
+
+        Logger.Debug("Unsubscribed from all events");
     }
 
     private static SnackbarType MapSnackbarType(NotificationSeverity severity)
@@ -379,7 +282,36 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
             NotificationSeverity.Warning => SnackbarType.Warning,
             NotificationSeverity.Error or NotificationSeverity.Critical => SnackbarType.Error,
             NotificationSeverity.NotSpecified => SnackbarType.Information,
-            _ => throw new ArgumentOutOfRangeException(nameof(severity), severity, "Unknown NotificationSeverity value")
+            _ => throw new ArgumentOutOfRangeException(nameof(severity))
         };
+    }
+
+    private string GetSnackbarClass(SnackbarInstance snackbar)
+    {
+        return $"snackbar-item snackbar-{snackbar.Type.ToString().ToLowerInvariant()}";
+    }
+
+    private async Task OnSnackbarActionAsync(SnackbarInstance snackbar)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            if (snackbar.OnAction is not null)
+            {
+                await snackbar.OnAction.Invoke();
+                Logger.Debug("Snackbar action executed: {Id}", snackbar.Id);
+            }
+
+            await RemoveSnackbarAsync(snackbar);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error handling snackbar action: {Id}", snackbar.Id);
+            throw;
+        }
     }
 }

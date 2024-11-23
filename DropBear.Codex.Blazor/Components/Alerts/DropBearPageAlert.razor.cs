@@ -2,20 +2,15 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
-public sealed partial class DropBearPageAlert : DropBearComponentBase, IDisposable
+public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger
-        .ForContext<DropBearPageAlert>();
-
     private static readonly IReadOnlyDictionary<AlertType, (string Icon, string AriaLabel)> AlertConfigs =
         new Dictionary<AlertType, (string Icon, string AriaLabel)>
         {
@@ -26,38 +21,29 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase, IDisposab
             { AlertType.Notification, ("fas fa-bell", "Notification alert") }
         };
 
+    private readonly string _alertId;
+
     private string? _alertClass;
     private string? _iconClass;
     private bool _isClosing;
-    private bool _isDisposed;
+
+    public DropBearPageAlert()
+    {
+        _alertId = $"alert-{ComponentId}";
+    }
 
     [Parameter] [EditorRequired] public string Title { get; set; } = string.Empty;
-
     [Parameter] [EditorRequired] public string Message { get; set; } = string.Empty;
-
     [Parameter] public AlertType Type { get; set; } = AlertType.Information;
-
     [Parameter] public bool IsDismissible { get; set; } = true;
-
     [Parameter] public EventCallback OnClose { get; set; }
 
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
 
-    public void Dispose()
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _isDisposed = true;
-        Logger.Debug("Alert disposed - Type: {Type}, Title: {Title}", Type, Title);
-    }
-
     protected override void OnParametersSet()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
@@ -69,49 +55,63 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase, IDisposab
 
     private async Task HandleCloseClick()
     {
-        if (_isDisposed || _isClosing || !IsDismissible)
+        if (IsDisposed || _isClosing || !IsDismissible)
         {
             Logger.Warning(
                 "Invalid close attempt - Alert: {Title}, Type: {Type}, Dismissible: {IsDismissible}, Closing: {IsClosing}, Disposed: {IsDisposed}",
-                Title, Type, IsDismissible, _isClosing, _isDisposed);
+                Title, Type, IsDismissible, _isClosing, IsDisposed);
             return;
         }
 
-        try
+        await InvokeStateHasChangedAsync(async () =>
         {
-            _isClosing = true;
-
-            if (OnClose.HasDelegate)
+            try
             {
-                try
-                {
-                    await JsRuntime.InvokeVoidAsync("alert.startExitAnimation", Type);
-                }
-                catch (JSDisconnectedException)
-                {
-                    // Circuit disconnected, proceed with close
-                }
+                _isClosing = true;
 
-                if (!_isDisposed)
+                if (OnClose.HasDelegate)
                 {
-                    await Task.Delay(300); // Match animation duration
-                    await OnClose.InvokeAsync();
-                    Logger.Debug("Alert closed successfully - Type: {Type}, Title: {Title}", Type, Title);
+                    try
+                    {
+                        await SafeJsVoidInteropAsync("alert.startExitAnimation", Type);
+                        await Task.Delay(300); // Match animation duration
+                    }
+                    catch (JSDisconnectedException)
+                    {
+                        // Circuit disconnected, proceed with close
+                        Logger.Debug("Circuit disconnected during alert animation, proceeding with close");
+                    }
+
+                    if (!IsDisposed)
+                    {
+                        await OnClose.InvokeAsync();
+                        Logger.Debug("Alert closed successfully - Type: {Type}, Title: {Title}", Type, Title);
+                    }
+                }
+                else
+                {
+                    Logger.Warning("No close handler attached - Type: {Type}, Title: {Title}", Type, Title);
                 }
             }
-            else
+            finally
             {
-                Logger.Warning("No close handler attached - Type: {Type}, Title: {Title}", Type, Title);
+                _isClosing = false;
+            }
+        });
+    }
+
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            if (!_isClosing && IsDismissible && OnClose.HasDelegate)
+            {
+                await SafeJsVoidInteropAsync("alert.cleanup", _alertId);
             }
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error closing alert - Type: {Type}, Title: {Title}", Type, Title);
-            throw;
-        }
-        finally
-        {
-            _isClosing = false;
+            Logger.Warning(ex, "Error during alert cleanup: {AlertId}", _alertId);
         }
     }
 

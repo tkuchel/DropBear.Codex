@@ -1,8 +1,8 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Events;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Blazor.Services;
 
 #endregion
 

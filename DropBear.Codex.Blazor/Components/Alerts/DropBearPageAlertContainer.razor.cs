@@ -1,37 +1,32 @@
 ﻿#region
 
-using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Events;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Blazor.Services;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
-public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, IDisposable
+public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 {
     private const int MaxChannelAlerts = 100;
     private const int StateUpdateDebounceMs = 100;
+    private readonly string _containerId;
 
-    private static readonly ILogger Logger = LoggerFactory.Logger
-        .ForContext<DropBearPageAlertContainer>();
-
-    private readonly CancellationTokenSource _disposalTokenSource = new();
-    private readonly ConcurrentDictionary<Guid, PageAlert> _localAlerts = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
-
-    private ConcurrentQueue<PageAlert> _channelAlerts = new();
     private IDisposable? _channelSubscription;
-    private bool _isDisposed;
     private bool _isSubscribed;
+
+    public DropBearPageAlertContainer()
+    {
+        _containerId = $"alert-container-{ComponentId}";
+    }
 
     [Parameter] public string ChannelId { get; set; } = string.Empty;
 
@@ -39,62 +34,33 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     {
         get
         {
-            if (!AlertChannelManager.IsValidChannel(ChannelId))
+            if (string.IsNullOrEmpty(ChannelId) || !AlertChannelManager.IsValidChannel(ChannelId))
             {
-                return Enumerable.Empty<PageAlert>();
+                return [];
             }
 
+            // Filter alerts by channel if needed
             return AlertService.Alerts
-                .Concat(_localAlerts.Values)
-                .DistinctBy(a => a.Id)
+                .Where(a => string.IsNullOrEmpty(a.ChannelId) || a.ChannelId == ChannelId)
                 .OrderByDescending(a => a.CreatedAt)
                 .Take(MaxChannelAlerts);
         }
     }
 
-    public void Dispose()
+
+    protected override async Task OnInitializedAsync()
     {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _isDisposed = true;
-
-        try
-        {
-            _disposalTokenSource.Cancel();
-            UnsubscribeFromAlerts();
-
-            _updateLock.Dispose();
-            _disposalTokenSource.Dispose();
-
-            Logger.Debug("Disposed alert container for channel: {ChannelId}", ChannelId);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error disposing alert container");
-        }
-    }
-
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        InitializeContainer();
-    }
-
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-        if (!string.IsNullOrEmpty(ChannelId) && AlertChannelManager.IsValidChannel(ChannelId) && !_isSubscribed)
-        {
-            InitializeContainer();
-        }
+        await base.OnInitializedAsync();
+        await InitializeContainerAsync();
     }
 
     protected override async Task OnParametersSetAsync()
     {
-        if (!string.IsNullOrEmpty(ChannelId) && AlertChannelManager.IsValidChannel(ChannelId))
+        await base.OnParametersSetAsync();
+
+        if (!string.IsNullOrEmpty(ChannelId) &&
+            AlertChannelManager.IsValidChannel(ChannelId) &&
+            !_isSubscribed)
         {
             await InitializeContainerAsync();
         }
@@ -104,7 +70,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
     {
         if (string.IsNullOrEmpty(ChannelId))
         {
-            Logger.Error("ChannelId is null or empty during initialization.");
+            Logger.Error("ChannelId is null or empty during initialization");
             return;
         }
 
@@ -122,7 +88,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task SubscribeToAlertsAsync()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
@@ -134,8 +100,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
             AlertService.OnAddAlert += HandleAddAlert;
             AlertService.OnRemoveAlert += HandleRemoveAlert;
             AlertService.OnClearAlerts += HandleClearAlerts;
-
-            _channelSubscription = await SubscribeToChannelNotificationsAsync(ChannelId);
+            await SubscribeToChannelNotificationsAsync(ChannelId);
             _isSubscribed = true;
 
             Logger.Debug("Subscribed to alerts for channel: {ChannelId}", ChannelId);
@@ -147,78 +112,61 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         }
     }
 
-    private async Task<IDisposable> SubscribeToChannelNotificationsAsync(string channelId)
+    private async Task SubscribeToChannelNotificationsAsync(string channelId)
     {
         var bag = DisposableBag.CreateBuilder();
-        NotificationSubscriber.Subscribe<string, Notification>(channelId, HandleNotification)
-            .AddTo(bag);
-        return bag.Build();
-    }
 
-    private void InitializeContainer()
-    {
-        if (string.IsNullOrEmpty(ChannelId))
+        // Convert the async void to async Task and handle exceptions
+        await InvokeAsync(() =>
         {
-            Logger.Error("ChannelId is null or empty during initialization.");
-            return;
-        }
+            try
+            {
+                NotificationSubscriber.Subscribe<string, Notification>(
+                    channelId,
+                    async (notification, token) =>
+                    {
+                        try
+                        {
+                            await HandleNotification(notification, token);
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.Error(ex, "Error handling notification in channel: {ChannelId}", channelId);
+                        }
+                    }
+                ).AddTo(bag);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error subscribing to channel notifications: {ChannelId}", channelId);
+                throw;
+            }
+        });
 
-        try
-        {
-            SubscribeToAlerts();
-            Logger.Debug("Alert container initialized for channel: {ChannelId}", ChannelId);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Failed to initialize alert container for channel: {ChannelId}", ChannelId);
-            throw;
-        }
-    }
-
-    private void SubscribeToAlerts()
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        UnsubscribeFromAlerts();
-
-        try
-        {
-            AlertService.OnAddAlert += HandleAddAlert;
-            AlertService.OnRemoveAlert += HandleRemoveAlert;
-            AlertService.OnClearAlerts += HandleClearAlerts;
-
-            _channelSubscription = SubscribeToChannelNotifications(ChannelId);
-            _isSubscribed = true;
-
-            Logger.Debug("Subscribed to alerts for channel: {ChannelId}", ChannelId);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Failed to subscribe to alerts for channel: {ChannelId}", ChannelId);
-            throw;
-        }
+        _channelSubscription = bag.Build();
     }
 
     private void UnsubscribeFromAlerts()
     {
-        if (_isSubscribed)
+        if (!_isSubscribed)
         {
-            AlertService.OnAddAlert -= HandleAddAlert;
-            AlertService.OnRemoveAlert -= HandleRemoveAlert;
-            AlertService.OnClearAlerts -= HandleClearAlerts;
-            _channelSubscription?.Dispose();
-
-            Logger.Debug("Unsubscribed from alerts for channel: {ChannelId}", ChannelId);
-            _isSubscribed = false;
+            return;
         }
+
+        AlertService.OnAddAlert -= HandleAddAlert;
+        AlertService.OnRemoveAlert -= HandleRemoveAlert;
+        AlertService.OnClearAlerts -= HandleClearAlerts;
+
+        _channelSubscription?.Dispose();
+        _channelSubscription = null;
+
+        Logger.Debug("Unsubscribed from alerts for channel: {ChannelId}", ChannelId);
+        _isSubscribed = false;
     }
 
     private async Task HandleAddAlert(object sender, PageAlertEventArgs e)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
@@ -228,7 +176,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task HandleRemoveAlert(object sender, PageAlertEventArgs e)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
@@ -238,7 +186,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task HandleClearAlerts(object sender, EventArgs e)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
@@ -246,17 +194,9 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
         await ClearAlertsAsync();
     }
 
-    private IDisposable SubscribeToChannelNotifications(string channelId)
-    {
-        var bag = DisposableBag.CreateBuilder();
-        NotificationSubscriber.Subscribe<string, Notification>(channelId, HandleNotification)
-            .AddTo(bag);
-        return bag.Build();
-    }
-
     private async ValueTask HandleNotification(Notification notification, CancellationToken token)
     {
-        if (_isDisposed || notification.Type != NotificationType.PageAlert)
+        if (IsDisposed || notification.Type != NotificationType.PageAlert)
         {
             return;
         }
@@ -272,22 +212,21 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task AddAlertAsync(PageAlert alert)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync(_disposalTokenSource.Token);
+        await _updateLock.WaitAsync();
         try
         {
-            while (_channelAlerts.Count >= MaxChannelAlerts)
-            {
-                _channelAlerts.TryDequeue(out _);
-            }
-
-            _channelAlerts.Enqueue(alert);
-            Logger.Debug("Added alert: Type={AlertType}, Title='{AlertTitle}'",
-                alert.Type, alert.Title);
+            await AlertService.AddAlertAsync(
+                alert.Title,
+                alert.Message,
+                alert.Type,
+                alert.IsDismissible,
+                ChannelId
+            );
 
             await DebouncedStateUpdateAsync();
         }
@@ -299,19 +238,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task RemoveAlertAsync(PageAlert alert)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync(_disposalTokenSource.Token);
+        await _updateLock.WaitAsync();
         try
         {
-            var updatedAlerts = new ConcurrentQueue<PageAlert>(
-                _channelAlerts.Where(a => a.Id != alert.Id)
-            );
-
-            Interlocked.Exchange(ref _channelAlerts, updatedAlerts);
+            await AlertService.RemoveAlertAsync(alert.Id);
             await DebouncedStateUpdateAsync();
         }
         finally
@@ -322,15 +257,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task ClearAlertsAsync()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync(_disposalTokenSource.Token);
+        await _updateLock.WaitAsync();
         try
         {
-            _channelAlerts.Clear();
+            await AlertService.ClearAlertsAsync();
             await DebouncedStateUpdateAsync();
         }
         finally
@@ -341,22 +276,38 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task DebouncedStateUpdateAsync()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        await DebounceService.DebounceAsync(
-            async () =>
-            {
-                if (!_isDisposed)
+        var debounceService = DebounceService;
+
+        try
+        {
+            await debounceService.DebounceAsync(
+                async () =>
                 {
-                    await InvokeAsync(StateHasChanged);
-                }
-            },
-            "PageAlertContainerUpdate",
-            TimeSpan.FromMilliseconds(StateUpdateDebounceMs)
-        );
+                    try
+                    {
+                        if (!IsDisposed)
+                        {
+                            await InvokeAsync(StateHasChanged);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, "Error during state update");
+                    }
+                },
+                "PageAlertContainerUpdate",
+                TimeSpan.FromMilliseconds(StateUpdateDebounceMs)
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error in debounced state update");
+        }
     }
 
     private static AlertType MapAlertType(NotificationSeverity severity)
@@ -374,11 +325,28 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase, 
 
     private async Task OnCloseAlert(PageAlert alert)
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
         await RemoveAlertAsync(alert);
+    }
+
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            await SafeJsVoidInteropAsync("alertContainer.cleanup", _containerId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(ex, "Error during alert container cleanup: {ContainerId}", _containerId);
+        }
+        finally
+        {
+            UnsubscribeFromAlerts();
+            _updateLock.Dispose();
+        }
     }
 }

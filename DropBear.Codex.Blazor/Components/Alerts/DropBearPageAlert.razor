@@ -1,7 +1,8 @@
 ﻿@using Microsoft.JSInterop
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @inject IJSRuntime JsRuntime
-<div @key="Type"
+<div id="@_alertId"
+     @key="Type"
      class="@_alertClass"
      role="alert"
      aria-live="polite"
@@ -13,8 +14,8 @@
     </div>
 
     <div class="alert-content">
-        <h4 class="alert-title" id="@($"alert-{Type}-title")">@Title</h4>
-        <p class="alert-message" id="@($"alert-{Type}-message")">@Message</p>
+        <h4 class="alert-title" id="@($"{_alertId}-title")">@Title</h4>
+        <p class="alert-message" id="@($"{_alertId}-message")">@Message</p>
     </div>
 
     @if (IsDismissible)

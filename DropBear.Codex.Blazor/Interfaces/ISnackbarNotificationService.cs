@@ -65,4 +65,12 @@ public interface ISnackbarNotificationService
     /// </summary>
     /// <returns>A task representing the asynchronous operation, with a boolean indicating success.</returns>
     Task<bool> HideAllAsync();
+
+
+    /// <summary>
+    ///  Removes a snackbar notification with the specified id.
+    /// </summary>
+    ///  <param name="id">The id of the snackbar notification to remove.</param>
+    ///  <returns>A task representing the asynchronous operation, with a boolean indicating success.</returns>
+    Task<bool> RemoveAsync(Guid id);
 }

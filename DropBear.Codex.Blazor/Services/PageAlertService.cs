@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Events;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
@@ -18,45 +19,42 @@ public sealed class PageAlertService : IPageAlertService
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<PageAlertService>();
     private readonly ConcurrentDictionary<Guid, PageAlert> _alerts = new();
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _autoRemovalTokens = new();
     private readonly IAlertChannelManager _channelManager;
     private readonly SemaphoreSlim _eventLock = new(1, 1);
+    private volatile bool _isDisposed;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="PageAlertService" /> class.
-    /// </summary>
-    public PageAlertService()
+    public PageAlertService(IAlertChannelManager? channelManager = null)
     {
-        _channelManager = new AlertChannelManager();
-    }
-
-    public PageAlertService(IAlertChannelManager channelManager)
-    {
-        _channelManager = channelManager;
+        _channelManager = channelManager ?? new AlertChannelManager();
     }
 
     public IEnumerable<PageAlert> Alerts => _alerts.Values;
-
-    /// <summary>
-    ///     Occurs when an alert should be added.
-    /// </summary>
-    public event AsyncEventHandler<PageAlertEventArgs>? OnAddAlert;
-
-    /// <summary>
-    ///     Occurs when an alert should be removed.
-    /// </summary>
-    public event AsyncEventHandler<PageAlertEventArgs>? OnRemoveAlert;
-
-    /// <summary>
-    ///     Occurs when all alerts should be cleared.
-    /// </summary>
     public event AsyncEventHandler<EventArgs>? OnClearAlerts;
 
-    /// <summary>
-    ///     Adds an alert with the specified details.
-    /// </summary>
-    public async Task<bool> AddAlertAsync(string title, string message, AlertType type, bool isDismissible,
-        string? channelId = null, int? durationMs = 5000)
+    public async Task<bool> AddAlertAsync(
+        string title,
+        string message,
+        AlertType type,
+        bool isDismissible,
+        string? channelId = null,
+        int? durationMs = 5000)
     {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(PageAlertService));
+        }
+
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            throw new ArgumentException("Title cannot be empty", nameof(title));
+        }
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            throw new ArgumentException("Message cannot be empty", nameof(message));
+        }
+
         if (channelId != null && !_channelManager.IsValidChannel(channelId))
         {
             Logger.Warning("Attempted to add alert to invalid channel: {ChannelId}", channelId);
@@ -64,29 +62,41 @@ public sealed class PageAlertService : IPageAlertService
         }
 
         var alert = new PageAlert(title, message, type, isDismissible, channelId);
+
         if (!_alerts.TryAdd(alert.Id, alert))
         {
             Logger.Error("Failed to add alert with ID {AlertId}.", alert.Id);
             return false;
         }
 
-        Logger.Debug("Added new alert: {AlertTitle} - Type: {AlertType}, Dismissible: {IsDismissible}", title, type,
-            isDismissible);
+        Logger.Debug("Added new alert: {AlertTitle} - Type: {AlertType}, Dismissible: {IsDismissible}",
+            title, type, isDismissible);
+
         var result = await InvokeEventAsync(OnAddAlert, new PageAlertEventArgs(alert));
 
-        if (durationMs.HasValue)
+        if (durationMs.HasValue && durationMs.Value > 0)
         {
-            _ = RemoveAlertAfterDelayAsync(alert.Id, durationMs.Value);
+            var cts = new CancellationTokenSource();
+            _autoRemovalTokens.TryAdd(alert.Id, cts);
+            _ = AutoRemoveAlertAsync(alert.Id, durationMs.Value, cts.Token);
         }
 
         return result;
     }
 
-    /// <summary>
-    ///     Removes an alert by its ID.
-    /// </summary>
     public async Task<bool> RemoveAlertAsync(Guid id)
     {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(PageAlertService));
+        }
+
+        if (_autoRemovalTokens.TryRemove(id, out var cts))
+        {
+            await cts.CancelAsync();
+            cts.Dispose();
+        }
+
         if (_alerts.TryRemove(id, out var alert))
         {
             Logger.Debug("Alert with ID {AlertId} removed successfully.", id);
@@ -97,25 +107,49 @@ public sealed class PageAlertService : IPageAlertService
         return false;
     }
 
-    /// <summary>
-    ///     Clears all alerts.
-    /// </summary>
     public async Task<bool> ClearAlertsAsync()
     {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(PageAlertService));
+        }
+
+        // Cancel all auto-removal timers
+        foreach (var (id, cts) in _autoRemovalTokens)
+        {
+            await cts.CancelAsync();
+            cts.Dispose();
+            _autoRemovalTokens.TryRemove(id, out _);
+        }
+
         _alerts.Clear();
         Logger.Debug("All alerts cleared successfully.");
         return await InvokeEventAsync(OnClearAlerts, EventArgs.Empty);
     }
 
-    private async Task RemoveAlertAfterDelayAsync(Guid id, int delayMs)
+    public event AsyncEventHandler<PageAlertEventArgs>? OnAddAlert;
+    public event AsyncEventHandler<PageAlertEventArgs>? OnRemoveAlert;
+
+    private async Task AutoRemoveAlertAsync(Guid alertId, int delayMs, CancellationToken cancellationToken)
     {
-        await Task.Delay(delayMs);
-        await RemoveAlertAsync(id);
+        try
+        {
+            await Task.Delay(delayMs, cancellationToken);
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                await RemoveAlertAsync(alertId);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Alert was manually removed or service was disposed
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error in auto-removal for alert {AlertId}", alertId);
+        }
     }
 
-    /// <summary>
-    ///     Helper method to invoke events asynchronously and handle exceptions.
-    /// </summary>
     private async Task<bool> InvokeEventAsync<TEventArgs>(AsyncEventHandler<TEventArgs>? eventHandler, TEventArgs args)
     {
         if (eventHandler == null)
@@ -131,7 +165,10 @@ public sealed class PageAlertService : IPageAlertService
                 .Cast<AsyncEventHandler<TEventArgs>>()
                 .ToArray();
 
-            if (handlers.Length == 0) return false;
+            if (handlers.Length == 0)
+            {
+                return false;
+            }
 
             var tasks = new List<Task>();
             foreach (var handler in handlers)
@@ -146,39 +183,40 @@ public sealed class PageAlertService : IPageAlertService
                 }
             }
 
-            if (tasks.Count == 0) return false;
+            if (tasks.Count == 0)
+            {
+                return false;
+            }
 
             await Task.WhenAll(tasks);
             return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error in event handlers.");
-            return false;
         }
         finally
         {
             _eventLock.Release();
         }
     }
-}
 
-/// <summary>
-///     Represents the event arguments for page alert events.
-/// </summary>
-public class PageAlertEventArgs : EventArgs
-{
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="PageAlertEventArgs" /> class.
-    /// </summary>
-    /// <param name="alert">The page alert associated with the event.</param>
-    public PageAlertEventArgs(PageAlert alert)
+    public async ValueTask DisposeAsync()
     {
-        Alert = alert;
-    }
+        if (_isDisposed)
+        {
+            return;
+        }
 
-    /// <summary>
-    ///     Gets the page alert associated with the event.
-    /// </summary>
-    public PageAlert Alert { get; }
+        _isDisposed = true;
+
+        foreach (var (_, cts) in _autoRemovalTokens)
+        {
+            await cts.CancelAsync();
+            cts.Dispose();
+        }
+
+        _autoRemovalTokens.Clear();
+
+        _alerts.Clear();
+        _eventLock.Dispose();
+
+        Logger.Information("PageAlertService disposed successfully");
+    }
 }
