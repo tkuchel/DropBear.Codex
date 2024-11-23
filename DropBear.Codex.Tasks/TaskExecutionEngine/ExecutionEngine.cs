@@ -35,8 +35,11 @@ public sealed class ExecutionEngine
     private readonly List<ITask> _tasks = new();
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
     private DependencyGraph _dependencyGraph = new();
+
     private TaskExecutionTracker _executionTracker = new();
 
+    // Add a private backing field for IsExecuting
+    private volatile bool _isExecuting;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ExecutionEngine" /> class.
@@ -70,6 +73,11 @@ public sealed class ExecutionEngine
     }
 
     /// <summary>
+    ///     Gets a value indicating whether the execution engine is currently executing tasks.
+    /// </summary>
+    public bool IsExecuting => _isExecuting;
+
+    /// <summary>
     ///     Clears all tasks from the execution engine.
     /// </summary>
     /// <returns>A Result indicating the success or failure of the operation.</returns>
@@ -77,6 +85,13 @@ public sealed class ExecutionEngine
     {
         try
         {
+            if (_isExecuting)
+            {
+                _logger.Warning("Cannot clear tasks while execution is in progress.");
+                return Result<Unit, TaskExecutionError>.Failure(
+                    new TaskExecutionError("Cannot clear tasks while execution is in progress"));
+            }
+
             if (_tasks.Count == 0)
             {
                 _logger.Debug("No tasks to clear from the execution engine.");
@@ -395,6 +410,13 @@ public sealed class ExecutionEngine
 
         try
         {
+            if (_isExecuting)
+            {
+                _logger.Warning("Cannot add tasks while execution is in progress.");
+                return Result<Unit, TaskExecutionError>.Failure(
+                    new TaskExecutionError("Cannot add tasks while execution is in progress"));
+            }
+
             if (_tasks.Exists(t => string.Equals(t.Name, task.Name, StringComparison.Ordinal)))
             {
                 _logger.Warning("A task with the name '{TaskName}' already exists. Skipping addition.", task.Name);
@@ -506,6 +528,13 @@ public sealed class ExecutionEngine
 
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)
     {
+        if (_isExecuting)
+        {
+            _logger.Warning("Execution is already in progress.");
+            return Result<Unit, TaskExecutionError>.Failure(
+                new TaskExecutionError("Execution is already in progress"));
+        }
+
         if (_tasks.Count == 0)
         {
             _logger.Warning("No tasks to execute.");
@@ -521,6 +550,9 @@ public sealed class ExecutionEngine
                 new TaskExecutionError("Circular dependency detected in task graph"));
         }
 
+        _isExecuting = true;
+        _logger.Information("Starting task execution.");
+
         using var rootScope = _scopeFactory.CreateScope();
         var executionContext = new ExecutionContext(_logger, _options, _scopeFactory) { TotalTaskCount = _tasks.Count };
 
@@ -535,7 +567,6 @@ public sealed class ExecutionEngine
             var dependencyResult = await ResolveDependenciesAsync();
             if (!dependencyResult.IsSuccess)
             {
-                // Convert the dependency resolution failure to a Unit result
                 return Result<Unit, TaskExecutionError>.Failure(
                     new TaskExecutionError(
                         $"Failed to resolve dependencies: {dependencyResult.Error?.Message}",
@@ -573,6 +604,8 @@ public sealed class ExecutionEngine
         }
         finally
         {
+            _isExecuting = false;
+            _logger.Information("Task execution completed.");
             await executionScope.DisposeAsync();
         }
     }
