@@ -30,11 +30,47 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
 
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Logger.Debug("SnackbarNotification initialized with ID: {Id}", _snackbarId);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && IsVisible)
+        if (firstRender)
         {
-            await ShowAsync();
+            Logger.Debug("SnackbarNotification first render complete: {Id}", _snackbarId);
+            await CheckDomElementAsync();
+        }
+
+        if (IsVisible)
+        {
+            Logger.Debug("SnackbarNotification rendered with visibility: {IsVisible}, ID: {Id}",
+                IsVisible, _snackbarId);
+            await CheckDomElementAsync();
+        }
+    }
+
+    private async Task CheckDomElementAsync()
+    {
+        try
+        {
+            var exists = await SafeJsInteropAsync<bool>("eval",
+                $"document.getElementById('{_snackbarId}') !== null");
+
+            Logger.Debug("DOM element check for {Id}: {Exists}", _snackbarId, exists);
+
+            if (exists)
+            {
+                var rect = await SafeJsInteropAsync<string>("eval",
+                    $"JSON.stringify(document.getElementById('{_snackbarId}').getBoundingClientRect())");
+                Logger.Debug("Element position: {Rect}", rect);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(ex, "Error checking DOM element");
         }
     }
 
@@ -51,33 +87,48 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
         await _stateUpdateLock.WaitAsync(_disposalTokenSource.Token);
         try
         {
+            Logger.Debug("Starting show sequence for snackbar: {Id}", _snackbarId);
             await WaitForJsInitializationAsync();
 
             _isAnimating = true;
             IsVisible = true;
+
             await InvokeStateHasChangedAsync(async () =>
             {
-                // Ensure DOM update and animation completion
+                Logger.Debug("State updated, waiting for DOM update");
                 await Task.Delay(50, _disposalTokenSource.Token);
-                await InitializeProgressBarAsync();
+
+                var exists = await SafeJsInteropAsync<bool>("eval",
+                    $"document.getElementById('{_snackbarId}') !== null");
+                Logger.Debug("Post-state-change DOM check: {Exists}", exists);
+
+                if (exists)
+                {
+                    await InitializeProgressBarAsync();
+                }
+                else
+                {
+                    Logger.Warning("DOM element not found after state change");
+                }
             });
 
             _isAnimating = false;
-            Logger.Debug("Snackbar shown successfully: {SnackbarId}", _snackbarId);
+            Logger.Debug("Snackbar show sequence completed: {Id}", _snackbarId);
         }
         catch (OperationCanceledException)
         {
-            // Disposal in progress, ignore
+            Logger.Debug("Show operation cancelled: {Id}", _snackbarId);
+            throw;
         }
         catch (JSDisconnectedException ex)
         {
-            Logger.Warning(ex, "Circuit disconnected while showing snackbar: {SnackbarId}", _snackbarId);
+            Logger.Warning(ex, "Circuit disconnected while showing snackbar: {Id}", _snackbarId);
             await HandleJsError();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error showing snackbar: {SnackbarId}", _snackbarId);
-            throw new SnackbarException("Error showing snackbar", ex);
+            Logger.Error(ex, "Error showing snackbar: {Id}", _snackbarId);
+            throw;
         }
         finally
         {
@@ -158,14 +209,31 @@ public sealed partial class DropBearSnackbarNotification : DropBearComponentBase
             return;
         }
 
-        await SafeJsInteropAsync<bool>("eval",
-            "typeof window.DropBearSnackbar !== 'undefined' && typeof window.DropBearSnackbar.startProgress === 'function'");
+        try
+        {
+            Logger.Debug("Initializing progress bar for: {Id}", _snackbarId);
+            var progressBar = await SafeJsInteropAsync<bool>("eval",
+                $"document.querySelector('#{_snackbarId} .snackbar-progress') !== null");
 
-        await SafeJsVoidInteropAsync(
-            "DropBearSnackbar.startProgress",
-            _snackbarId,
-            Duration
-        );
+            if (!progressBar)
+            {
+                Logger.Warning("Progress bar element not found: {Id}", _snackbarId);
+                return;
+            }
+
+            await SafeJsVoidInteropAsync(
+                "DropBearSnackbar.startProgress",
+                _snackbarId,
+                Duration
+            );
+
+            Logger.Debug("Progress bar initialized: {Id}", _snackbarId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error initializing progress bar: {Id}", _snackbarId);
+            throw;
+        }
     }
 
     private async Task HideSnackbarAsync()

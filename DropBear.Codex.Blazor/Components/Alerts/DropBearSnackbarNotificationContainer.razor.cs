@@ -36,8 +36,40 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
-        Logger.Debug("Initializing SnackbarContainer with Channel: {ChannelId}", ChannelId);
-        await InitializeSubscriptionsAsync();
+        Logger.Debug("Starting SnackbarNotificationContainer initialization for channel: {ChannelId}", ChannelId);
+
+        try
+        {
+            // Wait for JS initialization
+            for (var i = 0; i < 3; i++)
+            {
+                var isInitialized = await SafeJsInteropAsync<bool>(
+                    "eval",
+                    "typeof window.DropBearSnackbar !== 'undefined'"
+                );
+
+                if (isInitialized)
+                {
+                    Logger.Debug("DropBearSnackbar JS initialized successfully");
+                    break;
+                }
+
+                if (i == 2)
+                {
+                    Logger.Warning("DropBearSnackbar JS initialization failed after 3 attempts");
+                    return;
+                }
+
+                await Task.Delay(100 * (i + 1));
+            }
+
+            await InitializeSubscriptionsAsync();
+            Logger.Debug("SnackbarNotificationContainer fully initialized");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error initializing SnackbarNotificationContainer");
+        }
     }
 
     private async Task InitializeSubscriptionsAsync()
@@ -121,12 +153,25 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
         await _updateLock.WaitAsync();
         try
         {
-            Logger.Debug("Creating new snackbar instance");
+            Logger.Debug("Creating new snackbar instance with options: {@Options}", e.Options);
             var snackbar = new SnackbarInstance(e.Options);
             await ManageSnackbarQueueAsync(snackbar);
 
-            Logger.Debug("Triggering state update for new snackbar");
-            await DebouncedStateUpdateAsync();
+            // Force immediate state update instead of debouncing
+            await InvokeAsync(StateHasChanged);
+
+            // Give DOM time to update before initializing the snackbar
+            await Task.Delay(50);
+
+            if (snackbar.ComponentRef != null)
+            {
+                Logger.Debug("Showing snackbar component: {Id}", snackbar.Id);
+                await snackbar.ComponentRef.ShowAsync();
+            }
+            else
+            {
+                Logger.Warning("Snackbar component ref is null: {Id}", snackbar.Id);
+            }
         }
         catch (Exception ex)
         {
