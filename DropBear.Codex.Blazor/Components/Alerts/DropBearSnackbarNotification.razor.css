@@ -1,96 +1,101 @@
 ﻿/* Core Snackbar Styles */
 .snackbar {
   display: flex;
-  align-items: center;
+  align-items: flex-start; /* Changed to better align content */
   width: 100%;
-  border-radius: var(--br-md);
-  padding: var(--spacing-sm);
-  background-color: var(--clr-surface-dark);
-  color: var(--clr-text-primary);
+  border-radius: var(--br-md, 4px);
+  padding: var(--spacing-md, 16px);
+  background-color: var(--clr-grey-900, #1a1a1a);
+  color: var(--clr-white, #ffffff);
   box-shadow: var(--shadow-md);
   animation: slideInUp 0.3s ease-out;
   position: relative;
   overflow: hidden;
 }
 
-/* Type-Specific Styles */
-.snackbar-success {
-  border-left: 4px solid var(--clr-success);
+/* Type-Specific Styles with improved borders */
+.snackbar-information {
+  border-left: 4px solid var(--clr-information, #0ea5e9);
 }
 
-.snackbar-information {
-  border-left: 4px solid var(--clr-information);
+.snackbar-success {
+  border-left: 4px solid var(--clr-success, #22c55e);
 }
 
 .snackbar-warning {
-  border-left: 4px solid var(--clr-warning);
+  border-left: 4px solid var(--clr-warning, #f59e0b);
 }
 
 .snackbar-error {
-  border-left: 4px solid var(--clr-error);
+  border-left: 4px solid var(--clr-error, #ef4444);
 }
 
 /* Icon Styles */
 .snackbar-icon {
   display: flex;
   align-items: center;
-  margin-right: var(--spacing-sm);
-  font-size: var(--fs-lg);
-}
-
-.snackbar-success .snackbar-icon {
-  color: var(--clr-success);
+  margin-right: var(--spacing-md, 16px);
+  font-size: var(--fs-xl, 24px);
+  flex-shrink: 0;
 }
 
 .snackbar-information .snackbar-icon {
-  color: var(--clr-information);
+  color: var(--clr-information, #0ea5e9);
+}
+
+.snackbar-success .snackbar-icon {
+  color: var(--clr-success, #22c55e);
 }
 
 .snackbar-warning .snackbar-icon {
-  color: var(--clr-warning);
+  color: var(--clr-warning, #f59e0b);
 }
 
 .snackbar-error .snackbar-icon {
-  color: var(--clr-error);
+  color: var(--clr-error, #ef4444);
 }
 
 /* Content Styles */
 .snackbar-content {
   flex: 1;
-  min-width: 0; /* Prevents flex item from overflowing */
+  min-width: 0;
+  margin-right: var(--spacing-md, 16px);
 }
 
 .snackbar-title {
-  font-weight: var(--fw-semi-bold);
-  font-size: var(--fs-sm);
-  margin-bottom: calc(var(--spacing-xs) / 2);
-  color: var(--clr-text-primary);
+  font-weight: var(--fw-semi-bold, 600);
+  font-size: var(--fs-md, 16px);
+  margin-bottom: var(--spacing-xs, 4px);
+  color: var(--clr-white, #ffffff);
 }
 
 .snackbar-message {
   margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--clr-text-secondary);
-  line-height: 1.4;
+  font-size: var(--fs-sm, 14px);
+  color: var(--clr-grey-300, #d1d5db);
+  line-height: 1.5;
 }
 
 /* Button Styles */
 .snackbar-action {
   background: transparent;
-  border: 1px solid currentColor;
-  border-radius: var(--br-sm);
-  color: inherit;
-  font-weight: var(--fw-medium);
-  font-size: var(--fs-xs);
+  border: 1px solid var(--clr-grey-300, #d1d5db);
+  border-radius: var(--br-sm, 2px);
+  color: var(--clr-grey-300, #d1d5db);
+  font-weight: var(--fw-medium, 500);
+  font-size: var(--fs-sm, 14px);
   cursor: pointer;
-  padding: calc(var(--spacing-xs) / 2) var(--spacing-sm);
-  margin-left: var(--spacing-sm);
+  padding: var(--spacing-xs, 4px) var(--spacing-sm, 8px);
+  margin-left: var(--spacing-sm, 8px);
   text-transform: uppercase;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s ease;
+  align-self: flex-start;
 }
 
 .snackbar-action:hover:not(:disabled) {
   background-color: rgba(255, 255, 255, 0.1);
+  border-color: var(--clr-white, #ffffff);
+  color: var(--clr-white, #ffffff);
 }
 
 .snackbar-close {
@@ -99,57 +104,44 @@
   justify-content: center;
   background: transparent;
   border: none;
-  color: inherit;
+  color: var(--clr-grey-300, #d1d5db);
   cursor: pointer;
-  padding: calc(var(--spacing-xs) / 2);
-  margin-left: var(--spacing-xs);
-  font-size: var(--fs-lg);
-  opacity: 0.7;
-  transition: opacity 0.2s ease;
+  padding: var(--spacing-xs, 4px);
+  margin-left: var(--spacing-sm, 8px);
+  font-size: var(--fs-lg, 20px);
+  transition: all 0.2s ease;
+  align-self: flex-start;
 }
 
 .snackbar-close:hover:not(:disabled) {
-  opacity: 1;
+  color: var(--clr-white, #ffffff);
 }
 
-/* Disabled States */
-.snackbar-action:disabled,
-.snackbar-close:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Focus States */
-.snackbar-action:focus-visible,
-.snackbar-close:focus-visible {
-  outline: 2px solid var(--clr-focus);
-  outline-offset: 2px;
-}
-
-/* Progress Bar */
+/* Progress Bar - Fixed Animation */
 .snackbar-progress {
   position: absolute;
   bottom: 0;
   left: 0;
   height: 3px;
-  width: 100%;
-  background-color: rgba(255, 255, 255, 0.2);
-}
-
-.snackbar-success .snackbar-progress {
-  background-color: var(--clr-success);
+  background-color: currentColor;
+  opacity: 0.2;
+  transform-origin: left center;
 }
 
 .snackbar-information .snackbar-progress {
-  background-color: var(--clr-information);
+  background-color: var(--clr-information, #0ea5e9);
+}
+
+.snackbar-success .snackbar-progress {
+  background-color: var(--clr-success, #22c55e);
 }
 
 .snackbar-warning .snackbar-progress {
-  background-color: var(--clr-warning);
+  background-color: var(--clr-warning, #f59e0b);
 }
 
 .snackbar-error .snackbar-progress {
-  background-color: var(--clr-error);
+  background-color: var(--clr-error, #ef4444);
 }
 
 /* Animations */
@@ -164,11 +156,6 @@
   }
 }
 
-/* Exit Animation */
-.snackbar-exit {
-  animation: slideOutDown 0.3s ease-out forwards;
-}
-
 @keyframes slideOutDown {
   from {
     transform: translateY(0);
@@ -178,6 +165,10 @@
     transform: translateY(100%);
     opacity: 0;
   }
+}
+
+.snackbar-exit {
+  animation: slideOutDown 0.3s ease-out forwards;
 }
 
 /* Reduced Motion */
