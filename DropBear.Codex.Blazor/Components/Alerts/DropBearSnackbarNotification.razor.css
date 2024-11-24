@@ -2,23 +2,18 @@
 .snackbar {
   display: flex;
   align-items: center;
+  width: 100%;
   border-radius: var(--br-md);
   padding: var(--spacing-sm);
+  background-color: var(--clr-surface-dark);
+  color: var(--clr-text-primary);
   box-shadow: var(--shadow-md);
   animation: slideInUp 0.3s ease-out;
   position: relative;
   overflow: hidden;
-  pointer-events: auto; /* Re-enable pointer events for the snackbar itself */
-  opacity: 1 !important; /* Force full opacity */
-  transform: translateY(0) translateX(-50%) !important; /* Force full visibility */
-  width: 100%; /* Ensures the snackbar takes full width of its container */
-  box-sizing: border-box; /* Includes padding in the width calculation */
-  background-color: var(--clr-surface-dark); /* Global surface color */
-  color: var(--clr-text-primary); /* Global text color */
-  transition: opacity 0.3s ease-out, transform 0.3s ease-out;
 }
 
-/* Type-Specific Borders */
+/* Type-Specific Styles */
 .snackbar-success {
   border-left: 4px solid var(--clr-success);
 }
@@ -35,76 +30,110 @@
   border-left: 4px solid var(--clr-error);
 }
 
-/* Icon and Content Styles */
+/* Icon Styles */
 .snackbar-icon {
-  margin-right: 12px;
-  font-size: 20px;
+  display: flex;
+  align-items: center;
+  margin-right: var(--spacing-sm);
+  font-size: var(--fs-lg);
 }
 
+.snackbar-success .snackbar-icon {
+  color: var(--clr-success);
+}
+
+.snackbar-information .snackbar-icon {
+  color: var(--clr-information);
+}
+
+.snackbar-warning .snackbar-icon {
+  color: var(--clr-warning);
+}
+
+.snackbar-error .snackbar-icon {
+  color: var(--clr-error);
+}
+
+/* Content Styles */
 .snackbar-content {
-  flex-grow: 1;
+  flex: 1;
+  min-width: 0; /* Prevents flex item from overflowing */
 }
 
 .snackbar-title {
-  font-weight: bold;
-  margin-bottom: 4px;
+  font-weight: var(--fw-semi-bold);
+  font-size: var(--fs-sm);
+  margin-bottom: calc(var(--spacing-xs) / 2);
+  color: var(--clr-text-primary);
 }
 
 .snackbar-message {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--fs-xs);
+  color: var(--clr-text-secondary);
+  line-height: 1.4;
 }
 
-/* Action and Close Button Styles */
+/* Button Styles */
 .snackbar-action {
-  background: var(--clr-background);
-  border: none;
+  background: transparent;
+  border: 1px solid currentColor;
   border-radius: var(--br-sm);
   color: inherit;
-  font-weight: 500;
-  font-size: 14px;
+  font-weight: var(--fw-medium);
+  font-size: var(--fs-xs);
   cursor: pointer;
-  padding: 4px;
-  margin-left: 4px;
+  padding: calc(var(--spacing-xs) / 2) var(--spacing-sm);
+  margin-left: var(--spacing-sm);
   text-transform: uppercase;
+  transition: background-color 0.2s ease;
 }
 
-.snackbar-action:hover {
-  background: var(--clr-surface-primary);
+.snackbar-action:hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Disabled state styles */
+.snackbar-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  padding: calc(var(--spacing-xs) / 2);
+  margin-left: var(--spacing-xs);
+  font-size: var(--fs-lg);
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.snackbar-close:hover:not(:disabled) {
+  opacity: 1;
+}
+
+/* Disabled States */
 .snackbar-action:disabled,
 .snackbar-close:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
 
-/* Focus states for accessibility */
-.snackbar-action:focus,
-.snackbar-close:focus {
-  outline: 2px solid var(--clr-focus, #4a90e2);
+/* Focus States */
+.snackbar-action:focus-visible,
+.snackbar-close:focus-visible {
+  outline: 2px solid var(--clr-focus);
   outline-offset: 2px;
 }
 
-.snackbar-close {
-  background: none;
-  border: none;
-  color: inherit;
-  cursor: pointer;
-  padding: 4px;
-  margin-left: 8px;
-}
-
-/* Progress Bar Styles */
+/* Progress Bar */
 .snackbar-progress {
   position: absolute;
   bottom: 0;
   left: 0;
-  height: 4px;
+  height: 3px;
   width: 100%;
-  background-color: rgba(255, 255, 255, 0.3);
-  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.2);
 }
 
 .snackbar-success .snackbar-progress {
@@ -124,17 +153,6 @@
 }
 
 /* Animations */
-@keyframes slideInDown {
-  from {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
 @keyframes slideInUp {
   from {
     transform: translateY(100%);
@@ -146,17 +164,30 @@
   }
 }
 
-/* Reduced motion preference */
-@media (prefers-reduced-motion: reduce) {
-  .snackbar {
-    animation: none;
-    transition: none;
+/* Exit Animation */
+.snackbar-exit {
+  animation: slideOutDown 0.3s ease-out forwards;
+}
+
+@keyframes slideOutDown {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0;
   }
 }
 
-/* Print styles */
-@media print {
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
   .snackbar {
-    display: none;
+    animation: none;
+  }
+
+  .snackbar-exit {
+    animation: none;
+    opacity: 0;
   }
 }
