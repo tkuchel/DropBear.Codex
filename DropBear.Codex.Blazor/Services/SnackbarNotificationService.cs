@@ -7,6 +7,7 @@ using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
+using Serilog;
 
 #endregion
 
@@ -14,9 +15,9 @@ namespace DropBear.Codex.Blazor.Services;
 
 public sealed class SnackbarNotificationService : ISnackbarNotificationService, IAsyncDisposable
 {
-    private readonly Serilog.ILogger _logger = LoggerFactory.Logger.ForContext<SnackbarNotificationService>();
     private readonly ConcurrentDictionary<Guid, SnackbarInstance> _activeSnackbars = new();
     private readonly SemaphoreSlim _eventLock = new(1, 1);
+    private readonly ILogger _logger = LoggerFactory.Logger.ForContext<SnackbarNotificationService>();
     private bool _isDisposed;
 
     public IEnumerable<SnackbarInstance> ActiveSnackbars => _activeSnackbars.Values;
@@ -63,6 +64,10 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService, 
             throw new ObjectDisposedException(nameof(SnackbarNotificationService));
         }
 
+        _logger.Debug(
+            "Attempting to show snackbar - Title: {Title}, Message: {Message}, Type: {Type}",
+            title, message, type);
+
         var options = new SnackbarNotificationOptions(
             title,
             message,
@@ -73,16 +78,21 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService, 
             onAction);
 
         var snackbar = new SnackbarInstance(options);
-        _activeSnackbars.TryAdd(snackbar.Id, snackbar);
+        if (_activeSnackbars.TryAdd(snackbar.Id, snackbar))
+        {
+            _logger.Debug("Added snackbar to active snackbars: {Id}", snackbar.Id);
+        }
 
         var result = await InvokeEventAsync(OnShow, new SnackbarNotificationEventArgs(options));
         if (result)
         {
-            _logger.Debug("Snackbar notification shown with title '{Title}' and message '{Message}'.", title, message);
+            _logger.Debug(
+                "Snackbar notification shown successfully - Id: {Id}, Title: {Title}",
+                snackbar.Id, title);
         }
         else
         {
-            _logger.Warning("Snackbar notification could not be shown because there are no subscribers.");
+            _logger.Warning("No subscribers for snackbar notification");
             _activeSnackbars.TryRemove(snackbar.Id, out _);
         }
 
@@ -119,7 +129,6 @@ public sealed class SnackbarNotificationService : ISnackbarNotificationService, 
 
         _logger.Debug("Snackbar {Id} removed", snackbarId);
         return true;
-
     }
 
     private async Task<bool> InvokeEventAsync<TEventArgs>(AsyncEventHandler<TEventArgs>? eventHandler, TEventArgs args)

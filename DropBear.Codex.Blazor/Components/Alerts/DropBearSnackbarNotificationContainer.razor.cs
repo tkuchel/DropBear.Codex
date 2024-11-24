@@ -36,6 +36,7 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
+        Logger.Debug("Initializing SnackbarContainer with Channel: {ChannelId}", ChannelId);
         await InitializeSubscriptionsAsync();
     }
 
@@ -62,13 +63,15 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     {
         if (_isSubscribed)
         {
+            Logger.Debug("Already subscribed to snackbar events");
             return;
         }
 
+        Logger.Debug("Subscribing to snackbar events");
         SnackbarService.OnShow += ShowSnackbarAsync;
         SnackbarService.OnHideAll += HideAllSnackbarsAsync;
         _isSubscribed = true;
-        Logger.Debug("Subscribed to SnackbarService events");
+        Logger.Debug("Successfully subscribed to snackbar events");
     }
 
     private async Task SubscribeToChannelNotificationsAsync()
@@ -111,15 +114,24 @@ public sealed partial class DropBearSnackbarNotificationContainer : DropBearComp
     {
         if (IsDisposed)
         {
+            Logger.Warning("Cannot show snackbar - container is disposed");
             return;
         }
 
         await _updateLock.WaitAsync();
         try
         {
+            Logger.Debug("Creating new snackbar instance");
             var snackbar = new SnackbarInstance(e.Options);
             await ManageSnackbarQueueAsync(snackbar);
+
+            Logger.Debug("Triggering state update for new snackbar");
             await DebouncedStateUpdateAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error showing snackbar");
+            throw;
         }
         finally
         {

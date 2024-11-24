@@ -76,7 +76,18 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
     {
         if (firstRender)
         {
-            await UpdateAriaAttributes();
+            await InvokeAsync(async () =>
+            {
+                try
+                {
+                    await Task.Delay(50); // Give DOM time to settle
+                    await UpdateAriaAttributes();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Warning(ex, "Error during first render initialization");
+                }
+            });
         }
     }
 
@@ -89,8 +100,19 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
 
     private async Task UpdateAriaAttributes()
     {
+        if (IsDisposed)
+        {
+            return;
+        }
+
         try
         {
+            // First initialize the container
+            await SafeJsVoidInteropAsync(
+                "DropBearValidationErrors.initialize",
+                _componentId);
+
+            // Then update the aria attributes
             await SafeJsVoidInteropAsync(
                 "validationErrors.updateAriaAttributes",
                 _componentId,
@@ -98,7 +120,22 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Warning(ex, "Error updating ARIA attributes");
+            Logger.Warning(ex, "Error updating ARIA attributes: {Error}", ex.Message);
+            // Don't throw - allow graceful degradation
+        }
+    }
+
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            await SafeJsVoidInteropAsync(
+                "DropBearValidationErrors.dispose",
+                _componentId);
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning(ex, "Error during validation errors cleanup: {ComponentId}", _componentId);
         }
     }
 }

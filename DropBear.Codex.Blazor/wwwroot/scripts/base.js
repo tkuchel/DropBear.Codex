@@ -717,6 +717,18 @@
         DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false}
       });
 
+      // Add after Object.defineProperties in initializeDropBear
+      window.validationErrors = {
+        updateAriaAttributes: (componentId, isCollapsed) => {
+          try {
+            return window.DropBearValidationErrors.updateAriaAttributes(componentId, isCollapsed);
+          } catch (error) {
+            console.error('Error updating validation errors aria attributes:', error);
+            throw error;
+          }
+        }
+      };
+
       DropBearState.initialized = true;
       EventEmitter.emit('dropbear:initialized');
 
