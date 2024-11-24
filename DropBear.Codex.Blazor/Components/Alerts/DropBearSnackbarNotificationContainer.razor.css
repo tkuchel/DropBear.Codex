@@ -1,14 +1,13 @@
 ﻿.snackbar-container {
   position: fixed;
-  bottom: var(--spacing-lg, 40px);
-  left: 50%;
-  transform: translateX(-50%);
+  bottom: 20px;
+  left: 20px;
   display: flex;
   flex-direction: column-reverse;
-  gap: var(--spacing-xs, 10px);
-  max-width: min(400px, calc(100% - 40px));
+  gap: 10px;
+  max-width: 400px;
   width: 100%;
-  z-index: var(--z-index-popover, 9999);
+  z-index: 1000;
   pointer-events: none;
 }
 
@@ -18,7 +17,8 @@
 
 @media (max-width: 600px) {
   .snackbar-container {
-    bottom: var(--spacing-sm, 10px);
-    max-width: calc(100% - 20px);
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100% - 40px);
   }
 }

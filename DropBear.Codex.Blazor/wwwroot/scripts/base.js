@@ -232,25 +232,18 @@
 
         await retryOperation(async () => {
           try {
-            PerformanceMonitor.start(`snackbar-progress-${this.id}`);
-            logger.debug(`Starting progress animation for ${this.id}`);
+            const progressAfter = this.progressBar.querySelector('::after');
+            if (!progressAfter) {
+              logger.warn('Progress bar ::after element not found');
+              return;
+            }
 
-            // Reset progress bar state
-            this.progressBar.style.width = '100%';
-            this.progressBar.style.transition = 'none';
-            // Force reflow
-            void this.progressBar.offsetWidth;
+            progressAfter.style.animationDuration = `${duration}ms`;
+            progressAfter.style.animationName = 'progress';
 
-            // Start animation
-            this.progressBar.style.transition = `width ${duration}ms linear`;
-            this.progressBar.style.width = '0%';
-
-            // Clear any existing timeout
             clearTimeout(this.timeout);
-            // Set timeout for auto-hide
             this.timeout = setTimeout(() => this.hide(), duration);
 
-            PerformanceMonitor.end(`snackbar-progress-${this.id}`);
             logger.debug(`Progress animation started for ${this.id}`);
           } catch (error) {
             logger.error(`Progress error for ${this.id}:`, error);
