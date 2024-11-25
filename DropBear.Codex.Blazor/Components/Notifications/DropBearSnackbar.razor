@@ -1,0 +1,39 @@
+﻿@namespace DropBear.Codex.Blazor.Components
+@namespace DropBear.Codex.Blazor.Components.Notifications
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div id="@SnackbarInstance.Id"
+     class="dropbear-snackbar @GetTypeClass()"
+     style="--duration: @(SnackbarInstance.Duration)ms"
+     @attributes="@AdditionalAttributes">
+    <div class="dropbear-snackbar-icon">
+        @GetIcon()
+    </div>
+    <div class="dropbear-snackbar-content">
+        <div class="dropbear-snackbar-title">@SnackbarInstance.Title</div>
+        <div class="dropbear-snackbar-message">@((MarkupString)SnackbarInstance.Message)</div>
+        @if (SnackbarInstance.Actions.Any())
+        {
+            <div class="dropbear-snackbar-actions">
+                @foreach (var action in SnackbarInstance.Actions)
+                {
+                    <button type="button"
+                            class="dropbear-snackbar-action"
+                            @onclick="async () => await HandleActionClick(action)">
+                        @action.Label
+                    </button>
+                }
+            </div>
+        }
+    </div>
+    <button type="button"
+            class="dropbear-snackbar-close"
+            aria-label="Close notification"
+            @onclick="Close">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M18 6L6 18M6 6l12 12"/>
+        </svg>
+    </button>
+    <div class="progress-bar"></div>
+</div>
+

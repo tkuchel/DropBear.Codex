@@ -174,99 +174,96 @@
   const DropBearSnackbar = (() => {
     const logger = DropBearUtils.createLogger('DropBearSnackbar');
     const snackbars = new Map();
-    const CLEANUP_INTERVAL = 60000; // 1 minute
     const ANIMATION_DURATION = 300;
 
-    // Debug helper - doesn't affect existing functionality
-    const debugSnackbars = () => {
-      const active = Array.from(snackbars.entries()).map(([id, manager]) => ({
-        id,
-        isDisposed: manager.isDisposed,
-        hasProgressBar: !!manager.progressBar,
-        inDocument: !!document.getElementById(id)
-      }));
-      logger.debug('Active snackbars:', active);
-      return active;
-    };
-
-    const cleanupInactiveSnackbars = () => {
-      const before = snackbars.size;
-      for (const [id, manager] of snackbars.entries()) {
-        if (manager.isDisposed || !document.getElementById(id)) {
-          manager.dispose();
-          snackbars.delete(id);
-        }
-      }
-      const after = snackbars.size;
-      if (before !== after) {
-        logger.debug(`Cleaned up ${before - after} inactive snackbars`);
-      }
-    };
-
-    const cleanupInterval = setInterval(cleanupInactiveSnackbars, CLEANUP_INTERVAL);
-
     class SnackbarManager {
-      constructor(id, element) {
-        DropBearUtils.validateArgs([id, element], ['string', 'object'], 'SnackbarManager');
-        if (!DropBearUtils.isElement(element)) {
-          logger.error(`Invalid element for ID: ${id}`);
+      constructor(id) {
+        DropBearUtils.validateArgs([id], ['string'], 'SnackbarManager');
+
+        this.id = id;
+        this.element = document.getElementById(id);
+        this.isDisposed = false;
+        this.progressTimeout = null;
+
+        if (!DropBearUtils.isElement(this.element)) {
           throw new TypeError('Invalid element provided to SnackbarManager');
         }
 
-        this.id = id;
-        this.element = element;
-        this.progressBar = element.querySelector('.snackbar-progress');
-        this.timeout = null;
-        this.isDisposed = false;
+        // Setup event listeners
+        this._setupEventListeners();
 
-        logger.debug(`Creating snackbar manager: ${id}`, {
-          hasProgressBar: !!this.progressBar,
-          elementClasses: element.className
-        });
-
-        EventEmitter.emit('snackbar:created', {id, element});
+        EventEmitter.emit('snackbar:created', {id});
+        logger.debug(`Snackbar initialized: ${id}`);
       }
 
-      async startProgress(duration) {
-        if (this.isDisposed || !this.progressBar) return;
+      _setupEventListeners() {
+        this.element.addEventListener('mouseenter', () => this._pauseProgress());
+        this.element.addEventListener('mouseleave', () => this._resumeProgress());
+        this.element.addEventListener('focusin', () => this._pauseProgress());
+        this.element.addEventListener('focusout', () => this._resumeProgress());
+      }
 
-        await retryOperation(async () => {
-          try {
-            const progressAfter = this.progressBar.querySelector('::after');
-            if (!progressAfter) {
-              logger.warn('Progress bar ::after element not found');
-              return;
-            }
+      _cleanupEventListeners() {
+        this.element.removeEventListener('mouseenter', () => this._pauseProgress());
+        this.element.removeEventListener('mouseleave', () => this._resumeProgress());
+        this.element.removeEventListener('focusin', () => this._pauseProgress());
+        this.element.removeEventListener('focusout', () => this._resumeProgress());
+      }
 
-            progressAfter.style.animationDuration = `${duration}ms`;
-            progressAfter.style.animationName = 'progress';
+      show() {
+        if (this.isDisposed) return;
 
-            clearTimeout(this.timeout);
-            this.timeout = setTimeout(() => this.hide(), duration);
-
-            logger.debug(`Progress animation started for ${this.id}`);
-          } catch (error) {
-            logger.error(`Progress error for ${this.id}:`, error);
-            await this.hide();
-            throw error;
-          }
+        requestAnimationFrame(() => {
+          this.element.classList.add('show');
+          logger.debug(`Snackbar shown: ${this.id}`);
         });
+      }
+
+      startProgress(duration) {
+        if (this.isDisposed || !duration) return;
+
+        const progressBar = this.element.querySelector('.progress-bar');
+        if (progressBar) {
+          this.element.style.setProperty('--duration', `${duration}ms`);
+          progressBar.style.transform = 'scaleX(1)';
+
+          this.progressTimeout = setTimeout(() => this.hide(), duration);
+          logger.debug(`Progress started for: ${this.id}, duration: ${duration}ms`);
+        }
+      }
+
+      _pauseProgress() {
+        if (this.isDisposed) return;
+
+        clearTimeout(this.progressTimeout);
+        const progressBar = this.element.querySelector('.progress-bar');
+        if (progressBar) {
+          progressBar.style.animationPlayState = 'paused';
+          logger.debug(`Progress paused for: ${this.id}`);
+        }
+      }
+
+      _resumeProgress() {
+        if (this.isDisposed) return;
+
+        const progressBar = this.element.querySelector('.progress-bar');
+        if (progressBar) {
+          progressBar.style.animationPlayState = 'running';
+          logger.debug(`Progress resumed for: ${this.id}`);
+        }
       }
 
       async hide() {
-        if (this.isDisposed) {
-          logger.debug(`Hide called on disposed snackbar: ${this.id}`);
-          return;
-        }
+        if (this.isDisposed) return;
 
-        logger.debug(`Hiding snackbar: ${this.id}`);
-        clearTimeout(this.timeout);
-        this.element.classList.add('snackbar-exit');
+        clearTimeout(this.progressTimeout);
+        this.element.classList.add('hide');
+        this.element.classList.remove('show');
 
         try {
           await DropBearUtils.createOneTimeListener(
             this.element,
-            'animationend',
+            'transitionend',
             () => logger.debug(`Animation ended for ${this.id}`),
             ANIMATION_DURATION + 200
           );
@@ -278,14 +275,11 @@
       }
 
       dispose() {
-        if (this.isDisposed) {
-          logger.debug(`Dispose called on already disposed snackbar: ${this.id}`);
-          return;
-        }
+        if (this.isDisposed) return;
 
-        logger.debug(`Disposing snackbar: ${this.id}`);
         this.isDisposed = true;
-        clearTimeout(this.timeout);
+        clearTimeout(this.progressTimeout);
+        this._cleanupEventListeners();
 
         if (this.element?.parentNode) {
           this.element.parentNode.removeChild(this.element);
@@ -297,66 +291,67 @@
     }
 
     return {
-      startProgress(snackbarId, duration) {
-        PerformanceMonitor.start(`snackbar-operation-${snackbarId}`);
-        logger.debug(`Starting progress operation for ${snackbarId}`);
+      initialize(snackbarId) {
+        DropBearUtils.validateArgs([snackbarId], ['string'], 'initialize');
 
-        if (!snackbarId || typeof duration !== 'number' || duration <= 0) {
-          logger.error('Invalid arguments', {snackbarId, duration});
-          throw new Error('Invalid arguments');
-        }
-
-        return retryOperation(async () => {
-          try {
-            const element = document.getElementById(snackbarId);
-            if (!element) {
-              logger.warn(`Element not found: ${snackbarId}`);
-              return;
-            }
-
-            if (snackbars.has(snackbarId)) {
-              logger.debug(`Disposing existing snackbar: ${snackbarId}`);
-              await this.disposeSnackbar(snackbarId);
-            }
-
-            const manager = new SnackbarManager(snackbarId, element);
-            snackbars.set(snackbarId, manager);
-            await manager.startProgress(duration);
-
-            logger.debug(`Progress operation complete for ${snackbarId}`);
-          } catch (error) {
-            logger.error(`Start progress failed for ${snackbarId}:`, error);
-            throw error;
-          } finally {
-            PerformanceMonitor.end(`snackbar-operation-${snackbarId}`);
+        try {
+          if (snackbars.has(snackbarId)) {
+            logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
+            this.dispose(snackbarId);
           }
-        });
+
+          const manager = new SnackbarManager(snackbarId);
+          snackbars.set(snackbarId, manager);
+          logger.debug(`Snackbar initialized: ${snackbarId}`);
+        } catch (error) {
+          logger.error('Snackbar initialization error:', error);
+          throw error;
+        }
       },
 
-      hideSnackbar(snackbarId) {
-        logger.debug(`Hide requested for ${snackbarId}`);
+      show(snackbarId) {
         const manager = snackbars.get(snackbarId);
-        if (manager) return manager.hide();
+        if (manager) {
+          manager.show();
+        }
       },
 
-      disposeSnackbar(snackbarId) {
-        logger.debug(`Dispose requested for ${snackbarId}`);
+      startProgress(snackbarId, duration) {
         const manager = snackbars.get(snackbarId);
-        if (manager) manager.dispose();
+        if (manager) {
+          manager.startProgress(duration);
+        }
       },
 
-      dispose() {
-        logger.debug('Disposing all snackbars');
-        clearInterval(cleanupInterval);
-        snackbars.forEach(manager => manager.dispose());
-        snackbars.clear();
+      hide(snackbarId) {
+        const manager = snackbars.get(snackbarId);
+        if (manager) {
+          return manager.hide();
+        }
       },
 
-      // Debug methods - won't affect existing functionality
-      debug: {
-        listSnackbars: debugSnackbars,
-        getSnackbarCount: () => snackbars.size,
-        isSnackbarActive: id => snackbars.has(id) && !snackbars.get(id).isDisposed
+      dispose(snackbarId) {
+        try {
+          const manager = snackbars.get(snackbarId);
+          if (manager) {
+            manager.dispose();
+            snackbars.delete(snackbarId);
+            logger.debug(`Snackbar disposed: ${snackbarId}`);
+          }
+        } catch (error) {
+          logger.error(`Error disposing snackbar ${snackbarId}:`, error);
+        }
+      },
+
+      disposeAll() {
+        try {
+          const ids = Array.from(snackbars.keys());
+          ids.forEach(id => this.dispose(id));
+          snackbars.clear();
+          logger.debug('All snackbars disposed');
+        } catch (error) {
+          logger.error('Error disposing all snackbars:', error);
+        }
       }
     };
   })();

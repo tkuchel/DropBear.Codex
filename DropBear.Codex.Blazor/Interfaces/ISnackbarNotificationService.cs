@@ -1,76 +1,57 @@
 ﻿#region
 
-using DropBear.Codex.Blazor.Arguments.Events;
-using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Models;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Interfaces;
 
-/// <summary>
-///     Interface for the Snackbar Notification Service.
-/// </summary>
-public interface ISnackbarNotificationService
+public interface ISnackbarService
 {
     /// <summary>
-    ///     Occurs when a new snackbar should be shown.
+    ///     Event that is triggered when a snackbar should be shown
     /// </summary>
-    event AsyncEventHandler<SnackbarNotificationEventArgs>? OnShow;
+    event Func<SnackbarInstance, Task>? OnShow;
 
     /// <summary>
-    ///     Occurs when all snackbars should be hidden.
+    ///     Shows a custom snackbar instance
     /// </summary>
-    event AsyncEventHandler<EventArgs>? OnHideAll;
+    /// <param name="snackbar">The snackbar instance to show</param>
+    Task Show(SnackbarInstance snackbar);
 
     /// <summary>
-    ///     Shows a snackbar notification with the specified message and options.
+    ///     Shows a success snackbar
     /// </summary>
-    /// <param name="message">The message to display.</param>
-    /// <param name="type">The type of the snackbar.</param>
-    /// <param name="duration">The duration to display the snackbar in milliseconds.</param>
-    /// <param name="isDismissible">Indicates whether the snackbar notification is dismissible.</param>
-    /// <param name="actionText">The text of the action button on the snackbar notification.</param>
-    /// <param name="onAction">The action to perform when the action button is clicked.</param>
-    /// <returns>A task representing the asynchronous operation, with a boolean indicating success.</returns>
-    Task<bool> ShowAsync(
-        string message,
-        SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
-        bool isDismissible = true,
-        string actionText = "Dismiss",
-        Func<Task>? onAction = null);
+    /// <param name="title">The title of the snackbar</param>
+    /// <param name="message">The message to display</param>
+    /// <param name="duration">Duration in milliseconds. Default is 5000ms (5 seconds)</param>
+    /// <param name="actions">Optional list of actions that can be triggered from the snackbar</param>
+    Task ShowSuccess(string title, string message, int duration = 5000, List<SnackbarAction>? actions = null);
 
     /// <summary>
-    ///     Shows a snackbar notification with the specified title, message, and options.
+    ///     Shows an error snackbar
     /// </summary>
-    /// <param name="title">The title to display.</param>
-    /// <param name="message">The message to display.</param>
-    /// <param name="type">The type of the snackbar.</param>
-    /// <param name="duration">The duration to display the snackbar in milliseconds.</param>
-    /// <param name="isDismissible">Indicates whether the snackbar notification is dismissible.</param>
-    /// <param name="actionText">The text of the action button on the snackbar notification.</param>
-    /// <param name="onAction">The action to perform when the action button is clicked.</param>
-    /// <returns>A task representing the asynchronous operation, with a boolean indicating success.</returns>
-    Task<bool> ShowAsync(
-        string title,
-        string message,
-        SnackbarType type = SnackbarType.Information,
-        int duration = 5000,
-        bool isDismissible = true,
-        string actionText = "Dismiss",
-        Func<Task>? onAction = null);
+    /// <param name="title">The title of the snackbar</param>
+    /// <param name="message">The message to display</param>
+    /// <param name="duration">Duration in milliseconds. Default is 0 (requires manual dismissal)</param>
+    /// <param name="actions">Optional list of actions that can be triggered from the snackbar</param>
+    Task ShowError(string title, string message, int duration = 0, List<SnackbarAction>? actions = null);
 
     /// <summary>
-    ///     Hides all snackbar notifications.
+    ///     Shows a warning snackbar
     /// </summary>
-    /// <returns>A task representing the asynchronous operation, with a boolean indicating success.</returns>
-    Task<bool> HideAllAsync();
-
+    /// <param name="title">The title of the snackbar</param>
+    /// <param name="message">The message to display</param>
+    /// <param name="duration">Duration in milliseconds. Default is 8000ms (8 seconds)</param>
+    /// <param name="actions">Optional list of actions that can be triggered from the snackbar</param>
+    Task ShowWarning(string title, string message, int duration = 8000, List<SnackbarAction>? actions = null);
 
     /// <summary>
-    ///  Removes a snackbar notification with the specified id.
+    ///     Shows an information snackbar
     /// </summary>
-    ///  <param name="id">The id of the snackbar notification to remove.</param>
-    ///  <returns>A task representing the asynchronous operation, with a boolean indicating success.</returns>
-    Task<bool> RemoveAsync(Guid id);
+    /// <param name="title">The title of the snackbar</param>
+    /// <param name="message">The message to display</param>
+    /// <param name="duration">Duration in milliseconds. Default is 5000ms (5 seconds)</param>
+    /// <param name="actions">Optional list of actions that can be triggered from the snackbar</param>
+    Task ShowInformation(string title, string message, int duration = 5000, List<SnackbarAction>? actions = null);
 }

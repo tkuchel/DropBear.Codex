@@ -1,0 +1,12 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Interfaces
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@inject ISnackbarService SnackbarService
+<div class="dropbear-snackbar-container" id="@ComponentId" role="alert">
+    @foreach (var snackbar in _activeSnackbars)
+    {
+        <DropBearSnackbar @key="snackbar.Id"
+                          SnackbarInstance="snackbar"
+                          OnClose="() => RemoveSnackbar(snackbar.Id)"/>
+    }
+</div>
