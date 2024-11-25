@@ -1,7 +1,10 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Notifications
 @using DropBear.Codex.Blazor.Interfaces
+@using DropBear.Codex.Notifications.Models
+@using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @inject ISnackbarService SnackbarService
+@inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 <div class="dropbear-snackbar-container" id="@ComponentId" role="alert">
     @foreach (var snackbar in _activeSnackbars)
     {
