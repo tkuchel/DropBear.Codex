@@ -184,39 +184,58 @@
         this.element = document.getElementById(id);
         this.isDisposed = false;
         this.progressTimeout = null;
+        this.animationFrame = null;
 
         if (!DropBearUtils.isElement(this.element)) {
           throw new TypeError('Invalid element provided to SnackbarManager');
         }
 
-        // Add initial hide class
-        this.element.classList.add('hide');
+        // Find the scoped attribute
+        this.scopedAttribute = Object.keys(this.element.attributes)
+          .map(key => this.element.attributes[key])
+          .find(attr => attr.name.startsWith('b-'))?.name;
 
         // Setup event listeners
         this._setupEventListeners();
 
-        EventEmitter.emit('snackbar:created', { id });
-        logger.debug(`Snackbar initialized: ${id}`);
+        EventEmitter.emit('snackbar:created', {id});
+        logger.debug(`Snackbar initialized: ${id} with scope ${this.scopedAttribute}`);
       }
 
       _setupEventListeners() {
-        this.element.addEventListener('mouseenter', () => this._pauseProgress());
-        this.element.addEventListener('mouseleave', () => this._resumeProgress());
-        this.element.addEventListener('focusin', () => this._pauseProgress());
-        this.element.addEventListener('focusout', () => this._resumeProgress());
+        this.mouseEnterHandler = () => this._pauseProgress();
+        this.mouseLeaveHandler = () => this._resumeProgress();
+        this.focusInHandler = () => this._pauseProgress();
+        this.focusOutHandler = () => this._resumeProgress();
+
+        this.element.addEventListener('mouseenter', this.mouseEnterHandler);
+        this.element.addEventListener('mouseleave', this.mouseLeaveHandler);
+        this.element.addEventListener('focusin', this.focusInHandler);
+        this.element.addEventListener('focusout', this.focusOutHandler);
+      }
+
+      _cleanupEventListeners() {
+        if (this.element) {
+          this.element.removeEventListener('mouseenter', this.mouseEnterHandler);
+          this.element.removeEventListener('mouseleave', this.mouseLeaveHandler);
+          this.element.removeEventListener('focusin', this.focusInHandler);
+          this.element.removeEventListener('focusout', this.focusOutHandler);
+        }
       }
 
       show() {
         if (this.isDisposed) return;
 
-        // Remove any existing classes that might interfere
-        this.element.classList.remove('show', 'hide');
+        cancelAnimationFrame(this.animationFrame);
 
-        // Force a reflow
+        // Force layout recalculation
         void this.element.offsetWidth;
 
+        // Remove any existing animation classes
+        this.element.classList.remove('show', 'hide');
+
         // Add show class in next frame
-        requestAnimationFrame(() => {
+        this.animationFrame = requestAnimationFrame(() => {
           this.element.classList.add('show');
           logger.debug(`Snackbar shown: ${this.id}`);
         });
@@ -225,12 +244,11 @@
       hide() {
         if (this.isDisposed) return;
 
-        return new Promise((resolve) => {
+        return new Promise(resolve => {
           clearTimeout(this.progressTimeout);
-          this.element.classList.add('hide');
-          this.element.classList.remove('show');
+          cancelAnimationFrame(this.animationFrame);
 
-          const handleTransitionEnd = (event) => {
+          const handleTransitionEnd = event => {
             if (event.propertyName === 'transform') {
               this.element.removeEventListener('transitionend', handleTransitionEnd);
               this.dispose();
@@ -238,6 +256,11 @@
             }
           };
 
+          // Force layout recalculation
+          void this.element.offsetWidth;
+
+          this.element.classList.remove('show');
+          this.element.classList.add('hide');
           this.element.addEventListener('transitionend', handleTransitionEnd);
 
           // Fallback in case transition end doesn't fire
@@ -253,17 +276,26 @@
         if (this.isDisposed || !duration) return;
 
         const progressBar = this.element.querySelector('.progress-bar');
-        if (progressBar) {
-          this.element.style.setProperty('--duration', `${duration}ms`);
-          progressBar.style.transform = 'scaleX(1)';
-          progressBar.style.transition = `transform ${duration}ms linear`;
-          requestAnimationFrame(() => {
-            progressBar.style.transform = 'scaleX(0)';
-          });
+        if (!progressBar) return;
 
-          this.progressTimeout = setTimeout(() => this.hide(), duration);
-          logger.debug(`Progress started for: ${this.id}, duration: ${duration}ms`);
-        }
+        // Clear any existing timeouts and transitions
+        clearTimeout(this.progressTimeout);
+        progressBar.style.transition = 'none';
+        progressBar.style.transform = 'scaleX(1)';
+
+        // Force layout recalculation
+        void progressBar.offsetWidth;
+
+        // Start the progress animation
+        this.element.style.setProperty('--duration', `${duration}ms`);
+        progressBar.style.transition = `transform ${duration}ms linear`;
+        this.animationFrame = requestAnimationFrame(() => {
+          progressBar.style.transform = 'scaleX(0)';
+        });
+
+        // Set up auto-hide
+        this.progressTimeout = setTimeout(() => this.hide(), duration);
+        logger.debug(`Progress started for: ${this.id}, duration: ${duration}ms`);
       }
 
       _pauseProgress() {
@@ -273,10 +305,45 @@
         const progressBar = this.element.querySelector('.progress-bar');
         if (progressBar) {
           const computedStyle = window.getComputedStyle(progressBar);
+          const currentTransform = computedStyle.transform;
           progressBar.style.transition = 'none';
-          progressBar.style.transform = computedStyle.transform;
+          progressBar.style.transform = currentTransform;
+
+          // Force layout recalculation to ensure transition is stopped
+          void progressBar.offsetWidth;
+
           logger.debug(`Progress paused for: ${this.id}`);
         }
+      }
+
+      _resumeProgress() {
+        if (this.isDisposed) return;
+
+        const progressBar = this.element.querySelector('.progress-bar');
+        if (progressBar) {
+          const duration = parseFloat(this.element.style.getPropertyValue('--duration')) || 5000;
+          const computedStyle = window.getComputedStyle(progressBar);
+          const currentScale = this._getCurrentScale(computedStyle.transform);
+          const remainingDuration = duration * currentScale;
+
+          progressBar.style.transition = `transform ${remainingDuration}ms linear`;
+          requestAnimationFrame(() => {
+            progressBar.style.transform = 'scaleX(0)';
+          });
+
+          this.progressTimeout = setTimeout(() => this.hide(), remainingDuration);
+          logger.debug(`Progress resumed for: ${this.id}, remaining: ${remainingDuration}ms`);
+        }
+      }
+
+      _getCurrentScale(transform) {
+        if (transform === 'none') return 1;
+        const match = transform.match(/matrix\(([^)]+)\)/);
+        if (match) {
+          const values = match[1].split(',');
+          return parseFloat(values[0]);
+        }
+        return 1;
       }
 
       dispose() {
@@ -284,13 +351,15 @@
 
         this.isDisposed = true;
         clearTimeout(this.progressTimeout);
+        cancelAnimationFrame(this.animationFrame);
+        this._cleanupEventListeners();
 
         if (this.element?.parentNode) {
           this.element.parentNode.removeChild(this.element);
           logger.debug(`Removed snackbar from DOM: ${this.id}`);
         }
 
-        EventEmitter.emit('snackbar:disposed', { id: this.id });
+        EventEmitter.emit('snackbar:disposed', {id: this.id});
       }
     }
 
@@ -348,7 +417,6 @@
       }
     };
   })();
-
   const DropBearResizeManager = (() => {
     const logger = DropBearUtils.createLogger('DropBearResizeManager');
     let instance = null;

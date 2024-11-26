@@ -11,6 +11,10 @@ namespace DropBear.Codex.Blazor.Components.Notifications;
 
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
+    private Timer? _autoHideTimer;
+    private bool _isDisposed;
+    private bool _isVisible;
+
     [Parameter] public SnackbarInstance SnackbarInstance { get; set; } = null!;
     [Parameter] public EventCallback OnClose { get; set; }
 
@@ -21,26 +25,51 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     {
         if (firstRender)
         {
-            await Task.Delay(50); // Allow DOM to settle
-            await SafeJsVoidInteropAsync("DropBearSnackbar.show", SnackbarInstance.Id);
-
-            if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
-            {
-                await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
-                    SnackbarInstance.Id,
-                    SnackbarInstance.Duration);
-            }
+            // Give the DOM time to settle
+            await Task.Delay(50);
+            await ShowSnackbar();
         }
     }
 
-    private string GetTypeClass()
+    private async Task ShowSnackbar()
     {
-        return SnackbarInstance.Type.ToString().ToLower();
+        try
+        {
+            _isVisible = true;
+            await InvokeAsync(StateHasChanged);
+
+            if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
+            {
+                _autoHideTimer = new Timer(async _ =>
+                {
+                    await InvokeAsync(async () =>
+                    {
+                        await Close();
+                    });
+                }, null, SnackbarInstance.Duration, Timeout.Infinite);
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error showing snackbar");
+        }
     }
 
-    private MarkupString GetIcon()
+    private string GetCssClasses()
     {
-        return new MarkupString(SnackbarInstance.Type switch
+        var classes = new List<string> { "dropbear-snackbar", SnackbarInstance.Type.ToString().ToLower() };
+
+        if (_isVisible)
+        {
+            classes.Add("show");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private string GetIcon()
+    {
+        return SnackbarInstance.Type switch
         {
             SnackbarType.Success => """
                                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -64,7 +93,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
                      <path d="M12 16v-4m0-4h.01"/>
                  </svg>
                  """
-        });
+        };
     }
 
     private async Task HandleActionClick(SnackbarAction action)
@@ -79,7 +108,33 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     private async Task Close()
     {
-        await SafeJsVoidInteropAsync("DropBearSnackbar.hide", SnackbarInstance.Id);
-        await OnClose.InvokeAsync();
+        try
+        {
+            _isVisible = false;
+            await InvokeAsync(StateHasChanged);
+
+            // Allow time for exit animation
+            await Task.Delay(300);
+
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error closing snackbar");
+        }
+    }
+
+    protected override async ValueTask DisposeAsync(bool disposing)
+    {
+        if (!_isDisposed)
+        {
+            if (disposing)
+            {
+                _autoHideTimer?.Dispose();
+            }
+
+            _isDisposed = true;
+            await base.DisposeAsync(disposing);
+        }
     }
 }

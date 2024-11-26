@@ -1,4 +1,4 @@
-﻿.dropbear-snackbar-container {
+﻿::deep .dropbear-snackbar-container {
   position: fixed;
   bottom: 20px;
   right: 20px;
@@ -8,4 +8,12 @@
   gap: 12px;
   max-width: 100%;
   pointer-events: none;
+}
+
+@media (max-width: 576px) {
+  ::deep .dropbear-snackbar-container {
+    right: 0;
+    bottom: 0;
+    padding: 0;
+  }
 }
