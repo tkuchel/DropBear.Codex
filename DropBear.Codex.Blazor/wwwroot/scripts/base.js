@@ -189,10 +189,13 @@
           throw new TypeError('Invalid element provided to SnackbarManager');
         }
 
+        // Add initial hide class
+        this.element.classList.add('hide');
+
         // Setup event listeners
         this._setupEventListeners();
 
-        EventEmitter.emit('snackbar:created', {id});
+        EventEmitter.emit('snackbar:created', { id });
         logger.debug(`Snackbar initialized: ${id}`);
       }
 
@@ -203,19 +206,46 @@
         this.element.addEventListener('focusout', () => this._resumeProgress());
       }
 
-      _cleanupEventListeners() {
-        this.element.removeEventListener('mouseenter', () => this._pauseProgress());
-        this.element.removeEventListener('mouseleave', () => this._resumeProgress());
-        this.element.removeEventListener('focusin', () => this._pauseProgress());
-        this.element.removeEventListener('focusout', () => this._resumeProgress());
-      }
-
       show() {
         if (this.isDisposed) return;
 
+        // Remove any existing classes that might interfere
+        this.element.classList.remove('show', 'hide');
+
+        // Force a reflow
+        void this.element.offsetWidth;
+
+        // Add show class in next frame
         requestAnimationFrame(() => {
           this.element.classList.add('show');
           logger.debug(`Snackbar shown: ${this.id}`);
+        });
+      }
+
+      hide() {
+        if (this.isDisposed) return;
+
+        return new Promise((resolve) => {
+          clearTimeout(this.progressTimeout);
+          this.element.classList.add('hide');
+          this.element.classList.remove('show');
+
+          const handleTransitionEnd = (event) => {
+            if (event.propertyName === 'transform') {
+              this.element.removeEventListener('transitionend', handleTransitionEnd);
+              this.dispose();
+              resolve();
+            }
+          };
+
+          this.element.addEventListener('transitionend', handleTransitionEnd);
+
+          // Fallback in case transition end doesn't fire
+          setTimeout(() => {
+            this.element.removeEventListener('transitionend', handleTransitionEnd);
+            this.dispose();
+            resolve();
+          }, ANIMATION_DURATION + 100);
         });
       }
 
@@ -226,6 +256,10 @@
         if (progressBar) {
           this.element.style.setProperty('--duration', `${duration}ms`);
           progressBar.style.transform = 'scaleX(1)';
+          progressBar.style.transition = `transform ${duration}ms linear`;
+          requestAnimationFrame(() => {
+            progressBar.style.transform = 'scaleX(0)';
+          });
 
           this.progressTimeout = setTimeout(() => this.hide(), duration);
           logger.debug(`Progress started for: ${this.id}, duration: ${duration}ms`);
@@ -238,39 +272,10 @@
         clearTimeout(this.progressTimeout);
         const progressBar = this.element.querySelector('.progress-bar');
         if (progressBar) {
-          progressBar.style.animationPlayState = 'paused';
+          const computedStyle = window.getComputedStyle(progressBar);
+          progressBar.style.transition = 'none';
+          progressBar.style.transform = computedStyle.transform;
           logger.debug(`Progress paused for: ${this.id}`);
-        }
-      }
-
-      _resumeProgress() {
-        if (this.isDisposed) return;
-
-        const progressBar = this.element.querySelector('.progress-bar');
-        if (progressBar) {
-          progressBar.style.animationPlayState = 'running';
-          logger.debug(`Progress resumed for: ${this.id}`);
-        }
-      }
-
-      async hide() {
-        if (this.isDisposed) return;
-
-        clearTimeout(this.progressTimeout);
-        this.element.classList.add('hide');
-        this.element.classList.remove('show');
-
-        try {
-          await DropBearUtils.createOneTimeListener(
-            this.element,
-            'transitionend',
-            () => logger.debug(`Animation ended for ${this.id}`),
-            ANIMATION_DURATION + 200
-          );
-        } catch (error) {
-          logger.warn(`Animation listener error for ${this.id}:`, error);
-        } finally {
-          this.dispose();
         }
       }
 
@@ -279,14 +284,13 @@
 
         this.isDisposed = true;
         clearTimeout(this.progressTimeout);
-        this._cleanupEventListeners();
 
         if (this.element?.parentNode) {
           this.element.parentNode.removeChild(this.element);
           logger.debug(`Removed snackbar from DOM: ${this.id}`);
         }
 
-        EventEmitter.emit('snackbar:disposed', {id: this.id});
+        EventEmitter.emit('snackbar:disposed', { id: this.id });
       }
     }
 
@@ -340,17 +344,6 @@
           }
         } catch (error) {
           logger.error(`Error disposing snackbar ${snackbarId}:`, error);
-        }
-      },
-
-      disposeAll() {
-        try {
-          const ids = Array.from(snackbars.keys());
-          ids.forEach(id => this.dispose(id));
-          snackbars.clear();
-          logger.debug('All snackbars disposed');
-        } catch (error) {
-          logger.error('Error disposing all snackbars:', error);
         }
       }
     };

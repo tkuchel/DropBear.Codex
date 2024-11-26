@@ -5,11 +5,15 @@
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @inject ISnackbarService SnackbarService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
+<HeadContent>
+    <link rel="stylesheet" href="_content/DropBear.Codex.Blazor/css/dropbear.snackbar.css" />
+</HeadContent>
+
 <div class="dropbear-snackbar-container" id="@ComponentId" role="alert">
     @foreach (var snackbar in _activeSnackbars)
     {
         <DropBearSnackbar @key="snackbar.Id"
                           SnackbarInstance="snackbar"
-                          OnClose="() => RemoveSnackbar(snackbar.Id)"/>
+                          OnClose="() => RemoveSnackbar(snackbar.Id)" />
     }
 </div>
