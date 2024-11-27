@@ -14,7 +14,7 @@ namespace DropBear.Codex.Blazor.Services;
 
 public class SnackbarService : ISnackbarService
 {
-    private readonly List<SnackbarInstance> _activeSnackbars = new();
+    private readonly List<SnackbarInstance> _activeSnackbars = [];
     private readonly ILogger _logger;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
 
