@@ -820,6 +820,54 @@
     };
   })();
 
+  const DropBearFileDownloader = (() => {
+    const logger = DropBearUtils.createLogger('DropBearFileDownloader');
+
+    return {
+      downloadFileFromStream: async (fileName, content, contentType) => {
+        try {
+          logger.debug('downloadFileFromStream called with:', { fileName, content, contentType });
+
+          let blob;
+
+          if (content instanceof Blob) {
+            logger.debug('Content is a Blob.');
+            blob = content;
+          } else if (content.arrayBuffer) {
+            logger.debug('Content has arrayBuffer method (DotNetStreamReference detected).');
+            const arrayBuffer = await content.arrayBuffer();
+            logger.debug('ArrayBuffer received, byte length:', arrayBuffer.byteLength);
+            blob = new Blob([arrayBuffer], { type: contentType });
+          } else if (content instanceof Uint8Array) {
+            logger.debug('Content is a Uint8Array.');
+            blob = new Blob([content], { type: contentType });
+          } else {
+            throw new Error('Unsupported content type');
+          }
+
+          logger.debug('Blob created, size:', blob.size);
+
+          const url = URL.createObjectURL(blob);
+          const anchorElement = document.createElement('a');
+          anchorElement.href = url;
+          anchorElement.download = fileName || 'download';
+
+          document.body.appendChild(anchorElement);
+
+          setTimeout(() => {
+            logger.debug('Triggering download...');
+            anchorElement.click();
+            document.body.removeChild(anchorElement);
+            URL.revokeObjectURL(url);
+            logger.debug('Download completed and cleanup done.');
+          }, 0);
+        } catch (error) {
+          logger.error('Error in downloadFileFromStream:', error);
+        }
+      }
+    };
+  })();
+
   window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
 
   const initializeDropBear = async () => {
@@ -852,7 +900,8 @@
         DropBearResizeManager: {value: DropBearResizeManager, writable: false, configurable: false},
         DropBearNavigationButtons: {value: DropBearNavigationButtons, writable: false, configurable: false},
         DropBearContextMenu: {value: DropBearContextMenu, writable: false, configurable: false},
-        DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false}
+        DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false},
+        DropBearFileDownloader: { value: DropBearFileDownloader, writable: false, configurable: false }
       });
 
       // Add after Object.defineProperties in initializeDropBear

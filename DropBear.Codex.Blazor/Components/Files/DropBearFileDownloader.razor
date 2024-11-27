@@ -7,24 +7,38 @@
     <div class="file-download-component">
         <div class="file-info-row">
             <div class="file-info">
-                <i class="@FileIconClass file-icon"></i>
+                <i class="@FileIconClass file-icon" aria-hidden="true"></i>
                 <span class="file-name">@FileName</span>
             </div>
             <div class="file-size">@FileSize</div>
-            <button class="download-button" @onclick="StartDownload" disabled="@_isDownloading">
+            <button class="download-button"
+                    @onclick="StartDownload"
+                    disabled="@_isDownloading"
+                    aria-disabled="@_isDownloading">
                 @if (_isDownloading)
                 {
-                    <span>Downloading...</span>
+                    <span>
+                        <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
+                        Downloading...
+                    </span>
                 }
                 else
                 {
-                    <span>Download</span>
+                    <span>
+                        <i class="fas fa-download" aria-hidden="true"></i>
+                        Download
+                    </span>
                 }
             </button>
         </div>
         <div class="progress-row">
-            <div class="download-progress">
-                <div class="progress-bar" style="width: @(_downloadProgress)%"></div>
+            <div class="download-progress"
+                 aria-label="Download progress"
+                 role="progressbar"
+                 aria-valuenow="@_downloadProgress"
+                 aria-valuemin="0"
+                 aria-valuemax="100">
+                <div class="progress-bar" style="width: @_downloadProgress%"></div>
             </div>
         </div>
     </div>

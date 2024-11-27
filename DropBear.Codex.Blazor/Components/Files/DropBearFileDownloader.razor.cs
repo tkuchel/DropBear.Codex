@@ -13,28 +13,52 @@ namespace DropBear.Codex.Blazor.Components.Files;
 /// <summary>
 ///     A Blazor component for downloading files with progress indication.
 /// </summary>
-public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
+public sealed partial class DropBearFileDownloader : DropBearComponentBase, IAsyncDisposable
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileDownloader>();
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileDownloader>();
     private CancellationTokenSource? _dismissCancellationTokenSource;
     private int _downloadProgress;
     private bool _isDownloading;
 
     [Parameter] public string FileName { get; set; } = string.Empty;
+
     [Parameter] public string FileSize { get; set; } = string.Empty;
+
     [Parameter] public string FileIconClass { get; set; } = "fas fa-file-pdf";
+
     [Parameter] public Func<IProgress<int>, CancellationToken, Task<Stream>>? DownloadFileAsync { get; set; }
+
     [Parameter] public EventCallback<bool> OnDownloadComplete { get; set; }
+
     [Parameter] public string ContentType { get; set; } = "application/octet-stream";
 
     /// <summary>
-    ///     Clean up resources on disposal.
+    ///     Asynchronously disposes of the component's resources.
     /// </summary>
-    public void Dispose()
+    public new async ValueTask DisposeAsync()
     {
-        _dismissCancellationTokenSource?.Cancel();
-        _dismissCancellationTokenSource?.Dispose();
-        _dismissCancellationTokenSource = null;
+        if (_dismissCancellationTokenSource != null)
+        {
+            await _dismissCancellationTokenSource.CancelAsync();
+
+            try
+            {
+                // Wait briefly to allow any pending operations to complete
+                await Task.Delay(100);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during asynchronous disposal of DropBearFileDownloader");
+            }
+            finally
+            {
+                _dismissCancellationTokenSource.Dispose();
+                _dismissCancellationTokenSource = null;
+            }
+        }
+
+        await base.DisposeAsync();
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -49,13 +73,19 @@ public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
             return;
         }
 
+        if (!IsConnected)
+        {
+            Logger.Warning("Cannot start download; circuit is disconnected.");
+            return;
+        }
+
         _dismissCancellationTokenSource = new CancellationTokenSource();
         _isDownloading = true;
         _downloadProgress = 0;
 
         try
         {
-            Logger.Debug("Starting download for file: {FileName}", FileName);
+            Logger.Information("Starting download for file: {FileName}", FileName);
 
             // Set up progress reporting
             var progress = new Progress<int>(percent =>
@@ -73,15 +103,20 @@ public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
 
             Logger.Debug("Download completed for file: {FileName}, preparing to save file on client.", FileName);
 
-            await JsRuntime.InvokeVoidAsync(
-                "downloadFileFromStream",
-                _dismissCancellationTokenSource.Token, // Correct placement of the cancellation token
+            await SafeJsVoidInteropAsync(
+                "DropBearFileDownloader.downloadFileFromStream",
                 FileName,
                 streamRef,
                 ContentType);
 
             // Notify completion with success
             await OnDownloadComplete.InvokeAsync(true);
+        }
+        catch (JSDisconnectedException)
+        {
+            Logger.Warning("JSInterop call failed due to disconnected circuit during download of file: {FileName}",
+                FileName);
+            await OnDownloadComplete.InvokeAsync(false); // Notify failure
         }
         catch (OperationCanceledException)
         {
@@ -99,7 +134,16 @@ public partial class DropBearFileDownloader : DropBearComponentBase, IDisposable
             _dismissCancellationTokenSource?.Dispose();
             _dismissCancellationTokenSource = null;
             Logger.Debug("Download process finalized for file: {FileName}", FileName);
-            InvokeAsync(StateHasChanged);
+            await InvokeAsync(StateHasChanged);
         }
+    }
+
+    /// <summary>
+    ///     Overrides the base class method to clean up any JavaScript resources if necessary.
+    /// </summary>
+    protected override Task CleanupJavaScriptResourcesAsync()
+    {
+        // No additional JS resources to clean up for this component
+        return Task.CompletedTask;
     }
 }
