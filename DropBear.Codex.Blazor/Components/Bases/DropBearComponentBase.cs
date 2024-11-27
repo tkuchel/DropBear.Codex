@@ -1,7 +1,10 @@
 ﻿#region
 
+using DropBear.Codex.Blazor.Extensions;
 using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.JSInterop;
+using Serilog;
 
 #endregion
 
@@ -13,19 +16,21 @@ namespace DropBear.Codex.Blazor.Components.Bases;
 /// </summary>
 public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 {
+    private readonly CancellationTokenSource _circuitCts = new();
+    private CircuitHandler? _circuitHandler;
     private bool? _isConnected;
 
     /// <summary>
     ///     Gets or sets the JS Runtime instance.
     /// </summary>
     [Inject]
-    protected IJSRuntime JSRuntime { get; set; } = default!;
+    protected IJSRuntime JsRuntime { get; set; } = default!;
 
     /// <summary>
     ///     Gets or sets the logger instance.
     /// </summary>
     [Inject]
-    protected Serilog.ILogger Logger { get; set; } = default!;
+    protected ILogger Logger { get; set; } = default!;
 
     /// <summary>
     ///     Gets the unique identifier for the component instance.
@@ -42,20 +47,32 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// </summary>
     protected bool IsConnected => _isConnected ?? true;
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets the cancellation token that is canceled when the circuit is disconnected.
+    /// </summary>
+    protected CancellationToken CircuitToken => _circuitCts.Token;
+
+    /// <summary>
+    ///     Disposes the component and its resources.
+    /// </summary>
     public async ValueTask DisposeAsync()
     {
         await DisposeAsync(true);
         GC.SuppressFinalize(this);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Initializes the component.
+    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            await CheckConnectionStatus();
+            // Create and initialize circuit handler
+            _circuitHandler = new ComponentCircuitHandler(this);
+
             await base.OnInitializedAsync();
+            _isConnected = true;
         }
         catch (Exception ex)
         {
@@ -80,22 +97,23 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            if (!await CheckConnectionStatus())
-            {
-                throw new JSDisconnectedException("Circuit is disconnected");
-            }
-
-            return await JSRuntime.InvokeAsync<T>(identifier, args);
+            // Use the circuit token to cancel operations when disconnected
+            return await JsRuntime.InvokeAsync<T>(identifier, CircuitToken, args)
+                .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken); // Add timeout
         }
-        catch (JSDisconnectedException ex)
+        catch (Exception ex) when (ex is JSDisconnectedException
+                                       or OperationCanceledException
+                                       or TimeoutException)
         {
             _isConnected = false;
-            Logger.Warning(ex, "JS interop failed due to disconnection in {ComponentName}", GetType().Name);
-            throw;
+            Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}",
+                GetType().Name, ex.Message);
+            throw new JSDisconnectedException("Circuit is disconnected");
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}", GetType().Name, identifier);
+            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}",
+                GetType().Name, identifier);
             throw;
         }
     }
@@ -114,22 +132,22 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            if (!await CheckConnectionStatus())
-            {
-                throw new JSDisconnectedException("Circuit is disconnected");
-            }
-
-            await JSRuntime.InvokeVoidAsync(identifier, args);
+            await JsRuntime.InvokeVoidAsync(identifier, CircuitToken, args)
+                .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken);
         }
-        catch (JSDisconnectedException ex)
+        catch (Exception ex) when (ex is JSDisconnectedException
+                                       or OperationCanceledException
+                                       or TimeoutException)
         {
             _isConnected = false;
-            Logger.Warning(ex, "JS interop failed due to disconnection in {ComponentName}", GetType().Name);
-            throw;
+            Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}",
+                GetType().Name, ex.Message);
+            throw new JSDisconnectedException("Circuit is disconnected");
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}", GetType().Name, identifier);
+            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}",
+                GetType().Name, identifier);
             throw;
         }
     }
@@ -146,11 +164,18 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 return _isConnected.Value;
             }
 
-            // Try a simple JS interop call to check connection
-            _isConnected = await JSRuntime.InvokeAsync<bool>("document.hasFocus");
+            // Use a more reliable connection check
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+            _isConnected = await JsRuntime.InvokeAsync<bool>(
+                "eval",
+                cts.Token,
+                "typeof window !== 'undefined' && window.document !== null"
+            );
             return _isConnected.Value;
         }
-        catch (JSDisconnectedException)
+        catch (Exception ex) when (ex is JSDisconnectedException
+                                       or OperationCanceledException
+                                       or TimeoutException)
         {
             _isConnected = false;
             return false;
@@ -175,21 +200,28 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             {
                 try
                 {
-                    if (await CheckConnectionStatus())
+                    // Only attempt JS cleanup if we're still connected
+                    if (IsConnected && !_circuitCts.IsCancellationRequested)
                     {
-                        await CleanupJavaScriptResourcesAsync();
+                        await CleanupJavaScriptResourcesAsync()
+                            .WaitAsync(TimeSpan.FromSeconds(2)) // Add timeout
+                            .ConfigureAwait(false);
                     }
                 }
-                catch (JSDisconnectedException)
+                catch (Exception ex) when (ex is JSDisconnectedException
+                                               or OperationCanceledException
+                                               or TimeoutException)
                 {
-                    // Safely ignore JS disconnection exceptions during disposal
-                    Logger.Debug("JS interop unavailable during {ComponentName} disposal - circuit disconnected",
+                    Logger.Debug("Skipping JS cleanup for {ComponentName} - circuit disconnected",
                         GetType().Name);
                 }
                 catch (Exception ex)
                 {
-                    // Log other exceptions but don't throw during disposal
                     Logger.Error(ex, "Error during {ComponentName} disposal", GetType().Name);
+                }
+                finally
+                {
+                    _circuitCts.Dispose();
                 }
             }
 
@@ -238,6 +270,83 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             Logger.Error(ex, "Error executing state change in {ComponentName}", GetType().Name);
             throw;
+        }
+    }
+
+    /// <summary>
+    ///     Attempts to reconnect to the circuit with exponential backoff.
+    /// </summary>
+    protected virtual async Task AttemptReconnectionAsync()
+    {
+        if (!IsConnected && !CircuitToken.IsCancellationRequested)
+        {
+            try
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    if (await CheckConnectionStatus())
+                    {
+                        await OnReconnectedAsync();
+                        return;
+                    }
+
+                    await Task.Delay(1000 * (i + 1), CircuitToken);
+                }
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Logger.Error(ex, "Reconnection attempt failed in {ComponentName}", GetType().Name);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Called when the component successfully reconnects to the circuit.
+    /// </summary>
+    protected virtual Task OnReconnectedAsync()
+    {
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Inner class that handles circuit events
+    /// </summary>
+    private class ComponentCircuitHandler : CircuitHandler
+    {
+        private readonly DropBearComponentBase _component;
+
+        public ComponentCircuitHandler(DropBearComponentBase component)
+        {
+            _component = component;
+        }
+
+        public override Task OnCircuitOpenedAsync(Circuit circuit, CancellationToken cancellationToken)
+        {
+            _component._isConnected = true;
+            _component.Logger.Debug("Circuit opened in {ComponentName}", _component.GetType().Name);
+            return Task.CompletedTask;
+        }
+
+        public override Task OnCircuitClosedAsync(Circuit circuit, CancellationToken cancellationToken)
+        {
+            _component._isConnected = false;
+            _component._circuitCts.Cancel();
+            _component.Logger.Debug("Circuit closed in {ComponentName}", _component.GetType().Name);
+            return Task.CompletedTask;
+        }
+
+        public override Task OnConnectionUpAsync(Circuit circuit, CancellationToken cancellationToken)
+        {
+            _component._isConnected = true;
+            _component.Logger.Debug("Connection up in {ComponentName}", _component.GetType().Name);
+            return Task.CompletedTask;
+        }
+
+        public override Task OnConnectionDownAsync(Circuit circuit, CancellationToken cancellationToken)
+        {
+            _component._isConnected = false;
+            _component.Logger.Debug("Connection down in {ComponentName}", _component.GetType().Name);
+            return Task.CompletedTask;
         }
     }
 }
