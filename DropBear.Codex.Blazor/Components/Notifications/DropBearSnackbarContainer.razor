@@ -6,11 +6,10 @@
 @inject ISnackbarService SnackbarService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 
-<div class="@GetContainerClasses()"
+<div class="dropbear-snackbar-container @GetPositionClass()"
      id="@ComponentId"
      role="alert"
-     aria-live="polite"
-     data-component-type="snackbar-container">
+     aria-live="polite">
     @foreach (var snackbar in _activeSnackbars)
     {
         <DropBearSnackbar @key="snackbar.Id"
@@ -19,15 +18,4 @@
     }
 </div>
 
-@code {
-    private string GetContainerClasses()
-    {
-        var classes = new List<string>
-        {
-            "dropbear-snackbar-container",
-            GetPositionClass()
-        };
 
-        return string.Join(" ", classes);
-    }
-}

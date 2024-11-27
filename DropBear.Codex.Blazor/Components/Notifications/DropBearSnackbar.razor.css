@@ -7,7 +7,7 @@
 }
 
 /* Base snackbar styles */
-::deep .dropbear-snackbar {
+.dropbear-snackbar {
   background: #2d2e31;
   color: #e3e3e3;
   padding: 16px;
@@ -31,12 +31,12 @@
   cursor: default;
 }
 
-::deep .dropbear-snackbar:hover {
+.dropbear-snackbar:hover {
   background: #343639;
 }
 
 /* Progress bar styles */
-::deep .dropbear-snackbar .progress-bar {
+.dropbear-snackbar .progress-bar {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -49,21 +49,21 @@
 }
 
 /* Show state */
-::deep .dropbear-snackbar.show {
+.dropbear-snackbar.show {
   transform: translateX(0) scale(1);
   opacity: 1;
 }
 
-::deep .dropbear-snackbar.show .progress-bar {
+.dropbear-snackbar.show .progress-bar {
   animation: progress-bar-shrink var(--duration, 5000ms) linear forwards;
 }
 
-::deep .dropbear-snackbar:hover .progress-bar {
+.dropbear-snackbar:hover .progress-bar {
   animation-play-state: paused;
 }
 
 /* Hide state */
-::deep .dropbear-snackbar.hide {
+.dropbear-snackbar.hide {
   transform: translateX(120%) scale(0.95);
   opacity: 0;
 }
@@ -79,75 +79,75 @@
 }
 
 /* Type-specific styles */
-::deep .dropbear-snackbar.success {
+.dropbear-snackbar.success {
   border-left-color: var(--snackbar-success);
 }
 
-::deep .dropbear-snackbar.success .progress-bar {
+.dropbear-snackbar.success .progress-bar {
   background-color: var(--snackbar-success);
 }
 
-::deep .dropbear-snackbar.success .dropbear-snackbar-icon {
+.dropbear-snackbar.success .dropbear-snackbar-icon {
   color: var(--snackbar-success);
 }
 
-::deep .dropbear-snackbar.error {
+.dropbear-snackbar.error {
   border-left-color: var(--snackbar-error);
 }
 
-::deep .dropbear-snackbar.error .progress-bar {
+.dropbear-snackbar.error .progress-bar {
   background-color: var(--snackbar-error);
 }
 
-::deep .dropbear-snackbar.error .dropbear-snackbar-icon {
+.dropbear-snackbar.error .dropbear-snackbar-icon {
   color: var(--snackbar-error);
 }
 
-::deep .dropbear-snackbar.warning {
+.dropbear-snackbar.warning {
   border-left-color: var(--snackbar-warning);
 }
 
-::deep .dropbear-snackbar.warning .progress-bar {
+.dropbear-snackbar.warning .progress-bar {
   background-color: var(--snackbar-warning);
 }
 
-::deep .dropbear-snackbar.warning .dropbear-snackbar-icon {
+.dropbear-snackbar.warning .dropbear-snackbar-icon {
   color: var(--snackbar-warning);
 }
 
-::deep .dropbear-snackbar.information {
+.dropbear-snackbar.information {
   border-left-color: var(--snackbar-info);
 }
 
-::deep .dropbear-snackbar.information .progress-bar {
+.dropbear-snackbar.information .progress-bar {
   background-color: var(--snackbar-info);
 }
 
-::deep .dropbear-snackbar.information .dropbear-snackbar-icon {
+.dropbear-snackbar.information .dropbear-snackbar-icon {
   color: var(--snackbar-info);
 }
 
 /* Icon styles */
-::deep .dropbear-snackbar-icon {
+.dropbear-snackbar-icon {
   flex-shrink: 0;
   width: 20px;
   height: 20px;
 }
 
 /* Content styles */
-::deep .dropbear-snackbar-content {
+.dropbear-snackbar-content {
   flex-grow: 1;
   margin-right: 12px;
 }
 
-::deep .dropbear-snackbar-title {
+.dropbear-snackbar-title {
   font-weight: 600;
   margin-bottom: 4px;
   color: #e3e3e3;
   font-size: 16px;
 }
 
-::deep .dropbear-snackbar-message {
+.dropbear-snackbar-message {
   font-size: 14px;
   line-height: 1.5;
   color: #a1a1a1;
@@ -155,13 +155,13 @@
 }
 
 /* Action buttons */
-::deep .dropbear-snackbar-actions {
+.dropbear-snackbar-actions {
   display: flex;
   gap: 8px;
   margin-top: 12px;
 }
 
-::deep .dropbear-snackbar-action {
+.dropbear-snackbar-action {
   font-size: 14px;
   padding: 8px 12px;
   border-radius: 8px;
@@ -173,13 +173,13 @@
   font-weight: 500;
 }
 
-::deep .dropbear-snackbar-action:hover {
+.dropbear-snackbar-action:hover {
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
 }
 
 /* Close button */
-::deep .dropbear-snackbar-close {
+.dropbear-snackbar-close {
   background: transparent;
   border: none;
   color: #a1a1a1;
@@ -196,31 +196,31 @@
   margin: -4px -4px -4px 0;
 }
 
-::deep .dropbear-snackbar-close:hover {
+.dropbear-snackbar-close:hover {
   opacity: 1;
   color: #e3e3e3;
 }
 
-::deep .dropbear-snackbar-close svg {
+.dropbear-snackbar-close svg {
   width: 14px;
   height: 14px;
   stroke-width: 1.5;
 }
 
 /* Link styles */
-::deep .dropbear-snackbar-message a {
+.dropbear-snackbar-message a {
   color: var(--snackbar-info);
   text-decoration: none;
   transition: all 0.15s ease;
   font-weight: 500;
 }
 
-::deep .dropbear-snackbar-message a:hover {
+.dropbear-snackbar-message a:hover {
   text-decoration: underline;
 }
 
 /* Screen reader only */
-::deep .sr-only {
+.sr-only {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -234,7 +234,7 @@
 
 /* Responsive styles */
 @media (max-width: 576px) {
-  ::deep .dropbear-snackbar {
+  .dropbear-snackbar {
     min-width: 100%;
     max-width: 100%;
     border-radius: 0;

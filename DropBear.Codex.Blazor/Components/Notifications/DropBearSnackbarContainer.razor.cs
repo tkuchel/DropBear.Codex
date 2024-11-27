@@ -21,12 +21,18 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     private IDisposable? _channelSubscription;
     [Parameter] public string? ChannelId { get; set; }
 
+    [Parameter] public SnackbarPosition Position { get; set; } = SnackbarPosition.BottomRight;
+
     private string GetPositionClass()
     {
-        return "bottom-right";
-        // Customize if needed
+        return Position switch
+        {
+            SnackbarPosition.TopLeft => "top-left",
+            SnackbarPosition.TopRight => "top-right",
+            SnackbarPosition.BottomLeft => "bottom-left",
+            _ => "bottom-right"
+        };
     }
-
 
     protected override void OnInitialized()
     {
