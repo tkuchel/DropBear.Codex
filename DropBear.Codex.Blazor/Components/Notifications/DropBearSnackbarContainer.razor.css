@@ -1,19 +1,52 @@
-﻿::deep .dropbear-snackbar-container {
+﻿.dropbear-snackbar-container {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
   z-index: 9999;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  max-width: 100%;
   pointer-events: none;
+  max-width: 100%;
+  padding: 20px;
 }
 
+.dropbear-snackbar-container.top-left {
+  top: 0;
+  left: 0;
+}
+
+.dropbear-snackbar-container.top-right {
+  top: 0;
+  right: 0;
+}
+
+.dropbear-snackbar-container.bottom-left {
+  bottom: 0;
+  left: 0;
+}
+
+.dropbear-snackbar-container.bottom-right {
+  bottom: 0;
+  right: 0;
+}
+
+/* Mobile styles */
 @media (max-width: 576px) {
-  ::deep .dropbear-snackbar-container {
+  .dropbear-snackbar-container {
+    padding: 12px;
+    width: 100%;
+  }
+
+  .dropbear-snackbar-container.bottom-left,
+  .dropbear-snackbar-container.bottom-right {
+    left: 0;
     right: 0;
     bottom: 0;
-    padding: 0;
+  }
+
+  .dropbear-snackbar-container.top-left,
+  .dropbear-snackbar-container.top-right {
+    left: 0;
+    right: 0;
+    top: 0;
   }
 }

@@ -19,8 +19,13 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     private readonly List<SnackbarInstance> _activeSnackbars = [];
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private IDisposable? _channelSubscription;
-
     [Parameter] public string? ChannelId { get; set; }
+
+    private string GetPositionClass()
+    {
+        return "bottom-right";
+        // Customize if needed
+    }
 
 
     protected override void OnInitialized()
@@ -41,6 +46,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
             throw;
         }
     }
+
 
     private void SubscribeToSnackbarEvents()
     {
