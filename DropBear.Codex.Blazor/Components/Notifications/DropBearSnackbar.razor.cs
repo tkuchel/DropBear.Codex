@@ -13,6 +13,8 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
     private bool _isDisposed;
 
+    private ElementReference _snackbarRef;
+
     [Parameter] public SnackbarInstance SnackbarInstance { get; set; } = null!;
     [Parameter] public EventCallback OnClose { get; set; }
 
@@ -43,7 +45,9 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     private string GetCssClasses()
     {
-        return $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
+        var classes = new List<string> { "dropbear-snackbar", SnackbarInstance.Type.ToString().ToLower() };
+
+        return string.Join(" ", classes);
     }
 
     private string GetIcon()

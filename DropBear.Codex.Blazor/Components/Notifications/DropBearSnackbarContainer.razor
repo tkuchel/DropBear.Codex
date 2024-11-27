@@ -6,7 +6,7 @@
 @inject ISnackbarService SnackbarService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 
-<div class="dropbear-snackbar-container @GetPositionClass()"
+<div class="@GetContainerClasses()"
      id="@ComponentId"
      role="alert"
      aria-live="polite"
@@ -18,3 +18,16 @@
                           OnClose="@(() => RemoveSnackbar(snackbar.Id))"/>
     }
 </div>
+
+@code {
+    private string GetContainerClasses()
+    {
+        var classes = new List<string>
+        {
+            "dropbear-snackbar-container",
+            GetPositionClass()
+        };
+
+        return string.Join(" ", classes);
+    }
+}

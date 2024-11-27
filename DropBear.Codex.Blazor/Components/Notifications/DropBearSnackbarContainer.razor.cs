@@ -165,7 +165,6 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         {
             await _semaphore.WaitAsync();
 
-            // Remove oldest if we're at max capacity
             while (_activeSnackbars.Count >= MaxSnackbars)
             {
                 var oldestId = _activeSnackbars[0].Id;
@@ -175,12 +174,24 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
             _activeSnackbars.Add(snackbar);
             await InvokeAsync(StateHasChanged);
 
-            await Task.Delay(50); // Allow DOM to settle
-            await SafeJsVoidInteropAsync("DropBearSnackbar.show", snackbar.Id);
-
-            if (snackbar is { RequiresManualClose: false, Duration: > 0 })
+            try
             {
-                _ = AutoHideSnackbarAsync(snackbar);
+                // Allow render to complete
+                await Task.Delay(50);
+                await SafeJsVoidInteropAsync("DropBearSnackbar.show", snackbar.Id);
+
+                if (snackbar is { RequiresManualClose: false, Duration: > 0 })
+                {
+                    await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
+                        snackbar.Id, snackbar.Duration);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error showing snackbar: {Id}", snackbar.Id);
+                // Clean up on failure
+                _activeSnackbars.Remove(snackbar);
+                await InvokeAsync(StateHasChanged);
             }
         }
         finally
@@ -211,9 +222,22 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
             var snackbar = _activeSnackbars.FirstOrDefault(s => s.Id == id);
             if (snackbar != null)
             {
-                await SafeJsVoidInteropAsync("DropBearSnackbar.hide", id);
-                _activeSnackbars.Remove(snackbar);
-                await InvokeAsync(StateHasChanged);
+                try
+                {
+                    // First handle the JS side
+                    await SafeJsVoidInteropAsync("DropBearSnackbar.hide", id);
+
+                    // Wait for animation
+                    await Task.Delay(300);
+
+                    // Then update the state
+                    _activeSnackbars.Remove(snackbar);
+                    await InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error removing snackbar: {Id}", id);
+                }
             }
         }
         finally
@@ -234,10 +258,32 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     {
         if (disposing)
         {
-            UnsubscribeFromSnackbarEvents();
-            _channelSubscription?.Dispose();
-            _semaphore.Dispose();
-            await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", ComponentId);
+            try
+            {
+                UnsubscribeFromSnackbarEvents();
+                _channelSubscription?.Dispose();
+
+                // Dispose snackbars one by one with a delay
+                foreach (var snackbar in _activeSnackbars.ToList())
+                {
+                    try
+                    {
+                        await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", snackbar.Id);
+                        await Task.Delay(50); // Small delay between disposals
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, "Error disposing snackbar: {Id}", snackbar.Id);
+                    }
+                }
+
+                _activeSnackbars.Clear();
+                _semaphore.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during snackbar container disposal");
+            }
         }
 
         await base.DisposeAsync(disposing);

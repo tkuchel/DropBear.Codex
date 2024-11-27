@@ -1,4 +1,4 @@
-﻿.dropbear-snackbar-container {
+﻿::deep .dropbear-snackbar-container {
   position: fixed;
   z-index: 9999;
   display: flex;
@@ -9,42 +9,42 @@
   padding: 20px;
 }
 
-.dropbear-snackbar-container.top-left {
+::deep .dropbear-snackbar-container.top-left {
   top: 0;
   left: 0;
 }
 
-.dropbear-snackbar-container.top-right {
+::deep .dropbear-snackbar-container.top-right {
   top: 0;
   right: 0;
 }
 
-.dropbear-snackbar-container.bottom-left {
+::deep .dropbear-snackbar-container.bottom-left {
   bottom: 0;
   left: 0;
 }
 
-.dropbear-snackbar-container.bottom-right {
+::deep .dropbear-snackbar-container.bottom-right {
   bottom: 0;
   right: 0;
 }
 
 /* Mobile styles */
 @media (max-width: 576px) {
-  .dropbear-snackbar-container {
+  ::deep .dropbear-snackbar-container {
     padding: 12px;
     width: 100%;
   }
 
-  .dropbear-snackbar-container.bottom-left,
-  .dropbear-snackbar-container.bottom-right {
+  ::deep .dropbear-snackbar-container.bottom-left,
+  ::deep .dropbear-snackbar-container.bottom-right {
     left: 0;
     right: 0;
     bottom: 0;
   }
 
-  .dropbear-snackbar-container.top-left,
-  .dropbear-snackbar-container.top-right {
+  ::deep .dropbear-snackbar-container.top-left,
+  ::deep .dropbear-snackbar-container.top-right {
     left: 0;
     right: 0;
     top: 0;
