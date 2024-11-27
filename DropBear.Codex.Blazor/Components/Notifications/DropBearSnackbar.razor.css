@@ -1,5 +1,5 @@
 ﻿/* Root variables for colors */
-:root {
+* {
   --snackbar-success: #7cd651;
   --snackbar-error: #ff5757;
   --snackbar-warning: #ffd14d;
