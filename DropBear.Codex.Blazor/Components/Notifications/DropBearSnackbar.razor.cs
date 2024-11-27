@@ -45,10 +45,11 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     private string GetCssClasses()
     {
-        var classes = new List<string> { "dropbear-snackbar", SnackbarInstance.Type.ToString().ToLower() };
-
-        return string.Join(" ", classes);
+        var cssClass = $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
+        Console.WriteLine($"Generated CSS class: {cssClass}"); // Debug log
+        return cssClass;
     }
+
 
     private string GetIcon()
     {
