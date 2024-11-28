@@ -55,7 +55,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <summary>
     ///     Disposes the component and its resources.
     /// </summary>
-    public async ValueTask DisposeAsync()
+    public virtual async ValueTask DisposeAsync()
     {
         await DisposeAsync(true);
         GC.SuppressFinalize(this);

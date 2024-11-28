@@ -1,27 +1,19 @@
-﻿@inject IPageAlertService AlertService
+﻿@inject IPageAlertService PageAlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
-@inject IDebounceService DebounceService
-@inject IAlertChannelManager AlertChannelManager
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
-@using DropBear.Codex.Utilities.Interfaces
 @using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div id="@_containerId"
-     class="page-alert-container"
-     role="alert"
-     aria-live="polite">
-    <CascadingValue Value="this">
-        @foreach (var alert in CombinedAlerts)
-        {
-            <DropBearPageAlert
-                @key="alert.Id"
-                Title="@alert.Title"
-                Message="@alert.Message"
-                Type="@alert.Type"
-                IsDismissible="@alert.IsDismissible"
-                OnClose="@(() => OnCloseAlert(alert))"/>
-        }
-    </CascadingValue>
+<div id="@ComponentId" class="page-alert-container">
+    @foreach (var alert in _activeAlerts)
+    {
+        <DropBearPageAlert AlertId="@alert.Id"
+                           Title="@alert.Title"
+                           Message="@alert.Message"
+                           Type="@alert.Type"
+                           IsPermanent="@alert.IsPermanent"
+                           Duration="@alert.Duration"
+                           OnClose="@(() => RemoveAlert(alert.Id))"/>
+    }
 </div>

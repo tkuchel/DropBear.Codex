@@ -1,31 +1,32 @@
-﻿@using Microsoft.JSInterop
+﻿@using DropBear.Codex.Blazor.Enums
+@using Microsoft.JSInterop
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @inject IJSRuntime JsRuntime
-<div id="@_alertId"
-     @key="Type"
-     class="@_alertClass"
+<div id="@Id"
+     class="page-alert page-alert-@Type.ToString().ToLower() @(IsPermanent ? "page-alert-permanent" : "")"
      role="alert"
-     aria-live="polite"
-     aria-label="@GetAriaLabel()"
-     @attributes="AdditionalAttributes">
+     aria-live="@(Type == PageAlertType.Error ? "assertive" : "polite")"
+     tabindex="0">
 
-    <div class="alert-icon" aria-hidden="true">
-        <i class="@_iconClass"></i>
+    <svg class="page-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        @((MarkupString)GetIconPath())
+    </svg>
+
+    <div class="page-alert-content">
+        <h4 class="page-alert-title">@Title</h4>
+        <p class="page-alert-message">@Message</p>
     </div>
 
-    <div class="alert-content">
-        <h4 class="alert-title" id="@($"{_alertId}-title")">@Title</h4>
-        <p class="alert-message" id="@($"{_alertId}-message")">@Message</p>
-    </div>
-
-    @if (IsDismissible)
+    @if (!IsPermanent)
     {
-        <button type="button"
-                class="alert-close"
-                @onclick="HandleCloseClick"
-                aria-label="Close alert"
-                disabled="@_isClosing">
-            <span aria-hidden="true" class="alert-close-icon">&times;</span>
+        <button class="page-alert-close" aria-label="Close alert" @onclick="RequestClose">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"></path>
+            </svg>
         </button>
+        <div class="page-alert-progress">
+            <div class="page-alert-progress-bar"></div>
+        </div>
     }
 </div>
+

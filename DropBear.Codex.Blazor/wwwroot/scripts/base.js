@@ -826,7 +826,7 @@
     return {
       downloadFileFromStream: async (fileName, content, contentType) => {
         try {
-          logger.debug('downloadFileFromStream called with:', { fileName, content, contentType });
+          logger.debug('downloadFileFromStream called with:', {fileName, content, contentType});
 
           let blob;
 
@@ -837,10 +837,10 @@
             logger.debug('Content has arrayBuffer method (DotNetStreamReference detected).');
             const arrayBuffer = await content.arrayBuffer();
             logger.debug('ArrayBuffer received, byte length:', arrayBuffer.byteLength);
-            blob = new Blob([arrayBuffer], { type: contentType });
+            blob = new Blob([arrayBuffer], {type: contentType});
           } else if (content instanceof Uint8Array) {
             logger.debug('Content is a Uint8Array.');
-            blob = new Blob([content], { type: contentType });
+            blob = new Blob([content], {type: contentType});
           } else {
             throw new Error('Unsupported content type');
           }
@@ -863,6 +863,246 @@
           }, 0);
         } catch (error) {
           logger.error('Error in downloadFileFromStream:', error);
+        }
+      }
+    };
+  })();
+
+  const DropBearPageAlert = (() => {
+    const logger = DropBearUtils.createLogger('DropBearPageAlert');
+    const alerts = new Map();
+    const ANIMATION_DURATION = 300;
+
+    class PageAlertManager {
+      constructor(id, isPermanent = false) {
+        this.id = id;
+        this.element = document.getElementById(id);
+        this.isDisposed = false;
+        this.progressTimeout = null;
+        this.animationFrame = null;
+        this.isPermanent = isPermanent;
+        this.progressDuration = 0;
+        this.closeHandler = null;
+        this.closeBtn = null;
+
+        if (!this.element) {
+          throw new Error(`Element with id ${id} not found`);
+        }
+
+        if (!this.isPermanent) {
+          this._setupEventListeners();
+        }
+        logger.debug(`PageAlert initialized: ${id}`);
+      }
+
+      _setupEventListeners() {
+        this.mouseEnterHandler = () => this._pauseProgress();
+        this.mouseLeaveHandler = () => this._resumeProgress();
+        this.element.addEventListener('mouseenter', this.mouseEnterHandler);
+        this.element.addEventListener('mouseleave', this.mouseLeaveHandler);
+      }
+
+      _cleanupEventListeners() {
+        if (!this.isPermanent && this.element) {
+          this.element.removeEventListener('mouseenter', this.mouseEnterHandler);
+          this.element.removeEventListener('mouseleave', this.mouseLeaveHandler);
+        }
+      }
+
+      show() {
+        if (this.isDisposed) return Promise.resolve();
+
+        return new Promise(resolve => {
+          if (!this.element) {
+            resolve();
+            return;
+          }
+
+          const handleTransitionEnd = () => {
+            this.element.removeEventListener('transitionend', handleTransitionEnd);
+            resolve();
+          };
+
+          cancelAnimationFrame(this.animationFrame);
+          this.element.classList.remove('hide');
+
+          this.animationFrame = requestAnimationFrame(() => {
+            this.element.classList.add('show');
+            this.element.addEventListener('transitionend', handleTransitionEnd, {once: true});
+            logger.debug(`PageAlert shown: ${this.id}`);
+          });
+
+          // Failsafe in case transition doesn't fire
+          setTimeout(handleTransitionEnd, ANIMATION_DURATION + 100);
+        });
+      }
+
+      hide() {
+        if (this.isDisposed) return Promise.resolve();
+
+        return new Promise(resolve => {
+          if (!this.element) {
+            resolve();
+            return;
+          }
+
+          let called = false;
+          const handleTransitionEnd = () => {
+            if (called) return;
+            called = true;
+            this.element.removeEventListener('transitionend', handleTransitionEnd);
+            this.dispose();
+            resolve();
+          };
+
+          clearTimeout(this.progressTimeout);
+          cancelAnimationFrame(this.animationFrame);
+
+          this.element.classList.remove('show');
+          this.element.classList.add('hide');
+          this.element.addEventListener('transitionend', handleTransitionEnd);
+
+          setTimeout(() => handleTransitionEnd(), ANIMATION_DURATION + 100);
+        });
+      }
+
+      startProgress(duration) {
+        if (this.isDisposed || this.isPermanent) return;
+        if (typeof duration !== 'number' || duration <= 0) return;
+
+        this.progressDuration = duration;
+
+        try {
+          const progressBar = this.element.querySelector('.page-alert-progress-bar');
+          if (!progressBar) {
+            logger.error(`Progress bar element not found for ${this.id}`);
+            return;
+          }
+
+          clearTimeout(this.progressTimeout);
+          progressBar.style.transition = 'none';
+          progressBar.style.transform = 'scaleX(1)';
+
+          void progressBar.offsetWidth;
+
+          progressBar.style.transition = `transform ${duration}ms linear`;
+          this.animationFrame = requestAnimationFrame(() => {
+            progressBar.style.transform = 'scaleX(0)';
+            this.progressTimeout = setTimeout(() => this.hide(), duration);
+          });
+
+          logger.debug(`Progress started for: ${this.id}, duration: ${duration}ms`);
+        } catch (error) {
+          logger.error(`Error starting progress for ${this.id}:`, error);
+        }
+      }
+
+      _pauseProgress() {
+        if (this.isDisposed || this.isPermanent) return;
+
+        clearTimeout(this.progressTimeout);
+        const progressBar = this.element.querySelector('.page-alert-progress-bar');
+        if (progressBar) {
+          const computedStyle = window.getComputedStyle(progressBar);
+          progressBar.style.transition = 'none';
+          progressBar.style.transform = computedStyle.transform;
+        }
+      }
+
+      _resumeProgress() {
+        if (this.isDisposed || this.isPermanent) return;
+
+        const progressBar = this.element.querySelector('.page-alert-progress-bar');
+        if (progressBar) {
+          const computedStyle = window.getComputedStyle(progressBar);
+          const currentScale = this._getCurrentScale(computedStyle.transform);
+          const remainingTime = this.progressDuration * currentScale;
+
+          progressBar.style.transition = `transform ${remainingTime}ms linear`;
+          progressBar.style.transform = 'scaleX(0)';
+          this.progressTimeout = setTimeout(() => this.hide(), remainingTime);
+        }
+      }
+
+      _getCurrentScale(transform) {
+        if (transform === 'none') return 1;
+        const values = transform.match(/matrix\(([^)]+)\)/);
+        if (values) {
+          const matrixValues = values[1].split(', ');
+          return parseFloat(matrixValues[0]);
+        }
+        return 1;
+      }
+
+      dispose() {
+        if (this.isDisposed) return;
+
+        this.isDisposed = true;
+        clearTimeout(this.progressTimeout);
+        cancelAnimationFrame(this.animationFrame);
+        this._cleanupEventListeners();
+
+        if (this.element?.parentNode) {
+          this.element.parentNode.removeChild(this.element);
+          logger.debug(`Removed page alert from DOM: ${this.id}`);
+        }
+
+        alerts.delete(this.id);
+        this.element = null;
+      }
+    }
+
+    return {
+      create(id, duration = 5000, isPermanent = false) {
+        try {
+          DropBearUtils.validateArgs([id], ['string'], 'create');
+
+          // Check if alert already exists and dispose it
+          const existingAlert = alerts.get(id);
+          if (existingAlert) {
+            logger.debug(`Alert ${id} already exists, disposing old instance`);
+            existingAlert.dispose();
+          }
+
+          // Create and store new alert
+          const manager = new PageAlertManager(id, isPermanent);
+          alerts.set(id, manager);
+
+          // Show alert and start progress if applicable
+          manager.show().then(() => {
+            if (!isPermanent && typeof duration === 'number' && duration > 0) {
+              manager.startProgress(duration);
+            }
+          });
+
+          return true;
+        } catch (error) {
+          logger.error('Error creating page alert:', error);
+          return false;
+        }
+      },
+
+      hide(id) {
+        try {
+          DropBearUtils.validateArgs([id], ['string'], 'hide');
+          const manager = alerts.get(id);
+          if (manager) {
+            return manager.hide();
+          }
+          return Promise.resolve();
+        } catch (error) {
+          logger.error('Error hiding page alert:', error);
+          return Promise.resolve();
+        }
+      },
+
+      hideAll() {
+        try {
+          const promises = Array.from(alerts.values()).map(manager => manager.hide());
+          return Promise.all(promises);
+        } catch (error) {
+          logger.error('Error hiding all page alerts:', error);
+          return Promise.resolve();
         }
       }
     };
@@ -901,7 +1141,7 @@
         DropBearNavigationButtons: {value: DropBearNavigationButtons, writable: false, configurable: false},
         DropBearContextMenu: {value: DropBearContextMenu, writable: false, configurable: false},
         DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false},
-        DropBearFileDownloader: { value: DropBearFileDownloader, writable: false, configurable: false }
+        DropBearFileDownloader: {value: DropBearFileDownloader, writable: false, configurable: false}
       });
 
       // Add after Object.defineProperties in initializeDropBear

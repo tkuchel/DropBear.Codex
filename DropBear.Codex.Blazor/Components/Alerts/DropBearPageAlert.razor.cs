@@ -11,112 +11,90 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 
 public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
-    private static readonly IReadOnlyDictionary<AlertType, (string Icon, string AriaLabel)> AlertConfigs =
-        new Dictionary<AlertType, (string Icon, string AriaLabel)>
-        {
-            { AlertType.Information, ("fas fa-info-circle", "Information alert") },
-            { AlertType.Success, ("fas fa-check-circle", "Success alert") },
-            { AlertType.Warning, ("fas fa-exclamation-triangle", "Warning alert") },
-            { AlertType.Danger, ("fas fa-times-circle", "Error alert") },
-            { AlertType.Notification, ("fas fa-bell", "Notification alert") }
-        };
+    private DotNetObjectReference<DropBearPageAlert>? _reference;
+    private string Id => $"pagealert-{AlertId}";
 
-    private readonly string _alertId;
+    [Parameter] [EditorRequired] public string AlertId { get; set; } = null!;
 
-    private string? _alertClass;
-    private string? _iconClass;
-    private bool _isClosing;
+    [Parameter] [EditorRequired] public string Title { get; set; } = null!;
 
-    public DropBearPageAlert()
-    {
-        _alertId = $"alert-{ComponentId}";
-    }
+    [Parameter] [EditorRequired] public string Message { get; set; } = null!;
 
-    [Parameter] [EditorRequired] public string Title { get; set; } = string.Empty;
-    [Parameter] [EditorRequired] public string Message { get; set; } = string.Empty;
-    [Parameter] public AlertType Type { get; set; } = AlertType.Information;
-    [Parameter] public bool IsDismissible { get; set; } = true;
+    [Parameter] public PageAlertType Type { get; set; } = PageAlertType.Info;
+
+    [Parameter] public bool IsPermanent { get; set; }
+
+    [Parameter] public int? Duration { get; set; }
+
     [Parameter] public EventCallback OnClose { get; set; }
 
-    [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
-
-    protected override void OnParametersSet()
+    protected override void OnInitialized()
     {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        var alertType = Type.ToString().ToLowerInvariant();
-        _alertClass = $"alert alert-{alertType}";
-        _iconClass = AlertConfigs[Type].Icon;
+        _reference = DotNetObjectReference.Create(this);
     }
 
-    private async Task HandleCloseClick()
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (IsDisposed || _isClosing || !IsDismissible)
+        if (firstRender)
         {
-            Logger.Warning(
-                "Invalid close attempt - Alert: {Title}, Type: {Type}, Dismissible: {IsDismissible}, Closing: {IsClosing}, Disposed: {IsDisposed}",
-                Title, Type, IsDismissible, _isClosing, IsDisposed);
-            return;
+            await InitializeAlert();
         }
-
-        await InvokeStateHasChangedAsync(async () =>
-        {
-            try
-            {
-                _isClosing = true;
-
-                if (OnClose.HasDelegate)
-                {
-                    try
-                    {
-                        await SafeJsVoidInteropAsync("alert.startExitAnimation", Type);
-                        await Task.Delay(300); // Match animation duration
-                    }
-                    catch (JSDisconnectedException)
-                    {
-                        // Circuit disconnected, proceed with close
-                        Logger.Debug("Circuit disconnected during alert animation, proceeding with close");
-                    }
-
-                    if (!IsDisposed)
-                    {
-                        await OnClose.InvokeAsync();
-                        Logger.Debug("Alert closed successfully - Type: {Type}, Title: {Title}", Type, Title);
-                    }
-                }
-                else
-                {
-                    Logger.Warning("No close handler attached - Type: {Type}, Title: {Title}", Type, Title);
-                }
-            }
-            finally
-            {
-                _isClosing = false;
-            }
-        });
     }
 
-    protected override async Task CleanupJavaScriptResourcesAsync()
+    private async Task InitializeAlert()
     {
         try
         {
-            if (!_isClosing && IsDismissible && OnClose.HasDelegate)
+            await SafeJsInteropAsync<bool>("DropBearPageAlert.create", Id, Duration, IsPermanent);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to initialize page alert {AlertId}", AlertId);
+        }
+    }
+
+    private async Task RequestClose()
+    {
+        try
+        {
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error closing page alert {AlertId}", AlertId);
+        }
+    }
+
+    private string GetIconPath()
+    {
+        return Type switch
+        {
+            PageAlertType.Success => "<path d=\"M20 6L9 17L4 12\"></path>",
+            PageAlertType.Error =>
+                "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M15 9l-6 6M9 9l6 6\"></path>",
+            PageAlertType.Warning => "<path d=\"M12 9v2m0 4h.01\"></path><path d=\"M12 5l7 13H5l7-13z\"></path>",
+            PageAlertType.Info => "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4m0-4h.01\"></path>",
+            _ => "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4m0-4h.01\"></path>"
+        };
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (!IsDisposed)
             {
-                await SafeJsVoidInteropAsync("alert.cleanup", _alertId);
+                await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", Id);
+                _reference?.Dispose();
             }
         }
         catch (Exception ex)
         {
-            Logger.Warning(ex, "Error during alert cleanup: {AlertId}", _alertId);
+            Logger.Error(ex, "Error disposing page alert {AlertId}", AlertId);
         }
-    }
-
-    private string GetAriaLabel()
-    {
-        return AlertConfigs[Type].AriaLabel;
+        finally
+        {
+            await base.DisposeAsync();
+        }
     }
 }
