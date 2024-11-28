@@ -1141,7 +1141,8 @@
         DropBearNavigationButtons: {value: DropBearNavigationButtons, writable: false, configurable: false},
         DropBearContextMenu: {value: DropBearContextMenu, writable: false, configurable: false},
         DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false},
-        DropBearFileDownloader: {value: DropBearFileDownloader, writable: false, configurable: false}
+        DropBearFileDownloader: {value: DropBearFileDownloader, writable: false, configurable: false},
+        DropBearPageAlert: {value: DropBearPageAlert, writable: false, configurable: false}
       });
 
       // Add after Object.defineProperties in initializeDropBear
@@ -1181,6 +1182,7 @@
       DropBearNavigationButtons.dispose();
       if (DropBearContextMenu) DropBearContextMenu.disposeAll();
       if (DropBearValidationErrors) DropBearValidationErrors.disposeAll();
+      if (DropBearPageAlert) DropBearPageAlert.hideAll();
       console.log("DropBear cleanup complete");
     } catch (error) {
       console.error("Error during DropBear cleanup:", error);
