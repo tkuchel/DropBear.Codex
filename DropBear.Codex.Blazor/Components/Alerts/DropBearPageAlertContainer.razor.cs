@@ -262,13 +262,13 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            await SafeJsInteropAsync<bool>("DropBearPageAlert.initialize", ComponentId);
-        }
-    }
+    // protected override async Task OnAfterRenderAsync(bool firstRender)
+    // {
+    //     if (firstRender)
+    //     {
+    //         await SafeJsInteropAsync<bool>("DropBearPageAlert.initialize", ComponentId);
+    //     }
+    // }
 
     protected override async ValueTask DisposeAsync(bool disposing)
     {
