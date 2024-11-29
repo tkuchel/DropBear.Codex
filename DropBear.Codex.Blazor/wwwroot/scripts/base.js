@@ -875,6 +875,10 @@
 
     class PageAlertManager {
       constructor(id, isPermanent = false) {
+        if (!id) {
+          throw new Error('ID is required for PageAlertManager');
+        }
+
         this.id = id;
         this.element = document.getElementById(id);
         this.isDisposed = false;
@@ -882,8 +886,7 @@
         this.animationFrame = null;
         this.isPermanent = isPermanent;
         this.progressDuration = 0;
-        this.closeHandler = null;
-        this.closeBtn = null;
+        this.transitionEndHandler = null;
 
         if (!this.element) {
           throw new Error(`Element with id ${id} not found`);
@@ -910,16 +913,15 @@
       }
 
       show() {
-        if (this.isDisposed) return Promise.resolve();
+        if (this.isDisposed || !this.element) return Promise.resolve();
 
         return new Promise(resolve => {
-          if (!this.element) {
-            resolve();
-            return;
-          }
-
-          const handleTransitionEnd = () => {
-            this.element.removeEventListener('transitionend', handleTransitionEnd);
+          // Store handler reference for cleanup
+          this.transitionEndHandler = () => {
+            if (this.element) {
+              this.element.removeEventListener('transitionend', this.transitionEndHandler);
+            }
+            this.transitionEndHandler = null;
             resolve();
           };
 
@@ -928,15 +930,18 @@
 
           this.animationFrame = requestAnimationFrame(() => {
             this.element.classList.add('show');
-            this.element.addEventListener('transitionend', handleTransitionEnd, {once: true});
+            this.element.addEventListener('transitionend', this.transitionEndHandler, { once: true });
             logger.debug(`PageAlert shown: ${this.id}`);
           });
 
-          // Failsafe in case transition doesn't fire
-          setTimeout(handleTransitionEnd, ANIMATION_DURATION + 100);
+          // Failsafe cleanup
+          setTimeout(() => {
+            if (this.transitionEndHandler) {
+              this.transitionEndHandler();
+            }
+          }, ANIMATION_DURATION + 100);
         });
       }
-
       hide() {
         if (this.isDisposed) return Promise.resolve();
 
@@ -1037,18 +1042,33 @@
       dispose() {
         if (this.isDisposed) return;
 
-        this.isDisposed = true;
-        clearTimeout(this.progressTimeout);
-        cancelAnimationFrame(this.animationFrame);
-        this._cleanupEventListeners();
+        try {
+          this.isDisposed = true;
 
-        if (this.element?.parentNode) {
-          this.element.parentNode.removeChild(this.element);
-          logger.debug(`Removed page alert from DOM: ${this.id}`);
+          // Clear all timeouts and animations first
+          clearTimeout(this.progressTimeout);
+          cancelAnimationFrame(this.animationFrame);
+
+          // Clean up event listeners
+          this._cleanupEventListeners();
+
+          // Store element reference
+          const element = this.element;
+
+          // Clear references
+          this.element = null;
+          this.transitionEndHandler = null;
+
+          // Remove from DOM last
+          if (element?.parentNode) {
+            element.parentNode.removeChild(element);
+            logger.debug(`Removed page alert from DOM: ${this.id}`);
+          }
+
+          alerts.delete(this.id);
+        } catch (error) {
+          logger.error(`Error disposing page alert ${this.id}:`, error);
         }
-
-        alerts.delete(this.id);
-        this.element = null;
       }
     }
 

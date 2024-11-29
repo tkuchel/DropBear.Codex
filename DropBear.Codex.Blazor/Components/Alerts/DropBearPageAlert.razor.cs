@@ -30,7 +30,14 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
 
     protected override void OnInitialized()
     {
+        if (string.IsNullOrWhiteSpace(AlertId))
+        {
+            AlertId = Guid.NewGuid().ToString("N");
+            Logger.Warning("AlertId was not provided, generated new ID: {AlertId}", AlertId);
+        }
+
         _reference = DotNetObjectReference.Create(this);
+        base.OnInitialized();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -45,6 +52,7 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
     {
         try
         {
+            Logger.Debug("Initializing alert with ID: {AlertId}", Id);
             await SafeJsInteropAsync<bool>("DropBearPageAlert.create", Id, Duration, IsPermanent);
         }
         catch (Exception ex)
