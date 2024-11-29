@@ -1,4 +1,4 @@
-﻿.alert {
+﻿.page-alert {
   --alert-border-width: 4px;
   --alert-animation-duration: 0.3s;
 
@@ -18,12 +18,12 @@
 }
 
 /* Enhanced focus styles */
-.alert:focus-within {
+.page-alert:focus-within {
   outline: 2px solid var(--clr-focus, #4a90e2);
   outline-offset: 2px;
 }
 
-.alert::before {
+.page-alert::before {
   content: "";
   position: absolute;
   top: 0;
@@ -33,7 +33,7 @@
   background-color: var(--clr-accent);
 }
 
-.alert-icon {
+.page-alert-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -44,23 +44,23 @@
   transition: transform 0.2s ease;
 }
 
-.alert:hover .alert-icon {
+.page-alert:hover .alert-icon {
   transform: scale(1.05);
 }
 
-.alert-content {
+.page-alert-content {
   flex-grow: 1;
   min-width: 0; /* Prevent text overflow */
 }
 
-.alert-title {
+.page-alert-title {
   font-size: 18px;
   font-weight: 600;
   margin: 0 0 var(--spacing-xs) 0;
   color: var(--clr-text-primary);
 }
 
-.alert-message {
+.page-alert-message {
   margin: 0;
   font-size: 14px;
   line-height: 1.5;
@@ -69,7 +69,7 @@
 }
 
 /* Enhanced close button styles */
-.alert-close {
+.page-alert-close {
   background: none;
   border: none;
   cursor: pointer;
@@ -82,43 +82,43 @@
   align-self: flex-start;
 }
 
-.alert-close:not(:disabled):hover {
+.page-alert-close:not(:disabled):hover {
   opacity: 1;
   background-color: rgba(0, 0, 0, 0.1);
 }
 
-.alert-close:focus {
+.page-alert-close:focus {
   outline: 2px solid var(--clr-focus, #4a90e2);
   outline-offset: 2px;
 }
 
-.alert-close:disabled {
+.page-alert-close:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
 
 /* Alert type variations */
-.alert-information {
+.page-alert-information {
   --clr-accent: var(--clr-information);
   border-color: var(--clr-information);
 }
 
-.alert-success {
+.page-alert-success {
   --clr-accent: var(--clr-success);
   border-color: var(--clr-success);
 }
 
-.alert-warning {
+.page-alert-warning {
   --clr-accent: var(--clr-warning);
   border-color: var(--clr-warning);
 }
 
-.alert-danger {
+.page-alert-danger {
   --clr-accent: var(--clr-error);
   border-color: var(--clr-error);
 }
 
-.alert-notification {
+.page-alert-notification {
   --clr-accent: var(--clr-primary);
   border-color: var(--clr-primary);
 }
@@ -137,19 +137,19 @@
 
 /* Responsive design */
 @media (max-width: 768px) {
-  .alert {
+  .page-alert {
     flex-direction: column;
     align-items: flex-start;
     padding: var(--spacing-xs);
   }
 
-  .alert-icon {
+  .page-alert-icon {
     width: 36px;
     height: 36px;
     margin-bottom: var(--spacing-xs);
   }
 
-  .alert-close {
+  .page-alert-close {
     position: absolute;
     top: var(--spacing-xs);
     right: var(--spacing-xs);
@@ -158,26 +158,26 @@
 
 /* Reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
-  .alert {
+  .page-alert {
     animation: none;
   }
 
-  .alert-icon {
+  .page-alert-icon {
     transition: none;
   }
 
-  .alert-close {
+  .page-alert-close {
     transition: none;
   }
 }
 
 /* High contrast mode support */
 @media (forced-colors: active) {
-  .alert {
+  .page-alert {
     border: 2px solid CanvasText;
   }
 
-  .alert::before {
+  .page-alert::before {
     background-color: CanvasText;
   }
 }
