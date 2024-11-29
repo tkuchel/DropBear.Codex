@@ -8,7 +8,6 @@ using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
-using DisposableBag = MessagePipe.DisposableBag;
 
 #endregion
 
@@ -16,7 +15,8 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 
 public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 {
-    private readonly List<PageAlertInstance> _activeAlerts = [];
+    private readonly List<PageAlertInstance> _activeAlerts = new();
+    private readonly List<PageAlertInstance> _alertsToInitialize = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
     private IDisposable? _channelSubscription;
 
@@ -43,39 +43,24 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
     private void SubscribeToPageAlertEvents()
     {
-        try
+        if (PageAlertService is null)
         {
-            if (PageAlertService is null)
-            {
-                Logger.Warning("PageAlertService is null during event subscription");
-                return;
-            }
+            Logger.Warning("PageAlertService is null during event subscription");
+            return;
+        }
 
-            PageAlertService.OnAlert += HandleAlert;
-            PageAlertService.OnClear += HandleClear;
-            Logger.Debug("Subscribed to PageAlertService events");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error subscribing to PageAlertService events");
-            throw;
-        }
+        PageAlertService.OnAlert += HandleAlert;
+        PageAlertService.OnClear += HandleClear;
+        Logger.Debug("Subscribed to PageAlertService events");
     }
 
     private void UnsubscribeFromPageAlertEvents()
     {
-        try
+        if (PageAlertService is not null)
         {
-            if (PageAlertService is not null)
-            {
-                PageAlertService.OnAlert -= HandleAlert;
-                PageAlertService.OnClear -= HandleClear;
-                Logger.Debug("Unsubscribed from PageAlertService events");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error unsubscribing from PageAlertService events");
+            PageAlertService.OnAlert -= HandleAlert;
+            PageAlertService.OnClear -= HandleClear;
+            Logger.Debug("Unsubscribed from PageAlertService events");
         }
     }
 
@@ -165,14 +150,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     {
         try
         {
-            await InvokeAsync(() => ShowAlert(alert))
-                .ContinueWith(t =>
-                {
-                    if (t.IsFaulted)
-                    {
-                        Logger.Error(t.Exception, "Error handling page alert: {Id}", alert.Id);
-                    }
-                }, TaskScheduler.Current);
+            await ShowAlert(alert);
         }
         catch (Exception ex)
         {
@@ -189,27 +167,8 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             _activeAlerts.Add(alert);
             await InvokeAsync(StateHasChanged);
 
-            try
-            {
-                // Allow render to complete
-                await Task.Delay(50);
-                if (alert.Duration != null)
-                {
-                    await SafeJsInteropAsync<bool>("DropBearPageAlert.create", alert.Id, alert.Duration,
-                        alert.IsPermanent);
-                }
-                else
-                {
-                    await SafeJsInteropAsync<bool>("DropBearPageAlert.create", alert.Id, 5000, alert.IsPermanent);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error showing page alert: {Id}", alert.Id);
-                // Clean up on failure
-                _activeAlerts.Remove(alert);
-                await InvokeAsync(StateHasChanged);
-            }
+            // Add alert to the initialization queue
+            _alertsToInitialize.Add(alert);
         }
         finally
         {
@@ -217,11 +176,45 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (_alertsToInitialize.Count > 0)
+        {
+            foreach (var alert in _alertsToInitialize.ToList())
+            {
+                try
+                {
+                    if (alert.Duration != null)
+                    {
+                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", alert.Id, alert.Duration,
+                            alert.IsPermanent);
+                    }
+                    else
+                    {
+                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", alert.Id, 5000, alert.IsPermanent);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error showing page alert: {Id}", alert.Id);
+                    // Clean up on failure
+                    _activeAlerts.Remove(alert);
+                    await InvokeAsync(StateHasChanged);
+                }
+                finally
+                {
+                    _alertsToInitialize.Remove(alert);
+                }
+            }
+        }
+    }
+
     private async void HandleClear()
     {
         try
         {
-            // Take a snapshot of current alerts to avoid modification during iteration
             var alertsToRemove = _activeAlerts.ToList();
             foreach (var alert in alertsToRemove)
             {
@@ -246,7 +239,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                 try
                 {
                     await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", alertId);
-                    await Task.Delay(300); // Wait for animation
                     _activeAlerts.Remove(alert);
                     await InvokeAsync(StateHasChanged);
                 }
@@ -262,14 +254,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
     }
 
-    // protected override async Task OnAfterRenderAsync(bool firstRender)
-    // {
-    //     if (firstRender)
-    //     {
-    //         await SafeJsInteropAsync<bool>("DropBearPageAlert.initialize", ComponentId);
-    //     }
-    // }
-
     protected override async ValueTask DisposeAsync(bool disposing)
     {
         if (disposing)
@@ -284,7 +268,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                     try
                     {
                         await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", alert.Id);
-                        await Task.Delay(50);
                     }
                     catch (Exception ex)
                     {

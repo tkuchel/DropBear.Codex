@@ -2,31 +2,24 @@
 @using Microsoft.JSInterop
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @inject IJSRuntime JsRuntime
-<div id="@Id"
-     class="page-alert page-alert-@Type.ToString().ToLower() @(IsPermanent ? "page-alert-permanent" : "")"
-     role="alert"
-     aria-live="@(Type == PageAlertType.Error ? "assertive" : "polite")"
-     tabindex="0">
+<!-- DropBearPageAlert.razor -->
 
-    <svg class="page-alert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        @((MarkupString)GetIconPath())
-    </svg>
 
-    <div class="page-alert-content">
-        <h4 class="page-alert-title">@Title</h4>
-        <p class="page-alert-message">@Message</p>
+<div id="@Id" class="page-alert @AlertTypeCssClass">
+    <div class="page-alert-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            @((MarkupString)GetIconPath())
+        </svg>
     </div>
-
+    <div class="page-alert-content">
+        <strong>@Title</strong>
+        <p>@Message</p>
+    </div>
     @if (!IsPermanent)
     {
-        <button class="page-alert-close" aria-label="Close alert" @onclick="RequestClose">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 6L6 18M6 6l12 12"></path>
-            </svg>
-        </button>
-        <div class="page-alert-progress">
-            <div class="page-alert-progress-bar"></div>
-        </div>
+        <div class="page-alert-progress-bar"></div>
     }
+    <button class="page-alert-close" @onclick="RequestClose">×</button>
 </div>
+
 

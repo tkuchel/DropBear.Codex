@@ -8,9 +8,6 @@ using DropBear.Codex.Blazor.Models;
 
 namespace DropBear.Codex.Blazor.Services;
 
-/// <summary>
-///     Service to manage page alerts.
-/// </summary>
 public sealed class PageAlertService : IPageAlertService
 {
     public event Func<PageAlertInstance, Task>? OnAlert;

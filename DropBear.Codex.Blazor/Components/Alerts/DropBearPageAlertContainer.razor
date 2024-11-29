@@ -1,19 +1,22 @@
 ﻿@inject IPageAlertService PageAlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
+<!-- DropBearPageAlertContainer.razor -->
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
 @using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div id="@ComponentId" class="page-alert-container">
+<div id="page-alert-container">
     @foreach (var alert in _activeAlerts)
     {
-        <DropBearPageAlert AlertId="@alert.Id"
-                           Title="@alert.Title"
-                           Message="@alert.Message"
-                           Type="@alert.Type"
-                           IsPermanent="@alert.IsPermanent"
-                           Duration="@alert.Duration"
-                           OnClose="@(() => RemoveAlert(alert.Id))"/>
+        <DropBearPageAlert
+            AlertId="@alert.Id"
+            Title="@alert.Title"
+            Message="@alert.Message"
+            Type="@alert.Type"
+            IsPermanent="@alert.IsPermanent"
+            Duration="@alert.Duration"
+            OnClose="@(() => RemoveAlert(alert.Id))"/>
     }
 </div>
+

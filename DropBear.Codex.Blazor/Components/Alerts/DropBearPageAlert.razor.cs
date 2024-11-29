@@ -1,18 +1,13 @@
-﻿#region
-
+﻿// DropBearPageAlert.razor.cs
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
-using Microsoft.JSInterop;
-
-#endregion
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
 public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
-    private DotNetObjectReference<DropBearPageAlert>? _reference;
-    private string Id => $"pagealert-{AlertId}";
+    private string Id => $"alert-{AlertId}";
 
     [Parameter] [EditorRequired] public string AlertId { get; set; } = null!;
 
@@ -28,17 +23,7 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
 
     [Parameter] public EventCallback OnClose { get; set; }
 
-    protected override void OnInitialized()
-    {
-        if (string.IsNullOrWhiteSpace(AlertId))
-        {
-            AlertId = Guid.NewGuid().ToString("N");
-            Logger.Warning("AlertId was not provided, generated new ID: {AlertId}", AlertId);
-        }
-
-        _reference = DotNetObjectReference.Create(this);
-        base.OnInitialized();
-    }
+    private string AlertTypeCssClass => Type.ToString().ToLower();
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -93,7 +78,6 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
             if (!IsDisposed)
             {
                 await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", Id);
-                _reference?.Dispose();
             }
         }
         catch (Exception ex)
