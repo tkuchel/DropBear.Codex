@@ -1,19 +1,36 @@
-﻿// DropBearPageAlert.razor.cs
+﻿#region
+
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
 public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
+    private static readonly Dictionary<PageAlertType, string> IconPaths = new()
+    {
+        { PageAlertType.Success, "<path d=\"M20 6L9 17L4 12\"></path>" },
+        {
+            PageAlertType.Error,
+            "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M15 9l-6 6M9 9l6 6\"></path>"
+        },
+        { PageAlertType.Warning, "<path d=\"M12 9v2m0 4h.01\"></path><path d=\"M12 5l7 13H5l7-13z\"></path>" },
+        {
+            PageAlertType.Info,
+            "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4m0-4h.01\"></path>"
+        }
+    };
+
     private string Id => $"alert-{AlertId}";
 
-    [Parameter] [EditorRequired] public string AlertId { get; set; } = null!;
+    [Parameter] [EditorRequired] public string? AlertId { get; set; } = null!;
 
-    [Parameter] [EditorRequired] public string Title { get; set; } = null!;
+    [Parameter] [EditorRequired] public string? Title { get; set; } = null!;
 
-    [Parameter] [EditorRequired] public string Message { get; set; } = null!;
+    [Parameter] [EditorRequired] public string? Message { get; set; } = null!;
 
     [Parameter] public PageAlertType Type { get; set; } = PageAlertType.Info;
 
@@ -38,7 +55,11 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         try
         {
             Logger.Debug("Initializing alert with ID: {AlertId}", Id);
-            await SafeJsInteropAsync<bool>("DropBearPageAlert.create", Id, Duration, IsPermanent);
+            var createResult = await SafeJsInteropAsync<bool>("DropBearPageAlert.create", Id, Duration, IsPermanent);
+            if (!createResult)
+            {
+                Logger.Warning("Failed to create alert with ID: {AlertId}", AlertId);
+            }
         }
         catch (Exception ex)
         {
@@ -60,16 +81,9 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
 
     private string GetIconPath()
     {
-        return Type switch
-        {
-            PageAlertType.Success => "<path d=\"M20 6L9 17L4 12\"></path>",
-            PageAlertType.Error =>
-                "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M15 9l-6 6M9 9l6 6\"></path>",
-            PageAlertType.Warning => "<path d=\"M12 9v2m0 4h.01\"></path><path d=\"M12 5l7 13H5l7-13z\"></path>",
-            PageAlertType.Info => "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4m0-4h.01\"></path>",
-            _ => "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4m0-4h.01\"></path>"
-        };
+        return IconPaths.TryGetValue(Type, out var path) ? path : string.Empty;
     }
+
 
     public override async ValueTask DisposeAsync()
     {
@@ -77,7 +91,11 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         {
             if (!IsDisposed)
             {
-                await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", Id);
+                var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", Id);
+                if (!result)
+                {
+                    Logger.Warning("Failed to hide alert with ID: {AlertId}", AlertId);
+                }
             }
         }
         catch (Exception ex)
@@ -87,6 +105,24 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         finally
         {
             await base.DisposeAsync();
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(AlertId))
+        {
+            throw new ArgumentException("AlertId cannot be null or empty.", nameof(AlertId));
+        }
+
+        if (string.IsNullOrWhiteSpace(Title))
+        {
+            throw new ArgumentException("Title cannot be null or empty.", nameof(Title));
+        }
+
+        if (string.IsNullOrWhiteSpace(Message))
+        {
+            throw new ArgumentException("Message cannot be null or empty.", nameof(Message));
         }
     }
 }

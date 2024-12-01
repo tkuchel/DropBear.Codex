@@ -874,30 +874,15 @@
     const ANIMATION_DURATION = 300;
 
     class PageAlertManager {
-      create(id, duration = 5000, isPermanent = false) {
-        return retryOperation(async () => {
-          try {
-            const element = document.getElementById(id);
-            if (!element) {
-              throw new Error(`Element with id ${id} not found`);
-            }
-
-            // Create and store new alert
-            const manager = new PageAlertManager(id, isPermanent);
-            alerts.set(id, manager);
-
-            // Show alert and start progress if applicable
-            await manager.show();
-            if (!isPermanent && typeof duration === 'number' && duration > 0) {
-              manager.startProgress(duration);
-            }
-
-            return true;
-          } catch (error) {
-            logger.error('Error creating page alert:', error);
-            return false;
-          }
-        }, 3, 100); // Retry 3 times with 100ms delay
+      constructor(id, isPermanent) {
+        this.id = id;
+        this.isPermanent = isPermanent;
+        this.isDisposed = false;
+        this.element = document.getElementById(id);
+        if (!this.element) {
+          throw new Error(`Element with id ${id} not found`);
+        }
+        this._setupEventListeners();
       }
 
       _setupEventListeners() {
@@ -915,7 +900,7 @@
       }
 
       show() {
-        if (this.isDisposed || !this.element) return Promise.resolve();
+        if (this.isDisposed || !this.element) return Promise.resolve(true);
 
         return new Promise(resolve => {
           // Store handler reference for cleanup
@@ -924,7 +909,7 @@
               this.element.removeEventListener('transitionend', this.transitionEndHandler);
             }
             this.transitionEndHandler = null;
-            resolve();
+            resolve(true);
           };
 
           cancelAnimationFrame(this.animationFrame);
@@ -942,15 +927,18 @@
               this.transitionEndHandler();
             }
           }, ANIMATION_DURATION + 100);
+        }).catch(error => {
+          logger.error(`Error in show method for ${this.id}:`, error);
+          return false;
         });
       }
 
       hide() {
-        if (this.isDisposed) return Promise.resolve();
+        if (this.isDisposed) return Promise.resolve(true); // Return true if already disposed
 
         return new Promise(resolve => {
           if (!this.element) {
-            resolve();
+            resolve(true); // No element to hide
             return;
           }
 
@@ -960,7 +948,7 @@
             called = true;
             this.element.removeEventListener('transitionend', handleTransitionEnd);
             this.dispose();
-            resolve();
+            resolve(true); // Successfully hidden
           };
 
           clearTimeout(this.progressTimeout);
@@ -970,7 +958,11 @@
           this.element.classList.add('hide');
           this.element.addEventListener('transitionend', handleTransitionEnd);
 
+          // Failsafe to ensure resolve is called
           setTimeout(() => handleTransitionEnd(), ANIMATION_DURATION + 100);
+        }).catch(error => {
+          logger.error(`Error in hide method for ${this.id}:`, error);
+          return false; // Return false on error
         });
       }
 
@@ -1034,7 +1026,7 @@
 
       _getCurrentScale(transform) {
         if (transform === 'none') return 1;
-        const values = transform.match(/matrix\(([^)]+)\)/);
+        const values = transform.match(/matrix\\(([^)]+)\\)/);
         if (values) {
           const matrixValues = values[1].split(', ');
           return parseFloat(matrixValues[0]);
@@ -1112,10 +1104,10 @@
           if (manager) {
             return manager.hide();
           }
-          return Promise.resolve();
+          return Promise.resolve(true); // Return true if no manager exists
         } catch (error) {
           logger.error('Error hiding page alert:', error);
-          return Promise.resolve();
+          return Promise.resolve(false); // Return false on error
         }
       },
 
@@ -1125,11 +1117,12 @@
           return Promise.all(promises);
         } catch (error) {
           logger.error('Error hiding all page alerts:', error);
-          return Promise.resolve();
+          return Promise.resolve([]); // Return an empty array on error
         }
       }
     };
   })();
+
 
   const DropBearProgressBar = (() => {
     const logger = DropBearUtils.createLogger('DropBearProgressBar');

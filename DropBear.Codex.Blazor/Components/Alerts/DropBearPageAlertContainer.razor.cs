@@ -188,11 +188,20 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                 {
                     if (alert.Duration != null)
                     {
-                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", $"alert-{alert.Id}", alert.Duration, alert.IsPermanent);
+                        var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alert.Id}");
+                        if (!result)
+                        {
+                            Logger.Warning("Failed to hide alert with ID: {AlertId}", alert.Id);
+                        }
                     }
                     else
                     {
-                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", $"alert-{alert.Id}", 5000, alert.IsPermanent);
+                        var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.create", $"alert-{alert.Id}",
+                            alert.Duration, alert.IsPermanent);
+                        if (!result)
+                        {
+                            Logger.Warning("Failed to create alert with ID: {AlertId}", alert.Id);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -237,7 +246,12 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             {
                 try
                 {
-                    await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alertId}");
+                    var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alertId}");
+                    if (!result)
+                    {
+                        Logger.Warning("Failed to hide alert with ID: {AlertId}", alert.Id);
+                    }
+
                     _activeAlerts.Remove(alert);
                     await InvokeAsync(StateHasChanged);
                 }
@@ -266,7 +280,11 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                 {
                     try
                     {
-                        await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alert.Id}");
+                        var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alert.Id}");
+                        if (!result)
+                        {
+                            Logger.Warning("Failed to hide alert with ID: {AlertId}", alert.Id);
+                        }
                     }
                     catch (Exception ex)
                     {
