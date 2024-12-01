@@ -1,5 +1,5 @@
 /* DropBearProgressBar.razor.css */
-::deep .dropbear-progress-container {
+.dropbear-progress-container {
   --progress-height: 0.25rem;
   --progress-bg: var(--clr-surface-secondary, #343639);
   --progress-color: var(--clr-viking, #62dbc8);
@@ -14,12 +14,12 @@
   gap: 3rem;
 }
 
-::deep .dropbear-progress {
+.dropbear-progress {
   width: 100%;
   position: relative;
 }
 
-::deep .progress-bar-wrapper {
+.progress-bar-wrapper {
   width: 100%;
   height: var(--progress-height);
   background-color: var(--progress-bg);
@@ -27,7 +27,7 @@
   overflow: hidden;
 }
 
-::deep .progress-bar {
+.progress-bar {
   height: 100%;
   width: 0;
   background-color: var(--progress-color);
@@ -37,14 +37,14 @@
 }
 
 /* Steps styles */
-::deep .progress-steps {
+.progress-steps {
   display: flex;
   justify-content: space-between;
   margin-bottom: 2rem;
   position: relative;
 }
 
-::deep .step {
+.step {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -54,7 +54,7 @@
 }
 
 /* Base connecting line */
-::deep .progress-steps::before {
+.progress-steps::before {
   content: '';
   position: absolute;
   top: 0.625rem;
@@ -66,7 +66,7 @@
 }
 
 /* Colored connecting lines */
-::deep .step::after {
+.step::after {
   content: '';
   position: absolute;
   top: 0.625rem;
@@ -78,32 +78,32 @@
   transition: var(--progress-transition);
 }
 
-::deep .step:first-child::after {
+.step:first-child::after {
   left: 0;
 }
 
-::deep .step:last-child::after {
+.step:last-child::after {
   right: 0;
 }
 
-::deep .step.completed::after {
+.step.completed::after {
   background: var(--progress-color);
 }
 
-::deep .step.completed.success::after {
+.step.completed.success::after {
   background: var(--progress-success);
 }
 
-::deep .step.completed.warning::after {
+.step.completed.warning::after {
   background: var(--progress-warning);
 }
 
-::deep .step.completed.error::after {
+.step.completed.error::after {
   background: var(--progress-error);
 }
 
 /* Step indicators */
-::deep .step-indicator {
+.step-indicator {
   width: 1rem;
   height: 1rem;
   border-radius: 50%;
@@ -114,40 +114,40 @@
   z-index: 3;
 }
 
-::deep .step.completed .step-indicator {
+.step.completed .step-indicator {
   background-color: var(--progress-color);
   border-color: var(--progress-color);
 }
 
-::deep .step.completed.success .step-indicator {
+.step.completed.success .step-indicator {
   background-color: var(--progress-success);
   border-color: var(--progress-success);
 }
 
-::deep .step.completed.warning .step-indicator {
+.step.completed.warning .step-indicator {
   background-color: var(--progress-warning);
   border-color: var(--progress-warning);
 }
 
-::deep .step.completed.error .step-indicator {
+.step.completed.error .step-indicator {
   background-color: var(--progress-error);
   border-color: var(--progress-error);
 }
 
-::deep .step.active .step-indicator {
+.step.active .step-indicator {
   background-color: transparent;
   border-color: var(--progress-color);
   animation: pulse 2s infinite;
 }
 
-::deep .step-label {
+.step-label {
   margin-top: 0.75rem;
   font-size: var(--fs-sm, 0.875rem);
   color: var(--clr-text-secondary);
   white-space: nowrap;
 }
 
-::deep .progress-label {
+.progress-label {
   margin-top: 0.75rem;
   font-size: var(--fs-sm, 0.875rem);
   color: var(--clr-text-secondary);
@@ -155,7 +155,7 @@
 }
 
 /* Animations and effects */
-::deep .progress-glow {
+.progress-glow {
   position: absolute;
   top: 0;
   left: 0;
@@ -177,14 +177,14 @@
 }
 
 /* Indeterminate progress */
-::deep .dropbear-progress.indeterminate .progress-bar {
+.dropbear-progress.indeterminate .progress-bar {
   width: 100%;
   transform: translateX(-100%);
   background: linear-gradient(90deg, transparent, var(--progress-color), transparent);
   animation: indeterminate 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-::deep .indeterminate .progress-label {
+.indeterminate .progress-label {
   animation: fadeInOut 2s infinite;
 }
 
