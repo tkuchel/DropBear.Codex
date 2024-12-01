@@ -932,7 +932,7 @@
 
           this.animationFrame = requestAnimationFrame(() => {
             this.element.classList.add('show');
-            this.element.addEventListener('transitionend', this.transitionEndHandler, { once: true });
+            this.element.addEventListener('transitionend', this.transitionEndHandler, {once: true});
             logger.debug(`PageAlert shown: ${this.id}`);
           });
 
@@ -944,6 +944,7 @@
           }, ANIMATION_DURATION + 100);
         });
       }
+
       hide() {
         if (this.isDisposed) return Promise.resolve();
 
@@ -1130,6 +1131,133 @@
     };
   })();
 
+  const DropBearProgressBar = (() => {
+    const logger = DropBearUtils.createLogger('DropBearProgressBar');
+    const progressBars = new Map();
+
+    class ProgressBarManager {
+      constructor(id, dotNetRef) {
+        DropBearUtils.validateArgs([id, dotNetRef], ['string', 'object'], 'ProgressBarManager');
+
+        this.id = id;
+        this.element = document.getElementById(id);
+        this.dotNetRef = dotNetRef;
+        this.isDisposed = false;
+
+        if (!DropBearUtils.isElement(this.element)) {
+          throw new TypeError('Invalid element provided to ProgressBarManager');
+        }
+
+        logger.debug(`Progress bar initialized: ${id}`);
+      }
+
+      updateProgress(progress) {
+        if (this.isDisposed) return;
+
+        try {
+          const progressBar = this.element.querySelector('.progress-bar');
+          if (progressBar) {
+            progressBar.style.width = `${progress}%`;
+          }
+        } catch (error) {
+          logger.error(`Error updating progress for ${this.id}:`, error);
+        }
+      }
+
+      updateStepStatus(stepName, status) {
+        if (this.isDisposed) return;
+
+        try {
+          const step = Array.from(this.element.querySelectorAll('.step'))
+            .find(s => s.querySelector('.step-label').textContent === stepName);
+
+          if (step) {
+            step.className = `step ${this.getStepClass(status)}`;
+          }
+        } catch (error) {
+          logger.error(`Error updating step status for ${this.id}:`, error);
+        }
+      }
+
+      getStepClass(status) {
+        switch (status) {
+          case 'Completed':
+            return 'completed success';
+          case 'Warning':
+            return 'completed warning';
+          case 'Error':
+            return 'completed error';
+          case 'Active':
+            return 'active';
+          default:
+            return '';
+        }
+      }
+
+      dispose() {
+        if (this.isDisposed) return;
+
+        try {
+          this.isDisposed = true;
+          this.dotNetRef = null;
+          logger.debug(`Progress bar disposed: ${this.id}`);
+        } catch (error) {
+          logger.error(`Error disposing progress bar ${this.id}:`, error);
+        }
+      }
+    }
+
+    return {
+      initialize(progressId, dotNetRef) {
+        try {
+          if (progressBars.has(progressId)) {
+            logger.debug(`Progress bar already exists for ${progressId}, disposing old instance`);
+            this.dispose(progressId);
+          }
+
+          const manager = new ProgressBarManager(progressId, dotNetRef);
+          progressBars.set(progressId, manager);
+          logger.debug(`Progress bar initialized: ${progressId}`);
+          return true;
+        } catch (error) {
+          logger.error('Progress bar initialization error:', error);
+          return false;
+        }
+      },
+
+      updateProgress(progressId, progress) {
+        const manager = progressBars.get(progressId);
+        if (manager) {
+          manager.updateProgress(progress);
+          return true;
+        }
+        return false;
+      },
+
+      updateStepStatus(progressId, stepName, status) {
+        const manager = progressBars.get(progressId);
+        if (manager) {
+          manager.updateStepStatus(stepName, status);
+          return true;
+        }
+        return false;
+      },
+
+      dispose(progressId) {
+        try {
+          const manager = progressBars.get(progressId);
+          if (manager) {
+            manager.dispose();
+            progressBars.delete(progressId);
+            logger.debug(`Progress bar disposed: ${progressId}`);
+          }
+        } catch (error) {
+          logger.error(`Error disposing progress bar ${progressId}:`, error);
+        }
+      }
+    };
+  })();
+
   window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
 
   const initializeDropBear = async () => {
@@ -1164,7 +1292,8 @@
         DropBearContextMenu: {value: DropBearContextMenu, writable: false, configurable: false},
         DropBearValidationErrors: {value: DropBearValidationErrors, writable: false, configurable: false},
         DropBearFileDownloader: {value: DropBearFileDownloader, writable: false, configurable: false},
-        DropBearPageAlert: {value: DropBearPageAlert, writable: false, configurable: false}
+        DropBearPageAlert: {value: DropBearPageAlert, writable: false, configurable: false},
+        DropBearProgressBar: {value: DropBearProgressBar, writable: false, configurable: false}
       });
 
       // Add after Object.defineProperties in initializeDropBear
@@ -1205,6 +1334,9 @@
       if (DropBearContextMenu) DropBearContextMenu.disposeAll();
       if (DropBearValidationErrors) DropBearValidationErrors.disposeAll();
       if (DropBearPageAlert) DropBearPageAlert.hideAll();
+      if (DropBearProgressBar) {
+        Array.from(progressBars.keys()).forEach(id => DropBearProgressBar.dispose(id));
+      }
       console.log("DropBear cleanup complete");
     } catch (error) {
       console.error("Error during DropBear cleanup:", error);

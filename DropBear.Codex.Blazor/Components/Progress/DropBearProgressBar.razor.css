@@ -1,0 +1,199 @@
+/* DropBearProgressBar.razor.css */
+::deep .dropbear-progress-container {
+  --progress-height: 0.25rem;
+  --progress-bg: var(--clr-surface-secondary, #343639);
+  --progress-color: var(--clr-viking, #62dbc8);
+  --progress-success: var(--clr-success, #7cd651);
+  --progress-warning: var(--clr-warning, #ffd14d);
+  --progress-error: var(--clr-error, #ff5757);
+  --progress-radius: var(--br-full, 9999px);
+  --progress-transition: all 0.3s ease-in-out;
+
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+::deep .dropbear-progress {
+  width: 100%;
+  position: relative;
+}
+
+::deep .progress-bar-wrapper {
+  width: 100%;
+  height: var(--progress-height);
+  background-color: var(--progress-bg);
+  border-radius: var(--progress-radius);
+  overflow: hidden;
+}
+
+::deep .progress-bar {
+  height: 100%;
+  width: 0;
+  background-color: var(--progress-color);
+  border-radius: var(--progress-radius);
+  transition: var(--progress-transition);
+  position: relative;
+}
+
+/* Steps styles */
+::deep .progress-steps {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  position: relative;
+}
+
+::deep .step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+  z-index: 2;
+  flex: 1;
+}
+
+/* Base connecting line */
+::deep .progress-steps::before {
+  content: '';
+  position: absolute;
+  top: 0.625rem;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: var(--progress-bg);
+  z-index: 1;
+}
+
+/* Colored connecting lines */
+::deep .step::after {
+  content: '';
+  position: absolute;
+  top: 0.625rem;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--progress-bg);
+  z-index: 1;
+  transition: var(--progress-transition);
+}
+
+::deep .step:first-child::after {
+  left: 0;
+}
+
+::deep .step:last-child::after {
+  right: 0;
+}
+
+::deep .step.completed::after {
+  background: var(--progress-color);
+}
+
+::deep .step.completed.success::after {
+  background: var(--progress-success);
+}
+
+::deep .step.completed.warning::after {
+  background: var(--progress-warning);
+}
+
+::deep .step.completed.error::after {
+  background: var(--progress-error);
+}
+
+/* Step indicators */
+::deep .step-indicator {
+  width: 1rem;
+  height: 1rem;
+  border-radius: 50%;
+  background-color: var(--progress-bg);
+  border: 2px solid var(--progress-bg);
+  transition: var(--progress-transition);
+  position: relative;
+  z-index: 3;
+}
+
+::deep .step.completed .step-indicator {
+  background-color: var(--progress-color);
+  border-color: var(--progress-color);
+}
+
+::deep .step.completed.success .step-indicator {
+  background-color: var(--progress-success);
+  border-color: var(--progress-success);
+}
+
+::deep .step.completed.warning .step-indicator {
+  background-color: var(--progress-warning);
+  border-color: var(--progress-warning);
+}
+
+::deep .step.completed.error .step-indicator {
+  background-color: var(--progress-error);
+  border-color: var(--progress-error);
+}
+
+::deep .step.active .step-indicator {
+  background-color: transparent;
+  border-color: var(--progress-color);
+  animation: pulse 2s infinite;
+}
+
+::deep .step-label {
+  margin-top: 0.75rem;
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--clr-text-secondary);
+  white-space: nowrap;
+}
+
+::deep .progress-label {
+  margin-top: 0.75rem;
+  font-size: var(--fs-sm, 0.875rem);
+  color: var(--clr-text-secondary);
+  text-align: right;
+}
+
+/* Animations and effects */
+::deep .progress-glow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  transform: translateX(-100%);
+  animation: glow 2s infinite;
+}
+
+@keyframes glow {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(98, 219, 200, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(98, 219, 200, 0); }
+}
+
+/* Indeterminate progress */
+::deep .dropbear-progress.indeterminate .progress-bar {
+  width: 100%;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, var(--progress-color), transparent);
+  animation: indeterminate 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+::deep .indeterminate .progress-label {
+  animation: fadeInOut 2s infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}

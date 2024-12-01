@@ -1,0 +1,90 @@
+﻿@using DropBear.Codex.Blazor.Enums
+@using DropBear.Codex.Blazor.Models
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@namespace DropBear.Codex.Blazor.Components.Progress
+<div class="dropbear-progress-container">
+    <div class="dropbear-progress @GetProgressClass()" id="@_progressId">
+        @if (Type == ProgressBarType.Stepped)
+        {
+            <div class="progress-steps">
+                @foreach (var step in _steps)
+                {
+                    <div class="step @GetStepClass(step)">
+                        <div class="step-indicator" role="progressbar"
+                             aria-valuenow="@GetStepProgress(step)"
+                             aria-valuemin="0"
+                             aria-valuemax="100">
+                        </div>
+                        <span class="step-label">@step.Label</span>
+                    </div>
+                }
+            </div>
+        }
+        <div class="progress-bar-wrapper">
+            <div class="progress-bar" style="@GetProgressStyle()">
+                <div class="progress-glow"></div>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <div class="progress-label">@Label</div>
+        }
+        else if (_isIndeterminate)
+        {
+            <div class="progress-label">Loading...</div>
+        }
+        else
+        {
+            <div class="progress-label">@Progress.ToString("F0")%</div>
+        }
+    </div>
+</div>
+
+@code {
+
+    private string GetProgressClass()
+    {
+        return Type switch
+        {
+            ProgressBarType.Indeterminate => "indeterminate",
+            ProgressBarType.Stepped => "with-steps",
+            _ => "standard"
+        };
+    }
+
+    private string GetStepClass(ProgressStep step)
+    {
+        var classes = new List<string>();
+
+        if (step.Status == StepStatus.Active)
+            classes.Add("active");
+        else if (step.Status != StepStatus.NotStarted)
+            classes.Add("completed");
+
+        classes.Add(step.Status switch
+        {
+            StepStatus.Completed => "success",
+            StepStatus.Warning => "warning",
+            StepStatus.Error => "error",
+            _ => ""
+        });
+
+        return string.Join(" ", classes);
+    }
+
+    private string GetProgressStyle()
+    {
+        return !_isIndeterminate ? $"width: {Progress}%" : "";
+    }
+
+    private int GetStepProgress(ProgressStep step)
+    {
+        return step.Status switch
+        {
+            StepStatus.Completed => 100,
+            StepStatus.Active => 50,
+            _ => 0
+        };
+    }
+
+}
