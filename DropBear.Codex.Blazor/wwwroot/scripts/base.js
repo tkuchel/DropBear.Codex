@@ -874,28 +874,30 @@
     const ANIMATION_DURATION = 300;
 
     class PageAlertManager {
-      constructor(id, isPermanent = false) {
-        if (!id) {
-          throw new Error('ID is required for PageAlertManager');
-        }
+      create(id, duration = 5000, isPermanent = false) {
+        return retryOperation(async () => {
+          try {
+            const element = document.getElementById(id);
+            if (!element) {
+              throw new Error(`Element with id ${id} not found`);
+            }
 
-        this.id = id;
-        this.element = document.getElementById(id);
-        this.isDisposed = false;
-        this.progressTimeout = null;
-        this.animationFrame = null;
-        this.isPermanent = isPermanent;
-        this.progressDuration = 0;
-        this.transitionEndHandler = null;
+            // Create and store new alert
+            const manager = new PageAlertManager(id, isPermanent);
+            alerts.set(id, manager);
 
-        if (!this.element) {
-          throw new Error(`Element with id ${id} not found`);
-        }
+            // Show alert and start progress if applicable
+            await manager.show();
+            if (!isPermanent && typeof duration === 'number' && duration > 0) {
+              manager.startProgress(duration);
+            }
 
-        if (!this.isPermanent) {
-          this._setupEventListeners();
-        }
-        logger.debug(`PageAlert initialized: ${id}`);
+            return true;
+          } catch (error) {
+            logger.error('Error creating page alert:', error);
+            return false;
+          }
+        }, 3, 100); // Retry 3 times with 100ms delay
       }
 
       _setupEventListeners() {

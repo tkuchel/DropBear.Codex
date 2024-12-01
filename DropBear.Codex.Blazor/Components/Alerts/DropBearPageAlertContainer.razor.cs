@@ -188,12 +188,11 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                 {
                     if (alert.Duration != null)
                     {
-                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", alert.Id, alert.Duration,
-                            alert.IsPermanent);
+                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", $"alert-{alert.Id}", alert.Duration, alert.IsPermanent);
                     }
                     else
                     {
-                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", alert.Id, 5000, alert.IsPermanent);
+                        await SafeJsInteropAsync<bool>("DropBearPageAlert.create", $"alert-{alert.Id}", 5000, alert.IsPermanent);
                     }
                 }
                 catch (Exception ex)
@@ -238,7 +237,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             {
                 try
                 {
-                    await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", alertId);
+                    await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alertId}");
                     _activeAlerts.Remove(alert);
                     await InvokeAsync(StateHasChanged);
                 }
@@ -267,7 +266,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                 {
                     try
                     {
-                        await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", alert.Id);
+                        await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alert.Id}");
                     }
                     catch (Exception ex)
                     {

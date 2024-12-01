@@ -18,7 +18,7 @@ public sealed class PageAlertService : IPageAlertService
     {
         var alert = new PageAlertInstance
         {
-            Id = $"alert-{Guid.NewGuid():N}",
+            Id = Guid.NewGuid().ToString("N"), // Remove the alert- prefix
             Title = title,
             Message = message,
             Type = type,
