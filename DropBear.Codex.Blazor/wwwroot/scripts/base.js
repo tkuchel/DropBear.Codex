@@ -1247,6 +1247,17 @@
         } catch (error) {
           logger.error(`Error disposing progress bar ${progressId}:`, error);
         }
+      },
+
+      disposeAll() {
+        try {
+          Array.from(progressBars.keys()).forEach(id => {
+            this.dispose(id);
+          });
+          logger.debug('All progress bars disposed');
+        } catch (error) {
+          logger.error('Error disposing all progress bars:', error);
+        }
       }
     };
   })();
@@ -1327,9 +1338,7 @@
       if (DropBearContextMenu) DropBearContextMenu.disposeAll();
       if (DropBearValidationErrors) DropBearValidationErrors.disposeAll();
       if (DropBearPageAlert) DropBearPageAlert.hideAll();
-      if (DropBearProgressBar) {
-        Array.from(progressBars.keys()).forEach(id => DropBearProgressBar.dispose(id));
-      }
+      if (DropBearProgressBar) DropBearProgressBar.disposeAll();
       console.log("DropBear cleanup complete");
     } catch (error) {
       console.error("Error during DropBear cleanup:", error);
