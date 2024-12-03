@@ -10,14 +10,20 @@
   --progress-transition: all 0.3s ease-in-out;
   --step-indicator-size: 0.75rem;
   --step-indicator-border: 2px;
+  --card-padding: 1.5rem;
 
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 48rem; /* Limit maximum width */
-  margin: 0 auto; /* Center the container */
-  padding: 1rem;
+  max-width: 48rem;
+  margin: 0 auto;
+  background: var(--clr-surface-primary, #1e1f22);
+  border: 1px solid var(--clr-border, #343639);
+  border-radius: 0.5rem;
+  padding: var(--card-padding);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
 
 .dropbear-progress {
   width: 100%;
@@ -49,7 +55,6 @@
   justify-content: space-between;
   margin-bottom: 1rem;
   position: relative;
-  padding: 0 calc(var(--step-indicator-size) / 2);
 }
 
 .step {
@@ -59,7 +64,6 @@
   position: relative;
   z-index: 2;
   flex: 1;
-  max-width: 8rem; /* Prevent step labels from becoming too wide */
 }
 
 /* Base connecting line */
@@ -79,8 +83,20 @@
   content: '';
   position: absolute;
   top: calc(var(--step-indicator-size) / 2);
-  left: 50%;
-  right: -50%;
+  left: 0;
+  width: 100%; /* Change from right positioning to width */
+  height: var(--step-indicator-border);
+  background: var(--progress-bg);
+  z-index: 1;
+  transition: var(--progress-transition);
+}
+
+.step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--step-indicator-size) / 2);
+  left: calc(var(--step-indicator-size) / 2);
+  right: calc(var(--step-indicator-size) * -1);
   height: var(--step-indicator-border);
   background: var(--progress-bg);
   z-index: 1;
@@ -105,9 +121,11 @@
   color: var(--clr-text-secondary);
   text-align: center;
   max-width: 100%;
+  padding: 0 0.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 0.8;
 }
 
 .progress-label {
@@ -117,11 +135,22 @@
   text-align: right;
 }
 
+.dropbear-progress-container:hover {
+  border-color: var(--clr-border-hover, #4e5055);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
 /* Refined pulse animation */
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.3); }
-  70% { box-shadow: 0 0 0 4px rgba(98, 219, 200, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(98, 219, 200, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 4px rgba(98, 219, 200, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0);
+  }
 }
 
 /* More subtle glow effect */
@@ -185,22 +214,26 @@
   z-index: 3;
 }
 
-.step.completed .step-indicator {
+.step.completed .step-indicator,
+.step.completed::after {
   background-color: var(--progress-color);
   border-color: var(--progress-color);
 }
 
-.step.completed.success .step-indicator {
+.step.completed.success .step-indicator,
+.step.completed.success::after {
   background-color: var(--progress-success);
   border-color: var(--progress-success);
 }
 
-.step.completed.warning .step-indicator {
+.step.completed.warning .step-indicator,
+.step.completed.warning::after {
   background-color: var(--progress-warning);
   border-color: var(--progress-warning);
 }
 
-.step.completed.error .step-indicator {
+.step.completed.error .step-indicator,
+.step.completed.error::after {
   background-color: var(--progress-error);
   border-color: var(--progress-error);
 }
@@ -211,18 +244,24 @@
   animation: pulse 2s infinite;
 }
 
-.step-label {
-  margin-top: 0.75rem;
-  font-size: var(--fs-sm, 0.875rem);
-  color: var(--clr-text-secondary);
-  white-space: nowrap;
-}
 
 .progress-label {
   margin-top: 0.75rem;
   font-size: var(--fs-sm, 0.875rem);
   color: var(--clr-text-secondary);
   text-align: right;
+}
+
+.label-container {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--clr-text-secondary);
+}
+
+.progress-title {
+  font-weight: 500;
 }
 
 /* Animations and effects */
@@ -238,13 +277,21 @@
 }
 
 @keyframes glow {
-  100% { transform: translateX(100%); }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.4); }
-  70% { box-shadow: 0 0 0 6px rgba(98, 219, 200, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(98, 219, 200, 0); }
+  0% {
+    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(98, 219, 200, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0);
+  }
 }
 
 /* Indeterminate progress */
@@ -260,11 +307,19 @@
 }
 
 @keyframes indeterminate {
-  0% { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @keyframes fadeInOut {
-  0%, 100% { opacity: 0.7; }
-  50% { opacity: 1; }
+  0%, 100% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
 }
