@@ -118,11 +118,11 @@ public sealed class ExecutionEngine
     ///     Reports progress for the current task execution.
     /// </summary>
     /// <param name="taskName">The name of the task reporting progress.</param>
-    /// <param name="progress">The progress value between 0 and 100.</param>
+    /// <param name="progress">The progress percentage value between 0 and 100.</param>
     /// <param name="message">Optional message describing the progress state.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    /// <exception cref="ArgumentException">Thrown when taskName is null or whitespace.</exception>
+    /// <exception cref="ArgumentException">Thrown when <paramref name="taskName" /> is null or whitespace.</exception>
     /// <exception cref="InvalidOperationException">Thrown when the execution engine is not currently executing.</exception>
     public async Task ReportProgressAsync(
         string taskName,
@@ -149,8 +149,9 @@ public sealed class ExecutionEngine
                 _channelId,
                 new TaskProgressMessage(
                     taskName,
-                    (int)progress,
-                    100,
+                    progress, // TaskProgressPercentage
+                    null, // OverallCompletedTasks
+                    null, // OverallTotalTasks
                     TaskStatus.InProgress,
                     message ?? $"Task '{taskName}' progress: {progress:F1}%"
                 ),
@@ -163,6 +164,7 @@ public sealed class ExecutionEngine
             // Don't throw - progress reporting should not break task execution
         }
     }
+
 
     /// <summary>
     ///     Validates a task before execution.
@@ -234,6 +236,10 @@ public sealed class ExecutionEngine
     /// <summary>
     ///     Executes a task with retry logic using Polly.
     /// </summary>
+    /// <param name="task">The task to execute.</param>
+    /// <param name="executionScope">The execution scope containing context and services.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A Result indicating success or failure of the task execution.</returns>
     private async Task<Result<Unit, TaskExecutionError>> ExecuteWithRetryAsync(
         ITask task,
         TaskExecutionScope executionScope,
@@ -245,7 +251,8 @@ public sealed class ExecutionEngine
                 .Handle<Exception>()
                 .WaitAndRetryAsync(
                     task.MaxRetryCount,
-                    attempt => task.RetryDelay * Math.Pow(2, attempt - 1), // Exponential backoff
+                    attempt => TimeSpan.FromMilliseconds(task.RetryDelay.TotalMilliseconds *
+                                                         Math.Pow(2, attempt - 1)), // Exponential backoff
                     (exception, duration, attemptNumber, context) =>
                     {
                         _logger.Warning(
@@ -264,14 +271,12 @@ public sealed class ExecutionEngine
 
             var policyContext = new Context { ["taskName"] = task.Name, ["startTime"] = DateTime.UtcNow };
 
-            // Fix: Changed to correct parameter type and signature
             await retryPolicy.ExecuteAsync(
-                async (_, ct) =>
+                async ct =>
                 {
                     ct.ThrowIfCancellationRequested();
                     await task.ExecuteAsync(executionScope.Context, ct).ConfigureAwait(false);
                 },
-                policyContext,
                 cancellationToken
             ).ConfigureAwait(false);
 
@@ -287,9 +292,14 @@ public sealed class ExecutionEngine
         }
     }
 
+
     /// <summary>
-    ///     Updates the progress of task execution.
+    ///     Updates the overall progress of task execution after a task completes.
     /// </summary>
+    /// <param name="task">The task that was just completed.</param>
+    /// <param name="context">The execution context containing progress information.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
     {
         try
@@ -299,8 +309,9 @@ public sealed class ExecutionEngine
                 _channelId,
                 new TaskProgressMessage(
                     task.Name,
-                    context.CompletedTaskCount,
-                    context.TotalTaskCount,
+                    null, // TaskProgressPercentage
+                    context.CompletedTaskCount, // OverallCompletedTasks
+                    context.TotalTaskCount, // OverallTotalTasks
                     TaskStatus.InProgress,
                     $"Task '{task.Name}' execution progress."
                 ),
@@ -313,6 +324,7 @@ public sealed class ExecutionEngine
             // We don't want to fail the task execution just because progress update failed
         }
     }
+
 
     /// <summary>
     ///     Resolves task dependencies and returns a list of tasks in execution order.

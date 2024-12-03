@@ -15,19 +15,21 @@ public sealed class TaskProgressMessage
     ///     Initializes a new instance of the <see cref="TaskProgressMessage" /> class.
     /// </summary>
     /// <param name="taskName">The name of the task.</param>
-    /// <param name="completedTasks">The number of tasks completed so far.</param>
-    /// <param name="totalTasks">The total number of tasks to be executed.</param>
+    /// <param name="taskProgressPercentage">The progress percentage of the individual task.</param>
+    /// <param name="overallCompletedTasks">The number of overall tasks completed so far.</param>
+    /// <param name="overallTotalTasks">The total number of overall tasks to be executed.</param>
     /// <param name="status">The status of the task.</param>
     /// <param name="message">An optional message providing additional information.</param>
     /// <exception cref="ArgumentException">Thrown when <paramref name="taskName" /> is null or whitespace.</exception>
     /// <exception cref="ArgumentOutOfRangeException">
-    ///     Thrown when <paramref name="completedTasks" /> or <paramref name="totalTasks" /> are negative,
-    ///     or when <paramref name="completedTasks" /> is greater than <paramref name="totalTasks" />.
+    ///     Thrown when <paramref name="overallCompletedTasks" /> or <paramref name="overallTotalTasks" /> are negative,
+    ///     or when <paramref name="overallCompletedTasks" /> is greater than <paramref name="overallTotalTasks" />.
     /// </exception>
     public TaskProgressMessage(
         string taskName,
-        int completedTasks,
-        int totalTasks,
+        double? taskProgressPercentage,
+        int? overallCompletedTasks,
+        int? overallTotalTasks,
         TaskStatus status,
         string message = "")
     {
@@ -36,26 +38,32 @@ public sealed class TaskProgressMessage
             throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
         }
 
-        if (completedTasks < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(completedTasks), "Completed tasks cannot be negative.");
-        }
-
-        if (totalTasks < 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(totalTasks), "Total tasks cannot be negative.");
-        }
-
-        if (completedTasks > totalTasks)
-        {
-            throw new ArgumentOutOfRangeException(nameof(completedTasks), "Completed tasks cannot exceed total tasks.");
-        }
-
         TaskName = taskName;
-        CompletedTasks = completedTasks;
-        TotalTasks = totalTasks;
+        TaskProgressPercentage = taskProgressPercentage;
         Status = status;
         Message = message ?? string.Empty;
+        OverallCompletedTasks = overallCompletedTasks;
+        OverallTotalTasks = overallTotalTasks;
+
+        if (OverallCompletedTasks.HasValue && OverallTotalTasks.HasValue)
+        {
+            if (OverallCompletedTasks < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(overallCompletedTasks),
+                    "Completed tasks cannot be negative.");
+            }
+
+            if (OverallTotalTasks < 0)
+            {
+                throw new ArgumentOutOfRangeException(nameof(overallTotalTasks), "Total tasks cannot be negative.");
+            }
+
+            if (OverallCompletedTasks > OverallTotalTasks)
+            {
+                throw new ArgumentOutOfRangeException(nameof(overallCompletedTasks),
+                    "Completed tasks cannot exceed total tasks.");
+            }
+        }
     }
 
     /// <summary>
@@ -64,14 +72,9 @@ public sealed class TaskProgressMessage
     public string TaskName { get; }
 
     /// <summary>
-    ///     Gets the number of tasks completed so far.
+    ///     Gets the progress percentage of the individual task, if applicable.
     /// </summary>
-    public int CompletedTasks { get; }
-
-    /// <summary>
-    ///     Gets the total number of tasks to be executed.
-    /// </summary>
-    public int TotalTasks { get; }
+    public double? TaskProgressPercentage { get; }
 
     /// <summary>
     ///     Gets the status of the task.
@@ -79,9 +82,22 @@ public sealed class TaskProgressMessage
     public TaskStatus Status { get; }
 
     /// <summary>
-    ///     Gets the overall progress percentage.
+    ///     Gets the number of overall tasks completed so far, if applicable.
     /// </summary>
-    public double OverallProgress => TotalTasks > 0 ? (double)CompletedTasks / TotalTasks * 100 : 0;
+    public int? OverallCompletedTasks { get; }
+
+    /// <summary>
+    ///     Gets the total number of overall tasks to be executed, if applicable.
+    /// </summary>
+    public int? OverallTotalTasks { get; }
+
+    /// <summary>
+    ///     Gets the overall progress percentage, if applicable.
+    /// </summary>
+    public double? OverallProgressPercentage =>
+        OverallTotalTasks is > 0
+            ? (double)OverallCompletedTasks! / OverallTotalTasks * 100
+            : null;
 
     /// <summary>
     ///     Gets an optional message providing additional information.
