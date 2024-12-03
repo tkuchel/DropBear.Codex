@@ -115,6 +115,56 @@ public sealed class ExecutionEngine
     }
 
     /// <summary>
+    ///     Reports progress for the current task execution.
+    /// </summary>
+    /// <param name="taskName">The name of the task reporting progress.</param>
+    /// <param name="progress">The progress value between 0 and 100.</param>
+    /// <param name="message">Optional message describing the progress state.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    /// <exception cref="ArgumentException">Thrown when taskName is null or whitespace.</exception>
+    /// <exception cref="InvalidOperationException">Thrown when the execution engine is not currently executing.</exception>
+    public async Task ReportProgressAsync(
+        string taskName,
+        double progress,
+        string? message = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(taskName))
+        {
+            throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
+        }
+
+        if (!_isExecuting)
+        {
+            throw new InvalidOperationException("Cannot report progress when execution engine is not running.");
+        }
+
+        try
+        {
+            // Ensure progress is in valid range
+            progress = Math.Clamp(progress, 0, 100);
+
+            await _progressPublisher.PublishAsync(
+                _channelId,
+                new TaskProgressMessage(
+                    taskName,
+                    (int)progress,
+                    100,
+                    TaskStatus.InProgress,
+                    message ?? $"Task '{taskName}' progress: {progress:F1}%"
+                ),
+                cancellationToken
+            ).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to report progress for task '{TaskName}'", taskName);
+            // Don't throw - progress reporting should not break task execution
+        }
+    }
+
+    /// <summary>
     ///     Validates a task before execution.
     /// </summary>
     private async Task<Result<Unit, TaskExecutionError>> ValidateTaskAsync(
