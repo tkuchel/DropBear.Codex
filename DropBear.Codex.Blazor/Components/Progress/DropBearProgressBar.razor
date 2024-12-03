@@ -74,7 +74,14 @@
 
     private string GetProgressStyle()
     {
-        return !_isIndeterminate ? $"width: {Progress}%" : "";
+        if (_isIndeterminate) return "";
+
+        if (Type == ProgressBarType.Standard)
+        {
+            return $"width: {OverallProgress}%";
+        }
+
+        return $"width: {TaskProgress}%";
     }
 
     private int GetStepProgress(ProgressStep step)

@@ -1218,15 +1218,24 @@
         }
       },
 
-      updateProgress(progressId, progress) {
+      updateProgress(progressId, taskProgress, overallProgress) {
         const manager = progressBars.get(progressId);
         if (manager) {
-          manager.updateProgress(progress);
+          // Update task progress bar
+          manager.updateProgress(taskProgress);
+
+          // Update overall progress bar (optional logic to skip frequent updates)
+          if (overallProgress !== undefined) {
+            const overallBar = manager.element.querySelector('.overall-progress-bar');
+            if (overallBar) {
+              overallBar.style.width = `${overallProgress}%`;
+            }
+          }
           return true;
         }
         return false;
-      },
-
+      }
+      ,
       updateStepStatus(progressId, stepName, status) {
         const manager = progressBars.get(progressId);
         if (manager) {
@@ -1251,9 +1260,7 @@
 
       disposeAll() {
         try {
-          Array.from(progressBars.keys()).forEach(id => {
-            this.dispose(id);
-          });
+          Array.from(progressBars.keys()).forEach(id => this.dispose(id));
           logger.debug('All progress bars disposed');
         } catch (error) {
           logger.error('Error disposing all progress bars:', error);

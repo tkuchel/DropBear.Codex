@@ -17,7 +17,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private bool _isDisposed;
     private bool _isIndeterminate;
     private bool _isInitialized;
+    private double _overallProgress;
     private ObservableCollection<ProgressStep> _steps = new();
+    private double _taskProgress;
 
     public DropBearProgressBar()
     {
@@ -35,6 +37,34 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     [Parameter] public EventCallback<double> ProgressChanged { get; set; }
 
     [Parameter] public EventCallback<ProgressStep> StepCompleted { get; set; }
+
+    [Parameter]
+    public double TaskProgress
+    {
+        get => _taskProgress;
+        set
+        {
+            if (_taskProgress != value)
+            {
+                _taskProgress = value;
+                StateHasChanged();
+            }
+        }
+    }
+
+    [Parameter]
+    public double OverallProgress
+    {
+        get => _overallProgress;
+        set
+        {
+            if (_overallProgress != value)
+            {
+                _overallProgress = value;
+                StateHasChanged();
+            }
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -58,31 +88,34 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         await base.OnAfterRenderAsync(firstRender);
     }
 
-    public async Task UpdateProgressAsync(double newProgress, CancellationToken cancellationToken = default)
+    public async Task MarkStepCompleteAsync(string stepName)
     {
-        if (_isDisposed)
-        {
-            throw new ObjectDisposedException(nameof(DropBearProgressBar));
-        }
+        await UpdateStepStatusAsync(stepName, StepStatus.Completed);
+        var completedTasks = _steps.Count(step => step.Status == StepStatus.Completed);
+        await UpdateProgressAsync(TaskProgress, completedTasks, _steps.Count);
+    }
 
+
+    public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
+    {
         try
         {
-            await _updateLock.WaitAsync(cancellationToken);
+            await _updateLock.WaitAsync();
 
             if (!_isInitialized)
             {
-                // Queue the update for the next render cycle
-                await InvokeAsync(async () =>
+                await InvokeAsync(() =>
                 {
-                    Progress = Math.Clamp(newProgress, 0, 100);
-                    await ProgressChanged.InvokeAsync(Progress);
+                    TaskProgress = Math.Clamp(taskProgress, 0, 100);
+                    OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
                     StateHasChanged();
                 });
                 return;
             }
 
-            Progress = Math.Clamp(newProgress, 0, 100);
-            await ProgressChanged.InvokeAsync(Progress);
+            TaskProgress = Math.Clamp(taskProgress, 0, 100);
+            OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
+            await ProgressChanged.InvokeAsync(OverallProgress);
             StateHasChanged();
         }
         finally
@@ -90,6 +123,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock.Release();
         }
     }
+
 
     public async Task UpdateStepStatusAsync(string stepName, StepStatus status)
     {

@@ -49,6 +49,14 @@
   box-shadow: 0 -1px 1px rgba(0, 0, 0, 0.1) inset;
 }
 
+.overall-progress-bar {
+  background-color: var(--progress-success);
+}
+.task-progress-bar {
+  background-color: var(--progress-color);
+}
+
+
 /* Steps styles */
 .progress-steps {
   display: flex;
