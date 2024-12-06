@@ -14,8 +14,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 /// </summary>
 public sealed class ExecutionContext
 {
-    private int _completedTaskCount;
-    private int _totalTaskCount;
+    private readonly int _totalTaskCount;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ExecutionContext" /> class.
@@ -58,7 +57,7 @@ public sealed class ExecutionContext
     public int TotalTaskCount
     {
         get => _totalTaskCount;
-        set
+        init
         {
             if (value < 0)
             {
@@ -72,7 +71,7 @@ public sealed class ExecutionContext
     /// <summary>
     ///     Gets the number of tasks that have completed execution.
     /// </summary>
-    public int CompletedTaskCount => _completedTaskCount;
+    public int CompletedTaskCount { get; private set; }
 
     /// <summary>
     ///     Increments the <see cref="CompletedTaskCount" /> in a thread-safe manner.
@@ -80,12 +79,16 @@ public sealed class ExecutionContext
     /// <exception cref="InvalidOperationException">Thrown when the incremented value exceeds <see cref="TotalTaskCount" />.</exception>
     public void IncrementCompletedTaskCount()
     {
-        var newValue = Interlocked.Increment(ref _completedTaskCount);
-        if (newValue > _totalTaskCount)
+        if (CompletedTaskCount < TotalTaskCount)
         {
-            throw new InvalidOperationException("CompletedTaskCount cannot exceed TotalTaskCount.");
+            CompletedTaskCount++;
+        }
+        else
+        {
+            Logger.Warning("CompletedTaskCount already equals TotalTaskCount. No further increment allowed.");
         }
     }
+
 
     /// <summary>
     ///     Creates a new service scope for executing tasks that require scoped services.

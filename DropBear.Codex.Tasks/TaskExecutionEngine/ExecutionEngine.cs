@@ -144,9 +144,15 @@ public sealed class ExecutionEngine
         {
             progress = Math.Clamp(progress, 0, 100);
 
-            // Use cached counts instead of recalculating every time
+            // Ensure total tasks are properly initialized
             var completedTasks = _executionTracker.GetStats().CompletedTasks;
             var totalTasks = _executionTracker.GetStats().TotalTasks;
+
+            if (totalTasks == 0)
+            {
+                _logger.Error("Total tasks are not initialized. Unable to report progress.");
+                return;
+            }
 
             await _progressPublisher.PublishAsync(
                 _channelId,
@@ -163,7 +169,6 @@ public sealed class ExecutionEngine
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to report progress for task '{TaskName}'", taskName);
-            // Swallow the exception to avoid breaking task execution
         }
     }
 
@@ -664,6 +669,9 @@ public sealed class ExecutionEngine
             error = new TaskExecutionError("Circular dependency detected in task graph");
             return false;
         }
+
+        // Set total task count
+        _executionTracker.SetTotalTaskCount(_tasks.Count);
 
         _isExecuting = true;
         _logger.Information("Pre-execution checks passed. Starting task execution.");
