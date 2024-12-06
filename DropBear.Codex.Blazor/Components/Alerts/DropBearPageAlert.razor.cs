@@ -24,7 +24,7 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         }
     };
 
-    private string Id => $"alert-{AlertId}";
+    private string Id => AlertId!;
 
     [Parameter] [EditorRequired] public string? AlertId { get; set; } = null!;
 

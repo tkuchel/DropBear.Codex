@@ -180,34 +180,30 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     {
         await base.OnAfterRenderAsync(firstRender);
 
+        // For each newly added alert, call create in JS
         if (_alertsToInitialize.Count > 0)
         {
             foreach (var alert in _alertsToInitialize.ToList())
             {
                 try
                 {
-                    if (alert.Duration != null)
+                    // Note: alert.Id should already be "alert-xxxx", so just use alert.Id directly
+                    var result = await SafeJsInteropAsync<bool>(
+                        "DropBearPageAlert.create",
+                        alert.Id,
+                        alert.Duration ?? 5000,
+                        alert.IsPermanent
+                    );
+
+                    if (!result)
                     {
-                        var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alert.Id}");
-                        if (!result)
-                        {
-                            Logger.Warning("Failed to hide alert with ID: {AlertId}", alert.Id);
-                        }
-                    }
-                    else
-                    {
-                        var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.create", $"alert-{alert.Id}",
-                            alert.Duration, alert.IsPermanent);
-                        if (!result)
-                        {
-                            Logger.Warning("Failed to create alert with ID: {AlertId}", alert.Id);
-                        }
+                        Logger.Warning("Failed to create alert with ID: {AlertId}", alert.Id);
                     }
                 }
                 catch (Exception ex)
                 {
                     Logger.Error(ex, "Error showing page alert: {Id}", alert.Id);
-                    // Clean up on failure
+                    // If creation fails, remove it from the active list
                     _activeAlerts.Remove(alert);
                     await InvokeAsync(StateHasChanged);
                 }
@@ -218,6 +214,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             }
         }
     }
+
 
     private async void HandleClear()
     {
@@ -244,21 +241,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             var alert = _activeAlerts.FirstOrDefault(a => a.Id == alertId);
             if (alert != null)
             {
-                try
+                // Call hide before removing from DOM
+                var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", alert.Id);
+                if (!result)
                 {
-                    var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", $"alert-{alertId}");
-                    if (!result)
-                    {
-                        Logger.Warning("Failed to hide alert with ID: {AlertId}", alert.Id);
-                    }
+                    Logger.Warning("Failed to hide alert with ID: {AlertId}", alert.Id);
+                }
 
-                    _activeAlerts.Remove(alert);
-                    await InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error removing alert: {Id}", alertId);
-                }
+                _activeAlerts.Remove(alert);
+                await InvokeAsync(StateHasChanged);
             }
         }
         finally
@@ -266,6 +257,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             _semaphore.Release();
         }
     }
+
 
     protected override async ValueTask DisposeAsync(bool disposing)
     {
