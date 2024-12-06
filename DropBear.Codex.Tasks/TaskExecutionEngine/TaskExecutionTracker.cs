@@ -99,6 +99,8 @@ public sealed class TaskExecutionTracker
     ///     Sets the total number of tasks to be tracked. This value cannot be updated after tasks have started executing.
     /// </summary>
     /// <param name="count">The total number of tasks.</param>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if the count is negative.</exception>
+    /// <exception cref="InvalidOperationException">Thrown if tasks have already started executing.</exception>
     public void SetTotalTaskCount(int count)
     {
         if (count < 0)
@@ -117,6 +119,26 @@ public sealed class TaskExecutionTracker
             _stats.TotalTasks = count;
         }
     }
+
+    /// <summary>
+    ///     Gets a summary of task durations and statuses.
+    /// </summary>
+    /// <returns>A dictionary of task names with their durations and statuses.</returns>
+    public IReadOnlyDictionary<string, (TimeSpan? Duration, bool Status)> GetTaskSummaries()
+    {
+        var summaries = new Dictionary<string, (TimeSpan? Duration, bool Status)>(StringComparer.Ordinal);
+
+        foreach (var taskName in _taskStatus.Keys)
+        {
+            // Retrieve the duration if available, otherwise set it to null
+            _stats.TaskDurations.TryGetValue(taskName, out var duration);
+
+            summaries[taskName] = (duration, _taskStatus.GetValueOrDefault(taskName));
+        }
+
+        return summaries;
+    }
+
 
     /// <summary>
     ///     Resets the tracker, clearing all task-related data and statistics.

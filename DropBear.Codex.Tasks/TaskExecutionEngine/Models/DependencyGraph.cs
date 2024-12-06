@@ -33,8 +33,8 @@ public sealed class DependencyGraph
 
     public bool HasCycle()
     {
-        var visited = new HashSet<string>();
-        var recursionStack = new HashSet<string>();
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var recursionStack = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var task in _dependencies.Keys)
         {
@@ -80,12 +80,12 @@ public sealed class DependencyGraph
     // Additional helper methods that could be useful
     public IReadOnlySet<string> GetDependencies(string task)
     {
-        return _dependencies.TryGetValue(task, out HashSet<string>? deps) ? deps : new HashSet<string>();
+        return _dependencies.TryGetValue(task, out HashSet<string>? deps) ? deps : new HashSet<string>(StringComparer.Ordinal);
     }
 
     public IReadOnlySet<string> GetDependents(string task)
     {
-        return _dependents.TryGetValue(task, out HashSet<string>? deps) ? deps : new HashSet<string>();
+        return _dependents.TryGetValue(task, out HashSet<string>? deps) ? deps : new HashSet<string>(StringComparer.Ordinal);
     }
 
     public bool HasDependencies(string task)

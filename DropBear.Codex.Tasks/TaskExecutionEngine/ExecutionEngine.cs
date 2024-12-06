@@ -25,6 +25,8 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 public sealed class ExecutionEngine
 {
     private readonly Guid _channelId;
+
+    private readonly TaskExecutionTracker _executionTracker = new();
     private readonly ILogger _logger;
     private readonly ExecutionOptions _options;
     private readonly IAsyncPublisher<Guid, TaskProgressMessage> _progressPublisher;
@@ -36,22 +38,20 @@ public sealed class ExecutionEngine
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
     private DependencyGraph _dependencyGraph = new();
 
-    private TaskExecutionTracker _executionTracker = new();
-
     // Add a private backing field for IsExecuting
     private volatile bool _isExecuting;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ExecutionEngine" /> class.
     /// </summary>
-    /// <param name="channelId"> The channel ID for keyed pub/sub </param>
+    /// <param name="channelId">The channel ID for keyed pub/sub.</param>
     /// <param name="options">The execution options.</param>
-    /// <param name="scopeFactory">The scope factory for the execution engine to use.</param>
+    /// <param name="scopeFactory">The scope factory for creating DI scopes.</param>
     /// <param name="progressPublisher">The publisher for task progress messages.</param>
     /// <param name="taskStartedPublisher">The publisher for task started messages.</param>
     /// <param name="taskCompletedPublisher">The publisher for task completed messages.</param>
     /// <param name="taskFailedPublisher">The publisher for task failed messages.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any of the required parameters are null.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when any required parameter is null.</exception>
     public ExecutionEngine(
         Guid channelId,
         IOptions<ExecutionOptions> options,
@@ -61,6 +61,7 @@ public sealed class ExecutionEngine
         IAsyncPublisher<Guid, TaskCompletedMessage> taskCompletedPublisher,
         IAsyncPublisher<Guid, TaskFailedMessage> taskFailedPublisher)
     {
+        // Validate parameters
         _channelId = channelId;
         _options = options.Value ?? throw new ArgumentNullException(nameof(options));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
@@ -69,8 +70,10 @@ public sealed class ExecutionEngine
         _taskCompletedPublisher =
             taskCompletedPublisher ?? throw new ArgumentNullException(nameof(taskCompletedPublisher));
         _taskFailedPublisher = taskFailedPublisher ?? throw new ArgumentNullException(nameof(taskFailedPublisher));
+
         _logger = LoggerFactory.Logger.ForContext<ExecutionEngine>();
     }
+
 
     /// <summary>
     ///     Gets a value indicating whether the execution engine is currently executing tasks.
@@ -80,91 +83,81 @@ public sealed class ExecutionEngine
     /// <summary>
     ///     Clears all tasks from the execution engine.
     /// </summary>
-    /// <returns>A Result indicating the success or failure of the operation.</returns>
+    /// <returns>A result indicating the success or failure of the operation.</returns>
     public Result<Unit, TaskExecutionError> ClearTasks()
     {
-        try
+        if (_isExecuting)
         {
-            if (_isExecuting)
-            {
-                _logger.Warning("Cannot clear tasks while execution is in progress.");
-                return Result<Unit, TaskExecutionError>.Failure(
-                    new TaskExecutionError("Cannot clear tasks while execution is in progress"));
-            }
+            _logger.Warning("Cannot clear tasks while execution is in progress.");
+            return Result<Unit, TaskExecutionError>.Failure(
+                new TaskExecutionError("Cannot clear tasks while execution is in progress"));
+        }
 
-            if (_tasks.Count == 0)
-            {
-                _logger.Debug("No tasks to clear from the execution engine.");
-                return Result<Unit, TaskExecutionError>.Success(Unit.Value);
-            }
-
-            var taskCount = _tasks.Count;
-            _tasks.Clear();
-            _dependencyGraph = new DependencyGraph(); // Reset dependency graph
-            _executionTracker = new TaskExecutionTracker(); // Reset execution tracker
-
-            _logger.Information("Cleared {Count} tasks from the execution engine.", taskCount);
+        if (!_tasks.Any())
+        {
+            _logger.Debug("No tasks to clear from the execution engine.");
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to clear tasks from the execution engine.");
-            return Result<Unit, TaskExecutionError>.Failure(
-                new TaskExecutionError("Failed to clear tasks", null, ex));
-        }
+
+        // Reset internal state
+        ResetEngineState();
+
+        _logger.Information("Cleared all tasks from the execution engine.");
+        return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
 
     /// <summary>
-    ///     Reports progress for the current task execution.
+    ///     Resets the internal state of the execution engine.
     /// </summary>
-    /// <param name="taskName">The name of the task reporting progress.</param>
-    /// <param name="progress">The progress percentage value between 0 and 100.</param>
+    private void ResetEngineState()
+    {
+        _tasks.Clear();
+        _dependencyGraph = new DependencyGraph();
+        _executionTracker.Reset();
+    }
+
+
+    /// <summary>
+    ///     Reports progress for a task currently being executed.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <param name="progress">Progress percentage (0-100).</param>
     /// <param name="message">Optional message describing the progress state.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>A task representing the asynchronous operation.</returns>
-    /// <exception cref="ArgumentException">Thrown when <paramref name="taskName" /> is null or whitespace.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the execution engine is not currently executing.</exception>
     public async Task ReportProgressAsync(
         string taskName,
         double progress,
         string? message = null,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(taskName))
-        {
-            throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
-        }
+        ValidateTaskName(taskName);
 
         if (!_isExecuting)
         {
-            throw new InvalidOperationException("Cannot report progress when execution engine is not running.");
+            _logger.Warning("Cannot report progress when the execution engine is not running.");
+            return;
         }
 
         try
         {
             progress = Math.Clamp(progress, 0, 100);
+            var stats = _executionTracker.GetStats();
 
-            // Ensure total tasks are properly initialized
-            var completedTasks = _executionTracker.GetStats().CompletedTasks;
-            var totalTasks = _executionTracker.GetStats().TotalTasks;
-
-            if (totalTasks == 0)
+            if (stats.TotalTasks == 0)
             {
                 _logger.Error("Total tasks are not initialized. Unable to report progress.");
                 return;
             }
 
-            await _progressPublisher.PublishAsync(
-                _channelId,
-                new TaskProgressMessage(
-                    taskName,
-                    progress,
-                    completedTasks,
-                    totalTasks,
-                    TaskStatus.InProgress,
-                    message ?? $"Task '{taskName}' progress: {progress:F1}%"),
-                cancellationToken
-            ).ConfigureAwait(false);
+            var progressMessage = new TaskProgressMessage(
+                taskName,
+                progress,
+                stats.CompletedTasks,
+                stats.TotalTasks,
+                TaskStatus.InProgress,
+                message ?? $"Task '{taskName}' progress: {progress:F1}%");
+
+            await _progressPublisher.PublishAsync(_channelId, progressMessage, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -174,49 +167,59 @@ public sealed class ExecutionEngine
 
 
     /// <summary>
-    ///     Validates a task before execution.
+    ///     Validates that the provided task name is not null or empty.
     /// </summary>
+    private void ValidateTaskName(string taskName)
+    {
+        if (string.IsNullOrWhiteSpace(taskName))
+        {
+            throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
+        }
+    }
+
+
+    /// <summary>
+    ///     Validates a task before execution, including conditions and custom validations.
+    /// </summary>
+    /// <param name="task">The task to validate.</param>
+    /// <param name="executionScope">The execution scope.</param>
+    /// <returns>A result indicating success or failure of validation.</returns>
     private async Task<Result<Unit, TaskExecutionError>> ValidateTaskAsync(
         ITask task,
         TaskExecutionScope executionScope)
     {
-        try
+        // Perform asynchronous validation
+        if (task is IAsyncValidatable asyncValidatable && !await asyncValidatable.ValidateAsync().ConfigureAwait(false))
         {
-            // Validate IAsyncValidatable tasks
-            if (task is IAsyncValidatable asyncValidatable)
-            {
-                if (!await asyncValidatable.ValidateAsync().ConfigureAwait(false))
-                {
-                    _logger.Warning("Async validation failed for task '{TaskName}'.", task.Name);
-                    return Result<Unit, TaskExecutionError>.Failure(
-                        new TaskExecutionError("Task validation failed", task.Name));
-                }
-            }
-
-            // Validate ITask tasks
-            if (!task.Validate())
-            {
-                _logger.Warning("Validation failed for task '{TaskName}'.", task.Name);
-                return Result<Unit, TaskExecutionError>.Failure(
-                    new TaskExecutionError("Task validation failed", task.Name));
-            }
-
-            // Check conditions
-            if (task.Condition != null && !task.Condition(executionScope.Context))
-            {
-                _logger.Information("Skipping task '{TaskName}' due to condition.", task.Name);
-                return Result<Unit, TaskExecutionError>.PartialSuccess(
-                    Unit.Value,
-                    new TaskExecutionError("Task skipped due to condition", task.Name));
-            }
-
-            return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+            return LogValidationFailure(task.Name, "Async validation failed");
         }
-        catch (Exception ex)
+
+        // Perform synchronous validation
+        if (!task.Validate())
         {
-            return Result<Unit, TaskExecutionError>.Failure(
-                new TaskExecutionError("Task validation threw an exception", task.Name, ex));
+            return LogValidationFailure(task.Name, "Validation failed");
         }
+
+        // Check conditional execution
+        if (task.Condition != null && !task.Condition(executionScope.Context))
+        {
+            _logger.Information("Skipping task '{TaskName}' due to condition.", task.Name);
+            return Result<Unit, TaskExecutionError>.PartialSuccess(
+                Unit.Value,
+                new TaskExecutionError("Task skipped due to condition", task.Name));
+        }
+
+        return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+    }
+
+    /// <summary>
+    ///     Logs a validation failure and returns a failure result.
+    /// </summary>
+    private Result<Unit, TaskExecutionError> LogValidationFailure(string taskName, string reason)
+    {
+        _logger.Warning("{Reason} for task '{TaskName}'.", reason, taskName);
+        return Result<Unit, TaskExecutionError>.Failure(
+            new TaskExecutionError(reason, taskName));
     }
 
 
@@ -376,35 +379,44 @@ public sealed class ExecutionEngine
     }
 
 
+    /// <summary>
+    ///     Visits a task during dependency resolution to ensure no cycles exist and resolves dependencies.
+    /// </summary>
+    /// <param name="task">The task being visited.</param>
+    /// <param name="visited">A dictionary to track visitation status of tasks.</param>
+    /// <param name="sortedTasks">The sorted list of tasks for execution.</param>
+    /// <returns>A result indicating success or failure.</returns>
     private async Task<Result<Unit, TaskExecutionError>> VisitAsync(
         ITask task,
         Dictionary<string, bool> visited,
         List<ITask> sortedTasks)
     {
-        if (visited.TryGetValue(task.Name, out var inProcess))
+        if (visited.TryGetValue(task.Name, out var isInProcess))
         {
-            if (inProcess)
+            // Circular dependency detected
+            if (isInProcess)
             {
-                return Result<Unit, TaskExecutionError>.Failure(
-                    new TaskExecutionError("Circular dependency detected", task.Name));
+                return LogDependencyResolutionError(
+                    $"Circular dependency detected for task '{task.Name}'.",
+                    task.Name);
             }
 
+            // Task already resolved
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
 
-        visited[task.Name] = true;
+        visited[task.Name] = true; // Mark as in process
 
         foreach (var dependencyName in task.Dependencies)
         {
-            var dependencyTask = _tasks.Find(t =>
+            var dependencyTask = _tasks.FirstOrDefault(t =>
                 string.Equals(t.Name, dependencyName, StringComparison.Ordinal));
 
             if (dependencyTask == null)
             {
-                return Result<Unit, TaskExecutionError>.Failure(
-                    new TaskExecutionError(
-                        $"Task '{task.Name}' depends on unknown task '{dependencyName}'",
-                        task.Name));
+                return LogDependencyResolutionError(
+                    $"Task '{task.Name}' depends on an unknown task '{dependencyName}'.",
+                    task.Name);
             }
 
             var visitResult = await VisitAsync(dependencyTask, visited, sortedTasks).ConfigureAwait(false);
@@ -414,7 +426,7 @@ public sealed class ExecutionEngine
             }
         }
 
-        visited[task.Name] = false;
+        visited[task.Name] = false; // Mark as resolved
         if (!sortedTasks.Contains(task))
         {
             sortedTasks.Add(task);
@@ -422,6 +434,16 @@ public sealed class ExecutionEngine
 
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
+
+    /// <summary>
+    ///     Logs and returns a dependency resolution error.
+    /// </summary>
+    private Result<Unit, TaskExecutionError> LogDependencyResolutionError(string message, string taskName)
+    {
+        _logger.Error(message);
+        return Result<Unit, TaskExecutionError>.Failure(new TaskExecutionError(message, taskName));
+    }
+
 
     private async Task<Result<Unit, TaskExecutionError>> ExecuteTasksAsync(
         List<ITask> tasks,
