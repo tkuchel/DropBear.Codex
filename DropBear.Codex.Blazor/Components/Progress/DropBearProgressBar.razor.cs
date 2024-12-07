@@ -13,7 +13,7 @@ namespace DropBear.Codex.Blazor.Components.Progress;
 public sealed partial class DropBearProgressBar : DropBearComponentBase
 {
     private readonly string _progressId;
-    private readonly SemaphoreSlim _updateLock = new(1, 1);
+    private readonly SemaphoreSlim? _updateLock = new(1, 1);
     private bool _isDisposed;
     private bool _isIndeterminate;
     private bool _isInitialized;
@@ -47,7 +47,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             if (_taskProgress != value)
             {
                 _taskProgress = value;
-                StateHasChanged();
+                InvokeAsync(StateHasChanged);
             }
         }
     }
@@ -61,7 +61,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             if (_overallProgress != value)
             {
                 _overallProgress = value;
-                StateHasChanged();
+                InvokeAsync(StateHasChanged);
             }
         }
     }
@@ -100,7 +100,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         try
         {
-            await _updateLock?.WaitAsync();
+            await _updateLock?.WaitAsync()!;
 
             if (!_isInitialized)
             {
@@ -129,7 +129,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         try
         {
-            await _updateLock?.WaitAsync();
+            await _updateLock?.WaitAsync()!;
 
             if (!_isInitialized)
             {
