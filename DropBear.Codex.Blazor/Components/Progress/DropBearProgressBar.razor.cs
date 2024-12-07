@@ -116,7 +116,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             TaskProgress = Math.Clamp(taskProgress, 0, 100);
             OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
             await ProgressChanged.InvokeAsync(OverallProgress);
-            StateHasChanged();
+            InvokeAsync(StateHasChanged);
         }
         finally
         {
