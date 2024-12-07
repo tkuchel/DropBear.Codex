@@ -100,7 +100,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         try
         {
-            await _updateLock.WaitAsync();
+            await _updateLock?.WaitAsync();
 
             if (!_isInitialized)
             {
@@ -120,7 +120,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
         finally
         {
-            _updateLock.Release();
+            _updateLock?.Release();
         }
     }
 
@@ -129,7 +129,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         try
         {
-            await _updateLock.WaitAsync();
+            await _updateLock?.WaitAsync();
 
             if (!_isInitialized)
             {
@@ -144,7 +144,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
         finally
         {
-            _updateLock.Release();
+            _updateLock?.Release();
         }
     }
 
