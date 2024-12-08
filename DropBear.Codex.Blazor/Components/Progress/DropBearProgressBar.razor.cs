@@ -104,11 +104,11 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
             if (!_isInitialized)
             {
-                await InvokeAsync(() =>
+                await InvokeAsync(async () =>
                 {
                     TaskProgress = Math.Clamp(taskProgress, 0, 100);
                     OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
-                    StateHasChanged();
+                    await InvokeAsync(StateHasChanged);
                 });
                 return;
             }
@@ -116,7 +116,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             TaskProgress = Math.Clamp(taskProgress, 0, 100);
             OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
             await ProgressChanged.InvokeAsync(OverallProgress);
-            InvokeAsync(StateHasChanged);
+            await InvokeAsync(StateHasChanged);
         }
         finally
         {
