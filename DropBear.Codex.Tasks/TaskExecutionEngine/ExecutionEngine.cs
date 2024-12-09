@@ -400,28 +400,40 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// <param name="context">The execution context containing progress information.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    private async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
+    public async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            _logger.Warning("Skipping progress update: Execution engine disposed.");
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
         try
         {
+            // Fetch and publish progress updates
             context.IncrementCompletedTaskCount();
             await _progressPublisher.PublishAsync(
                 _channelId,
                 new TaskProgressMessage(
                     task.Name,
                     null, // TaskProgressPercentage
-                    context.CompletedTaskCount, // OverallCompletedTasks
-                    context.TotalTaskCount, // OverallTotalTasks
+                    context.CompletedTaskCount,
+                    context.TotalTaskCount,
                     TaskStatus.InProgress,
                     $"Task '{task.Name}' execution progress."
                 ),
                 cancellationToken
             ).ConfigureAwait(false);
         }
+        catch (OperationCanceledException)
+        {
+            _logger.Debug("Progress update canceled for task '{TaskName}'", task.Name);
+        }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to update progress for task '{TaskName}'", task.Name);
-            // We don't want to fail the task execution just because progress update failed
         }
     }
 

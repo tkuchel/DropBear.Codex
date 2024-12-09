@@ -207,6 +207,12 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     public async Task UpdateStepStatusAsync(string stepName, StepStatus status)
     {
+        if (_isDisposed)
+        {
+            Logger.Debug("Skipping step status update: Progress bar disposed.");
+            return;
+        }
+
         try
         {
             await _updateLock!.WaitAsync();
