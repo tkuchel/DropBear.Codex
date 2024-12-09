@@ -159,7 +159,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 await StepCompleted.InvokeAsync(step);
             }
 
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
     }
 
