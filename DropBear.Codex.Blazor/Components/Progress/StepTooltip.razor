@@ -1,0 +1,31 @@
+﻿@using DropBear.Codex.Blazor.Enums
+@using DropBear.Codex.Blazor.Models
+<div class="step-tooltip">
+    <div class="tooltip-content">
+        <div class="tooltip-status">
+            @switch (Step.Status)
+            {
+                case StepStatus.Completed:
+                    <i class="icon-check text-emerald-500"></i>
+                    break;
+                case StepStatus.Active:
+                    <i class="icon-clock text-teal-500 animate-spin"></i>
+                    break;
+                case StepStatus.Error:
+                    <i class="icon-alert text-red-500"></i>
+                    break;
+            }
+            <span class="tooltip-detail">@Step.Detail</span>
+        </div>
+        @if (Step.Duration.HasValue)
+        {
+            <div class="tooltip-duration">
+                Duration: @Step.Duration.Value.TotalSeconds.ToString("F1")s
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public required ProgressStep Step { get; set; }
+}

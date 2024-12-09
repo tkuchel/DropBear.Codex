@@ -15,6 +15,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 {
     private readonly string _progressId;
     private readonly SemaphoreSlim? _updateLock = new(1, 1);
+    private ProgressStep? _hoveredStep;
     private bool _isDisposed;
     private bool _isIndeterminate;
     private bool _isInitialized;
@@ -60,6 +61,69 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 InvokeAsync(StateHasChanged);
             }
         }
+    }
+
+    private void OnStepHover(ProgressStep step)
+    {
+        _hoveredStep = step;
+        StateHasChanged();
+    }
+
+    private string GetStepIcon(ProgressStep step)
+    {
+        return step.Type switch
+        {
+            StepType.Users => "icon-users",
+            StepType.Files => "icon-file-text",
+            StepType.Database => "icon-database",
+            _ => "icon-circle"
+        };
+    }
+
+    private string GetProgressClass()
+    {
+        return Type switch
+        {
+            ProgressBarType.Indeterminate => "indeterminate",
+            ProgressBarType.Stepped => "with-steps",
+            _ => "standard"
+        };
+    }
+
+    private string GetStepClass(ProgressStep step)
+    {
+        var classes = new List<string>();
+
+        // Add status-based classes
+        switch (step.Status)
+        {
+            case StepStatus.Active:
+                classes.Add("active");
+                break;
+            case StepStatus.Completed:
+                classes.Add("completed");
+                classes.Add("success");
+                break;
+            case StepStatus.Warning:
+                classes.Add("completed");
+                classes.Add("warning");
+                break;
+            case StepStatus.Error:
+                classes.Add("completed");
+                classes.Add("error");
+                break;
+            case StepStatus.NotStarted:
+                classes.Add("pending");
+                break;
+        }
+
+        // Add animation class if it's the current step
+        if (step.Status == StepStatus.Active)
+        {
+            classes.Add("animate-step");
+        }
+
+        return string.Join(" ", classes);
     }
 
     protected override async Task OnInitializedAsync()

@@ -1,252 +1,201 @@
-/* Root Container & Variables */
+/* Root Container */
 .dropbear-progress-container {
-  --progress-height: 0.3rem;
-  --progress-bg: var(--clr-surface-secondary, #343639);
+  --progress-height: 0.125rem;
+  --step-progress-height: 0.5rem;
   --progress-color: var(--clr-viking, #62dbc8);
+  --progress-bg: var(--clr-surface-secondary, #343639);
   --progress-success: var(--clr-success, #7cd651);
-  --progress-warning: var(--clr-warning, #ffd14d);
   --progress-error: var(--clr-error, #ff5757);
-  --progress-radius: 0.25rem;
-  --progress-transition: all 0.3s ease-in-out;
-  --step-indicator-size: 0.75rem;
-  --step-indicator-border: 2px;
-  --card-padding: 1.5rem;
+  --progress-warning: var(--clr-warning, #ffd14d);
+  --transition-speed: 300ms;
 
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
   max-width: 48rem;
   margin: 0 auto;
+  padding: 1.5rem;
   background: var(--clr-surface-primary, #1e1f22);
-  border: 1px solid var(--clr-border, #343639);
   border-radius: 0.5rem;
-  padding: var(--card-padding);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--clr-border, #343639);
 }
 
-.dropbear-progress-container:hover {
-  border-color: var(--clr-border-hover, #4e5055);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-/* Basic Progress Bar Styles */
-.dropbear-progress {
-  width: 100%;
-  position: relative;
-}
-
-.progress-bar-wrapper {
-  width: 100%;
-  height: var(--progress-height);
-  background-color: var(--progress-bg);
-  border-radius: var(--progress-radius);
-  overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
-}
-
-.progress-bar {
-  height: 100%;
-  width: 0;
-  background-color: var(--progress-color);
-  border-radius: var(--progress-radius);
-  transition: var(--progress-transition);
-  position: relative;
-  box-shadow: 0 -1px 1px rgba(0, 0, 0, 0.1) inset;
-}
-
-/* Progress Bar Variants */
-.overall-progress-bar {
-  background-color: var(--progress-success);
-}
-
-.task-progress-bar {
-  background-color: var(--progress-color);
-}
-
-/* Stepped Progress Window */
-.step-window {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  overflow: hidden;
-  position: relative;
-  padding: 1rem 0;
-}
-
-/* Step Container */
-.progress-steps {
+/* Header Section */
+.progress-header {
   display: flex;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.progress-label {
+  font-size: 0.875rem;
+  color: var(--clr-text-secondary);
+}
+
+.step-counter {
+  font-size: 0.875rem;
+  color: var(--clr-text-secondary);
+}
+
+/* Overall Progress Bar */
+.progress-bar-overall {
   position: relative;
+  height: var(--progress-height);
+  margin-bottom: 2rem;
+}
+
+.progress-bar-track {
+  position: absolute;
+  inset: 0;
+  background-color: var(--progress-bg);
+  border-radius: 9999px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background-color: var(--progress-color);
+  opacity: 0.3;
+  transition: width var(--transition-speed) ease-out;
+}
+
+/* Steps Section */
+.progress-steps {
+  position: relative;
+}
+
+.step-window {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
 }
 
 /* Individual Step */
 .step {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0 1.5rem;
+  flex: 1;
   position: relative;
-  transition: var(--progress-transition);
-  animation: slideIn 0.3s ease-out;
+  transition: all var(--transition-speed) ease-out;
 }
 
-/* Step Indicator */
-.step-indicator {
-  width: var(--step-indicator-size);
-  height: var(--step-indicator-size);
-  border-radius: 50%;
+.step.active {
+  transform: scale(1.05);
+}
+
+.step.completed {
+  opacity: 0.6;
+}
+
+.step.completed:hover {
+  opacity: 1;
+}
+
+.step:not(.active):not(.completed) {
+  opacity: 0.4;
+}
+
+/* Step Progress Bar */
+.step-progress {
+  height: var(--step-progress-height);
   background-color: var(--progress-bg);
-  border: var(--step-indicator-border) solid var(--progress-bg);
-  transition: var(--progress-transition);
-  position: relative;
-  z-index: 3;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 1rem;
 }
 
-/* Step Labels */
+.step-progress-bar {
+  height: 100%;
+  background: linear-gradient(to right, var(--progress-color), var(--progress-success));
+  transition: width var(--transition-speed) ease-out;
+  position: relative;
+}
+
+/* Step Content */
+.step-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .step-label {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  text-align: center;
-  transition: var(--progress-transition);
+  font-size: 0.875rem;
+  transition: color var(--transition-speed) ease-out;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .step-current {
-  font-size: 0.875rem;
+  color: var(--progress-color);
   font-weight: 500;
-  color: var(--clr-text-primary);
 }
 
 .step-previous,
 .step-next {
   color: var(--clr-text-secondary);
-  opacity: 0.8;
 }
 
-/* Step States */
-.step.active .step-indicator {
-  width: 1rem;
-  height: 1rem;
-  background-color: transparent;
-  border-color: var(--progress-color);
-  animation: pulse 2s infinite;
-}
-
-.step.completed .step-indicator {
-  background-color: var(--progress-success);
-  border-color: var(--progress-success);
-}
-
-/* Step Status Colors */
-.step.completed.success .step-indicator {
-  background-color: var(--progress-success);
-}
-
-.step.completed.warning .step-indicator {
-  background-color: var(--progress-warning);
-}
-
-.step.completed.error .step-indicator {
-  background-color: var(--progress-error);
-}
-
-/* Connecting Lines */
-.step-window::before {
-  content: '';
+/* Tooltip */
+.step-tooltip {
   position: absolute;
-  top: calc(1rem + var(--step-indicator-size) / 2);
-  left: 25%;
-  right: 25%;
-  height: var(--step-indicator-border);
-  background-color: var(--progress-bg);
-  z-index: 1;
-}
-
-.step::after {
-  content: '';
-  position: absolute;
-  top: calc(var(--step-indicator-size) / 2);
-  left: calc(var(--step-indicator-size) / 2);
-  right: calc(var(--step-indicator-size) / 2);
-  height: var(--step-indicator-border);
-  background-color: var(--progress-bg);
-  z-index: 1;
-  transition: var(--progress-transition);
-}
-
-/* Progress Labels */
-.progress-label,
-.step-counter {
+  top: 100%;
+  left: 0;
   margin-top: 0.5rem;
+  padding: 0.75rem;
+  background-color: var(--clr-surface-secondary);
+  border-radius: 0.375rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  width: 12rem;
+  z-index: 10;
+}
+
+.tooltip-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tooltip-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tooltip-detail {
+  font-size: 0.875rem;
+  color: var(--clr-text-secondary);
+}
+
+.tooltip-duration {
   font-size: 0.75rem;
   color: var(--clr-text-secondary);
-  text-align: right;
 }
 
 /* Animations */
-@keyframes slideIn {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 0 6px rgba(98, 219, 200, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0);
-  }
-}
-
-@keyframes glow {
+@keyframes shimmer {
   100% {
     transform: translateX(100%);
   }
 }
 
-/* Indeterminate Progress Bar */
-.dropbear-progress.indeterminate .progress-bar {
-  width: 100%;
-  transform: translateX(-100%);
+.progress-glow {
+  position: absolute;
+  inset: 0;
   background: linear-gradient(
-    90deg,
+    to right,
     transparent,
-    var(--progress-color) 20%,
-    var(--progress-color) 80%,
+    rgba(255, 255, 255, 0.1),
     transparent
   );
-  animation: indeterminate 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+  transform: translateX(-100%);
+  animation: shimmer 2s infinite;
 }
 
-@keyframes indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(100%);
-  }
+/* Status-specific styles */
+.step.error .step-progress-bar {
+  background: linear-gradient(to right, var(--progress-error), #ff8080);
 }
 
-.indeterminate .progress-label {
-  animation: fadeInOut 2s infinite;
-}
-
-@keyframes fadeInOut {
-  0%, 100% {
-    opacity: 0.7;
-  }
-  50% {
-    opacity: 1;
-  }
+.step.warning .step-progress-bar {
+  background: linear-gradient(to right, var(--progress-warning), #ffe4a3);
 }

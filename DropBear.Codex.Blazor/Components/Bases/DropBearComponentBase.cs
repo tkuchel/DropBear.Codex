@@ -1,6 +1,9 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Extensions;
+using DropBear.Codex.Blazor.Interfaces;
+using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.JSInterop;
@@ -19,6 +22,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     private readonly CancellationTokenSource _circuitCts = new();
     private CircuitHandler? _circuitHandler;
     private bool? _isConnected;
+    private ValidationResult _validationResult;
 
     /// <summary>
     ///     Gets or sets the JS Runtime instance.
@@ -31,6 +35,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// </summary>
     [Inject]
     protected ILogger Logger { get; set; } = default!;
+
+    [Inject] protected ISnackbarService SnackbarService { get; set; } = default!;
 
     /// <summary>
     ///     Gets the unique identifier for the component instance.
@@ -308,6 +314,31 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         return Task.CompletedTask;
     }
 
+    private async Task ShowErrorSnackbar(string message)
+    {
+        await SnackbarService.ShowError("Error", message);
+    }
+
+    private async Task ShowSuccessSnackbar(string message)
+    {
+        await SnackbarService.ShowSuccess("Success", message);
+    }
+
+    private async Task ShowInfoSnackbar(string message)
+    {
+        await SnackbarService.ShowInformation("Info", message);
+    }
+
+    private async Task ShowValidationErrors()
+    {
+        if (_validationResult != null)
+        {
+            var errorMessages = string.Join("\n",
+                _validationResult.Errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"));
+            await ShowErrorSnackbar($"Please correct the following errors:\n{errorMessages}");
+        }
+    }
+
     /// <summary>
     ///     Inner class that handles circuit events
     /// </summary>
@@ -349,4 +380,12 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             return Task.CompletedTask;
         }
     }
+
+    private async Task HandleExceptionAsync(Exception e, [CallerMemberName] string callerName = "")
+    {
+        Logger.Error(e, "Unexpected exception in method {Caller}. Error message: {Message}", callerName, e.Message);
+        await ShowErrorSnackbar("An unexpected error occurred. Please try again later.");
+        await InvokeAsync(StateHasChanged);
+    }
+
 }

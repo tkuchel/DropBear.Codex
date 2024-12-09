@@ -1143,42 +1143,39 @@
           throw new TypeError('Invalid element provided to ProgressBarManager');
         }
 
+        this._setupEventListeners();
         logger.debug(`Progress bar initialized: ${id}`);
       }
 
-      updateProgress(progress) {
-        if (this.isDisposed) return;
+      _setupEventListeners() {
+        // Add any global event listeners here
+        this.resizeObserver = new ResizeObserver(DropBearUtils.throttle(() => this._handleResize(), 100));
+
+        this.resizeObserver.observe(this.element);
+      }
+
+      updateProgress(taskProgress, overallProgress) {
+        if (this.isDisposed) return false;
 
         try {
           cancelAnimationFrame(this.animationFrame);
-          const progressBar = this.element.querySelector('.progress-bar');
-          if (progressBar) {
-            this.animationFrame = requestAnimationFrame(() => {
-              progressBar.style.width = `${progress}%`;
-            });
-          }
+
+          this.animationFrame = requestAnimationFrame(() => {
+            const progressBar = this.element.querySelector('.step.active .step-progress-bar');
+            if (progressBar) {
+              progressBar.style.width = `${taskProgress}%`;
+            }
+
+            const overallBar = this.element.querySelector('.progress-bar-fill');
+            if (overallBar) {
+              overallBar.style.width = `${overallProgress}%`;
+            }
+          });
+
+          return true;
         } catch (error) {
           logger.error(`Error updating progress for ${this.id}:`, error);
-        }
-      }
-
-      updateStepStatus(stepName, status) {
-        if (this.isDisposed) return;
-
-        try {
-          const step = Array.from(this.element.querySelectorAll('.step'))
-            .find(s => s.querySelector('.step-label').textContent === stepName);
-
-          if (step) {
-            step.className = `step ${this.getStepClass(status)}`;
-            step.setAttribute('data-status', status);
-
-            // Trigger animation
-            void step.offsetWidth; // Force reflow
-            step.classList.add('animate-step');
-          }
-        } catch (error) {
-          logger.error(`Error updating step status for ${this.id}:`, error);
+          return false;
         }
       }
 
@@ -1186,23 +1183,18 @@
         if (this.isDisposed) return false;
 
         try {
-          const stepWindow = this.element.querySelector('.step-window');
-          if (!stepWindow) return false;
-
           cancelAnimationFrame(this.animationFrame);
 
           this.animationFrame = requestAnimationFrame(() => {
-            const steps = stepWindow.querySelectorAll('.step');
+            const steps = this.element.querySelectorAll('.step');
             steps.forEach((step, index) => {
               const position = index - currentIndex + 1;
-
-              // Add transition class
-              step.classList.add('step-transition');
+              step.style.transition = `all ${ANIMATION_DURATION}ms ease-out`;
 
               if (position >= -1 && position <= 1) {
-                step.style.display = 'flex';
-                step.style.opacity = position === 0 ? '1' : '0.8';
-                step.style.transform = `translateX(${position * 100}%)`;
+                step.style.display = 'block';
+                step.style.opacity = position === 0 ? '1' : '0.6';
+                step.style.transform = position === 0 ? 'scale(1.05)' : 'scale(1)';
               } else {
                 step.style.display = 'none';
               }
@@ -1222,18 +1214,24 @@
         }
       }
 
-      getStepClass(status) {
-        switch (status) {
-          case 'Completed':
-            return 'completed success';
-          case 'Warning':
-            return 'completed warning';
-          case 'Error':
-            return 'completed error';
-          case 'Active':
-            return 'active';
-          default:
-            return '';
+      _handleResize() {
+        // Handle any responsive adjustments here
+        if (this.isDisposed) return;
+
+        try {
+          const containerWidth = this.element.offsetWidth;
+          const steps = this.element.querySelectorAll('.step');
+
+          steps.forEach(step => {
+            const label = step.querySelector('.step-label');
+            if (label && containerWidth < 768) {
+              label.style.maxWidth = `${containerWidth / steps.length - 40}px`;
+            } else if (label) {
+              label.style.maxWidth = '';
+            }
+          });
+        } catch (error) {
+          logger.error(`Error handling resize for ${this.id}:`, error);
         }
       }
 
@@ -1243,6 +1241,7 @@
         try {
           this.isDisposed = true;
           cancelAnimationFrame(this.animationFrame);
+          this.resizeObserver?.disconnect();
           this.dotNetRef = null;
           logger.debug(`Progress bar disposed: ${this.id}`);
         } catch (error) {
@@ -1251,6 +1250,7 @@
       }
     }
 
+    // Return the public API
     return {
       initialize(progressId, dotNetRef) {
         try {
@@ -1271,22 +1271,7 @@
 
       updateProgress(progressId, taskProgress, overallProgress) {
         const manager = progressBars.get(progressId);
-        if (!manager) return false;
-
-        manager.updateProgress(taskProgress);
-
-        if (overallProgress !== undefined) {
-          const overallBar = manager.element.querySelector('.overall-progress-bar');
-          if (overallBar) {
-            overallBar.style.width = `${overallProgress}%`;
-          }
-        }
-        return true;
-      },
-
-      updateStepStatus(progressId, stepName, status) {
-        const manager = progressBars.get(progressId);
-        return manager ? manager.updateStepStatus(stepName, status) : false;
+        return manager ? manager.updateProgress(taskProgress, overallProgress) : false;
       },
 
       updateStepDisplay(progressId, currentIndex, totalSteps) {
