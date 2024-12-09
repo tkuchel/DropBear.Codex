@@ -25,6 +25,7 @@ public sealed class SimpleTask : ITask
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         _executeAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
+        Metadata = new Dictionary<string, object>(StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -42,69 +43,61 @@ public sealed class SimpleTask : ITask
             execute(context);
             return Task.CompletedTask;
         };
+        Metadata = new Dictionary<string, object>(StringComparer.Ordinal);
     }
 
-    /// <summary>
-    ///     Gets the unique name of the task.
-    /// </summary>
+    /// <inheritdoc />
     public string Name { get; }
 
-    /// <summary>
-    ///     Gets or sets the condition that determines whether the task should execute.
-    ///     If the condition is null, the task will always execute.
-    /// </summary>
+    /// <inheritdoc />
     public Func<ExecutionContext, bool>? Condition { get; set; }
 
-    /// <summary>
-    ///     Gets or sets the maximum number of retry attempts in case of task failure.
-    /// </summary>
+    /// <inheritdoc />
     public int MaxRetryCount { get; set; } = 3;
 
-    /// <summary>
-    ///     Gets or sets the delay between retry attempts.
-    /// </summary>
+    /// <inheritdoc />
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
 
-    /// <summary>
-    ///     Gets or sets a value indicating whether to continue executing subsequent tasks even if this task fails.
-    /// </summary>
+    /// <inheritdoc />
     public bool ContinueOnFailure { get; set; } = false;
 
-    /// <summary>
-    ///     Gets a read-only list of task names that this task depends on.
-    /// </summary>
+    /// <inheritdoc />
     public IReadOnlyList<string> Dependencies => _dependencies.AsReadOnly();
 
-    /// <summary>
-    ///     Gets or sets the compensation action to execute if this task needs to be rolled back.
-    /// </summary>
-    public Func<ExecutionContext, Task>? CompensationActionAsync { get; set; }
+    /// <inheritdoc />
+    public Func<ExecutionContext, CancellationToken, Task>? CompensationActionAsync { get; set; }
 
-    /// <summary>
-    ///     Validates the task's configuration and returns a value indicating whether it is valid.
-    /// </summary>
-    /// <returns><c>true</c> if the task is valid; otherwise, <c>false</c>.</returns>
+    /// <inheritdoc />
+    public Dictionary<string, object> Metadata { get; set; }
+
+    /// <inheritdoc />
     public bool Validate()
     {
-        // Add any validation logic if necessary
+        if (string.IsNullOrWhiteSpace(Name))
+        {
+            return false;
+        }
+
+        if (MaxRetryCount < 0)
+        {
+            return false;
+        }
+
+        if (RetryDelay < TimeSpan.Zero)
+        {
+            return false;
+        }
+
         return true;
     }
 
-    /// <summary>
-    ///     Executes the task asynchronously within the given execution context.
-    /// </summary>
-    /// <param name="context">The execution context providing shared data and services.</param>
-    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
-    /// <returns>A task that represents the asynchronous operation.</returns>
+    /// <inheritdoc />
     public Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken)
     {
         return _executeAsync(context, cancellationToken);
     }
 
-    /// <summary>
-    ///     Executes the task synchronously within the given execution context.
-    /// </summary>
-    /// <param name="context">The execution context providing shared data and services.</param>
+    /// <inheritdoc />
     public void Execute(ExecutionContext context)
     {
         if (_execute != null)
@@ -113,15 +106,11 @@ public sealed class SimpleTask : ITask
         }
         else
         {
-            // If only asynchronous execution is provided, execute synchronously
             _executeAsync(context, CancellationToken.None).GetAwaiter().GetResult();
         }
     }
 
-    /// <summary>
-    ///     Adds a dependency to this task.
-    /// </summary>
-    /// <param name="dependency">The name of the task that this task depends on.</param>
+    /// <inheritdoc />
     public void AddDependency(string dependency)
     {
         if (string.IsNullOrWhiteSpace(dependency))
@@ -135,10 +124,7 @@ public sealed class SimpleTask : ITask
         }
     }
 
-    /// <summary>
-    ///     Sets the dependencies for this task, replacing any existing dependencies.
-    /// </summary>
-    /// <param name="dependencies">An enumerable of task names that this task depends on.</param>
+    /// <inheritdoc />
     public void SetDependencies(IEnumerable<string> dependencies)
     {
         if (dependencies == null)
@@ -151,5 +137,27 @@ public sealed class SimpleTask : ITask
         {
             AddDependency(dependency);
         }
+    }
+
+    /// <inheritdoc />
+    public void RemoveDependency(string dependency)
+    {
+        if (string.IsNullOrWhiteSpace(dependency))
+        {
+            throw new ArgumentException("Dependency cannot be null or whitespace.", nameof(dependency));
+        }
+
+        _dependencies.Remove(dependency);
+    }
+
+    /// <inheritdoc />
+    public bool HasDependency(string dependency)
+    {
+        if (string.IsNullOrWhiteSpace(dependency))
+        {
+            throw new ArgumentException("Dependency cannot be null or whitespace.", nameof(dependency));
+        }
+
+        return _dependencies.Contains(dependency, StringComparer.Ordinal);
     }
 }

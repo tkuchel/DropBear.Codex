@@ -11,6 +11,12 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 /// </summary>
 public sealed class TaskProgressMessage
 {
+    public TaskProgressMessage()
+    {
+        TaskName = string.Empty;
+        Message = string.Empty;
+    } // Parameterless constructor for object pooling
+
     /// <summary>
     ///     Initializes a new instance of the <see cref="TaskProgressMessage" /> class.
     /// </summary>
@@ -41,7 +47,7 @@ public sealed class TaskProgressMessage
         TaskName = taskName;
         TaskProgressPercentage = taskProgressPercentage;
         Status = status;
-        Message = message ?? string.Empty;
+        Message = message;
         OverallCompletedTasks = overallCompletedTasks;
         OverallTotalTasks = overallTotalTasks;
 
@@ -69,27 +75,27 @@ public sealed class TaskProgressMessage
     /// <summary>
     ///     Gets the name of the task.
     /// </summary>
-    public string TaskName { get; }
+    public string TaskName { get; private set; }
 
     /// <summary>
     ///     Gets the progress percentage of the individual task, if applicable.
     /// </summary>
-    public double? TaskProgressPercentage { get; }
+    public double? TaskProgressPercentage { get; private set; }
 
     /// <summary>
     ///     Gets the status of the task.
     /// </summary>
-    public TaskStatus Status { get; }
+    public TaskStatus Status { get; private set; }
 
     /// <summary>
     ///     Gets the number of overall tasks completed so far, if applicable.
     /// </summary>
-    public int? OverallCompletedTasks { get; }
+    public int? OverallCompletedTasks { get; private set; }
 
     /// <summary>
     ///     Gets the total number of overall tasks to be executed, if applicable.
     /// </summary>
-    public int? OverallTotalTasks { get; }
+    public int? OverallTotalTasks { get; private set; }
 
     /// <summary>
     ///     Gets the overall progress percentage, if applicable.
@@ -102,5 +108,21 @@ public sealed class TaskProgressMessage
     /// <summary>
     ///     Gets an optional message providing additional information.
     /// </summary>
-    public string Message { get; }
+    public string Message { get; private set; }
+
+    public void Initialize(
+        string taskName,
+        double? taskProgressPercentage,
+        int? overallCompletedTasks,
+        int? overallTotalTasks,
+        TaskStatus status,
+        string message = "")
+    {
+        TaskName = taskName;
+        TaskProgressPercentage = taskProgressPercentage;
+        OverallCompletedTasks = overallCompletedTasks;
+        OverallTotalTasks = overallTotalTasks;
+        Status = status;
+        Message = message;
+    }
 }

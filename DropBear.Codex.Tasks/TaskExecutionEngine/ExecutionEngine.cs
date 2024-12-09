@@ -4,11 +4,13 @@ using System.Collections.Concurrent;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.Errors;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using MessagePipe;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.ObjectPool;
 using Microsoft.Extensions.Options;
 using Polly;
 using Serilog;
@@ -24,6 +26,9 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// </summary>
 public sealed class ExecutionEngine
 {
+    private static readonly ObjectPool<TaskProgressMessage> ProgressMessagePool =
+        new DefaultObjectPoolProvider().Create(new DefaultPooledObjectPolicy<TaskProgressMessage>());
+
     private readonly Guid _channelId;
 
     private readonly TaskExecutionTracker _executionTracker = new();
@@ -34,12 +39,12 @@ public sealed class ExecutionEngine
     private readonly IAsyncPublisher<Guid, TaskCompletedMessage> _taskCompletedPublisher;
     private readonly IAsyncPublisher<Guid, TaskFailedMessage> _taskFailedPublisher;
 
-    private readonly List<ITask> _tasks = new();
+    private readonly ConcurrentDictionary<string, ITask> _tasks = new(StringComparer.Ordinal);
+
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
     private DependencyGraph _dependencyGraph = new();
 
-    // Add a private backing field for IsExecuting
-    private volatile bool _isExecuting;
+    private int _isExecuting; // Backing field for thread-safe boolean
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ExecutionEngine" /> class.
@@ -76,9 +81,21 @@ public sealed class ExecutionEngine
 
 
     /// <summary>
-    ///     Gets a value indicating whether the execution engine is currently executing tasks.
+    ///     Indicates whether the execution engine is currently executing tasks.
+    ///     Thread-safe using atomic operations.
     /// </summary>
-    public bool IsExecuting => _isExecuting;
+    private bool IsExecuting
+    {
+        get => Interlocked.CompareExchange(ref _isExecuting, 0, 0) == 1;
+        set => Interlocked.Exchange(ref _isExecuting, value ? 1 : 0);
+    }
+
+    /// <summary>
+    ///     Indicates whether the execution engine should execute tasks in parallel.
+    ///     Default is false to preserve existing behavior.
+    /// </summary>
+    public bool EnableParallelExecution { get; set; } = false;
+
 
     /// <summary>
     ///     Clears all tasks from the execution engine.
@@ -86,7 +103,7 @@ public sealed class ExecutionEngine
     /// <returns>A result indicating the success or failure of the operation.</returns>
     public Result<Unit, TaskExecutionError> ClearTasks()
     {
-        if (_isExecuting)
+        if (IsExecuting)
         {
             _logger.Warning("Cannot clear tasks while execution is in progress.");
             return Result<Unit, TaskExecutionError>.Failure(
@@ -132,11 +149,13 @@ public sealed class ExecutionEngine
     {
         ValidateTaskName(taskName);
 
-        if (!_isExecuting)
+        if (!IsExecuting)
         {
             _logger.Warning("Cannot report progress when the execution engine is not running.");
             return;
         }
+
+        cancellationToken.ThrowIfCancellationRequested();
 
         try
         {
@@ -149,15 +168,17 @@ public sealed class ExecutionEngine
                 return;
             }
 
-            var progressMessage = new TaskProgressMessage(
-                taskName,
-                progress,
-                stats.CompletedTasks,
-                stats.TotalTasks,
-                TaskStatus.InProgress,
-                message ?? $"Task '{taskName}' progress: {progress:F1}%");
+            var progressMessage = ProgressMessagePool.Get();
+            progressMessage.Initialize(taskName, progress, stats.CompletedTasks, stats.TotalTasks,
+                TaskStatus.InProgress, message ?? $"Task '{taskName}' execution progress.");
 
             await _progressPublisher.PublishAsync(_channelId, progressMessage, cancellationToken).ConfigureAwait(false);
+
+            ProgressMessagePool.Return(progressMessage);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warning("Progress reporting canceled for task '{TaskName}'.", taskName);
         }
         catch (Exception ex)
         {
@@ -188,19 +209,16 @@ public sealed class ExecutionEngine
         ITask task,
         TaskExecutionScope executionScope)
     {
-        // Perform asynchronous validation
         if (task is IAsyncValidatable asyncValidatable && !await asyncValidatable.ValidateAsync().ConfigureAwait(false))
         {
             return LogValidationFailure(task.Name, "Async validation failed");
         }
 
-        // Perform synchronous validation
         if (!task.Validate())
         {
             return LogValidationFailure(task.Name, "Validation failed");
         }
 
-        // Check conditional execution
         if (task.Condition != null && !task.Condition(executionScope.Context))
         {
             _logger.Information("Skipping task '{TaskName}' due to condition.", task.Name);
@@ -211,6 +229,7 @@ public sealed class ExecutionEngine
 
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
+
 
     /// <summary>
     ///     Logs a validation failure and returns a failure result.
@@ -228,11 +247,12 @@ public sealed class ExecutionEngine
     /// </summary>
     private async Task<Result<Unit, TaskExecutionError>> ExecuteCompensationAsync(
         ITask task,
-        TaskExecutionScope executionScope)
+        TaskExecutionScope executionScope,
+        CancellationToken cancellationToken)
     {
         try
         {
-            await task.CompensationActionAsync!(executionScope.Context).ConfigureAwait(false);
+            await task.CompensationActionAsync!(executionScope.Context, cancellationToken).ConfigureAwait(false);
             _logger.Information("Compensation action executed for task '{TaskName}'.", task.Name);
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
@@ -244,8 +264,9 @@ public sealed class ExecutionEngine
         }
     }
 
+
     /// <summary>
-    ///     Executes a task with retry logic using Polly.
+    ///     Executes a task with retry logic using Polly, including jitter for real-world scenarios.
     /// </summary>
     /// <param name="task">The task to execute.</param>
     /// <param name="executionScope">The execution scope containing context and services.</param>
@@ -262,8 +283,12 @@ public sealed class ExecutionEngine
                 .Handle<Exception>()
                 .WaitAndRetryAsync(
                     task.MaxRetryCount,
-                    attempt => TimeSpan.FromMilliseconds(task.RetryDelay.TotalMilliseconds *
-                                                         Math.Pow(2, attempt - 1)), // Exponential backoff
+                    attempt =>
+                    {
+                        var jitter = TimeSpan.FromMilliseconds(Random.Shared.Next(0, 100));
+                        return TimeSpan.FromMilliseconds(task.RetryDelay.TotalMilliseconds * Math.Pow(2, attempt - 1)) +
+                               jitter;
+                    },
                     (exception, duration, attemptNumber, context) =>
                     {
                         _logger.Warning(
@@ -331,23 +356,24 @@ public sealed class ExecutionEngine
     /// <summary>
     ///     Resolves task dependencies and returns a list of tasks in execution order.
     /// </summary>
+    /// <returns>A result containing the sorted list of tasks or an error.</returns>
     private async Task<Result<List<ITask>, TaskExecutionError>> ResolveDependenciesAsync()
     {
         try
         {
             var sortedTasks = new List<ITask>();
-            var visited = new Dictionary<string, bool>(StringComparer.Ordinal);
+            var visited = new Dictionary<string, TaskVisitState>(StringComparer.Ordinal);
 
-            foreach (var task in _tasks)
+            foreach (var taskPair in _tasks)
             {
+                var task = taskPair.Value;
+
                 foreach (var dependencyName in task.Dependencies)
                 {
-                    if (!_tasks.Exists(t => string.Equals(t.Name, dependencyName, StringComparison.Ordinal)))
+                    if (!_tasks.ContainsKey(dependencyName))
                     {
-                        _logger.Warning(
-                            "Task '{TaskName}' has an unresolved dependency: '{DependencyName}'.",
-                            task.Name,
-                            dependencyName);
+                        _logger.Warning("Task '{TaskName}' has an unresolved dependency: '{DependencyName}'.",
+                            task.Name, dependencyName);
                         return Result<List<ITask>, TaskExecutionError>.Failure(
                             new TaskExecutionError($"Unresolved dependency: '{dependencyName}'", task.Name));
                     }
@@ -356,14 +382,7 @@ public sealed class ExecutionEngine
                 var visitResult = await VisitAsync(task, visited, sortedTasks).ConfigureAwait(false);
                 if (!visitResult.IsSuccess)
                 {
-                    if (visitResult.Error != null)
-                    {
-                        return Result<List<ITask>, TaskExecutionError>.Failure(visitResult.Error);
-                    }
-
-                    return Result<List<ITask>, TaskExecutionError>.PartialSuccess(
-                        sortedTasks,
-                        new TaskExecutionError("Failed to resolve task dependencies"));
+                    return Result<List<ITask>, TaskExecutionError>.Failure(visitResult.Error);
                 }
             }
 
@@ -388,35 +407,31 @@ public sealed class ExecutionEngine
     /// <returns>A result indicating success or failure.</returns>
     private async Task<Result<Unit, TaskExecutionError>> VisitAsync(
         ITask task,
-        Dictionary<string, bool> visited,
+        Dictionary<string, TaskVisitState> visited,
         List<ITask> sortedTasks)
     {
-        if (visited.TryGetValue(task.Name, out var isInProcess))
+        if (visited.TryGetValue(task.Name, out var state))
         {
-            // Circular dependency detected
-            if (isInProcess)
+            if (state == TaskVisitState.Visiting)
             {
-                return LogDependencyResolutionError(
-                    $"Circular dependency detected for task '{task.Name}'.",
+                return LogDependencyResolutionError((string)$"Circular dependency detected for task '{task.Name}'.",
                     task.Name);
             }
 
-            // Task already resolved
-            return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+            if (state == TaskVisitState.Visited)
+            {
+                return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+            }
         }
 
-        visited[task.Name] = true; // Mark as in process
+        visited[task.Name] = TaskVisitState.Visiting;
 
         foreach (var dependencyName in task.Dependencies)
         {
-            var dependencyTask = _tasks.FirstOrDefault(t =>
-                string.Equals(t.Name, dependencyName, StringComparison.Ordinal));
-
-            if (dependencyTask == null)
+            if (!_tasks.TryGetValue(dependencyName, out var dependencyTask))
             {
                 return LogDependencyResolutionError(
-                    $"Task '{task.Name}' depends on an unknown task '{dependencyName}'.",
-                    task.Name);
+                    (string)$"Task '{task.Name}' depends on an unknown task '{dependencyName}'.", task.Name);
             }
 
             var visitResult = await VisitAsync(dependencyTask, visited, sortedTasks).ConfigureAwait(false);
@@ -426,7 +441,8 @@ public sealed class ExecutionEngine
             }
         }
 
-        visited[task.Name] = false; // Mark as resolved
+        visited[task.Name] = TaskVisitState.Visited;
+
         if (!sortedTasks.Contains(task))
         {
             sortedTasks.Add(task);
@@ -434,6 +450,7 @@ public sealed class ExecutionEngine
 
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
+
 
     /// <summary>
     ///     Logs and returns a dependency resolution error.
@@ -445,7 +462,71 @@ public sealed class ExecutionEngine
     }
 
 
+    /// <summary>
+    ///     Executes tasks with support for sequential or parallel execution.
+    /// </summary>
+    /// <param name="tasks">The list of tasks to execute.</param>
+    /// <param name="executionScope">The execution scope containing context and services.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A result indicating success or failure.</returns>
     private async Task<Result<Unit, TaskExecutionError>> ExecuteTasksAsync(
+        List<ITask> tasks,
+        TaskExecutionScope executionScope,
+        CancellationToken cancellationToken)
+    {
+        if (EnableParallelExecution)
+        {
+            var taskStatus = new ConcurrentDictionary<string, bool>(StringComparer.Ordinal);
+
+            var taskResults = await Task.WhenAll(tasks.Select(async task =>
+            {
+                try
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+
+                    var dependenciesFailed = task.Dependencies.Any(dep => !taskStatus.GetValueOrDefault(dep));
+                    if (dependenciesFailed)
+                    {
+                        _logger.Warning("Skipping task '{TaskName}' due to failed dependencies.", task.Name);
+                        taskStatus[task.Name] = false;
+                        return Result<Unit, TaskExecutionError>.Failure(
+                            new TaskExecutionError("Dependency failed", task.Name));
+                    }
+
+                    var executeResult = await ExecuteTaskAsync(task, executionScope, cancellationToken)
+                        .ConfigureAwait(false);
+                    taskStatus[task.Name] = executeResult.IsSuccess;
+
+                    return executeResult;
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.Warning("Execution canceled for task '{TaskName}'.", task.Name);
+                    return Result<Unit, TaskExecutionError>.Failure(
+                        new TaskExecutionError("Task execution canceled", task.Name));
+                }
+            })).ConfigureAwait(false);
+
+            // Aggregate results
+            var failedResults = taskResults.Where(r => !r.IsSuccess).ToList();
+            return failedResults.Any()
+                ? Result<Unit, TaskExecutionError>.PartialSuccess(Unit.Value,
+                    new TaskExecutionError("Some tasks failed"))
+                : Result<Unit, TaskExecutionError>.Success(Unit.Value);
+        }
+
+        return await ExecuteTasksSequentiallyAsync(tasks, executionScope, cancellationToken).ConfigureAwait(false);
+    }
+
+
+    /// <summary>
+    ///     Executes tasks sequentially, respecting dependency order.
+    /// </summary>
+    /// <param name="tasks">The list of tasks to execute.</param>
+    /// <param name="executionScope">The execution scope containing context and services.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A result indicating success or failure.</returns>
+    private async Task<Result<Unit, TaskExecutionError>> ExecuteTasksSequentiallyAsync(
         List<ITask> tasks,
         TaskExecutionScope executionScope,
         CancellationToken cancellationToken)
@@ -466,9 +547,8 @@ public sealed class ExecutionEngine
 
             try
             {
-                var executeResult = await ExecuteTaskAsync(task, executionScope, cancellationToken)
-                    .ConfigureAwait(false);
-
+                var executeResult =
+                    await ExecuteTaskAsync(task, executionScope, cancellationToken).ConfigureAwait(false);
                 taskStatus[task.Name] = executeResult.IsSuccess;
 
                 if (!executeResult.IsSuccess)
@@ -489,7 +569,6 @@ public sealed class ExecutionEngine
             }
             finally
             {
-                // Update to use the context from executionScope
                 await UpdateProgressAsync(task, executionScope.Context, cancellationToken).ConfigureAwait(false);
             }
         }
@@ -502,20 +581,26 @@ public sealed class ExecutionEngine
                     $"Some tasks failed: {string.Join(", ", failedTasks.Select(f => f.TaskName))}"));
     }
 
+
+    /// <summary>
+    ///     Adds a task to the execution engine after validation.
+    /// </summary>
+    /// <param name="task">The task to add.</param>
+    /// <returns>A result indicating success or failure.</returns>
     public Result<Unit, TaskExecutionError> AddTask(ITask task)
     {
         ArgumentNullException.ThrowIfNull(task);
 
         try
         {
-            if (_isExecuting)
+            if (IsExecuting)
             {
                 _logger.Warning("Cannot add tasks while execution is in progress.");
                 return Result<Unit, TaskExecutionError>.Failure(
                     new TaskExecutionError("Cannot add tasks while execution is in progress"));
             }
 
-            if (_tasks.Exists(t => string.Equals(t.Name, task.Name, StringComparison.Ordinal)))
+            if (!_tasks.TryAdd(task.Name, task))
             {
                 _logger.Warning("A task with the name '{TaskName}' already exists. Skipping addition.", task.Name);
                 return Result<Unit, TaskExecutionError>.PartialSuccess(
@@ -523,10 +608,9 @@ public sealed class ExecutionEngine
                     new TaskExecutionError($"Task with name '{task.Name}' already exists", task.Name));
             }
 
-            // Validate dependencies to avoid introducing cycles
             foreach (var dependency in task.Dependencies)
             {
-                if (!_tasks.Exists(t => string.Equals(t.Name, dependency, StringComparison.Ordinal)))
+                if (!_tasks.ContainsKey(dependency))
                 {
                     _logger.Warning(
                         "Task '{TaskName}' has an unresolved dependency: '{DependencyName}'.",
@@ -537,8 +621,6 @@ public sealed class ExecutionEngine
                 }
             }
 
-            // Add task and its dependencies to the graph
-            _tasks.Add(task);
             foreach (var dependency in task.Dependencies)
             {
                 _dependencyGraph.AddDependency(task.Name, dependency);
@@ -572,11 +654,20 @@ public sealed class ExecutionEngine
 
             executionScope.Tracker.StartTask(task.Name);
 
-            await _taskStartedPublisher
-                .PublishAsync(_channelId, new TaskStartedMessage(task.Name), cancellationToken)
-                .ConfigureAwait(false);
+            var taskStartedMessage = TaskStartedMessage.Get(task.Name);
+            try
+            {
+                await _taskStartedPublisher
+                    .PublishAsync(_channelId, taskStartedMessage, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                TaskStartedMessage.Return(taskStartedMessage); // Return to pool
+            }
 
             _logger.Debug("Starting task '{TaskName}'.", task.Name);
+
 
             var executionResult = await ExecuteWithRetryAsync(task, executionScope, cancellationToken)
                 .ConfigureAwait(false);
@@ -585,13 +676,22 @@ public sealed class ExecutionEngine
 
             if (executionResult.IsSuccess)
             {
-                await _taskCompletedPublisher
-                    .PublishAsync(_channelId, new TaskCompletedMessage(task.Name), cancellationToken)
-                    .ConfigureAwait(false);
+                var taskCompletedMessage = TaskCompletedMessage.Get(task.Name);
+                try
+                {
+                    await _taskCompletedPublisher
+                        .PublishAsync(_channelId, taskCompletedMessage, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                finally
+                {
+                    TaskCompletedMessage.Return(taskCompletedMessage); // Return to pool
+                }
 
                 _logger.Debug("Task '{TaskName}' completed successfully.", task.Name);
                 return Result<Unit, TaskExecutionError>.Success(Unit.Value);
             }
+
 
             // Handle failure
             if (executionResult.Error?.Exception != null)
@@ -616,9 +716,17 @@ public sealed class ExecutionEngine
         TaskExecutionError error,
         CancellationToken cancellationToken)
     {
-        await _taskFailedPublisher
-            .PublishAsync(_channelId, new TaskFailedMessage(task.Name, error.Exception!), cancellationToken)
-            .ConfigureAwait(false);
+        var taskFailedMessage = TaskFailedMessage.Get(task.Name, error.Exception!);
+        try
+        {
+            await _taskFailedPublisher
+                .PublishAsync(_channelId, taskFailedMessage, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            TaskFailedMessage.Return(taskFailedMessage); // Return to pool
+        }
 
         _logger.Error(error.Exception, "Task '{TaskName}' failed.", task.Name);
 
@@ -627,7 +735,9 @@ public sealed class ExecutionEngine
             return Result<Unit, TaskExecutionError>.Failure(error);
         }
 
-        var compensationResult = await ExecuteCompensationAsync(task, executionScope).ConfigureAwait(false);
+        var compensationResult =
+            await ExecuteCompensationAsync(task, executionScope, cancellationToken)
+                .ConfigureAwait(false); // Pass cancellationToken here
         if (!compensationResult.IsSuccess)
         {
             return Result<Unit, TaskExecutionError>.Failure(new TaskExecutionError(
@@ -640,11 +750,13 @@ public sealed class ExecutionEngine
         return Result<Unit, TaskExecutionError>.Failure(error);
     }
 
+
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)
     {
         if (!PreExecutionChecks(out var preExecutionError))
         {
-            return Result<Unit, TaskExecutionError>.Failure(preExecutionError);
+            return Result<Unit, TaskExecutionError>.Failure(preExecutionError ??
+                                                            new TaskExecutionError("Unknown pre-execution error."));
         }
 
         using var rootScope = _scopeFactory.CreateScope();
@@ -655,7 +767,9 @@ public sealed class ExecutionEngine
             var tasks = await ResolveDependenciesAsync().ConfigureAwait(false);
             if (!tasks.IsSuccess)
             {
-                return Result<Unit, TaskExecutionError>.Failure(tasks.Error);
+                return Result<Unit, TaskExecutionError>.Failure(tasks.Error ??
+                                                                new TaskExecutionError(
+                                                                    "Unknown error resolving dependencies."));
             }
 
             return await ExecuteResolvedTasksAsync(tasks.Value!, executionScope, cancellationToken)
@@ -671,7 +785,7 @@ public sealed class ExecutionEngine
     {
         error = null;
 
-        if (_isExecuting)
+        if (IsExecuting)
         {
             _logger.Warning("Execution is already in progress.");
             error = new TaskExecutionError("Execution is already in progress");
@@ -695,7 +809,7 @@ public sealed class ExecutionEngine
         // Set total task count
         _executionTracker.SetTotalTaskCount(_tasks.Count);
 
-        _isExecuting = true;
+        IsExecuting = true;
         _logger.Information("Pre-execution checks passed. Starting task execution.");
         return true;
     }
@@ -720,14 +834,23 @@ public sealed class ExecutionEngine
         return result;
     }
 
+    /// <summary>
+    ///     Finalizes the execution by disposing of the execution scope.
+    /// </summary>
+    /// <param name="executionScope">The execution scope to dispose of.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task FinalizeExecutionAsync(TaskExecutionScope executionScope)
     {
-        _isExecuting = false;
+        IsExecuting = false;
         _logger.Information("Task execution completed.");
 
         try
         {
             await executionScope.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Warning("Execution scope disposal was canceled.");
         }
         catch (Exception ex)
         {

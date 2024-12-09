@@ -1,36 +1,36 @@
-﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
+﻿#region
 
+using System.Collections.Concurrent;
+
+#endregion
+
+namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
+
+/// <summary>
+///     Represents a dependency graph for tasks, supporting dependency resolution and cycle detection.
+/// </summary>
 public sealed class DependencyGraph
 {
-    private readonly Dictionary<string, HashSet<string>> _dependencies = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, HashSet<string>> _dependents = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, HashSet<string>> _dependencies = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, HashSet<string>> _dependents = new(StringComparer.Ordinal);
 
+    /// <summary>
+    ///     Adds a dependency between two tasks.
+    /// </summary>
+    /// <param name="task">The dependent task.</param>
+    /// <param name="dependency">The task it depends on.</param>
     public void AddDependency(string task, string dependency)
     {
-        if (!_dependencies.TryGetValue(task, out var deps))
-        {
-            deps = new HashSet<string>(StringComparer.Ordinal);
-            _dependencies[task] = deps;
-        }
+        ArgumentNullException.ThrowIfNull(task);
+        ArgumentNullException.ThrowIfNull(dependency);
 
-        deps.Add(dependency);
-
-        if (!_dependents.TryGetValue(dependency, out var dependents))
-        {
-            dependents = new HashSet<string>(StringComparer.Ordinal);
-            _dependents[dependency] = dependents;
-        }
-
-        dependents.Add(task);
+        _dependencies.GetOrAdd(task, _ => new HashSet<string>(StringComparer.Ordinal)).Add(dependency);
+        _dependents.GetOrAdd(dependency, _ => new HashSet<string>(StringComparer.Ordinal)).Add(task);
     }
 
-    // Alternative more concise version using the null coalescing operator
-    public void AddDependency2(string task, string dependency)
-    {
-        (_dependencies[task] ??= new HashSet<string>(StringComparer.Ordinal)).Add(dependency);
-        (_dependents[dependency] ??= new HashSet<string>(StringComparer.Ordinal)).Add(task);
-    }
-
+    /// <summary>
+    ///     Checks if the graph has a circular dependency.
+    /// </summary>
     public bool HasCycle()
     {
         var visited = new HashSet<string>(StringComparer.Ordinal);
@@ -54,12 +54,11 @@ public sealed class DependencyGraph
             return true;
         }
 
-        if (visited.Contains(task))
+        if (!visited.Add(task))
         {
             return false;
         }
 
-        visited.Add(task);
         recursionStack.Add(task);
 
         if (_dependencies.TryGetValue(task, out var dependencies))
@@ -77,24 +76,19 @@ public sealed class DependencyGraph
         return false;
     }
 
-    // Additional helper methods that could be useful
+    /// <summary>
+    ///     Retrieves the tasks that the specified task depends on.
+    /// </summary>
     public IReadOnlySet<string> GetDependencies(string task)
     {
-        return _dependencies.TryGetValue(task, out HashSet<string>? deps) ? deps : new HashSet<string>(StringComparer.Ordinal);
+        return _dependencies.TryGetValue(task, out var deps) ? deps : new HashSet<string>(StringComparer.Ordinal);
     }
 
+    /// <summary>
+    ///     Retrieves the tasks that depend on the specified task.
+    /// </summary>
     public IReadOnlySet<string> GetDependents(string task)
     {
-        return _dependents.TryGetValue(task, out HashSet<string>? deps) ? deps : new HashSet<string>(StringComparer.Ordinal);
-    }
-
-    public bool HasDependencies(string task)
-    {
-        return _dependencies.ContainsKey(task) && _dependencies[task].Count > 0;
-    }
-
-    public bool HasDependents(string task)
-    {
-        return _dependents.ContainsKey(task) && _dependents[task].Count > 0;
+        return _dependents.TryGetValue(task, out var deps) ? deps : new HashSet<string>(StringComparer.Ordinal);
     }
 }

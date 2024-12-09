@@ -1,90 +1,95 @@
+### Updated README.md for the `ExecutionEngine`
+
+```markdown
 # ExecutionEngine
 
-A robust and flexible task execution engine designed for Blazor Server applications. The ExecutionEngine facilitates the
-execution of complex tasks with support for dependencies, retry logic, conditional execution, compensation actions, and
-progress reporting through the MessagePipe library.
+A robust, scalable, and extensible task execution engine designed for Blazor Server applications. The `ExecutionEngine` enables the execution of complex workflows with support for dependencies, retries, conditional execution, compensation actions, progress reporting, and real-time updates using `MessagePipe`.
 
 ---
 
 ## Table of Contents
 
-- Overview - Features - Architecture - ExecutionEngine - ITask Interface - SimpleTask and TaskBuilder -
-  ExecutionContext - MessagePipe Integration - Getting Started - Installation - Configuration - Usage - Advanced
-  Topics - Custom Filters - Error Handling and Logging - Best Practices - Contributing - License
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Getting Started](#getting-started)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+  - [Usage](#usage)
+- [Advanced Topics](#advanced-topics)
+  - [Custom Filters](#custom-filters)
+  - [Error Handling and Logging](#error-handling-and-logging)
+- [Best Practices](#best-practices)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
 ## Overview
 
-The ExecutionEngine is a component designed to manage and execute a series of tasks within a Blazor Server application.
-It handles task execution flow, dependencies, retries, and progress updates, allowing developers to focus on
-implementing the business logic of individual tasks.
+The `ExecutionEngine` simplifies the orchestration of complex workflows in Blazor Server applications. It provides powerful abstractions for defining tasks, handling dependencies, implementing retries, and managing progress updates with minimal effort.
 
 ---
 
 ## Features
 
-- Task Dependencies: Define tasks that depend on the completion of other tasks. - Retry Logic: Configure maximum retry
-  counts and delays between retries. - Conditional Execution: Execute tasks based on custom conditions. - Compensation
-  Actions: Define actions to roll back or compensate for failed tasks. - Progress Reporting: Receive real-time progress
-  updates through MessagePipe. - Extensibility: Easily extend functionality with custom tasks and filters. - Thread
-  Safety: Designed with concurrency and thread safety in mind.
+- **Task Dependencies**: Define task dependencies to ensure proper execution order.
+- **Retry Logic**: Customize retry counts and delays for resilient workflows.
+- **Conditional Execution**: Dynamically control task execution with custom conditions.
+- **Compensation Actions**: Handle rollback or compensation logic for failed tasks.
+- **Progress Reporting**: Publish real-time updates using `MessagePipe`.
+- **Parallel and Sequential Execution**: Execute tasks either sequentially or concurrently.
+- **Cancellation Support**: Fully integrates with `CancellationToken` for responsive cancellation.
+- **Extensibility**: Build custom filters and tasks for advanced use cases.
+- **Thread Safety**: Designed with concurrency and thread safety as a priority.
 
 ---
 
 ## Architecture
 
-### ExecutionEngine
+### Core Components
 
-The ExecutionEngine is the core component responsible for orchestrating the execution of tasks. It manages the task
-queue, handles dependencies, and publishes progress updates.
+#### ExecutionEngine
+The `ExecutionEngine` is the core orchestrator that manages task execution. It handles:
+- Dependency resolution and execution order.
+- Retry policies and failure handling.
+- Publishing progress updates and task statuses.
+- Cancellation and resource cleanup.
 
-#### Key Responsibilities:
-
-- Managing task execution order based on dependencies. - Handling retries and failure policies. - Publishing progress
-  and status messages. - Providing an ExecutionContext to tasks for shared resources.
-
-### ITask Interface
-
-Defines the contract for tasks that can be executed within the ExecutionEngine.
-
-```csharp 
-public interface ITask { string Name { get; } Func<ExecutionContext, bool>? Condition { get; set; } int
-MaxRetryCount { get; set; } TimeSpan RetryDelay { get; set; } bool ContinueOnFailure { get; set; } IReadOnlyList<string>
-Dependencies { get; } Func<ExecutionContext, Task>? CompensationActionAsync { get; set; } bool Validate(); Task
-ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken); void Execute(ExecutionContext context);
-void AddDependency(string dependency); void SetDependencies(IEnumerable<string> dependencies); }
-```
-
-### SimpleTask and TaskBuilder
-
-SimpleTask is a concrete implementation of ITask for straightforward scenarios. It allows you to define execution logic
-using delegates.
-
-TaskBuilder provides a fluent API to create and configure SimpleTask instances easily.
-
-#### Example:
-
+#### Task Interface (`ITask`)
+Defines the contract for tasks to be executed:
 ```csharp
- var task = TaskBuilder.Create("MyTask")  .WithExecution(async (context, cancellationToken) =>  { // Task logic
-here })  .WithMaxRetryCount(3)  .Build();
+public interface ITask
+{
+    string Name { get; }
+    Func<ExecutionContext, bool>? Condition { get; set; }
+    int MaxRetryCount { get; set; }
+    TimeSpan RetryDelay { get; set; }
+    bool ContinueOnFailure { get; set; }
+    IReadOnlyList<string> Dependencies { get; }
+    Func<ExecutionContext, CancellationToken, Task>? CompensationActionAsync { get; set; }
+    bool Validate();
+    Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken);
+    void AddDependency(string dependency);
+    void SetDependencies(IEnumerable<string> dependencies);
+}
 ```
 
-### ExecutionContext
+#### TaskBuilder
+A fluent API for creating tasks:
+```csharp
+var task = TaskBuilder.Create("MyTask")
+    .WithExecution(async (context, cancellationToken) =>
+    {
+        // Task logic
+    })
+    .WithMaxRetryCount(3)
+    .WithRetryDelay(TimeSpan.FromSeconds(2))
+    .Build();
+```
 
-Provides shared data and services to tasks during execution. It includes:
-
-- Logger: For logging within tasks. - CancellationToken: To support task cancellation. - Shared Data: A dictionary for
-  passing data between tasks.
-
-### MessagePipe Integration
-
-ExecutionEngine uses MessagePipe for publishing progress updates and task status messages. This allows for decoupled
-communication and real-time UI updates.
-
-#### Messages:
-
-- TaskProgressMessage - TaskStartedMessage - TaskCompletedMessage - TaskFailedMessage
+#### Filters
+`MessagePipe` filters such as logging, exception handling, and throttling provide cross-cutting concerns.
 
 ---
 
@@ -92,111 +97,130 @@ communication and real-time UI updates.
 
 ### Installation
 
-Add the necessary packages to your Blazor Server application:
-
-- ExecutionEngine Package: NuGet Package - MessagePipe: NuGet Package
+Add the required NuGet packages:
+- `ExecutionEngine`
+- `MessagePipe`
 
 ### Configuration
 
-Register the required services in your Startup.cs or Program.cs:
-
-```csharp 
+Register the services in your `Program.cs`:
+```csharp
 services.AddTaskExecutionEngine();
 ```
 
-#### Service Registration Extension Method:
+Service registration includes:
+```csharp
+public static IServiceCollection AddTaskExecutionEngine(this IServiceCollection services)
+{
+    services.AddOptions<ExecutionOptions>();
+    services.AddTransient<ExecutionEngine>();
+    services.AddSingleton<IExecutionEngineFactory, ExecutionEngineFactory>();
 
-```csharp 
-public static IServiceCollection AddTaskExecutionEngine(this IServiceCollection services) {
-services.AddOptions<ExecutionOptions>(); services.AddTransient<ExecutionEngine>(); services.AddSingleton<
-IExecutionEngineFactory, ExecutionEngineFactory>(); services.AddMessagePipe(options =>  {
-options.EnableCaptureStackTrace = false; }); // Register MessagePipe publishers and subscribers services.AddSingleton<
-IAsyncPublisher<Guid, TaskProgressMessage>, AsyncPublisher<Guid, TaskProgressMessage>>(); services.AddSingleton<
-IAsyncSubscriber<Guid, TaskProgressMessage>, AsyncSubscriber<Guid, TaskProgressMessage>>(); // Register other necessary
-services and filters return services; }
+    // Register MessagePipe
+    services.AddMessagePipe();
+    services.AddSingleton<IAsyncPublisher<Guid, TaskProgressMessage>, AsyncPublisher<Guid, TaskProgressMessage>>();
+    services.AddSingleton<IAsyncSubscriber<Guid, TaskProgressMessage>, AsyncSubscriber<Guid, TaskProgressMessage>>();
+
+    // Additional services for filters and tasks
+    return services;
+}
 ```
+
+---
 
 ### Usage
 
 #### Creating Tasks
 
-Use TaskBuilder to create tasks:
-
-```csharp 
-var task1 = TaskBuilder.Create("Task1")  .WithExecution(async (context, cancellationToken) =>  { // Task
-execution logic })  .Build();
+```csharp
+var task = TaskBuilder.Create("Task1")
+    .WithExecution(async (context, cancellationToken) =>
+    {
+        // Task logic here
+    })
+    .WithDependencies(new[] { "DependencyTask" })
+    .WithCompensationAction(async (context, cancellationToken) =>
+    {
+        // Compensation logic here
+    })
+    .Build();
 ```
 
-#### Using ExecutionEngine
-
-In your Blazor component:
-
-```csharp 
-inject IExecutionEngineFactory ExecutionEngineFactory code { private ExecutionEngine _executionEngine; private
-Guid _channelId; protected override async Task OnInitializedAsync()  { // Retrieve or generate your channel ID  _
-channelId = /* Your logic to get channel ID */; // Create the ExecutionEngine instance  _executionEngine =
-ExecutionEngineFactory.CreateExecutionEngine(_channelId); // Add tasks  _executionEngine.AddTask(task1); // Add more
-tasks as needed // Execute tasks await _executionEngine.ExecuteAsync(CancellationToken.None); } }
+#### Executing Tasks
+```csharp
+var engine = ExecutionEngineFactory.CreateExecutionEngine(Guid.NewGuid());
+engine.AddTask(task);
+await engine.ExecuteAsync(CancellationToken.None);
 ```
 
-#### Subscribing to Progress Updates
+#### Progress Updates
+```csharp
+private IDisposable _progressSubscription;
 
-```csharp 
-inject IAsyncSubscriber<Guid, TaskProgressMessage> ProgressSubscriber code { private IDisposable _
-progressSubscription; protected override void OnInitialized()  {  _progressSubscription = ProgressSubscriber.Subscribe(_
-channelId, async (message, cancellationToken) =>  { // Update UI or handle progress }); } public void Dispose()  {  _
-progressSubscription?.Dispose(); } }
-````
+protected override void OnInitialized()
+{
+    _progressSubscription = ProgressSubscriber.Subscribe(_channelId, async (message, cancellationToken) =>
+    {
+        // Update UI or handle progress
+    });
+}
+
+public void Dispose()
+{
+    _progressSubscription?.Dispose();
+}
+```
 
 ---
 
 ## Advanced Topics
 
 ### Custom Filters
-
-Implement MessagePipe filters to enhance functionality, such as logging, exception handling, or performance monitoring.
-
-#### Example: Logging Filter
-
-```csharp 
-public class LoggingFilter<TMessage> : AsyncMessageHandlerFilter<TMessage> {  private readonly ILogger<LoggingFilter<TMessage>> _logger;   public LoggingFilter(ILogger<LoggingFilter<TMessage>> logger)  {  _logger = logger;  }   public override async ValueTask HandleAsync(TMessage message, CancellationToken cancellationToken, Func<TMessage, CancellationToken, ValueTask> next)  {  _logger.LogInformation("Handling message of type {MessageType}", typeof(TMessage).Name);  await next(message, cancellationToken);  _logger.LogInformation("Finished handling message of type {MessageType}", typeof(TMessage).Name);  } } 
-```
-
-#### Registration
-
+Filters can add cross-cutting concerns like logging, throttling, or exception handling:
 ```csharp
- services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(LoggingFilter<>));
+public sealed class LoggingFilter<TMessage> : AsyncMessageHandlerFilter<TMessage>
+{
+    private readonly ILogger _logger = LoggerFactory.Logger;
+
+    public override async ValueTask HandleAsync(
+        TMessage message,
+        CancellationToken cancellationToken,
+        Func<TMessage, CancellationToken, ValueTask> next)
+    {
+        _logger.Information("Handling message of type {MessageType}", typeof(TMessage).Name);
+        await next(message, cancellationToken);
+        _logger.Information("Finished handling message of type {MessageType}", typeof(TMessage).Name);
+    }
+}
 ```
 
-### Error Handling and Logging
+### Parallel and Sequential Execution
+Use `EnableParallelExecution` to control execution behavior:
+- **Parallel**: Multiple tasks execute concurrently.
+- **Sequential**: Tasks execute one at a time in defined order.
 
-- Centralized Logging: Use the provided ILogger in ExecutionContext and filters. - Exception Handling: Implement filters
-  like ExceptionHandlingFilter to catch and log exceptions. - Validation: Ensure tasks validate their configuration
-  using Validate() method.
+---
+
+## Error Handling and Logging
+
+- **Centralized Logging**: Utilize `ILogger` for consistent log output.
+- **Filters**: Implement filters like `ExceptionHandlingFilter` for global exception handling.
+- **Retry Logic**: Define retry policies for tasks to handle transient errors.
 
 ---
 
 ## Best Practices
 
-- Task Naming: Use unique and descriptive names for tasks. - Dependency Management: Clearly define task dependencies to
-  avoid cyclic references. - Cancellation Tokens: Honor the CancellationToken in your task execution logic. - Thread
-  Safety: Ensure that shared resources are accessed in a thread-safe manner. - Logging Levels: Use appropriate logging
-  levels (Information, Warning, Error) for clarity.
+- Use descriptive and unique names for tasks.
+- Validate tasks with the `Validate` method.
+- Honor `CancellationToken` in all task logic.
+- Use `SetDependencies` to define execution order.
+- Implement filters for advanced behaviors like logging or throttling.
 
 ---
 
-## Contributing
-
-Contributions are welcome! Please follow the guidelines:
-
-- Fork the Repository: Create your branch. - Implement Features or Fix Bugs: Ensure code adheres to the project's
-  style. - Write Tests: Maintain high test coverage. - Submit a Pull Request: Describe your changes and link to any
-  relevant issues.
-
----
 
 ## License
 
 This project is licensed under the MIT License.
-
----
+```

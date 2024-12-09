@@ -12,10 +12,11 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// </summary>
 public class TaskBuilder
 {
+    private readonly HashSet<string> _dependencies = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, object> _metadata = new(StringComparer.Ordinal);
     private Func<ExecutionContext, Task>? _compensationActionAsync;
     private Func<ExecutionContext, bool>? _condition;
     private bool _continueOnFailure;
-    private IList<string> _dependencies = new List<string>();
     private Action<ExecutionContext>? _execute;
     private Func<ExecutionContext, CancellationToken, Task>? _executeAsync;
     private int _maxRetryCount = 3;
@@ -109,7 +110,7 @@ public class TaskBuilder
     }
 
     /// <summary>
-    ///     Sets the dependencies for the task.
+    ///     Adds dependencies for the task.
     /// </summary>
     /// <param name="dependencies">An enumerable of task names that this task depends on.</param>
     /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
@@ -120,7 +121,14 @@ public class TaskBuilder
             throw new ArgumentNullException(nameof(dependencies));
         }
 
-        _dependencies = new List<string>(dependencies);
+        foreach (var dependency in dependencies)
+        {
+            if (!string.IsNullOrWhiteSpace(dependency))
+            {
+                _dependencies.Add(dependency);
+            }
+        }
+
         return this;
     }
 
@@ -147,6 +155,23 @@ public class TaskBuilder
     }
 
     /// <summary>
+    ///     Adds metadata for the task.
+    /// </summary>
+    /// <param name="key">The metadata key.</param>
+    /// <param name="value">The metadata value.</param>
+    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    public TaskBuilder WithMetadata(string key, object value)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            throw new ArgumentException("Metadata key cannot be null or whitespace.", nameof(key));
+        }
+
+        _metadata[key] = value;
+        return this;
+    }
+
+    /// <summary>
     ///     Builds the task with the specified configurations.
     /// </summary>
     /// <returns>An instance of <see cref="ITask" />.</returns>
@@ -163,30 +188,32 @@ public class TaskBuilder
             throw new InvalidOperationException("Execution delegate is required.");
         }
 
-        SimpleTask task;
-
-        if (_executeAsync != null)
-        {
-            task = new SimpleTask(_name, _executeAsync);
-        }
-        else if (_execute != null)
-        {
-            task = new SimpleTask(_name, _execute);
-        }
-        else
-        {
-            throw new InvalidOperationException("Execution delegate is required.");
-        }
+        var task = _executeAsync != null
+            ? new SimpleTask(_name, _executeAsync)
+            : new SimpleTask(_name, _execute!);
 
         task.MaxRetryCount = _maxRetryCount;
         task.RetryDelay = _retryDelay;
         task.ContinueOnFailure = _continueOnFailure;
         task.Condition = _condition;
-        task.CompensationActionAsync = _compensationActionAsync;
+
+        // Wrap compensation action
+        task.CompensationActionAsync = _compensationActionAsync == null
+            ? null
+            : (context, cancellationToken) =>
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return _compensationActionAsync(context);
+            };
 
         if (_dependencies.Any())
         {
             task.SetDependencies(_dependencies);
+        }
+
+        foreach (var (key, value) in _metadata)
+        {
+            task.Metadata[key] = value;
         }
 
         return task;

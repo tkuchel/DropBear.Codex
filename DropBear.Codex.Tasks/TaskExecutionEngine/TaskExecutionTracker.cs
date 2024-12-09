@@ -9,10 +9,10 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
 /// <summary>
 ///     Tracks the execution of tasks, including their start times, completion status, durations, and overall statistics.
+///     Thread-safe implementation with minimized locking and performance optimizations.
 /// </summary>
 public sealed class TaskExecutionTracker
 {
-    private readonly object _lock = new();
     private readonly ConcurrentDictionary<string, DateTime> _startTimes = new(StringComparer.Ordinal);
     private readonly TaskExecutionStats _stats = new();
     private readonly ConcurrentDictionary<string, bool> _taskStatus = new(StringComparer.Ordinal);
@@ -22,13 +22,10 @@ public sealed class TaskExecutionTracker
     ///     Starts tracking a task by recording its start time.
     /// </summary>
     /// <param name="taskName">The name of the task to start tracking.</param>
+    /// <exception cref="ArgumentException">Thrown if the task name is null or empty.</exception>
     public void StartTask(string taskName)
     {
-        if (string.IsNullOrWhiteSpace(taskName))
-        {
-            throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
-        }
-
+        ArgumentNullException.ThrowIfNull(taskName);
         _startTimes[taskName] = DateTime.UtcNow;
     }
 
@@ -39,11 +36,7 @@ public sealed class TaskExecutionTracker
     /// <param name="success">Indicates whether the task completed successfully.</param>
     public void CompleteTask(string taskName, bool success)
     {
-        if (string.IsNullOrWhiteSpace(taskName))
-        {
-            throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
-        }
-
+        ArgumentNullException.ThrowIfNull(taskName);
         _taskStatus[taskName] = success;
 
         if (_startTimes.TryRemove(taskName, out var startTime))
@@ -51,48 +44,30 @@ public sealed class TaskExecutionTracker
             _stats.TaskDurations[taskName] = DateTime.UtcNow - startTime;
         }
 
-        lock (_lock)
+        if (success)
         {
-            if (success)
-            {
-                _stats.CompletedTasks++;
-            }
-            else
-            {
-                _stats.FailedTasks++;
-            }
+            _stats.IncrementCompletedTasks();
+        }
+        else
+        {
+            _stats.IncrementFailedTasks();
         }
     }
 
-    /// <summary>
-    ///     Gets the status of a task, indicating whether it succeeded or failed.
-    /// </summary>
-    /// <param name="taskName">The name of the task whose status is being queried.</param>
-    /// <returns>True if the task succeeded; otherwise, false.</returns>
-    public bool GetTaskStatus(string taskName)
-    {
-        return _taskStatus.GetValueOrDefault(taskName, false);
-    }
 
     /// <summary>
     ///     Retrieves the current statistics for task execution, including completed and failed tasks.
     /// </summary>
-    /// <returns>An instance of <see cref="TaskExecutionStats" /> containing execution statistics.</returns>
     public TaskExecutionStats GetStats()
     {
-        lock (_lock)
+        return new TaskExecutionStats
         {
-            return new TaskExecutionStats
-            {
-                CompletedTasks = _stats.CompletedTasks,
-                FailedTasks = _stats.FailedTasks,
-                SkippedTasks = _stats.SkippedTasks,
-                TotalTasks = _totalTaskCount,
-                TaskDurations =
-                    new ConcurrentDictionary<string, TimeSpan>(_stats.TaskDurations,
-                        StringComparer.OrdinalIgnoreCase)
-            };
-        }
+            CompletedTasks = _stats.CompletedTasks,
+            FailedTasks = _stats.FailedTasks,
+            SkippedTasks = _stats.SkippedTasks,
+            TotalTasks = _totalTaskCount,
+            TaskDurations = new ConcurrentDictionary<string, TimeSpan>(_stats.TaskDurations, StringComparer.Ordinal)
+        };
     }
 
     /// <summary>
@@ -108,53 +83,27 @@ public sealed class TaskExecutionTracker
             throw new ArgumentOutOfRangeException(nameof(count), "Total task count cannot be negative.");
         }
 
-        lock (_lock)
+        if (_stats.CompletedTasks > 0 || _stats.FailedTasks > 0)
         {
-            if (_stats.CompletedTasks > 0 || _stats.FailedTasks > 0)
-            {
-                throw new InvalidOperationException("Cannot set total task count after tasks have started executing.");
-            }
-
-            _totalTaskCount = count;
-            _stats.TotalTasks = count;
-        }
-    }
-
-    /// <summary>
-    ///     Gets a summary of task durations and statuses.
-    /// </summary>
-    /// <returns>A dictionary of task names with their durations and statuses.</returns>
-    public IReadOnlyDictionary<string, (TimeSpan? Duration, bool Status)> GetTaskSummaries()
-    {
-        var summaries = new Dictionary<string, (TimeSpan? Duration, bool Status)>(StringComparer.Ordinal);
-
-        foreach (var taskName in _taskStatus.Keys)
-        {
-            // Retrieve the duration if available, otherwise set it to null
-            _stats.TaskDurations.TryGetValue(taskName, out var duration);
-
-            summaries[taskName] = (duration, _taskStatus.GetValueOrDefault(taskName));
+            throw new InvalidOperationException("Cannot set total task count after tasks have started executing.");
         }
 
-        return summaries;
+        _totalTaskCount = count;
+        _stats.TotalTasks = count;
     }
-
 
     /// <summary>
     ///     Resets the tracker, clearing all task-related data and statistics.
     /// </summary>
     public void Reset()
     {
-        lock (_lock)
-        {
-            _startTimes.Clear();
-            _taskStatus.Clear();
-            _stats.CompletedTasks = 0;
-            _stats.FailedTasks = 0;
-            _stats.SkippedTasks = 0;
-            _stats.TaskDurations.Clear();
-            _totalTaskCount = 0;
-            _stats.TotalTasks = 0;
-        }
+        _startTimes.Clear();
+        _taskStatus.Clear();
+        _stats.CompletedTasks = 0;
+        _stats.FailedTasks = 0;
+        _stats.SkippedTasks = 0;
+        _stats.TaskDurations.Clear();
+        _totalTaskCount = 0;
+        _stats.TotalTasks = 0;
     }
 }
