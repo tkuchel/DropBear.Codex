@@ -24,12 +24,14 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// <summary>
 ///     Represents the execution engine that manages and executes tasks with dependency resolution and retry logic.
 /// </summary>
-public sealed class ExecutionEngine
+public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 {
     private static readonly ObjectPool<TaskProgressMessage> ProgressMessagePool =
         new DefaultObjectPoolProvider().Create(new DefaultPooledObjectPolicy<TaskProgressMessage>());
 
     private readonly Guid _channelId;
+    private readonly CancellationTokenSource _disposalCts = new();
+    private readonly object _disposalLock = new();
 
     private readonly TaskExecutionTracker _executionTracker = new();
     private readonly ILogger _logger;
@@ -43,6 +45,7 @@ public sealed class ExecutionEngine
 
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
     private DependencyGraph _dependencyGraph = new();
+    private bool _disposed;
 
     private int _isExecuting; // Backing field for thread-safe boolean
 
@@ -84,11 +87,19 @@ public sealed class ExecutionEngine
     ///     Indicates whether the execution engine is currently executing tasks.
     ///     Thread-safe using atomic operations.
     /// </summary>
-    private bool IsExecuting
+    private bool SafeIsExecuting
     {
         get => Interlocked.CompareExchange(ref _isExecuting, 0, 0) == 1;
         set => Interlocked.Exchange(ref _isExecuting, value ? 1 : 0);
     }
+
+
+    /// <summary>
+    ///     Gets a value indicating whether the execution engine is currently executing tasks.
+    ///     This property is thread-safe.
+    /// </summary>
+    public bool IsExecuting => Interlocked.CompareExchange(ref _isExecuting, 0, 0) == 1;
+
 
     /// <summary>
     ///     Indicates whether the execution engine should execute tasks in parallel.
@@ -103,7 +114,7 @@ public sealed class ExecutionEngine
     /// <returns>A result indicating the success or failure of the operation.</returns>
     public Result<Unit, TaskExecutionError> ClearTasks()
     {
-        if (IsExecuting)
+        if (SafeIsExecuting)
         {
             _logger.Warning("Cannot clear tasks while execution is in progress.");
             return Result<Unit, TaskExecutionError>.Failure(
@@ -133,6 +144,73 @@ public sealed class ExecutionEngine
         _executionTracker.Reset();
     }
 
+    /// <summary>
+    ///     Asynchronously disposes of the execution engine and its resources.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        lock (_disposalLock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+        }
+
+        try
+        {
+            // Cancel any ongoing operations
+            await _disposalCts.CancelAsync().ConfigureAwait(false);
+
+            // Wait for any executing tasks to complete
+            if (IsExecuting)
+            {
+                _logger.Information("Waiting for executing tasks to complete during disposal...");
+                // Give tasks a reasonable time to complete
+                await Task.Delay(TimeSpan.FromSeconds(5), _disposalCts.Token).ConfigureAwait(false);
+            }
+
+            // Clear internal state
+            _tasks.Clear();
+            _dependencyGraph = new DependencyGraph();
+            _executionTracker.Reset();
+
+            // Dispose of managed resources
+            _disposalCts.Dispose();
+
+            _logger.Information("ExecutionEngine disposed successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error occurred during ExecutionEngine disposal.");
+        }
+    }
+
+    /// <summary>
+    ///     Synchronously disposes of the execution engine and its resources.
+    /// </summary>
+    public void Dispose()
+    {
+        // Block until async disposal completes
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    // Add this method to check disposal state
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ExecutionEngine));
+        }
+    }
+
 
     /// <summary>
     ///     Reports progress for a task currently being executed.
@@ -147,9 +225,11 @@ public sealed class ExecutionEngine
         string? message = null,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+
         ValidateTaskName(taskName);
 
-        if (!IsExecuting)
+        if (!SafeIsExecuting)
         {
             _logger.Warning("Cannot report progress when the execution engine is not running.");
             return;
@@ -591,9 +671,11 @@ public sealed class ExecutionEngine
     {
         ArgumentNullException.ThrowIfNull(task);
 
+        ThrowIfDisposed();
+
         try
         {
-            if (IsExecuting)
+            if (SafeIsExecuting)
             {
                 _logger.Warning("Cannot add tasks while execution is in progress.");
                 return Result<Unit, TaskExecutionError>.Failure(
@@ -753,6 +835,20 @@ public sealed class ExecutionEngine
 
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)
     {
+        ThrowIfDisposed();
+
+        // Create a linked token that combines the disposal token and the provided cancellation token
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _disposalCts.Token
+        );
+
+        // Use the linked token for execution
+        return await ExecuteInternalAsync(linkedCts.Token).ConfigureAwait(false);
+    }
+
+    private async Task<Result<Unit, TaskExecutionError>> ExecuteInternalAsync(CancellationToken cancellationToken)
+    {
         if (!PreExecutionChecks(out var preExecutionError))
         {
             return Result<Unit, TaskExecutionError>.Failure(preExecutionError ??
@@ -785,7 +881,7 @@ public sealed class ExecutionEngine
     {
         error = null;
 
-        if (IsExecuting)
+        if (SafeIsExecuting)
         {
             _logger.Warning("Execution is already in progress.");
             error = new TaskExecutionError("Execution is already in progress");
@@ -809,7 +905,7 @@ public sealed class ExecutionEngine
         // Set total task count
         _executionTracker.SetTotalTaskCount(_tasks.Count);
 
-        IsExecuting = true;
+        SafeIsExecuting = true;
         _logger.Information("Pre-execution checks passed. Starting task execution.");
         return true;
     }
@@ -841,7 +937,7 @@ public sealed class ExecutionEngine
     /// <returns>A task representing the asynchronous operation.</returns>
     private async Task FinalizeExecutionAsync(TaskExecutionScope executionScope)
     {
-        IsExecuting = false;
+        SafeIsExecuting = false;
         _logger.Information("Task execution completed.");
 
         try
