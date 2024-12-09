@@ -5,6 +5,7 @@ using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 #endregion
 
@@ -27,15 +28,10 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     [Parameter] public ProgressBarType Type { get; set; } = ProgressBarType.Standard;
-
     [Parameter] public double Progress { get; set; }
-
     [Parameter] public IEnumerable<ProgressStep>? Steps { get; set; }
-
     [Parameter] public string? Label { get; set; }
-
     [Parameter] public EventCallback<double> ProgressChanged { get; set; }
-
     [Parameter] public EventCallback<ProgressStep> StepCompleted { get; set; }
 
     [Parameter]
@@ -44,7 +40,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         get => _taskProgress;
         set
         {
-            if (_taskProgress != value)
+            if (Math.Abs(_taskProgress - value) > 0.01) // Use small epsilon for floating point comparison
             {
                 _taskProgress = value;
                 InvokeAsync(StateHasChanged);
@@ -58,7 +54,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         get => _overallProgress;
         set
         {
-            if (_overallProgress != value)
+            if (Math.Abs(_overallProgress - value) > 0.01) // Use small epsilon for floating point comparison
             {
                 _overallProgress = value;
                 InvokeAsync(StateHasChanged);
@@ -82,7 +78,16 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (firstRender)
         {
-            _isInitialized = true;
+            try
+            {
+                await JsRuntime.InvokeVoidAsync("DropBearProgressBar.initialize", _progressId,
+                    DotNetObjectReference.Create(this));
+                _isInitialized = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error initializing progress bar JavaScript");
+            }
         }
 
         await base.OnAfterRenderAsync(firstRender);
@@ -90,32 +95,37 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     public async Task MarkStepCompleteAsync(string stepName)
     {
-        await UpdateStepStatusAsync(stepName, StepStatus.Completed);
-        var completedTasks = _steps.Count(step => step.Status == StepStatus.Completed);
-        await UpdateProgressAsync(TaskProgress, completedTasks, _steps.Count);
-    }
+        try
+        {
+            await _updateLock!.WaitAsync();
+            await UpdateStepStatusAsync(stepName, StepStatus.Completed);
 
+            var completedTasks = _steps.Count(step => step.Status == StepStatus.Completed);
+            await UpdateProgressAsync(TaskProgress, completedTasks, _steps.Count);
+        }
+        finally
+        {
+            _updateLock?.Release();
+        }
+    }
 
     public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
     {
         try
         {
-            await _updateLock?.WaitAsync()!;
-
-            if (!_isInitialized)
-            {
-                await InvokeAsync(async () =>
-                {
-                    TaskProgress = Math.Clamp(taskProgress, 0, 100);
-                    OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
-                    await InvokeAsync(StateHasChanged);
-                });
-                return;
-            }
+            await _updateLock!.WaitAsync();
 
             TaskProgress = Math.Clamp(taskProgress, 0, 100);
-            OverallProgress = Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100);
-            await ProgressChanged.InvokeAsync(OverallProgress);
+            OverallProgress = totalTasks > 0
+                ? Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100)
+                : 0;
+
+            if (_isInitialized)
+            {
+                await ProgressChanged.InvokeAsync(OverallProgress);
+                await UpdateStepDisplayAsync(GetCurrentStepIndex());
+            }
+
             await InvokeAsync(StateHasChanged);
         }
         finally
@@ -123,24 +133,30 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock?.Release();
         }
     }
-
 
     public async Task UpdateStepStatusAsync(string stepName, StepStatus status)
     {
         try
         {
-            await _updateLock?.WaitAsync()!;
+            await _updateLock!.WaitAsync();
 
-            if (!_isInitialized)
+            var step = _steps.FirstOrDefault(s => s.Name == stepName);
+            if (step != null)
             {
-                await InvokeAsync(async () =>
-                {
-                    await UpdateStepInternalAsync(stepName, status);
-                });
-                return;
-            }
+                step.Status = status;
 
-            await UpdateStepInternalAsync(stepName, status);
+                if (status == StepStatus.Completed)
+                {
+                    await StepCompleted.InvokeAsync(step);
+                }
+
+                if (_isInitialized)
+                {
+                    await UpdateStepDisplayAsync(GetCurrentStepIndex());
+                }
+
+                await InvokeAsync(StateHasChanged);
+            }
         }
         finally
         {
@@ -148,19 +164,36 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
-    private async Task UpdateStepInternalAsync(string stepName, StepStatus status)
+    private async Task UpdateStepDisplayAsync(int currentIndex)
     {
-        var step = _steps.FirstOrDefault(s => s.Name == stepName);
-        if (step != null)
+        if (!_isInitialized || _isDisposed)
         {
-            step.Status = status;
-            if (status == StepStatus.Completed)
-            {
-                await StepCompleted.InvokeAsync(step);
-            }
-
-            await InvokeAsync(StateHasChanged);
+            return;
         }
+
+        try
+        {
+            await SafeJsVoidInteropAsync(
+                "DropBearProgressBar.updateStepDisplay",
+                _progressId,
+                currentIndex,
+                _steps.Count);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error updating step display");
+        }
+    }
+
+    private int GetCurrentStepIndex()
+    {
+        var activeStep = _steps.FirstOrDefault(s => s.Status == StepStatus.Active);
+        if (activeStep != null)
+        {
+            return _steps.ToList().IndexOf(activeStep);
+        }
+
+        return _steps.Count(s => s.Status == StepStatus.Completed);
     }
 
     public override async ValueTask DisposeAsync()
@@ -170,12 +203,22 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             return;
         }
 
-        _isDisposed = true;
-        if (_updateLock is not null)
+        try
         {
-            _updateLock.Dispose();
+            if (_isInitialized)
+            {
+                await SafeJsVoidInteropAsync("DropBearProgressBar.dispose", _progressId);
+            }
         }
-
-        await base.DisposeAsync();
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error disposing progress bar JavaScript");
+        }
+        finally
+        {
+            _isDisposed = true;
+            _updateLock?.Dispose();
+            await base.DisposeAsync();
+        }
     }
 }

@@ -1,4 +1,4 @@
-/* DropBearProgressBar.razor.css */
+/* Root Container & Variables */
 .dropbear-progress-container {
   --progress-height: 0.3rem;
   --progress-bg: var(--clr-surface-secondary, #343639);
@@ -24,7 +24,12 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
+.dropbear-progress-container:hover {
+  border-color: var(--clr-border-hover, #4e5055);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
 
+/* Basic Progress Bar Styles */
 .dropbear-progress {
   width: 100%;
   position: relative;
@@ -49,15 +54,27 @@
   box-shadow: 0 -1px 1px rgba(0, 0, 0, 0.1) inset;
 }
 
+/* Progress Bar Variants */
 .overall-progress-bar {
   background-color: var(--progress-success);
 }
+
 .task-progress-bar {
   background-color: var(--progress-color);
 }
 
+/* Stepped Progress Window */
+.step-window {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: hidden;
+  position: relative;
+  padding: 1rem 0;
+}
 
-/* Steps styles */
+/* Step Container */
 .progress-steps {
   display: flex;
   justify-content: space-between;
@@ -65,53 +82,18 @@
   position: relative;
 }
 
+/* Individual Step */
 .step {
   display: flex;
   flex-direction: column;
   align-items: center;
+  padding: 0 1.5rem;
   position: relative;
-  z-index: 2;
-  flex: 1;
-}
-
-/* Base connecting line */
-.progress-steps::before {
-  content: '';
-  position: absolute;
-  top: calc(var(--step-indicator-size) / 2);
-  left: calc(var(--step-indicator-size) / 2);
-  right: calc(var(--step-indicator-size) / 2);
-  height: var(--step-indicator-border);
-  background-color: var(--progress-bg);
-  z-index: 1;
-}
-
-/* Colored connecting lines - updated positioning */
-.step::after {
-  content: '';
-  position: absolute;
-  top: calc(var(--step-indicator-size) / 2);
-  left: 0;
-  width: 100%; /* Change from right positioning to width */
-  height: var(--step-indicator-border);
-  background: var(--progress-bg);
-  z-index: 1;
   transition: var(--progress-transition);
+  animation: slideIn 0.3s ease-out;
 }
 
-.step:not(:last-child)::after {
-  content: '';
-  position: absolute;
-  top: calc(var(--step-indicator-size) / 2);
-  left: calc(var(--step-indicator-size) / 2);
-  right: calc(var(--step-indicator-size) * -1);
-  height: var(--step-indicator-border);
-  background: var(--progress-bg);
-  z-index: 1;
-  transition: var(--progress-transition);
-}
-
-/* Step indicators - refined sizing */
+/* Step Indicator */
 .step-indicator {
   width: var(--step-indicator-size);
   height: var(--step-indicator-size);
@@ -123,170 +105,95 @@
   z-index: 3;
 }
 
+/* Step Labels */
 .step-label {
   margin-top: 0.5rem;
   font-size: 0.75rem;
-  color: var(--clr-text-secondary);
   text-align: center;
-  max-width: 100%;
-  padding: 0 0.5rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  transition: var(--progress-transition);
+}
+
+.step-current {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--clr-text-primary);
+}
+
+.step-previous,
+.step-next {
+  color: var(--clr-text-secondary);
   opacity: 0.8;
 }
 
-.progress-label {
-  margin-top: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--clr-text-secondary);
-  text-align: right;
-}
-
-.dropbear-progress-container:hover {
-  border-color: var(--clr-border-hover, #4e5055);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-/* Refined pulse animation */
-@keyframes pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0.3);
-  }
-  70% {
-    box-shadow: 0 0 0 4px rgba(98, 219, 200, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(98, 219, 200, 0);
-  }
-}
-
-/* More subtle glow effect */
-.progress-glow {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  transform: translateX(-100%);
-  animation: glow 2s infinite;
-}
-
-/* Refined indeterminate animation */
-.dropbear-progress.indeterminate .progress-bar {
-  width: 100%;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg,
-  transparent,
-  var(--progress-color) 20%,
-  var(--progress-color) 80%,
-  transparent
-  );
-  animation: indeterminate 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.step:first-child::after {
-  left: 0;
-}
-
-.step:last-child::after {
-  right: 0;
-}
-
-.step.completed::after {
-  background: var(--progress-color);
-}
-
-.step.completed.success::after {
-  background: var(--progress-success);
-}
-
-.step.completed.warning::after {
-  background: var(--progress-warning);
-}
-
-.step.completed.error::after {
-  background: var(--progress-error);
-}
-
-/* Step indicators */
-.step-indicator {
+/* Step States */
+.step.active .step-indicator {
   width: 1rem;
   height: 1rem;
-  border-radius: 50%;
-  background-color: var(--progress-bg);
-  border: 2px solid var(--progress-bg);
-  transition: var(--progress-transition);
-  position: relative;
-  z-index: 3;
-}
-
-.step.completed .step-indicator,
-.step.completed::after {
-  background-color: var(--progress-color);
-  border-color: var(--progress-color);
-}
-
-.step.completed.success .step-indicator,
-.step.completed.success::after {
-  background-color: var(--progress-success);
-  border-color: var(--progress-success);
-}
-
-.step.completed.warning .step-indicator,
-.step.completed.warning::after {
-  background-color: var(--progress-warning);
-  border-color: var(--progress-warning);
-}
-
-.step.completed.error .step-indicator,
-.step.completed.error::after {
-  background-color: var(--progress-error);
-  border-color: var(--progress-error);
-}
-
-.step.active .step-indicator {
   background-color: transparent;
   border-color: var(--progress-color);
   animation: pulse 2s infinite;
 }
 
+.step.completed .step-indicator {
+  background-color: var(--progress-success);
+  border-color: var(--progress-success);
+}
 
-.progress-label {
-  margin-top: 0.75rem;
-  font-size: var(--fs-sm, 0.875rem);
+/* Step Status Colors */
+.step.completed.success .step-indicator {
+  background-color: var(--progress-success);
+}
+
+.step.completed.warning .step-indicator {
+  background-color: var(--progress-warning);
+}
+
+.step.completed.error .step-indicator {
+  background-color: var(--progress-error);
+}
+
+/* Connecting Lines */
+.step-window::before {
+  content: '';
+  position: absolute;
+  top: calc(1rem + var(--step-indicator-size) / 2);
+  left: 25%;
+  right: 25%;
+  height: var(--step-indicator-border);
+  background-color: var(--progress-bg);
+  z-index: 1;
+}
+
+.step::after {
+  content: '';
+  position: absolute;
+  top: calc(var(--step-indicator-size) / 2);
+  left: calc(var(--step-indicator-size) / 2);
+  right: calc(var(--step-indicator-size) / 2);
+  height: var(--step-indicator-border);
+  background-color: var(--progress-bg);
+  z-index: 1;
+  transition: var(--progress-transition);
+}
+
+/* Progress Labels */
+.progress-label,
+.step-counter {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
   color: var(--clr-text-secondary);
   text-align: right;
 }
 
-.label-container {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-  font-size: 0.875rem;
-  color: var(--clr-text-secondary);
-}
-
-.progress-title {
-  font-weight: 500;
-}
-
-/* Animations and effects */
-.progress-glow {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
-  transform: translateX(-100%);
-  animation: glow 2s infinite;
-}
-
-@keyframes glow {
-  100% {
-    transform: translateX(100%);
+/* Animations */
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
   }
 }
 
@@ -302,16 +209,24 @@
   }
 }
 
-/* Indeterminate progress */
+@keyframes glow {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Indeterminate Progress Bar */
 .dropbear-progress.indeterminate .progress-bar {
   width: 100%;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, var(--progress-color), transparent);
-  animation: indeterminate 1.5s infinite cubic-bezier(0.4, 0, 0.2, 1);
-}
-
-.indeterminate .progress-label {
-  animation: fadeInOut 2s infinite;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--progress-color) 20%,
+    var(--progress-color) 80%,
+    transparent
+  );
+  animation: indeterminate 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes indeterminate {
@@ -321,6 +236,10 @@
   100% {
     transform: translateX(100%);
   }
+}
+
+.indeterminate .progress-label {
+  animation: fadeInOut 2s infinite;
 }
 
 @keyframes fadeInOut {

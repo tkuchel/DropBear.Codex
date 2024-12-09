@@ -2,40 +2,89 @@
 @using DropBear.Codex.Blazor.Models
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @namespace DropBear.Codex.Blazor.Components.Progress
+
 <div class="dropbear-progress-container">
     <div class="dropbear-progress @GetProgressClass()" id="@_progressId">
         @if (Type == ProgressBarType.Stepped)
         {
             <div class="progress-steps">
-                @foreach (var step in _steps)
-                {
-                    <div class="step @GetStepClass(step)">
-                        <div class="step-indicator" role="progressbar"
-                             aria-valuenow="@GetStepProgress(step)"
-                             aria-valuemin="0"
-                             aria-valuemax="100">
+                <div class="step-window">
+                    @* Previous Step *@
+                    @if (GetCurrentStepIndex() > 0)
+                    {
+                        var prevStep = _steps.ElementAt(GetCurrentStepIndex() - 1);
+                        <div class="step completed @GetStepClass(prevStep)">
+                            <div class="step-indicator" role="progressbar"
+                                 aria-valuenow="100"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                            <span class="step-label step-previous">@prevStep.Label</span>
                         </div>
-                        <span class="step-label">@step.Label</span>
-                    </div>
-                }
+                    }
+
+                    @* Current Step *@
+                    @if (GetCurrentStepIndex() < _steps.Count)
+                    {
+                        var currentStep = _steps.ElementAt(GetCurrentStepIndex());
+                        <div class="step active @GetStepClass(currentStep)">
+                            <div class="step-indicator" role="progressbar"
+                                 aria-valuenow="@GetStepProgress(currentStep)"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                            <span class="step-label step-current">@currentStep.Label</span>
+                        </div>
+                    }
+
+                    @* Next Step *@
+                    @if (GetCurrentStepIndex() < _steps.Count - 1)
+                    {
+                        var nextStep = _steps.ElementAt(GetCurrentStepIndex() + 1);
+                        <div class="step @GetStepClass(nextStep)">
+                            <div class="step-indicator" role="progressbar"
+                                 aria-valuenow="0"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100">
+                            </div>
+                            <span class="step-label step-next">@nextStep.Label</span>
+                        </div>
+                    }
+                </div>
             </div>
-        }
-        <div class="progress-bar-wrapper">
-            <div class="progress-bar" style="@GetProgressStyle()">
-                <div class="progress-glow"></div>
+
+            <div class="progress-bar-wrapper">
+                <div
+                    class="progress-bar @(Type == ProgressBarType.Standard ? "overall-progress-bar" : "task-progress-bar")"
+                    style="@GetProgressStyle()">
+                    <div class="progress-glow"></div>
+                </div>
             </div>
-        </div>
-        @if (!string.IsNullOrEmpty(Label))
-        {
-            <div class="progress-label">@Label</div>
-        }
-        else if (_isIndeterminate)
-        {
-            <div class="progress-label">Loading...</div>
+
+            <div class="step-counter">
+                Step @(GetCurrentStepIndex() + 1) of @_steps.Count
+            </div>
         }
         else
         {
-            <div class="progress-label">@Progress.ToString("F0")%</div>
+            <div class="progress-bar-wrapper">
+                <div class="progress-bar" style="@GetProgressStyle()">
+                    <div class="progress-glow"></div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(Label))
+            {
+                <div class="progress-label">@Label</div>
+            }
+            else if (_isIndeterminate)
+            {
+                <div class="progress-label">Loading...</div>
+            }
+            else
+            {
+                <div class="progress-label">@Progress.ToString("F0")%</div>
+            }
         }
     </div>
 </div>
@@ -57,9 +106,13 @@
         var classes = new List<string>();
 
         if (step.Status == StepStatus.Active)
+        {
             classes.Add("active");
+        }
         else if (step.Status != StepStatus.NotStarted)
+        {
             classes.Add("completed");
+        }
 
         classes.Add(step.Status switch
         {
@@ -74,14 +127,12 @@
 
     private string GetProgressStyle()
     {
-        if (_isIndeterminate) return "";
+        if (_isIndeterminate)
+            return "";
 
-        if (Type == ProgressBarType.Standard)
-        {
-            return $"width: {OverallProgress}%";
-        }
-
-        return $"width: {TaskProgress}%";
+        return Type == ProgressBarType.Stepped
+            ? $"width: {TaskProgress}%"
+            : $"width: {OverallProgress}%";
     }
 
     private int GetStepProgress(ProgressStep step)

@@ -1127,6 +1127,7 @@
   const DropBearProgressBar = (() => {
     const logger = DropBearUtils.createLogger('DropBearProgressBar');
     const progressBars = new Map();
+    const ANIMATION_DURATION = 300;
 
     class ProgressBarManager {
       constructor(id, dotNetRef) {
@@ -1136,6 +1137,7 @@
         this.element = document.getElementById(id);
         this.dotNetRef = dotNetRef;
         this.isDisposed = false;
+        this.animationFrame = null;
 
         if (!DropBearUtils.isElement(this.element)) {
           throw new TypeError('Invalid element provided to ProgressBarManager');
@@ -1148,9 +1150,12 @@
         if (this.isDisposed) return;
 
         try {
+          cancelAnimationFrame(this.animationFrame);
           const progressBar = this.element.querySelector('.progress-bar');
           if (progressBar) {
-            progressBar.style.width = `${progress}%`;
+            this.animationFrame = requestAnimationFrame(() => {
+              progressBar.style.width = `${progress}%`;
+            });
           }
         } catch (error) {
           logger.error(`Error updating progress for ${this.id}:`, error);
@@ -1166,9 +1171,54 @@
 
           if (step) {
             step.className = `step ${this.getStepClass(status)}`;
+            step.setAttribute('data-status', status);
+
+            // Trigger animation
+            void step.offsetWidth; // Force reflow
+            step.classList.add('animate-step');
           }
         } catch (error) {
           logger.error(`Error updating step status for ${this.id}:`, error);
+        }
+      }
+
+      updateStepDisplay(currentIndex, totalSteps) {
+        if (this.isDisposed) return false;
+
+        try {
+          const stepWindow = this.element.querySelector('.step-window');
+          if (!stepWindow) return false;
+
+          cancelAnimationFrame(this.animationFrame);
+
+          this.animationFrame = requestAnimationFrame(() => {
+            const steps = stepWindow.querySelectorAll('.step');
+            steps.forEach((step, index) => {
+              const position = index - currentIndex + 1;
+
+              // Add transition class
+              step.classList.add('step-transition');
+
+              if (position >= -1 && position <= 1) {
+                step.style.display = 'flex';
+                step.style.opacity = position === 0 ? '1' : '0.8';
+                step.style.transform = `translateX(${position * 100}%)`;
+              } else {
+                step.style.display = 'none';
+              }
+            });
+
+            // Update counter
+            const counter = this.element.querySelector('.step-counter');
+            if (counter) {
+              counter.textContent = `Step ${currentIndex + 1} of ${totalSteps}`;
+            }
+          });
+
+          return true;
+        } catch (error) {
+          logger.error(`Error updating step display for ${this.id}:`, error);
+          return false;
         }
       }
 
@@ -1192,6 +1242,7 @@
 
         try {
           this.isDisposed = true;
+          cancelAnimationFrame(this.animationFrame);
           this.dotNetRef = null;
           logger.debug(`Progress bar disposed: ${this.id}`);
         } catch (error) {
@@ -1220,29 +1271,27 @@
 
       updateProgress(progressId, taskProgress, overallProgress) {
         const manager = progressBars.get(progressId);
-        if (manager) {
-          // Update task progress bar
-          manager.updateProgress(taskProgress);
+        if (!manager) return false;
 
-          // Update overall progress bar (optional logic to skip frequent updates)
-          if (overallProgress !== undefined) {
-            const overallBar = manager.element.querySelector('.overall-progress-bar');
-            if (overallBar) {
-              overallBar.style.width = `${overallProgress}%`;
-            }
+        manager.updateProgress(taskProgress);
+
+        if (overallProgress !== undefined) {
+          const overallBar = manager.element.querySelector('.overall-progress-bar');
+          if (overallBar) {
+            overallBar.style.width = `${overallProgress}%`;
           }
-          return true;
         }
-        return false;
-      }
-      ,
+        return true;
+      },
+
       updateStepStatus(progressId, stepName, status) {
         const manager = progressBars.get(progressId);
-        if (manager) {
-          manager.updateStepStatus(stepName, status);
-          return true;
-        }
-        return false;
+        return manager ? manager.updateStepStatus(stepName, status) : false;
+      },
+
+      updateStepDisplay(progressId, currentIndex, totalSteps) {
+        const manager = progressBars.get(progressId);
+        return manager ? manager.updateStepDisplay(currentIndex, totalSteps) : false;
       },
 
       dispose(progressId) {
