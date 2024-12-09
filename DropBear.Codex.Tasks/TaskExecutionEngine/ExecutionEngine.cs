@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.Errors;
@@ -400,16 +401,19 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// <param name="context">The execution context containing progress information.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    private async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
+    public async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
     {
         if (_disposed || cancellationToken.IsCancellationRequested)
         {
-            _logger.Debug("Skipping progress update: Execution canceled or engine disposed.");
+            _logger.Debug("Skipping progress update for {TaskName}: Engine disposed or cancellation requested.",
+                task.Name);
             return;
         }
 
         try
         {
+            _logger.Debug("Attempting progress update for {TaskName}. Caller: {Caller}", task.Name, GetCallerName());
+
             context.IncrementCompletedTaskCount();
             await _progressPublisher.PublishAsync(
                 _channelId,
@@ -422,7 +426,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                     $"Task '{task.Name}' execution progress."
                 ),
                 cancellationToken
-            ).ConfigureAwait(true);
+            ).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -432,6 +436,11 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         {
             _logger.Error(ex, "Failed to update progress for task '{TaskName}'", task.Name);
         }
+    }
+
+    private static string GetCallerName([CallerMemberName] string callerName = "")
+    {
+        return callerName;
     }
 
 
@@ -927,10 +936,41 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         TaskExecutionScope executionScope,
         CancellationToken cancellationToken)
     {
+        _logger.Debug("Starting execution of resolved tasks. Total tasks: {TaskCount}. Caller: {Caller}",
+            tasks.Count,
+            GetCallerName());
+
+        foreach (var task in tasks)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.Debug("Execution canceled for task {TaskName}. Caller: {Caller}", task.Name, GetCallerName());
+                break;
+            }
+
+            try
+            {
+                _logger.Debug("Executing task {TaskName}. Caller: {Caller}", task.Name, GetCallerName());
+                await task.ExecuteAsync(executionScope.Context, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.Debug("Task execution canceled: {TaskName}.", task.Name);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error executing task: {TaskName}", task.Name);
+            }
+        }
+
         var result = await ExecuteTasksAsync(tasks, executionScope, cancellationToken).ConfigureAwait(false);
+
+        _logger.Debug("Execution of resolved tasks completed. Logging execution stats.");
         LogExecutionStats(executionScope.Tracker.GetStats());
+
         return result;
     }
+
 
     /// <summary>
     ///     Finalizes the execution by disposing of the execution scope.

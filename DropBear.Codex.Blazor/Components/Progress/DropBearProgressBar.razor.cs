@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -209,29 +210,22 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (_isDisposed)
         {
-            Logger.Debug("Skipping step status update: Progress bar disposed.");
+            Logger.Debug("Skipping step status update for {StepName}: Progress bar disposed. Caller: {Caller}",
+                stepName, GetCallerName());
             return;
         }
 
         try
         {
+            Logger.Debug("Attempting step status update for {StepName} to {Status}. Caller: {Caller}", stepName, status,
+                GetCallerName());
+
             await _updateLock!.WaitAsync();
 
-            var step = _steps.FirstOrDefault(s => s.Name == stepName);
+            var step = Steps?.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
             {
                 step.Status = status;
-
-                if (status == StepStatus.Completed)
-                {
-                    await StepCompleted.InvokeAsync(step);
-                }
-
-                if (_isInitialized)
-                {
-                    await UpdateStepDisplayAsync(GetCurrentStepIndex());
-                }
-
                 await InvokeAsync(StateHasChanged);
             }
         }
@@ -239,6 +233,11 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         {
             _updateLock?.Release();
         }
+    }
+
+    private static string GetCallerName([CallerMemberName] string callerName = "")
+    {
+        return callerName;
     }
 
     private async Task UpdateStepDisplayAsync(int currentIndex)
