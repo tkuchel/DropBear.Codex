@@ -15,32 +15,22 @@ public sealed class ValidationResult
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ValidationResult>();
     private readonly List<ValidationError> _errors;
-    private readonly ResultState _state;
 
-    private ValidationResult(
-        IEnumerable<ValidationError> errors,
-        string? message = null,
-        Exception? exception = null,
-        ResultState state = ResultState.Success)
+    private ValidationResult(IEnumerable<ValidationError> errors, string? message, Exception? exception,
+        ResultState state)
     {
-        ArgumentNullException.ThrowIfNull(errors);
-
         _errors = errors.ToList();
         Message = message;
         Exception = exception;
-        _state = state;
-
-        // If we have errors but state is Success, override to Failure
-        if (_errors.Any() && state == ResultState.Success)
-        {
-            _state = ResultState.Failure;
-        }
+        State = state == ResultState.Success && _errors.Any() ? ResultState.Failure : state;
     }
+
+    public ResultState State { get; }
 
     /// <summary>
     ///     Gets whether the validation was successful.
     /// </summary>
-    public bool IsSuccess => _state == ResultState.Success;
+    public bool IsSuccess => State == ResultState.Success;
 
     /// <summary>
     ///     Gets whether the validation failed.
@@ -72,8 +62,14 @@ public sealed class ValidationResult
     /// </summary>
     public static ValidationResult Success()
     {
-        return new ValidationResult(Enumerable.Empty<ValidationError>());
+        return new ValidationResult(
+            [], // No errors
+            null, // No message
+            null, // No exception
+            ResultState.Success // Explicit success state
+        );
     }
+
 
     /// <summary>
     ///     Creates a failed validation result with multiple errors.
@@ -106,31 +102,11 @@ public sealed class ValidationResult
     /// </summary>
     public static ValidationResult Combine(params ValidationResult[] results)
     {
-        ArgumentNullException.ThrowIfNull(results);
-
-        var allErrors = results.SelectMany(r => r.Errors).ToList();
-        var anyFailure = results.Any(r => r.IsFailure);
-        var exceptions = results
-            .Where(r => r.Exception != null)
-            .Select(r => r.Exception!)
-            .ToList();
-
-        var exception = exceptions.Count switch
-        {
-            0 => null,
-            1 => exceptions[0],
-            _ => new AggregateException(exceptions)
-        };
-
-        var message = allErrors.Any()
-            ? string.Join("\n", allErrors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"))
-            : null;
-
-        return new ValidationResult(
-            allErrors,
-            message,
-            exception,
-            anyFailure ? ResultState.Failure : ResultState.Success);
+        var errors = results.SelectMany(r => r.Errors).ToList();
+        var message = errors.Any() ? string.Join("\n", errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}")) : null;
+        var exception = results.Select(r => r.Exception).FirstOrDefault();
+        return new ValidationResult(errors, message, exception,
+            errors.Any() ? ResultState.Failure : ResultState.Success);
     }
 
     /// <summary>

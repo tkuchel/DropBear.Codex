@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Exceptions;
 using DropBear.Codex.Blazor.Interfaces;
@@ -14,9 +15,8 @@ namespace DropBear.Codex.Blazor.Services;
 
 public class SnackbarService : ISnackbarService
 {
-    private readonly List<SnackbarInstance> _activeSnackbars = [];
+    private readonly ConcurrentBag<SnackbarInstance> _activeSnackbars = new();
     private readonly ILogger _logger;
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
 
     public SnackbarService()
     {
@@ -27,30 +27,21 @@ public class SnackbarService : ISnackbarService
 
     public async Task<Result<Unit, SnackbarError>> Show(SnackbarInstance snackbar)
     {
+        if (OnShow is null)
+        {
+            return Result<Unit, SnackbarError>.Failure(new SnackbarError("No snackbar container is registered"));
+        }
+
         try
         {
-            await _semaphore.WaitAsync();
-
-            if (OnShow is null)
-            {
-                return Result<Unit, SnackbarError>.Failure(
-                    new SnackbarError("No snackbar container is registered"));
-            }
-
             _activeSnackbars.Add(snackbar);
-            await OnShow.Invoke(snackbar);
-
+            await OnShow.Invoke(snackbar).ConfigureAwait(false);
             return Result<Unit, SnackbarError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to show snackbar");
-            return Result<Unit, SnackbarError>.Failure(
-                new SnackbarError($"Failed to show snackbar: {ex.Message}"));
-        }
-        finally
-        {
-            _semaphore.Release();
+            return Result<Unit, SnackbarError>.Failure(new SnackbarError($"Failed to show snackbar: {ex.Message}"));
         }
     }
 
@@ -121,7 +112,7 @@ public class SnackbarService : ISnackbarService
 
     public void Dispose()
     {
-        _semaphore.Dispose();
+        _activeSnackbars.Clear();
         GC.SuppressFinalize(this);
     }
 }

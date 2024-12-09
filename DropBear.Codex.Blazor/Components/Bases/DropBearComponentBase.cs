@@ -1,11 +1,7 @@
 ﻿#region
 
-using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Extensions;
-using DropBear.Codex.Blazor.Interfaces;
-using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
-using Microsoft.AspNetCore.Components.Server.Circuits;
 using Microsoft.JSInterop;
 using Serilog;
 
@@ -19,66 +15,47 @@ namespace DropBear.Codex.Blazor.Components.Bases;
 /// </summary>
 public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 {
-    private readonly CancellationTokenSource _circuitCts = new();
-    private CircuitHandler? _circuitHandler;
-    private bool? _isConnected;
-    private ValidationResult _validationResult;
+    internal readonly CancellationTokenSource CircuitCts = new();
+    internal bool IsConnected { get; set; } = true;
 
-    /// <summary>
-    ///     Gets or sets the JS Runtime instance.
-    /// </summary>
-    [Inject]
-    protected IJSRuntime JsRuntime { get; set; } = default!;
+    #region Helpers
 
-    /// <summary>
-    ///     Gets or sets the logger instance.
-    /// </summary>
-    [Inject]
-    protected ILogger Logger { get; set; } = default!;
+    private void LogCircuitDisconnection(string message)
+    {
+        Logger.Debug("{Message} in {ComponentName}", message, GetType().Name);
+    }
 
-    [Inject] protected ISnackbarService SnackbarService { get; set; } = default!;
+    #endregion
 
-    /// <summary>
-    ///     Gets the unique identifier for the component instance.
-    /// </summary>
+    #region Injected Services
+
+    [Inject] protected IJSRuntime JsRuntime { get; set; } = default!;
+    [Inject] protected internal ILogger Logger { get; set; } = default!;
+
+    #endregion
+
+    #region Properties
+
     protected string ComponentId { get; } = $"dropbear-{Guid.NewGuid():N}";
+    private int _isDisposed; // Backing field for disposal state
 
     /// <summary>
     ///     Gets a value indicating whether the component has been disposed.
     /// </summary>
-    protected bool IsDisposed { get; private set; }
+    protected bool IsDisposed => _isDisposed == 1;
 
-    /// <summary>
-    ///     Gets a value indicating whether the Blazor circuit is currently connected.
-    /// </summary>
-    protected bool IsConnected => _isConnected ?? true;
+    private CancellationToken CircuitToken => CircuitCts.Token;
 
-    /// <summary>
-    ///     Gets the cancellation token that is canceled when the circuit is disconnected.
-    /// </summary>
-    protected CancellationToken CircuitToken => _circuitCts.Token;
+    #endregion
 
-    /// <summary>
-    ///     Disposes the component and its resources.
-    /// </summary>
-    public virtual async ValueTask DisposeAsync()
-    {
-        await DisposeAsync(true);
-        GC.SuppressFinalize(this);
-    }
+    #region Lifecycle Management
 
-    /// <summary>
-    ///     Initializes the component.
-    /// </summary>
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            // Create and initialize circuit handler
-            _circuitHandler = new ComponentCircuitHandler(this);
-
             await base.OnInitializedAsync();
-            _isConnected = true;
+            IsConnected = true;
         }
         catch (Exception ex)
         {
@@ -87,13 +64,49 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    ///     Safely invokes JavaScript interop methods with connection and disposal checks.
-    /// </summary>
-    /// <typeparam name="T">The return type of the JavaScript function.</typeparam>
-    /// <param name="identifier">The identifier of the JavaScript function to invoke.</param>
-    /// <param name="args">Arguments to pass to the JavaScript function.</param>
-    /// <returns>A task representing the result of the JavaScript invocation.</returns>
+    public virtual async ValueTask DisposeAsync()
+    {
+        await DisposeAsync(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual async ValueTask DisposeAsync(bool disposing)
+    {
+        if (Interlocked.Exchange(ref _isDisposed, 1) == 1) // Ensure single disposal
+        {
+            return;
+        }
+
+        if (disposing)
+        {
+            try
+            {
+                if (IsConnected && !CircuitCts.IsCancellationRequested)
+                {
+                    await CleanupJavaScriptResourcesAsync()
+                        .WaitAsync(TimeSpan.FromSeconds(2), CircuitToken)
+                        .ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                LogCircuitDisconnection("Circuit disconnected; skipping JS cleanup");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during {ComponentName} disposal", GetType().Name);
+            }
+            finally
+            {
+                CircuitCts.Dispose();
+            }
+        }
+    }
+
+    #endregion
+
+    #region JavaScript Interop
+
     protected async Task<T> SafeJsInteropAsync<T>(string identifier, params object[] args)
     {
         if (IsDisposed)
@@ -103,32 +116,23 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            // Use the circuit token to cancel operations when disconnected
             return await JsRuntime.InvokeAsync<T>(identifier, CircuitToken, args)
-                .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken); // Add timeout
+                .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken)
+                .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is JSDisconnectedException
-                                       or OperationCanceledException
-                                       or TimeoutException)
+        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException or TimeoutException)
         {
-            _isConnected = false;
-            Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}",
-                GetType().Name, ex.Message);
-            throw new JSDisconnectedException("Circuit is disconnected");
+            IsConnected = false;
+            Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}", GetType().Name, ex.Message);
+            throw;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}",
-                GetType().Name, identifier);
+            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}", GetType().Name, identifier);
             throw;
         }
     }
 
-    /// <summary>
-    ///     Safely invokes void JavaScript interop methods with connection and disposal checks.
-    /// </summary>
-    /// <param name="identifier">The identifier of the JavaScript function to invoke.</param>
-    /// <param name="args">Arguments to pass to the JavaScript function.</param>
     protected async Task SafeJsVoidInteropAsync(string identifier, params object[] args)
     {
         if (IsDisposed)
@@ -139,119 +143,36 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         try
         {
             await JsRuntime.InvokeVoidAsync(identifier, CircuitToken, args)
-                .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken);
+                .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken)
+                .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is JSDisconnectedException
-                                       or OperationCanceledException
-                                       or TimeoutException)
+        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException or TimeoutException)
         {
-            _isConnected = false;
-            Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}",
-                GetType().Name, ex.Message);
-            throw new JSDisconnectedException("Circuit is disconnected");
+            IsConnected = false;
+            Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}", GetType().Name, ex.Message);
+            throw;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}",
-                GetType().Name, identifier);
+            Logger.Error(ex, "JS interop call failed in {ComponentName}: {Identifier}", GetType().Name, identifier);
             throw;
         }
     }
 
-    /// <summary>
-    ///     Checks if the Blazor circuit is still connected.
-    /// </summary>
-    private async Task<bool> CheckConnectionStatus()
-    {
-        try
-        {
-            if (_isConnected.HasValue)
-            {
-                return _isConnected.Value;
-            }
-
-            // Use a more reliable connection check
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            _isConnected = await JsRuntime.InvokeAsync<bool>(
-                "eval",
-                cts.Token,
-                "typeof window !== 'undefined' && window.document !== null"
-            );
-            return _isConnected.Value;
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException
-                                       or OperationCanceledException
-                                       or TimeoutException)
-        {
-            _isConnected = false;
-            return false;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning(ex, "Failed to check connection status in {ComponentName}", GetType().Name);
-            _isConnected = false;
-            return false;
-        }
-    }
-
-    /// <summary>
-    ///     Performs component cleanup operations.
-    /// </summary>
-    /// <param name="disposing">True if being called from Dispose.</param>
-    protected virtual async ValueTask DisposeAsync(bool disposing)
-    {
-        if (!IsDisposed)
-        {
-            if (disposing)
-            {
-                try
-                {
-                    // Only attempt JS cleanup if we're still connected
-                    if (IsConnected && !_circuitCts.IsCancellationRequested)
-                    {
-                        await CleanupJavaScriptResourcesAsync()
-                            .WaitAsync(TimeSpan.FromSeconds(2)) // Add timeout
-                            .ConfigureAwait(false);
-                    }
-                }
-                catch (Exception ex) when (ex is JSDisconnectedException
-                                               or OperationCanceledException
-                                               or TimeoutException)
-                {
-                    Logger.Debug("Skipping JS cleanup for {ComponentName} - circuit disconnected",
-                        GetType().Name);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error during {ComponentName} disposal", GetType().Name);
-                }
-                finally
-                {
-                    _circuitCts.Dispose();
-                }
-            }
-
-            IsDisposed = true;
-        }
-    }
-
-    /// <summary>
-    ///     Override this method to clean up component-specific JavaScript resources.
-    /// </summary>
     protected virtual Task CleanupJavaScriptResourcesAsync()
     {
         return Task.CompletedTask;
     }
 
-    /// <summary>
-    ///     Ensures component state is updated after executing an action.
-    /// </summary>
-    /// <param name="action">The action to execute.</param>
+    #endregion
+
+    #region State Management
+
     protected async Task InvokeStateHasChangedAsync(Func<Task> action)
     {
         try
         {
-            await action();
+            await action().ConfigureAwait(false);
             StateHasChanged();
         }
         catch (Exception ex)
@@ -261,10 +182,6 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    ///     Ensures component state is updated after executing an action.
-    /// </summary>
-    /// <param name="action">The action to execute.</param>
     protected void InvokeStateHasChanged(Action action)
     {
         try
@@ -279,113 +196,5 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    ///     Attempts to reconnect to the circuit with exponential backoff.
-    /// </summary>
-    protected virtual async Task AttemptReconnectionAsync()
-    {
-        if (!IsConnected && !CircuitToken.IsCancellationRequested)
-        {
-            try
-            {
-                for (var i = 0; i < 3; i++)
-                {
-                    if (await CheckConnectionStatus())
-                    {
-                        await OnReconnectedAsync();
-                        return;
-                    }
-
-                    await Task.Delay(1000 * (i + 1), CircuitToken);
-                }
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Logger.Error(ex, "Reconnection attempt failed in {ComponentName}", GetType().Name);
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Called when the component successfully reconnects to the circuit.
-    /// </summary>
-    protected virtual Task OnReconnectedAsync()
-    {
-        return Task.CompletedTask;
-    }
-
-    private async Task ShowErrorSnackbar(string message)
-    {
-        await SnackbarService.ShowError("Error", message);
-    }
-
-    private async Task ShowSuccessSnackbar(string message)
-    {
-        await SnackbarService.ShowSuccess("Success", message);
-    }
-
-    private async Task ShowInfoSnackbar(string message)
-    {
-        await SnackbarService.ShowInformation("Info", message);
-    }
-
-    private async Task ShowValidationErrors()
-    {
-        if (_validationResult != null)
-        {
-            var errorMessages = string.Join("\n",
-                _validationResult.Errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"));
-            await ShowErrorSnackbar($"Please correct the following errors:\n{errorMessages}");
-        }
-    }
-
-    /// <summary>
-    ///     Inner class that handles circuit events
-    /// </summary>
-    private class ComponentCircuitHandler : CircuitHandler
-    {
-        private readonly DropBearComponentBase _component;
-
-        public ComponentCircuitHandler(DropBearComponentBase component)
-        {
-            _component = component;
-        }
-
-        public override Task OnCircuitOpenedAsync(Circuit circuit, CancellationToken cancellationToken)
-        {
-            _component._isConnected = true;
-            _component.Logger.Debug("Circuit opened in {ComponentName}", _component.GetType().Name);
-            return Task.CompletedTask;
-        }
-
-        public override Task OnCircuitClosedAsync(Circuit circuit, CancellationToken cancellationToken)
-        {
-            _component._isConnected = false;
-            _component._circuitCts.Cancel();
-            _component.Logger.Debug("Circuit closed in {ComponentName}", _component.GetType().Name);
-            return Task.CompletedTask;
-        }
-
-        public override Task OnConnectionUpAsync(Circuit circuit, CancellationToken cancellationToken)
-        {
-            _component._isConnected = true;
-            _component.Logger.Debug("Connection up in {ComponentName}", _component.GetType().Name);
-            return Task.CompletedTask;
-        }
-
-        public override Task OnConnectionDownAsync(Circuit circuit, CancellationToken cancellationToken)
-        {
-            _component._isConnected = false;
-            _component.Logger.Debug("Connection down in {ComponentName}", _component.GetType().Name);
-            return Task.CompletedTask;
-        }
-    }
-
-    private async Task HandleExceptionAsync(Exception e, [CallerMemberName] string callerName = "")
-    {
-        Logger.Error(e, "Unexpected exception in method {Caller}. Error message: {Message}", callerName, e.Message);
-        await ShowErrorSnackbar("An unexpected error occurred. Please try again later.");
-        await InvokeAsync(StateHasChanged);
-    }
-
+    #endregion
 }
