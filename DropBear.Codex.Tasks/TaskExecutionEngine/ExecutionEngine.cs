@@ -400,19 +400,16 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// <param name="context">The execution context containing progress information.</param>
     /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
+    private async Task UpdateProgressAsync(ITask task, ExecutionContext context, CancellationToken cancellationToken)
     {
-        if (_disposed)
+        if (_disposed || cancellationToken.IsCancellationRequested)
         {
-            _logger.Warning("Skipping progress update: Execution engine disposed.");
+            _logger.Debug("Skipping progress update: Execution canceled or engine disposed.");
             return;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-
         try
         {
-            // Fetch and publish progress updates
             context.IncrementCompletedTaskCount();
             await _progressPublisher.PublishAsync(
                 _channelId,
@@ -425,7 +422,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                     $"Task '{task.Name}' execution progress."
                 ),
                 cancellationToken
-            ).ConfigureAwait(false);
+            ).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {
