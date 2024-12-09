@@ -175,6 +175,12 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
     {
+        if (_isDisposed)
+        {
+            Logger.Debug("Skipping progress update: Progress bar disposed.");
+            return;
+        }
+
         try
         {
             await _updateLock!.WaitAsync();
@@ -197,6 +203,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock?.Release();
         }
     }
+
 
     public async Task UpdateStepStatusAsync(string stepName, StepStatus status)
     {
