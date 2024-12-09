@@ -107,6 +107,57 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// </summary>
     public bool EnableParallelExecution { get; set; } = false;
 
+    /// <summary>
+    ///     Asynchronously disposes of the execution engine and its resources.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        lock (_disposalLock)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+        }
+
+        try
+        {
+            if (IsExecuting)
+            {
+                _logger.Information("Cancelling ongoing tasks during disposal...");
+                _disposalCts.Cancel();
+            }
+
+            _tasks.Clear();
+            _dependencyGraph = new DependencyGraph();
+            _executionTracker.Reset();
+
+            _disposalCts.Dispose();
+            _logger.Information("ExecutionEngine disposed successfully.");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error occurred during ExecutionEngine disposal.");
+        }
+    }
+
+
+    /// <summary>
+    ///     Synchronously disposes of the execution engine and its resources.
+    /// </summary>
+    public void Dispose()
+    {
+        // Block until async disposal completes
+        DisposeAsync().AsTask().GetAwaiter().GetResult();
+    }
+
 
     /// <summary>
     ///     Clears all tasks from the execution engine.
@@ -142,64 +193,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         _tasks.Clear();
         _dependencyGraph = new DependencyGraph();
         _executionTracker.Reset();
-    }
-
-    /// <summary>
-    ///     Asynchronously disposes of the execution engine and its resources.
-    /// </summary>
-    public async ValueTask DisposeAsync()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-
-        lock (_disposalLock)
-        {
-            if (_disposed)
-            {
-                return;
-            }
-
-            _disposed = true;
-        }
-
-        try
-        {
-            // Cancel any ongoing operations
-            await _disposalCts.CancelAsync().ConfigureAwait(false);
-
-            // Wait for any executing tasks to complete
-            if (IsExecuting)
-            {
-                _logger.Information("Waiting for executing tasks to complete during disposal...");
-                // Give tasks a reasonable time to complete
-                await Task.Delay(TimeSpan.FromSeconds(5), _disposalCts.Token).ConfigureAwait(false);
-            }
-
-            // Clear internal state
-            _tasks.Clear();
-            _dependencyGraph = new DependencyGraph();
-            _executionTracker.Reset();
-
-            // Dispose of managed resources
-            _disposalCts.Dispose();
-
-            _logger.Information("ExecutionEngine disposed successfully.");
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Error occurred during ExecutionEngine disposal.");
-        }
-    }
-
-    /// <summary>
-    ///     Synchronously disposes of the execution engine and its resources.
-    /// </summary>
-    public void Dispose()
-    {
-        // Block until async disposal completes
-        DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
 
     // Add this method to check disposal state

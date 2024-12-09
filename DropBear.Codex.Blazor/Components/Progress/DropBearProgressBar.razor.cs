@@ -274,6 +274,10 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 await SafeJsVoidInteropAsync("DropBearProgressBar.dispose", _progressId);
             }
         }
+        catch (JSDisconnectedException)
+        {
+            Logger.Warning("JSInterop for DropBearProgressBar is already disposed.");
+        }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error disposing progress bar JavaScript");
