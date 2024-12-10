@@ -403,10 +403,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             return;
         }
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
         try
         {
-            await _updateLock.WaitAsync(cts.Token);
+
             var step = _steps.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
             {
@@ -418,10 +417,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         {
             Logger.Debug("Step status update cancelled");
         }
-        finally
-        {
-            _updateLock.Release();
-        }
+
     }
 
     /// <summary>

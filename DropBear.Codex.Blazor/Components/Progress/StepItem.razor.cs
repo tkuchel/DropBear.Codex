@@ -15,14 +15,44 @@ public sealed partial class StepItem : DropBearComponentBase
     [Parameter] public required ProgressStep Step { get; set; }
     [Parameter] public bool IsActive { get; set; }
     [Parameter] public double Progress { get; set; }
-    [Parameter] public EventCallback<ProgressStep> OnHover { get; set; }
+
+    /// <summary>
+    ///     Invoked when the user hovers over or leaves the step.
+    ///     Passing the hovered step when entering, and null when leaving.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ProgressStep?> OnHover { get; set; }
+
     [Parameter] public ProgressStep? HoveredStep { get; set; }
     [Parameter] public StepPosition Position { get; set; }
 
     private bool IsHovered
     {
         get => HoveredStep == Step;
-        set => throw new NotImplementedException();
+        set
+        {
+            try
+            {
+                if (value)
+                {
+                    // Hovering over this step
+                    OnHover.InvokeAsync(Step);
+                }
+                else
+                {
+                    // Hovering out - no step hovered
+                    OnHover.InvokeAsync(null);
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                Logger.Debug("IsHovered set after disposal, ignoring.");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error setting IsHovered");
+            }
+        }
     }
 
     private string GetProgressStyle()
@@ -97,15 +127,15 @@ public sealed partial class StepItem : DropBearComponentBase
         return duration.TotalHours >= 1 ? $"{duration.TotalHours:F1}h" : $"{duration.TotalMinutes:F0}m";
     }
 
-
-    private async Task HandleMouseOver()
+    private void HandleMouseOver()
     {
+        // Set hovered to true, triggers the property setter invoking OnHover(Step)
         IsHovered = true;
-        await OnHover.InvokeAsync(Step);
     }
 
     private void HandleMouseOut()
     {
+        // Set hovered to false, triggers the property setter invoking OnHover(null)
         IsHovered = false;
     }
 }
