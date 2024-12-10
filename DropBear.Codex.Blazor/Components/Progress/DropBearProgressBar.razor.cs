@@ -248,11 +248,10 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             await _updateLock.WaitAsync(cts.Token);
 
             var timeSinceLastUpdate = DateTime.UtcNow - _lastUpdateTime;
-            var shouldSmooth = EnableSmoothTransitions &&
-                               timeSinceLastUpdate.TotalMilliseconds < MinimumStepDuration;
+            var shouldSmooth = EnableSmoothTransitions && timeSinceLastUpdate.TotalMilliseconds < MinimumStepDuration;
 
             var clampedTaskProgress = Math.Clamp(taskProgress, 0, 100);
-            OverallProgress = totalTasks > 0
+            var newOverallProgress = totalTasks > 0
                 ? Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100)
                 : 0;
 
@@ -262,13 +261,18 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             }
             else
             {
-                TaskProgress = clampedTaskProgress;
+                // Ensure property updates that cause re-render happen via InvokeAsync:
+                await InvokeAsync(() => TaskProgress = clampedTaskProgress);
             }
 
             if (_isInitialized)
             {
-                await ProgressChanged.InvokeAsync(OverallProgress);
-                await UpdateStepDisplayAsync(GetCurrentStepIndex());
+                await InvokeAsync(async () =>
+                {
+                    OverallProgress = newOverallProgress;
+                    await ProgressChanged.InvokeAsync(OverallProgress);
+                    await UpdateStepDisplayAsync(GetCurrentStepIndex());
+                });
             }
 
             _lastUpdateTime = DateTime.UtcNow;
@@ -290,6 +294,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock.Release();
         }
     }
+
 
     /// <summary>
     ///     Marks a specific step as completed and triggers the StepCompleted event.
@@ -405,7 +410,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
         try
         {
-
             var step = _steps.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
             {
@@ -417,7 +421,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         {
             Logger.Debug("Step status update cancelled");
         }
-
     }
 
     /// <summary>
