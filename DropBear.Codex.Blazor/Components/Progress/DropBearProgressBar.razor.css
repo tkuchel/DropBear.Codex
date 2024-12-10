@@ -2,8 +2,9 @@
 
 /* Core Variables */
 .dropbear-progress-container {
-  --progress-height: 0.125rem;
-  --step-progress-height: 0.5rem;
+  --progress-height: 0.25rem;
+  --step-progress-height: 0.75rem;
+
   --progress-color: var(--clr-viking, #62dbc8);
   --progress-bg: var(--clr-surface-secondary, #343639);
   --progress-success: var(--clr-success, #7cd651);
@@ -92,12 +93,12 @@
 }
 
 .step.active {
-  transform: scale(1.05);
+  transform: none;
   opacity: 1;
 }
 
 .step.completed {
-  opacity: 0.6;
+  opacity: 0.8;
 }
 
 .step.completed:hover {
@@ -170,15 +171,11 @@
 /* Tooltip Styling */
 .step-tooltip {
   position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 0.5rem;
-  padding: 0.75rem;
-  background-color: var(--clr-surface-secondary);
-  border-radius: 0.375rem;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
   width: 12rem;
-  z-index: 10;
+  /* this ensures the tooltip appears centered below the step and doesn't shift layout */
 }
 
 /* Animations */
