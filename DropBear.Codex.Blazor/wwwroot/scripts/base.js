@@ -1127,7 +1127,7 @@
   const DropBearProgressBar = (() => {
     const logger = DropBearUtils.createLogger('DropBearProgressBar');
     const progressBars = new Map();
-    const ANIMATION_DURATION = 300;
+    const ANIMATION_DURATION = 300; // Adjusted for smoother transitions
 
     class ProgressBarManager {
       constructor(id, dotNetRef) {
@@ -1148,9 +1148,7 @@
       }
 
       _setupEventListeners() {
-        // Add any global event listeners here
         this.resizeObserver = new ResizeObserver(DropBearUtils.throttle(() => this._handleResize(), 100));
-
         this.resizeObserver.observe(this.element);
       }
 
@@ -1161,14 +1159,16 @@
           cancelAnimationFrame(this.animationFrame);
 
           this.animationFrame = requestAnimationFrame(() => {
-            const progressBar = this.element.querySelector('.step.active .step-progress-bar');
-            if (progressBar) {
-              progressBar.style.width = `${taskProgress}%`;
+            // Task progress bar (current step)
+            const taskProgressBar = this.element.querySelector('.step.active .step-progress-bar');
+            if (taskProgressBar) {
+              taskProgressBar.style.width = `${Math.min(taskProgress, 100)}%`;
             }
 
+            // Overall progress bar
             const overallBar = this.element.querySelector('.progress-bar-fill');
             if (overallBar) {
-              overallBar.style.width = `${overallProgress}%`;
+              overallBar.style.width = `${Math.min(overallProgress, 100)}%`;
             }
           });
 
@@ -1188,9 +1188,11 @@
           this.animationFrame = requestAnimationFrame(() => {
             const steps = this.element.querySelectorAll('.step');
             steps.forEach((step, index) => {
-              const position = index - currentIndex + 1;
+              const position = index - currentIndex;
+
               step.style.transition = `all ${ANIMATION_DURATION}ms ease-out`;
 
+              // Show only current, previous, and next steps
               if (position >= -1 && position <= 1) {
                 step.style.display = 'block';
                 step.style.opacity = position === 0 ? '1' : '0.6';
@@ -1200,10 +1202,10 @@
               }
             });
 
-            // Update counter
+            // Update step counter
             const counter = this.element.querySelector('.step-counter');
             if (counter) {
-              counter.textContent = `Step ${currentIndex + 1} of ${totalSteps}`;
+              counter.textContent = `Step ${Math.min(currentIndex + 1, totalSteps)} of ${totalSteps}`;
             }
           });
 
@@ -1215,7 +1217,6 @@
       }
 
       _handleResize() {
-        // Handle any responsive adjustments here
         if (this.isDisposed) return;
 
         try {
@@ -1250,7 +1251,6 @@
       }
     }
 
-    // Return the public API
     return {
       initialize(progressId, dotNetRef) {
         try {
@@ -1302,6 +1302,7 @@
       }
     };
   })();
+
 
   window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
 

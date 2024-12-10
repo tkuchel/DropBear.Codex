@@ -1,31 +1,41 @@
 ﻿@using DropBear.Codex.Blazor.Enums
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @namespace DropBear.Codex.Blazor.Components.Progress
+
 <div class="dropbear-progress-container">
     <div class="dropbear-progress @GetProgressClass()" id="@_progressId">
-        @* Header with Overall Progress and Step Counter *@
+        <!-- Header with Overall Progress and Step Counter -->
         <div class="progress-header">
             <div class="progress-label">Overall Progress</div>
             @if (Type == ProgressBarType.Stepped)
             {
-                <div class="step-counter">Step @(GetCurrentStepIndex() + 1) of @_steps.Count</div>
+                <div class="step-counter">
+                    Step @Math.Min(GetCurrentStepIndex() + 1, _steps.Count) of @_steps.Count
+                </div>
             }
         </div>
 
-        @* Overall Progress Bar *@
+        <!-- Overall Progress Bar -->
         <div class="progress-bar-overall">
             <div class="progress-bar-track">
-                <div class="progress-bar-fill" style="width: @(OverallProgress)%">
-                    <div class="progress-glow"></div>
-                </div>
+                @if (_isIndeterminate)
+                {
+                    <div class="progress-bar-fill indeterminate"></div>
+                }
+                else
+                {
+                    <div class="progress-bar-fill" style="width: @OverallProgress%">
+                        <div class="progress-glow"></div>
+                    </div>
+                }
             </div>
         </div>
 
-        @if (Type == ProgressBarType.Stepped)
+        @if (Type == ProgressBarType.Stepped && _steps.Any())
         {
             <div class="progress-steps">
                 <div class="step-window">
-                    @* Previous Step *@
+                    <!-- Previous Step -->
                     @if (GetCurrentStepIndex() > 0)
                     {
                         var prevStep = _steps.ElementAt(GetCurrentStepIndex() - 1);
@@ -44,14 +54,14 @@
                         </div>
                     }
 
-                    @* Current Step *@
+                    <!-- Current Step -->
                     @if (GetCurrentStepIndex() < _steps.Count)
                     {
                         var currentStep = _steps.ElementAt(GetCurrentStepIndex());
                         <div class="step active @GetStepClass(currentStep)"
                              @onmouseover="() => OnStepHover(currentStep)">
                             <div class="step-progress">
-                                <div class="step-progress-bar" style="width: @(TaskProgress)%">
+                                <div class="step-progress-bar" style="width: @TaskProgress%">
                                     <div class="progress-glow"></div>
                                 </div>
                             </div>
@@ -66,7 +76,7 @@
                         </div>
                     }
 
-                    @* Next Step *@
+                    <!-- Next Step -->
                     @if (GetCurrentStepIndex() < _steps.Count - 1)
                     {
                         var nextStep = _steps.ElementAt(GetCurrentStepIndex() + 1);

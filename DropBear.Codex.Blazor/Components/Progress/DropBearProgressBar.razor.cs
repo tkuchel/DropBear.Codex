@@ -56,11 +56,13 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         get => _overallProgress;
         set
         {
-            if (Math.Abs(_overallProgress - value) > 0.01) // Use small epsilon for floating point comparison
+            if (!(Math.Abs(_overallProgress - value) > 0.01)) // Use small epsilon for floating point comparison
             {
-                _overallProgress = value;
-                InvokeAsync(StateHasChanged);
+                return;
             }
+
+            _overallProgress = value;
+            InvokeAsync(StateHasChanged);
         }
     }
 
@@ -183,9 +185,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <returns>A task representing the asynchronous operation.</returns>
     public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
     {
-        if (_isDisposed)
+        if (_isDisposed || _isIndeterminate)
         {
-            Logger.Debug("Skipping progress update: Progress bar disposed.");
+            Logger.Debug("Skipping progress update: Progress bar is disposed or indeterminate.");
             return;
         }
 
@@ -199,17 +201,17 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 ? Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100)
                 : 0;
 
-            // Smoothly update progress for significant progress jumps
-            if (clampedTaskProgress - TaskProgress > 5) // Adjust threshold as needed
+            // Smoothly update task progress for significant jumps
+            if (clampedTaskProgress - TaskProgress > 5)
             {
-                await SimulateSmoothProgress(clampedTaskProgress);
+                await SimulateSmoothProgress(TaskProgress, clampedTaskProgress);
             }
             else
             {
                 TaskProgress = clampedTaskProgress; // Directly set the progress
             }
 
-            // Notify listeners and update step display
+            // Notify listeners and update UI
             if (_isInitialized)
             {
                 await ProgressChanged.InvokeAsync(OverallProgress);
@@ -232,32 +234,29 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
-    private async Task SimulateSmoothProgress(double targetProgress, int totalSteps = 10, int durationMs = 500)
+
+    private async Task SimulateSmoothProgress(double start, double end, int steps = 10, int delayMs = 50)
     {
-        if (_isDisposed)
+        if (_isDisposed || start >= end)
         {
             return;
         }
 
-        var stepIncrement = (targetProgress - TaskProgress) / totalSteps;
-        var delayPerStep = durationMs / totalSteps;
+        var increment = (end - start) / steps;
 
-        for (var i = 0; i < totalSteps; i++)
+        for (var i = 0; i < steps; i++)
         {
             if (_isDisposed)
             {
                 break;
             }
 
-            TaskProgress += stepIncrement;
-            TaskProgress = Math.Clamp(TaskProgress, 0, targetProgress);
-
+            TaskProgress = Math.Clamp(start + (increment * i), 0, 100);
             await InvokeAsync(StateHasChanged);
-            await Task.Delay(delayPerStep);
+            await Task.Delay(delayMs);
         }
 
-        // Ensure the progress ends exactly at the target value
-        TaskProgress = targetProgress;
+        TaskProgress = end; // Ensure final progress matches the target
         await InvokeAsync(StateHasChanged);
     }
 
@@ -290,6 +289,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock?.Release();
         }
     }
+
 
     private static string GetCallerName([CallerMemberName] string callerName = "")
     {
