@@ -1182,38 +1182,26 @@
       updateStepDisplay(currentIndex, totalSteps) {
         if (this.isDisposed) return false;
 
-        try {
-          cancelAnimationFrame(this.animationFrame);
+        const steps = this.element.querySelectorAll('.step');
+        const TRANSITION_TIMING = 'cubic-bezier(0.4, 0, 0.2, 1)';
 
-          this.animationFrame = requestAnimationFrame(() => {
-            const steps = this.element.querySelectorAll('.step');
-            steps.forEach((step, index) => {
-              const position = index - currentIndex;
+        steps.forEach((step, index) => {
+          const position = index - currentIndex;
+          const opacity = position === 0 ? 1 : 0.6;
+          const scale = position === 0 ? 1.05 : 1;
+          const translate = `${position * 100}%`;
 
-              step.style.transition = `all ${ANIMATION_DURATION}ms ease-out`;
+          step.style.transition = `
+      transform 300ms ${TRANSITION_TIMING},
+      opacity 300ms ${TRANSITION_TIMING}
+    `;
 
-              // Show only current, previous, and next steps
-              if (position >= -1 && position <= 1) {
-                step.style.display = 'block';
-                step.style.opacity = position === 0 ? '1' : '0.6';
-                step.style.transform = position === 0 ? 'scale(1.05)' : 'scale(1)';
-              } else {
-                step.style.display = 'none';
-              }
-            });
+          step.style.transform = `translateX(${translate}) scale(${scale})`;
+          step.style.opacity = opacity;
+          step.style.visibility = Math.abs(position) <= 1 ? 'visible' : 'hidden';
+        });
 
-            // Update step counter
-            const counter = this.element.querySelector('.step-counter');
-            if (counter) {
-              counter.textContent = `Step ${Math.min(currentIndex + 1, totalSteps)} of ${totalSteps}`;
-            }
-          });
-
-          return true;
-        } catch (error) {
-          logger.error(`Error updating step display for ${this.id}:`, error);
-          return false;
-        }
+        return true;
       }
 
       _handleResize() {
@@ -1221,19 +1209,45 @@
 
         try {
           const containerWidth = this.element.offsetWidth;
+          const stepWindow = this.element.querySelector('.step-window');
           const steps = this.element.querySelectorAll('.step');
+
+          // Set minimum width for each step based on container size
+          const minStepWidth = Math.max(containerWidth / 4, 120); // Minimum 120px
 
           steps.forEach(step => {
             const label = step.querySelector('.step-label');
-            if (label && containerWidth < 768) {
-              label.style.maxWidth = `${containerWidth / steps.length - 40}px`;
-            } else if (label) {
-              label.style.maxWidth = '';
+            if (label) {
+              label.style.maxWidth = `${minStepWidth - 40}px`; // Account for padding/margins
             }
           });
+
+          // Ensure step window fills container
+          if (stepWindow) {
+            stepWindow.style.width = '100%';
+          }
         } catch (error) {
           logger.error(`Error handling resize for ${this.id}:`, error);
         }
+      }
+
+      smoothProgressUpdate(targetProgress) {
+        const start = performance.now();
+        const duration = 300;
+        const startProgress = parseFloat(this.element.querySelector('.progress-bar-fill').style.width) || 0;
+
+        const animate = (currentTime) => {
+          const elapsed = currentTime - start;
+          const progress = Math.min(elapsed / duration, 1);
+          const eased = this.easeInOutQuad(progress);
+          const current = startProgress + (targetProgress - startProgress) * eased;
+
+          this.updateProgress(current, current);
+
+          if (progress < 1) requestAnimationFrame(animate);
+        };
+
+        requestAnimationFrame(animate);
       }
 
       dispose() {

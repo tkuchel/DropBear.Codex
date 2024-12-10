@@ -1,4 +1,6 @@
-/* Root Container */
+/* DropBearProgressBar.razor.css */
+
+/* Core Variables */
 .dropbear-progress-container {
   --progress-height: 0.125rem;
   --step-progress-height: 0.5rem;
@@ -8,7 +10,11 @@
   --progress-error: var(--clr-error, #ff5757);
   --progress-warning: var(--clr-warning, #ffd14d);
   --transition-speed: 300ms;
+  --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
+}
 
+/* Container Layout */
+.dropbear-progress-container {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -20,7 +26,7 @@
   border: 1px solid var(--clr-border, #343639);
 }
 
-/* Header Section */
+/* Header Styling */
 .progress-header {
   display: flex;
   justify-content: space-between;
@@ -28,11 +34,7 @@
   margin-bottom: 1.5rem;
 }
 
-.progress-label {
-  font-size: 0.875rem;
-  color: var(--clr-text-secondary);
-}
-
+.progress-label,
 .step-counter {
   font-size: 0.875rem;
   color: var(--clr-text-secondary);
@@ -43,11 +45,13 @@
   position: relative;
   height: var(--progress-height);
   margin-bottom: 2rem;
+  width: 100%;
 }
 
 .progress-bar-track {
   position: absolute;
   inset: 0;
+  width: 100%;
   background-color: var(--progress-bg);
   border-radius: 9999px;
   overflow: hidden;
@@ -55,31 +59,41 @@
 
 .progress-bar-fill {
   height: 100%;
+  width: 100%;
   background-color: var(--progress-color);
   opacity: 0.3;
-  transition: width var(--transition-speed) ease-out;
+  transition: width var(--transition-speed) var(--transition-timing);
+  will-change: width;
+  transform-origin: left;
 }
 
-/* Steps Section */
+/* Steps Layout */
 .progress-steps {
   position: relative;
+  width: 100%;
 }
 
 .step-window {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
+  align-items: flex-start;
+  width: 100%;
 }
 
-/* Individual Step */
+/* Individual Step Styling */
 .step {
-  flex: 1;
   position: relative;
-  transition: all var(--transition-speed) ease-out;
+  min-width: 0;
+  width: 100%;
+  transform-origin: center;
+  will-change: transform, opacity;
+  transition: all var(--transition-speed) var(--transition-timing);
 }
 
 .step.active {
   transform: scale(1.05);
+  opacity: 1;
 }
 
 .step.completed {
@@ -97,6 +111,7 @@
 /* Step Progress Bar */
 .step-progress {
   height: var(--step-progress-height);
+  width: 100%;
   background-color: var(--progress-bg);
   border-radius: 9999px;
   overflow: hidden;
@@ -106,36 +121,53 @@
 .step-progress-bar {
   height: 100%;
   background: linear-gradient(to right, var(--progress-color), var(--progress-success));
-  transition: width var(--transition-speed) ease-out;
+  transition: width var(--transition-speed) var(--transition-timing);
   position: relative;
 }
 
-/* Step Content */
+/* Step Content Layout */
 .step-content {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  position: relative;
 }
 
 .step-label {
   font-size: 0.875rem;
-  transition: color var(--transition-speed) ease-out;
+  transition: color var(--transition-speed) var(--transition-timing);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+  max-width: 150px;
 }
 
-.step-current {
-  color: var(--progress-color);
-  font-weight: 500;
+/* Status Indicators */
+.step-indicator {
+  position: absolute;
+  right: -8px;
+  top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--clr-surface-primary);
+  z-index: 2;
 }
 
-.step-previous,
-.step-next {
-  color: var(--clr-text-secondary);
+.step.completed .step-indicator {
+  background-color: var(--progress-success);
 }
 
-/* Tooltip */
+.step.warning .step-indicator {
+  background-color: var(--progress-warning);
+}
+
+.step.error .step-indicator {
+  background-color: var(--progress-error);
+}
+
+/* Tooltip Styling */
 .step-tooltip {
   position: absolute;
   top: 100%;
@@ -149,32 +181,28 @@
   z-index: 10;
 }
 
-.tooltip-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.tooltip-status {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.tooltip-detail {
-  font-size: 0.875rem;
-  color: var(--clr-text-secondary);
-}
-
-.tooltip-duration {
-  font-size: 0.75rem;
-  color: var(--clr-text-secondary);
-}
-
 /* Animations */
 @keyframes shimmer {
   100% {
     transform: translateX(100%);
+  }
+}
+
+@keyframes progressPulse {
+  0% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes progress-slide {
+  to {
+    transform: translateX(200%);
   }
 }
 
@@ -191,7 +219,24 @@
   animation: shimmer 2s infinite;
 }
 
-/* Status-specific styles */
+.step.active .step-progress-bar {
+  animation: progressPulse 2s ease-in-out infinite;
+}
+
+.step.active .step-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  animation: progress-slide 2s linear infinite;
+}
+
+/* Status-specific Progress Bars */
 .step.error .step-progress-bar {
   background: linear-gradient(to right, var(--progress-error), #ff8080);
 }

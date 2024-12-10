@@ -10,8 +10,8 @@ public class ProgressStep
 {
     public string Name { get; set; } = string.Empty;
     public string Label { get; set; } = string.Empty;
-    public StepStatus Status { get; set; }
-    public StepType Type { get; set; }
     public string? Detail { get; set; }
+    public StepType Type { get; set; }
+    public StepStatus Status { get; set; }
     public TimeSpan? Duration { get; set; }
 }

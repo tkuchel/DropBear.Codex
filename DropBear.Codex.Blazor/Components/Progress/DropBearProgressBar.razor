@@ -2,11 +2,10 @@
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @namespace DropBear.Codex.Blazor.Components.Progress
 
-<div class="dropbear-progress-container">
+<div class="dropbear-progress-container" @onkeydown="HandleKeyDown" tabindex="0">
     <div class="dropbear-progress @GetProgressClass()" id="@_progressId">
-        <!-- Header with Overall Progress and Step Counter -->
         <div class="progress-header">
-            <div class="progress-label">Overall Progress</div>
+            <div class="progress-label">@Label</div>
             @if (Type == ProgressBarType.Stepped)
             {
                 <div class="step-counter">
@@ -15,7 +14,6 @@
             }
         </div>
 
-        <!-- Overall Progress Bar -->
         <div class="progress-bar-overall">
             <div class="progress-bar-track">
                 @if (_isIndeterminate)
@@ -35,65 +33,46 @@
         {
             <div class="progress-steps">
                 <div class="step-window">
-                    <!-- Previous Step -->
-                    @if (GetCurrentStepIndex() > 0)
-                    {
-                        var prevStep = _steps.ElementAt(GetCurrentStepIndex() - 1);
-                        <div class="step completed @GetStepClass(prevStep)" @onmouseover="() => OnStepHover(prevStep)">
-                            <div class="step-progress">
-                                <div class="step-progress-bar"></div>
-                            </div>
-                            <div class="step-content">
-                                <i class="@GetStepIcon(prevStep)"></i>
-                                <span class="step-label step-previous">@prevStep.Label</span>
-                            </div>
-                            @if (_hoveredStep == prevStep)
-                            {
-                                <StepTooltip Step="prevStep"/>
-                            }
-                        </div>
-                    }
+                    <CascadingValue Value="this">
+                        @* Previous Step *@
+                        @if (GetCurrentStepIndex() > 0)
+                        {
+                            var previousStep = _steps.ElementAt(GetCurrentStepIndex() - 1);
+                            <StepItem
+                                Step="previousStep"
+                                IsActive="false"
+                                Progress="100"
+                                OnHover="OnStepHover"
+                                HoveredStep="_hoveredStep"
+                                Position="StepPosition.Previous"/>
+                        }
 
-                    <!-- Current Step -->
-                    @if (GetCurrentStepIndex() < _steps.Count)
-                    {
-                        var currentStep = _steps.ElementAt(GetCurrentStepIndex());
-                        <div class="step active @GetStepClass(currentStep)"
-                             @onmouseover="() => OnStepHover(currentStep)">
-                            <div class="step-progress">
-                                <div class="step-progress-bar" style="width: @TaskProgress%">
-                                    <div class="progress-glow"></div>
-                                </div>
-                            </div>
-                            <div class="step-content">
-                                <i class="@GetStepIcon(currentStep)"></i>
-                                <span class="step-label step-current">@currentStep.Label</span>
-                            </div>
-                            @if (_hoveredStep == currentStep)
-                            {
-                                <StepTooltip Step="currentStep"/>
-                            }
-                        </div>
-                    }
+                        @* Current Step *@
+                        @if (GetCurrentStepIndex() < _steps.Count)
+                        {
+                            var currentStep = _steps.ElementAt(GetCurrentStepIndex());
+                            <StepItem
+                                Step="currentStep"
+                                IsActive="true"
+                                Progress="TaskProgress"
+                                OnHover="OnStepHover"
+                                HoveredStep="_hoveredStep"
+                                Position="StepPosition.Current"/>
+                        }
 
-                    <!-- Next Step -->
-                    @if (GetCurrentStepIndex() < _steps.Count - 1)
-                    {
-                        var nextStep = _steps.ElementAt(GetCurrentStepIndex() + 1);
-                        <div class="step @GetStepClass(nextStep)" @onmouseover="() => OnStepHover(nextStep)">
-                            <div class="step-progress">
-                                <div class="step-progress-bar"></div>
-                            </div>
-                            <div class="step-content">
-                                <i class="@GetStepIcon(nextStep)"></i>
-                                <span class="step-label step-next">@nextStep.Label</span>
-                            </div>
-                            @if (_hoveredStep == nextStep)
-                            {
-                                <StepTooltip Step="nextStep"/>
-                            }
-                        </div>
-                    }
+                        @* Next Step *@
+                        @if (GetCurrentStepIndex() < _steps.Count - 1)
+                        {
+                            var nextStep = _steps.ElementAt(GetCurrentStepIndex() + 1);
+                            <StepItem
+                                Step="nextStep"
+                                IsActive="false"
+                                Progress="0"
+                                OnHover="OnStepHover"
+                                HoveredStep="_hoveredStep"
+                                Position="StepPosition.Next"/>
+                        }
+                    </CascadingValue>
                 </div>
             </div>
         }
