@@ -88,7 +88,7 @@ public sealed partial class StepItem : DropBearComponentBase
     {
         var classes = new List<string>();
 
-        if (IsActive)
+        if (Step.Status == StepStatus.Active)
         {
             classes.Add("active");
         }
@@ -108,8 +108,15 @@ public sealed partial class StepItem : DropBearComponentBase
             classes.Add("error");
         }
 
+        // Highlight the current step visually
+        if (Position == StepPosition.Current)
+        {
+            classes.Add("current");
+        }
+
         return string.Join(" ", classes);
     }
+
 
     private string GetStepIcon()
     {

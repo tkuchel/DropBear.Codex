@@ -109,6 +109,38 @@
   opacity: 0.4;
 }
 
+/* Step Position Badges */
+.step-position-badge {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: var(--clr-text-secondary);
+  opacity: 0.8;
+  text-transform: uppercase;
+}
+
+/* Different colors or emphasis for each position */
+.step-position-badge.current {
+  color: var(--progress-color);
+  font-weight: bold;
+}
+
+.step-position-badge.previous {
+  color: var(--progress-warning);
+}
+
+.step-position-badge.next {
+  color: var(--progress-success);
+}
+
+/* Highlighting the current step */
+.step.current {
+  border: 1px solid var(--progress-color);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.05); /* subtle background highlight */
+}
+
+
 /* Step Progress Bar */
 .step-progress {
   height: var(--step-progress-height);
@@ -143,6 +175,12 @@
   min-width: 0;
   max-width: 150px;
 }
+
+.step.placeholder {
+  opacity: 0;
+  background: transparent;
+}
+
 
 /* Status Indicators */
 .step-indicator {

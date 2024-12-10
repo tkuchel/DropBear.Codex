@@ -46,6 +46,10 @@
                                 HoveredStep="_hoveredStep"
                                 Position="StepPosition.Previous"/>
                         }
+                        else
+                        {
+                            <div class="step placeholder"></div>
+                        }
 
                         @* Current Step *@
                         @if (GetCurrentStepIndex() < _steps.Count)
@@ -71,6 +75,10 @@
                                 OnHover="OnStepHover"
                                 HoveredStep="_hoveredStep"
                                 Position="StepPosition.Next"/>
+                        }
+                        else
+                        {
+                            <div class="step placeholder"></div>
                         }
                     </CascadingValue>
                 </div>
