@@ -174,6 +174,13 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Updates the progress of the progress bar, including task progress and overall progress.
+    /// </summary>
+    /// <param name="taskProgress">The current progress of the task (0-100).</param>
+    /// <param name="completedTasks">The number of completed tasks.</param>
+    /// <param name="totalTasks">The total number of tasks.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
     {
         if (_isDisposed)
@@ -186,11 +193,23 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         {
             await _updateLock!.WaitAsync();
 
-            TaskProgress = Math.Clamp(taskProgress, 0, 100);
+            // Clamp progress values
+            var clampedTaskProgress = Math.Clamp(taskProgress, 0, 100);
             OverallProgress = totalTasks > 0
                 ? Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100)
                 : 0;
 
+            // Smoothly update progress for significant progress jumps
+            if (clampedTaskProgress - TaskProgress > 5) // Adjust threshold as needed
+            {
+                await SimulateSmoothProgress(clampedTaskProgress);
+            }
+            else
+            {
+                TaskProgress = clampedTaskProgress; // Directly set the progress
+            }
+
+            // Notify listeners and update step display
             if (_isInitialized)
             {
                 await ProgressChanged.InvokeAsync(OverallProgress);
@@ -199,10 +218,47 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
             await InvokeAsync(StateHasChanged);
         }
+        catch (ObjectDisposedException)
+        {
+            Logger.Debug("UpdateProgressAsync encountered a disposed object. Skipping update.");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error updating progress.");
+        }
         finally
         {
             _updateLock?.Release();
         }
+    }
+
+    private async Task SimulateSmoothProgress(double targetProgress, int totalSteps = 10, int durationMs = 500)
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        var stepIncrement = (targetProgress - TaskProgress) / totalSteps;
+        var delayPerStep = durationMs / totalSteps;
+
+        for (var i = 0; i < totalSteps; i++)
+        {
+            if (_isDisposed)
+            {
+                break;
+            }
+
+            TaskProgress += stepIncrement;
+            TaskProgress = Math.Clamp(TaskProgress, 0, targetProgress);
+
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(delayPerStep);
+        }
+
+        // Ensure the progress ends exactly at the target value
+        TaskProgress = targetProgress;
+        await InvokeAsync(StateHasChanged);
     }
 
 

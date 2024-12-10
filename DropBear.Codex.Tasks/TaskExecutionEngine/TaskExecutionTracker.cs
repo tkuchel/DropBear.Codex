@@ -13,10 +13,32 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// </summary>
 public sealed class TaskExecutionTracker
 {
+    private readonly Dictionary<string, double> _lastProgress = new();
     private readonly ConcurrentDictionary<string, DateTime> _startTimes = new(StringComparer.Ordinal);
     private readonly TaskExecutionStats _stats = new();
     private readonly ConcurrentDictionary<string, bool> _taskStatus = new(StringComparer.Ordinal);
     private int _totalTaskCount;
+
+    /// <summary>
+    ///     Gets the last reported progress for a specified task.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <returns>The last reported progress percentage (0-100) for the specified task.</returns>
+    public double GetLastProgress(string taskName)
+    {
+        return _lastProgress.GetValueOrDefault(taskName, 0.0);
+    }
+
+    /// <summary>
+    ///     Updates the last reported progress for a specified task.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <param name="progress">The progress percentage (0-100) to be reported.</param>
+    public void UpdateLastProgress(string taskName, double progress)
+    {
+        _lastProgress[taskName] = progress;
+    }
+
 
     /// <summary>
     ///     Starts tracking a task by recording its start time.

@@ -242,13 +242,40 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 return;
             }
 
-            var progressMessage = ProgressMessagePool.Get();
-            progressMessage.Initialize(taskName, progress, stats.CompletedTasks, stats.TotalTasks,
-                TaskStatus.InProgress, message ?? $"Task '{taskName}' execution progress.");
+            // Smooth Progress Simulation for significant jumps
+            var lastProgress = _executionTracker.GetLastProgress(taskName); // A method to track last progress
+            if (progress > lastProgress + 5.0 && progress - lastProgress < 50.0) // Adjust thresholds as needed
+            {
+                await SimulateSmoothProgress(
+                    _progressPublisher,
+                    _channelId,
+                    taskName,
+                    lastProgress,
+                    progress,
+                    500, // Total duration for simulation (ms)
+                    10, // Steps for simulation
+                    cancellationToken
+                ).ConfigureAwait(false);
+            }
 
+            // Prepare progress message
+            var progressMessage = ProgressMessagePool.Get();
+            progressMessage.Initialize(
+                taskName,
+                progress,
+                stats.CompletedTasks,
+                stats.TotalTasks,
+                TaskStatus.InProgress,
+                message ?? $"Task '{taskName}' execution progress.");
+
+            // Publish progress
             await _progressPublisher.PublishAsync(_channelId, progressMessage, cancellationToken).ConfigureAwait(false);
 
+            // Return message to the pool
             ProgressMessagePool.Return(progressMessage);
+
+            // Update last progress
+            _executionTracker.UpdateLastProgress(taskName, progress); // Ensure last progress is stored
         }
         catch (OperationCanceledException)
         {
@@ -391,6 +418,54 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             return Result<Unit, TaskExecutionError>.Failure(
                 new TaskExecutionError($"Task failed after {task.MaxRetryCount} retry attempts", task.Name, ex));
         }
+    }
+
+
+    private async Task SimulateSmoothProgress(
+        IAsyncPublisher<Guid, TaskProgressMessage> progressPublisher,
+        Guid channelId,
+        string taskName,
+        double startProgress,
+        double endProgress,
+        int totalDurationMs,
+        int totalSteps,
+        CancellationToken cancellationToken)
+    {
+        if (startProgress >= endProgress)
+        {
+            return;
+        }
+
+        var delayPerStep = totalDurationMs / totalSteps;
+        var progressIncrement = (endProgress - startProgress) / totalSteps;
+
+        for (var i = 0; i < totalSteps; i++)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                _logger.Debug("Progress simulation canceled for task: {TaskName}", taskName);
+                break;
+            }
+
+            // Simulated incremental progress
+            var currentProgress = startProgress + (i * progressIncrement);
+            var progressMessage = ProgressMessagePool.Get();
+            progressMessage.Initialize(taskName, currentProgress, null, null, TaskStatus.InProgress,
+                "Simulating progress");
+
+            await progressPublisher.PublishAsync(channelId, progressMessage, cancellationToken).ConfigureAwait(false);
+            ProgressMessagePool.Return(progressMessage);
+
+            await Task.Delay(delayPerStep, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Ensure the final progress value is sent
+        var finalProgressMessage = ProgressMessagePool.Get();
+        finalProgressMessage.Initialize(taskName, endProgress, null, null, TaskStatus.InProgress,
+            "Final simulated progress");
+
+        await progressPublisher.PublishAsync(channelId, finalProgressMessage, cancellationToken).ConfigureAwait(false);
+        ProgressMessagePool.Return(finalProgressMessage);
     }
 
 
@@ -554,7 +629,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 
 
     /// <summary>
-    ///     Executes tasks with support for sequential or parallel execution.
+    ///     Executes tasks with support for sequential or parallel execution, including smooth progress reporting.
     /// </summary>
     /// <param name="tasks">The list of tasks to execute.</param>
     /// <param name="executionScope">The execution scope containing context and services.</param>
@@ -575,6 +650,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
+                    // Check dependencies
                     var dependenciesFailed = task.Dependencies.Any(dep => !taskStatus.GetValueOrDefault(dep));
                     if (dependenciesFailed)
                     {
@@ -584,9 +660,32 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                             new TaskExecutionError("Dependency failed", task.Name));
                     }
 
+                    // Simulate smooth progress before execution
+                    await SimulateSmoothProgress(
+                        _progressPublisher,
+                        _channelId,
+                        task.Name,
+                        0,
+                        50, // Progress to simulate before execution
+                        500, // Duration for simulation (ms)
+                        10, // Steps for simulation
+                        cancellationToken
+                    );
+
+                    // Execute the task
                     var executeResult = await ExecuteTaskAsync(task, executionScope, cancellationToken)
                         .ConfigureAwait(false);
                     taskStatus[task.Name] = executeResult.IsSuccess;
+
+                    // Report final progress
+                    if (executeResult.IsSuccess)
+                    {
+                        var progressMessage = ProgressMessagePool.Get();
+                        progressMessage.Initialize(task.Name, 100.0, null, null, TaskStatus.Completed,
+                            "Task completed");
+                        await _progressPublisher.PublishAsync(_channelId, progressMessage, cancellationToken);
+                        ProgressMessagePool.Return(progressMessage);
+                    }
 
                     return executeResult;
                 }
@@ -595,6 +694,12 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                     _logger.Warning("Execution canceled for task '{TaskName}'.", task.Name);
                     return Result<Unit, TaskExecutionError>.Failure(
                         new TaskExecutionError("Task execution canceled", task.Name));
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Error executing task '{TaskName}'.", task.Name);
+                    return Result<Unit, TaskExecutionError>.Failure(
+                        new TaskExecutionError("Unexpected task error", task.Name, ex));
                 }
             })).ConfigureAwait(false);
 
@@ -606,6 +711,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 : Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
 
+        // Sequential execution
         return await ExecuteTasksSequentiallyAsync(tasks, executionScope, cancellationToken).ConfigureAwait(false);
     }
 
