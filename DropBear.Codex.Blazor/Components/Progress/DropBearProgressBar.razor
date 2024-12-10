@@ -33,55 +33,49 @@
         {
             <div class="progress-steps">
                 <div class="step-window">
-                    <CascadingValue Value="this">
-                        @* Previous Step *@
-                        @if (GetCurrentStepIndex() > 0)
-                        {
-                            var previousStep = _steps.ElementAt(GetCurrentStepIndex() - 1);
-                            <StepItem
-                                Step="previousStep"
-                                IsActive="false"
-                                Progress="100"
-                                OnHover="OnStepHover"
-                                HoveredStep="_hoveredStep"
-                                Position="StepPosition.Previous"/>
-                        }
-                        else
-                        {
-                            <div class="step placeholder"></div>
-                        }
+                    @if (GetCurrentStepIndex() > 0)
+                    {
+                        var previousStep = _steps.ElementAt(GetCurrentStepIndex() - 1);
+                        <StepItem Step="previousStep" IsActive="false" Progress="100" OnHover="OnStepHover"
+                                  HoveredStep="_hoveredStep" Position="StepPosition.Previous"/>
+                    }
+                    else
+                    {
+                        <div class="step placeholder">
+                            <span class="step-label">No Previous</span>
+                            <div class="step-position-badge previous">Previous</div>
+                        </div>
+                    }
 
-                        @* Current Step *@
-                        @if (GetCurrentStepIndex() < _steps.Count)
-                        {
-                            var currentStep = _steps.ElementAt(GetCurrentStepIndex());
-                            <StepItem
-                                Step="currentStep"
-                                IsActive="true"
-                                Progress="TaskProgress"
-                                OnHover="OnStepHover"
-                                HoveredStep="_hoveredStep"
-                                Position="StepPosition.Current"/>
-                        }
+                    @if (GetCurrentStepIndex() < _steps.Count)
+                    {
+                        var currentStep = _steps.ElementAt(GetCurrentStepIndex());
+                        <StepItem Step="currentStep" IsActive="true" Progress="TaskProgress" OnHover="OnStepHover"
+                                  HoveredStep="_hoveredStep" Position="StepPosition.Current"/>
+                    }
+                    else
+                    {
+                        <div class="step placeholder">
+                            <span class="step-label">No Current</span>
+                            <div class="step-position-badge current">Current</div>
+                        </div>
+                    }
 
-                        @* Next Step *@
-                        @if (GetCurrentStepIndex() < _steps.Count - 1)
-                        {
-                            var nextStep = _steps.ElementAt(GetCurrentStepIndex() + 1);
-                            <StepItem
-                                Step="nextStep"
-                                IsActive="false"
-                                Progress="0"
-                                OnHover="OnStepHover"
-                                HoveredStep="_hoveredStep"
-                                Position="StepPosition.Next"/>
-                        }
-                        else
-                        {
-                            <div class="step placeholder"></div>
-                        }
-                    </CascadingValue>
+                    @if (GetCurrentStepIndex() < _steps.Count - 1)
+                    {
+                        var nextStep = _steps.ElementAt(GetCurrentStepIndex() + 1);
+                        <StepItem Step="nextStep" IsActive="false" Progress="0" OnHover="OnStepHover"
+                                  HoveredStep="_hoveredStep" Position="StepPosition.Next"/>
+                    }
+                    else
+                    {
+                        <div class="step placeholder">
+                            <span class="step-label">No Next</span>
+                            <div class="step-position-badge next">Next</div>
+                        </div>
+                    }
                 </div>
+
             </div>
         }
     </div>
