@@ -221,12 +221,21 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (Steps != null && !Steps.SequenceEqual(_steps))
         {
+            Logger.Debug("OnParametersSetAsync: Steps changed. OldCount={OldCount}, NewCount={NewCount}", _steps.Count,
+                Steps.Count());
             RecycleSteps();
             _steps = new ObservableCollection<ProgressStep>(Steps);
+            Logger.Debug("OnParametersSetAsync: Steps updated. StepsCount={StepsCount}", _steps.Count);
+        }
+        else
+        {
+            Logger.Debug("OnParametersSetAsync: No step changes detected or Steps is null. StepsCount={StepsCount}",
+                _steps.Count);
         }
 
         return base.OnParametersSetAsync();
     }
+
 
     /// <summary>
     ///     Updates the progress bar with the current task progress and overall completion.
@@ -237,8 +246,14 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <returns></returns>
     public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
     {
+        Logger.Debug(
+            "UpdateProgressAsync called. TaskProgress={TaskProgress}, CompletedTasks={CompletedTasks}, TotalTasks={TotalTasks}",
+            taskProgress, completedTasks, totalTasks);
+
         if (_isDisposed || _isIndeterminate)
         {
+            Logger.Debug("UpdateProgressAsync: Skipped because disposed={Disposed} or indeterminate={Indeterminate}",
+                _isDisposed, _isIndeterminate);
             return;
         }
 
@@ -246,6 +261,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         try
         {
             await _updateLock.WaitAsync(cts.Token);
+            Logger.Debug("UpdateProgressAsync: Acquired update lock.");
 
             var timeSinceLastUpdate = DateTime.UtcNow - _lastUpdateTime;
             var shouldSmooth = EnableSmoothTransitions && timeSinceLastUpdate.TotalMilliseconds < MinimumStepDuration;
@@ -255,18 +271,24 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 ? Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100)
                 : 0;
 
+            Logger.Debug("UpdateProgressAsync: Computed OverallProgress={OverallProgress}, ShouldSmooth={ShouldSmooth}",
+                newOverallProgress, shouldSmooth);
+
             if (shouldSmooth && clampedTaskProgress - TaskProgress > 5)
             {
+                Logger.Debug("UpdateProgressAsync: Starting smooth progress from {Start} to {End}", TaskProgress,
+                    clampedTaskProgress);
                 await SimulateSmoothProgress(TaskProgress, clampedTaskProgress);
             }
             else
             {
-                // Ensure property updates that cause re-render happen via InvokeAsync:
+                Logger.Debug("UpdateProgressAsync: Setting TaskProgress directly to {Clamped}", clampedTaskProgress);
                 await InvokeAsync(() => TaskProgress = clampedTaskProgress);
             }
 
             if (_isInitialized)
             {
+                Logger.Debug("UpdateProgressAsync: Updating OverallProgress and invoking ProgressChanged");
                 await InvokeAsync(async () =>
                 {
                     OverallProgress = newOverallProgress;
@@ -279,11 +301,11 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
         catch (OperationCanceledException)
         {
-            Logger.Debug("Progress update cancelled");
+            Logger.Debug("UpdateProgressAsync: Operation canceled");
         }
         catch (ObjectDisposedException)
         {
-            Logger.Debug("Progress update skipped - component disposed");
+            Logger.Debug("UpdateProgressAsync: Component disposed");
         }
         catch (Exception ex)
         {
@@ -291,6 +313,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
         finally
         {
+            Logger.Debug("UpdateProgressAsync: Releasing update lock.");
             _updateLock.Release();
         }
     }
@@ -302,19 +325,23 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <param name="stepName">Name of the step to complete.</param>
     public async Task MarkStepCompleteAsync(string stepName)
     {
+        Logger.Debug("MarkStepCompleteAsync called for StepName={StepName}", stepName);
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
         try
         {
             await _updateLock.WaitAsync(cts.Token);
+            Logger.Debug("MarkStepCompleteAsync: Acquired update lock.");
             await UpdateStepStatusAsync(stepName, StepStatus.Completed);
             var step = _steps.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
             {
+                Logger.Debug("MarkStepCompleteAsync: Invoking StepCompleted for StepName={StepName}", stepName);
                 await StepCompleted.InvokeAsync(step);
             }
         }
         finally
         {
+            Logger.Debug("MarkStepCompleteAsync: Releasing update lock.");
             _updateLock.Release();
         }
     }
@@ -326,6 +353,8 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <param name="errorMessage">Optional error message.</param>
     public async Task MarkStepFailedAsync(string stepName, string? errorMessage = null)
     {
+        Logger.Debug("MarkStepFailedAsync called for StepName={StepName}, ErrorMessage={ErrorMessage}", stepName,
+            errorMessage);
         _failedSteps.Add(stepName);
         await UpdateStepStatusAsync(stepName, StepStatus.Error);
     }
@@ -394,6 +423,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <param name="step">The hovered step.</param>
     private void OnStepHover(ProgressStep step)
     {
+        Logger.Debug("OnStepHover: HoveredStep={StepName}", step?.Name ?? "None");
         _hoveredStep = step;
         StateHasChanged();
     }
@@ -403,8 +433,10 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// </summary>
     private async Task UpdateStepStatusAsync(string stepName, StepStatus status)
     {
+        Logger.Debug("UpdateStepStatusAsync: StepName={StepName}, Status={Status}", stepName, status);
         if (_isDisposed)
         {
+            Logger.Debug("UpdateStepStatusAsync: Skipped because component disposed.");
             return;
         }
 
@@ -415,11 +447,16 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             {
                 step.Status = status;
                 await InvokeAsync(StateHasChanged);
+                Logger.Debug("UpdateStepStatusAsync: Updated StepName={StepName} to Status={Status}", stepName, status);
+            }
+            else
+            {
+                Logger.Debug("UpdateStepStatusAsync: StepName={StepName} not found in _steps.", stepName);
             }
         }
         catch (OperationCanceledException)
         {
-            Logger.Debug("Step status update cancelled");
+            Logger.Debug("UpdateStepStatusAsync: Operation canceled");
         }
     }
 
@@ -453,22 +490,36 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private int GetCurrentStepIndex()
     {
         var activeStep = _steps.FirstOrDefault(s => s.Status == StepStatus.Active);
-        return activeStep != null
+        var completedCount = _steps.Count(s => s.Status == StepStatus.Completed);
+        var index = activeStep != null
             ? _steps.IndexOf(activeStep)
-            : _steps.Count(s => s.Status == StepStatus.Completed);
+            : completedCount;
+
+        // Add logging to understand what's happening
+        Logger.Debug(
+            "GetCurrentStepIndex called. StepsCount={StepsCount}, CompletedCount={CompletedCount}, ActiveStepName={ActiveStepName}, ReturningIndex={Index}",
+            _steps.Count,
+            completedCount,
+            activeStep?.Name ?? "None",
+            index);
+
+        return index;
     }
+
 
     /// <summary>
     ///     Recycles step objects to the object pool for memory efficiency.
     /// </summary>
     private void RecycleSteps()
     {
+        Logger.Debug("RecycleSteps: Returning {Count} steps to the pool.", _steps.Count);
         foreach (var step in _steps)
         {
             _stepPool.Return(step);
         }
 
         _steps.Clear();
+        Logger.Debug("RecycleSteps: Steps cleared. StepsCount now={StepsCount}", _steps.Count);
     }
 
     /// <summary>
