@@ -215,14 +215,29 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (_isDisposed)
         {
+            Logger.Debug("InitializeJsInterop: Component disposed, skipping initialization");
             return;
         }
 
-        await SafeJsVoidInteropAsync(
-            "DropBearProgressBar.initialize",
-            _progressId,
-            DotNetObjectReference.Create(this));
-        _isInitialized = true;
+        try
+        {
+            await SafeJsVoidInteropAsync(
+                "DropBearProgressBar.initialize",
+                _progressId,
+                DotNetObjectReference.Create(this));
+            _isInitialized = true;
+            Logger.Debug("InitializeJsInterop: Successfully initialized");
+        }
+        catch (JSDisconnectedException)
+        {
+            Logger.Warning("InitializeJsInterop: JS runtime disconnected");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "InitializeJsInterop: Failed to initialize");
+            throw;
+        }
     }
 
     /// <inheritdoc />
@@ -274,8 +289,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             var shouldSmooth = EnableSmoothTransitions && timeSinceLastUpdate.TotalMilliseconds < MinimumStepDuration;
 
             var clampedTaskProgress = Math.Clamp(taskProgress, 0, 100);
+            var currentStepProgress = clampedTaskProgress / 100.0;
             var newOverallProgress = totalTasks > 0
-                ? Math.Clamp((double)completedTasks / totalTasks * 100, 0, 100)
+                ? Math.Clamp((completedTasks + currentStepProgress) / totalTasks * 100, 0, 100)
                 : 0;
 
             Logger.Debug("UpdateProgressAsync: Computed OverallProgress={OverallProgress}, ShouldSmooth={ShouldSmooth}",
@@ -300,9 +316,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 {
                     OverallProgress = newOverallProgress;
                     await ProgressChanged.InvokeAsync(OverallProgress);
-
-                    // Instead of trying to guess the current step, we just update the display.
-                    // The current step should have been explicitly set via SetStepActiveAsync.
                     await UpdateStepDisplayAsync(GetCurrentStepIndex());
                 });
             }
@@ -347,14 +360,25 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 return;
             }
 
-            // Deactivate all other steps that might currently be active
-            foreach (var s in _steps.Where(s => s.Status == StepStatus.Active))
+            // Reset progress when activating new step
+            TaskProgress = 0;
+
+            // Mark previous steps completed and deactivate currently active step
+            var newIndex = _steps.IndexOf(step);
+            for (var i = 0; i < _steps.Count; i++)
             {
-                s.Status = StepStatus.Completed; // or Pending if that makes more sense
+                if (i < newIndex)
+                {
+                    _steps[i].Status = StepStatus.Completed;
+                }
+                else if (_steps[i].Status == StepStatus.Active)
+                {
+                    _steps[i].Status = StepStatus.Completed;
+                }
             }
 
-            // Set the target step as active
             step.Status = StepStatus.Active;
+            await UpdateStepDisplayAsync(newIndex);
             await InvokeAsync(StateHasChanged);
             Logger.Debug("SetStepActiveAsync: StepName={StepName} set to Active", stepName);
         }
@@ -425,21 +449,36 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (_isDisposed || start >= end || !_isInitialized)
         {
+            Logger.Debug(
+                "SimulateSmoothProgress: Skipping due to state. Disposed={Disposed}, Start={Start}, End={End}, Initialized={Initialized}",
+                _isDisposed, start, end, _isInitialized);
             return;
         }
 
-        var startTime = DateTime.Now;
-        while ((DateTime.Now - startTime).TotalMilliseconds < duration && !_progressCts.Token.IsCancellationRequested)
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
+        try
         {
-            var elapsed = (DateTime.Now - startTime).TotalMilliseconds;
-            var progress = Easing(elapsed / duration);
-            TaskProgress = start + ((end - start) * progress);
-            await InvokeAsync(StateHasChanged);
-            await Task.Delay(16, _progressCts.Token);
-        }
+            var startTime = DateTime.Now;
+            while ((DateTime.Now - startTime).TotalMilliseconds < duration && !cts.Token.IsCancellationRequested)
+            {
+                var elapsed = (DateTime.Now - startTime).TotalMilliseconds;
+                var progress = Easing(elapsed / duration);
+                TaskProgress = start + ((end - start) * progress);
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(16, cts.Token);
+            }
 
-        TaskProgress = end;
-        await InvokeAsync(StateHasChanged);
+            TaskProgress = end;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Debug("SimulateSmoothProgress: Operation canceled");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during smooth progress simulation");
+        }
     }
 
     /// <summary>
@@ -480,11 +519,23 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     ///     Sets the hovered step for UI highlighting.
     /// </summary>
     /// <param name="step">The hovered step.</param>
-    private void OnStepHover(ProgressStep step)
+    private void OnStepHover(ProgressStep? step)
     {
-        Logger.Debug("OnStepHover: HoveredStep={StepName}", step?.Name ?? "None");
-        _hoveredStep = step;
-        StateHasChanged();
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            Logger.Debug("OnStepHover: HoveredStep={StepName}", step?.Name ?? "None");
+            _hoveredStep = step;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error handling step hover");
+        }
     }
 
     /// <summary>
@@ -495,6 +546,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         Logger.Debug("UpdateStepStatusAsync: StepName={StepName}, Status={Status}", stepName, status);
         if (_isDisposed)
         {
+            Logger.Debug("UpdateStepStatusAsync: Skipped because component disposed.");
             return;
         }
 
@@ -517,13 +569,22 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                     }
                 }
 
+                Logger.Debug("UpdateStepStatusAsync: Updated StepName={StepName} to Status={Status}", stepName, status);
                 await UpdateStepDisplayAsync(_steps.IndexOf(step));
                 await InvokeAsync(StateHasChanged);
+            }
+            else
+            {
+                Logger.Debug("UpdateStepStatusAsync: StepName={StepName} not found in _steps.", stepName);
             }
         }
         catch (OperationCanceledException)
         {
             Logger.Debug("UpdateStepStatusAsync: Operation canceled");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error updating step status");
         }
         finally
         {
@@ -535,14 +596,18 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (_isTransitioning)
         {
+            Logger.Debug("TransitionStep: Already transitioning, skipping");
             return;
         }
 
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
         try
         {
             _isTransitioning = true;
+            Logger.Debug("TransitionStep: Starting transition for StepName={StepName}", stepName);
             await SetStepActiveAsync(stepName);
-            await Task.Delay(300, _progressCts.Token);
+            await Task.Delay(300, cts.Token);
+            Logger.Debug("TransitionStep: Completed transition for StepName={StepName}", stepName);
         }
         catch (OperationCanceledException)
         {
@@ -589,17 +654,19 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         if (!_steps.Any())
         {
+            Logger.Debug("GetCurrentStepIndex: No steps available");
             return 0;
         }
 
         var activeStep = _steps.FirstOrDefault(s => s.Status == StepStatus.Active);
-        if (activeStep != null)
-        {
-            return _steps.IndexOf(activeStep);
-        }
-
         var completedCount = _steps.Count(s => s.Status == StepStatus.Completed);
-        return Math.Min(completedCount, _steps.Count - 1);
+        var index = activeStep != null ? _steps.IndexOf(activeStep) : completedCount;
+
+        Logger.Debug(
+            "GetCurrentStepIndex: StepsCount={StepsCount}, CompletedCount={CompletedCount}, ActiveStepName={ActiveStepName}, ReturningIndex={Index}",
+            _steps.Count, completedCount, activeStep?.Name ?? "None", index);
+
+        return Math.Min(index, _steps.Count - 1);
     }
 
 

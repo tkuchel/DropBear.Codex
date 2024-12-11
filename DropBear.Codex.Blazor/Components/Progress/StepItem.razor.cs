@@ -57,7 +57,9 @@ public sealed partial class StepItem : DropBearComponentBase
 
     private string GetProgressStyle()
     {
-        return $"width: {Progress}%; {(IsActive ? "animation: progressPulse 2s infinite;" : "")}";
+        var animation = IsActive ? "animation: progressPulse 2s infinite;" : "";
+        var errorStyle = Step.Status == StepStatus.Error ? "background: var(--progress-error);" : "";
+        return $"width: {Progress}%; {animation} {errorStyle}";
     }
 
     private string GetStatusIcon()
@@ -86,29 +88,16 @@ public sealed partial class StepItem : DropBearComponentBase
 
     private string GetStepClass()
     {
-        var classes = new List<string>();
+        var classes = new List<string>
+        {
+            Position.ToString().ToLowerInvariant(), Step.Status.ToString().ToLowerInvariant()
+        };
 
-        if (Step.Status == StepStatus.Active)
+        if (IsActive)
         {
             classes.Add("active");
         }
 
-        if (Step.Status == StepStatus.Completed)
-        {
-            classes.Add("completed");
-        }
-
-        if (Step.Status == StepStatus.Warning)
-        {
-            classes.Add("warning");
-        }
-
-        if (Step.Status == StepStatus.Error)
-        {
-            classes.Add("error");
-        }
-
-        // Highlight the current step visually
         if (Position == StepPosition.Current)
         {
             classes.Add("current");
@@ -116,6 +105,39 @@ public sealed partial class StepItem : DropBearComponentBase
 
         return string.Join(" ", classes);
     }
+
+    // private string GetStepClass()
+    // {
+    //     var classes = new List<string>();
+    //
+    //     if (Step.Status == StepStatus.Active)
+    //     {
+    //         classes.Add("active");
+    //     }
+    //
+    //     if (Step.Status == StepStatus.Completed)
+    //     {
+    //         classes.Add("completed");
+    //     }
+    //
+    //     if (Step.Status == StepStatus.Warning)
+    //     {
+    //         classes.Add("warning");
+    //     }
+    //
+    //     if (Step.Status == StepStatus.Error)
+    //     {
+    //         classes.Add("error");
+    //     }
+    //
+    //     // Highlight the current step visually
+    //     if (Position == StepPosition.Current)
+    //     {
+    //         classes.Add("current");
+    //     }
+    //
+    //     return string.Join(" ", classes);
+    // }
 
 
     private string GetStepIcon()

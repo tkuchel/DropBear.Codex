@@ -4,7 +4,10 @@
 
 <div class="step @GetStepClass()"
      @onmouseover="HandleMouseOver"
-     @onmouseout="HandleMouseOut">
+     @onmouseout="HandleMouseOut"
+     role="listitem"
+     aria-label="@($"{Step.Label} - {GetStatusText()}")"
+     aria-current="@(Position == StepPosition.Current ? "step" : "false")">
     <div class="step-progress">
         <div class="step-progress-bar" style="@GetProgressStyle()">
             @if (IsActive)
@@ -26,7 +29,7 @@
 
     @if (IsHovered)
     {
-        <div class="step-tooltip">
+        <div class="step-tooltip" role="tooltip">
             <div class="tooltip-content">
                 <div class="tooltip-status">
                     <i class="@GetStatusIcon()"></i>
