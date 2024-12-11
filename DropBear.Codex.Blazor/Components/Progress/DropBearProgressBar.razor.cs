@@ -239,11 +239,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     /// <summary>
     ///     Updates the progress bar with the current task progress and overall completion.
+    ///     Instead of guessing the current step based on completed count, rely on explicit calls to SetStepActiveAsync,
+    ///     MarkStepCompleteAsync, and MarkStepFailedAsync from the consuming code.
     /// </summary>
-    /// <param name="taskProgress">Percentage of the current task progress (0-100).</param>
-    /// <param name="completedTasks">Number of completed tasks.</param>
-    /// <param name="totalTasks">Total number of tasks.</param>
-    /// <returns></returns>
     public async Task UpdateProgressAsync(double taskProgress, int completedTasks, int totalTasks)
     {
         Logger.Debug(
@@ -293,6 +291,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                 {
                     OverallProgress = newOverallProgress;
                     await ProgressChanged.InvokeAsync(OverallProgress);
+
+                    // Instead of trying to guess the current step, we just update the display.
+                    // The current step should have been explicitly set via SetStepActiveAsync.
                     await UpdateStepDisplayAsync(GetCurrentStepIndex());
                 });
             }
@@ -318,11 +319,50 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Explicitly mark a step as active. This ensures that when a task starts, we know which step to highlight.
+    /// </summary>
+    public async Task SetStepActiveAsync(string stepName)
+    {
+        Logger.Debug("SetStepActiveAsync called for StepName={StepName}", stepName);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
+        try
+        {
+            await _updateLock.WaitAsync(cts.Token);
+            Logger.Debug("SetStepActiveAsync: Acquired update lock.");
+
+            var step = _steps.FirstOrDefault(s => s.Name == stepName);
+            if (step == null)
+            {
+                Logger.Warning("SetStepActiveAsync: Step with name '{StepName}' not found.", stepName);
+                return;
+            }
+
+            // Deactivate all other steps that might currently be active
+            foreach (var s in _steps.Where(s => s.Status == StepStatus.Active))
+            {
+                s.Status = StepStatus.Completed; // or Pending if that makes more sense
+            }
+
+            // Set the target step as active
+            step.Status = StepStatus.Active;
+            await InvokeAsync(StateHasChanged);
+            Logger.Debug("SetStepActiveAsync: StepName={StepName} set to Active", stepName);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Debug("SetStepActiveAsync: Operation canceled");
+        }
+        finally
+        {
+            Logger.Debug("SetStepActiveAsync: Releasing update lock.");
+            _updateLock.Release();
+        }
+    }
 
     /// <summary>
-    ///     Marks a specific step as completed and triggers the StepCompleted event.
+    ///     Mark a specific step as completed and trigger StepCompleted event.
     /// </summary>
-    /// <param name="stepName">Name of the step to complete.</param>
     public async Task MarkStepCompleteAsync(string stepName)
     {
         Logger.Debug("MarkStepCompleteAsync called for StepName={StepName}", stepName);
@@ -347,16 +387,26 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Marks a step as failed (in error state).
+    ///     Mark a step as failed (error state).
     /// </summary>
-    /// <param name="stepName">Name of the failing step.</param>
-    /// <param name="errorMessage">Optional error message.</param>
     public async Task MarkStepFailedAsync(string stepName, string? errorMessage = null)
     {
         Logger.Debug("MarkStepFailedAsync called for StepName={StepName}, ErrorMessage={ErrorMessage}", stepName,
             errorMessage);
         _failedSteps.Add(stepName);
-        await UpdateStepStatusAsync(stepName, StepStatus.Error);
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
+        try
+        {
+            await _updateLock.WaitAsync(cts.Token);
+            Logger.Debug("MarkStepFailedAsync: Acquired update lock.");
+            await UpdateStepStatusAsync(stepName, StepStatus.Error);
+        }
+        finally
+        {
+            Logger.Debug("MarkStepFailedAsync: Releasing update lock.");
+            _updateLock.Release();
+        }
     }
 
     /// <summary>
