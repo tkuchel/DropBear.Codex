@@ -243,18 +243,20 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <inheritdoc />
     protected override Task OnParametersSetAsync()
     {
-        if (Steps != null && !Steps.SequenceEqual(_steps))
+        if (Steps != null)
         {
-            Logger.Debug("OnParametersSetAsync: Steps changed. OldCount={OldCount}, NewCount={NewCount}", _steps.Count,
-                Steps.Count());
-            RecycleSteps();
+            Logger.Debug("OnParametersSetAsync: Steps changed. Updating steps...");
             _steps = new ObservableCollection<ProgressStep>(Steps);
-            Logger.Debug("OnParametersSetAsync: Steps updated. StepsCount={StepsCount}", _steps.Count);
-        }
-        else
-        {
-            Logger.Debug("OnParametersSetAsync: No step changes detected or Steps is null. StepsCount={StepsCount}",
-                _steps.Count);
+
+            // Set the first non-completed step as active
+            var activeStep = _steps.FirstOrDefault(step => step.Status == StepStatus.Active)
+                             ?? _steps.FirstOrDefault(step => step.Status == StepStatus.NotStarted);
+
+            if (activeStep != null)
+            {
+                activeStep.Status = StepStatus.Active;
+                Logger.Debug("OnParametersSetAsync: Active step is {StepName}", activeStep.Name);
+            }
         }
 
         return base.OnParametersSetAsync();
@@ -344,80 +346,62 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <summary>
     ///     Explicitly mark a step as active. This ensures that when a task starts, we know which step to highlight.
     /// </summary>
-    public async Task SetStepActiveAsync(string stepName)
+    private async Task SetStepActiveAsync(string stepName)
     {
-        Logger.Debug("SetStepActiveAsync called for StepName={StepName}", stepName);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
+        await _updateLock.WaitAsync();
+
         try
         {
-            await _updateLock.WaitAsync(cts.Token);
-            Logger.Debug("SetStepActiveAsync: Acquired update lock.");
-
-            var step = _steps.FirstOrDefault(s => s.Name == stepName);
-            if (step == null)
+            foreach (var step in _steps)
             {
-                Logger.Warning("SetStepActiveAsync: Step with name '{StepName}' not found.", stepName);
-                return;
-            }
-
-            // Reset progress when activating new step
-            TaskProgress = 0;
-
-            // Mark previous steps completed and deactivate currently active step
-            var newIndex = _steps.IndexOf(step);
-            for (var i = 0; i < _steps.Count; i++)
-            {
-                if (i < newIndex)
+                if (step.Name == stepName)
                 {
-                    _steps[i].Status = StepStatus.Completed;
+                    step.Status = StepStatus.Active;
                 }
-                else if (_steps[i].Status == StepStatus.Active)
+                else if (step.Status != StepStatus.Completed)
                 {
-                    _steps[i].Status = StepStatus.Completed;
+                    step.Status = StepStatus.NotStarted;
                 }
             }
 
-            step.Status = StepStatus.Active;
-            await UpdateStepDisplayAsync(newIndex);
-            await InvokeAsync(StateHasChanged);
-            Logger.Debug("SetStepActiveAsync: StepName={StepName} set to Active", stepName);
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.Debug("SetStepActiveAsync: Operation canceled");
+            Logger.Debug("SetStepActiveAsync: Active step set to {StepName}", stepName);
+            StateHasChanged();
         }
         finally
         {
-            Logger.Debug("SetStepActiveAsync: Releasing update lock.");
             _updateLock.Release();
         }
     }
+
 
     /// <summary>
     ///     Mark a specific step as completed and trigger StepCompleted event.
     /// </summary>
-    public async Task MarkStepCompleteAsync(string stepName)
+    private async Task MarkStepCompleteAsync(string stepName)
     {
-        Logger.Debug("MarkStepCompleteAsync called for StepName={StepName}", stepName);
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
+        await _updateLock.WaitAsync();
+
         try
         {
-            await _updateLock.WaitAsync(cts.Token);
-            Logger.Debug("MarkStepCompleteAsync: Acquired update lock.");
-            await UpdateStepStatusAsync(stepName, StepStatus.Completed);
             var step = _steps.FirstOrDefault(s => s.Name == stepName);
             if (step != null)
             {
-                Logger.Debug("MarkStepCompleteAsync: Invoking StepCompleted for StepName={StepName}", stepName);
-                await StepCompleted.InvokeAsync(step);
+                step.Status = StepStatus.Completed;
+                Logger.Debug("MarkStepCompleteAsync: Step {StepName} marked as completed", stepName);
+
+                // Update progress
+                TaskProgress = _steps.Count(s => s.Status == StepStatus.Completed) / (double)_steps.Count * 100;
+                OverallProgress = Math.Max(OverallProgress, TaskProgress);
+
+                StateHasChanged();
             }
         }
         finally
         {
-            Logger.Debug("MarkStepCompleteAsync: Releasing update lock.");
             _updateLock.Release();
         }
     }
+
 
     /// <summary>
     ///     Mark a step as failed (error state).

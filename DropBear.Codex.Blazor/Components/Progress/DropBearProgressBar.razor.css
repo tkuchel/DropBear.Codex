@@ -91,6 +91,7 @@
 /* Step States */
 .step.active {
   opacity: 1;
+  transition: all var(--transition-speed) var(--transition-timing);
 }
 
 .step.completed {
@@ -103,10 +104,8 @@
 
 .step.current {
   opacity: 1;
-  border: 1px solid var(--progress-color);
-  border-radius: 0.25rem;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--progress-color);
+  transform: scale(1.1); /* Highlight active step */
 }
 
 .step.previous,

@@ -90,7 +90,8 @@ public sealed partial class StepItem : DropBearComponentBase
     {
         var classes = new List<string>
         {
-            Position.ToString().ToLowerInvariant(), Step.Status.ToString().ToLowerInvariant()
+            Position.ToString().ToLowerInvariant(),
+            Step.Status.ToString().ToLowerInvariant()
         };
 
         if (IsActive)
@@ -105,6 +106,8 @@ public sealed partial class StepItem : DropBearComponentBase
 
         return string.Join(" ", classes);
     }
+
+
 
     // private string GetStepClass()
     // {
