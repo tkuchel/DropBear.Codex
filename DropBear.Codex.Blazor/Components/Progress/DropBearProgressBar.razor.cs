@@ -47,6 +47,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private bool _isDisposed;
     private bool _isIndeterminate;
     private bool _isInitialized;
+    private bool _isTransitioning;
     private bool _keyboardFocus;
     private DateTime _lastUpdateTime = DateTime.MinValue;
     private double _overallProgress;
@@ -148,8 +149,10 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     private ProgressStep CreatePlaceholderStep(string label)
     {
-        // Create a step that has a label but maybe no meaningful data
-        return new ProgressStep { Name = label, Label = label, Status = StepStatus.NotStarted };
+        return new ProgressStep
+        {
+            Name = label, Label = label, Status = StepStatus.NotStarted, Detail = "No step data available"
+        };
     }
 
     /// <inheritdoc />
@@ -492,9 +495,11 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         Logger.Debug("UpdateStepStatusAsync: StepName={StepName}, Status={Status}", stepName, status);
         if (_isDisposed)
         {
-            Logger.Debug("UpdateStepStatusAsync: Skipped because component disposed.");
             return;
         }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
+        await _updateLock.WaitAsync(cts.Token);
 
         try
         {
@@ -502,17 +507,54 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             if (step != null)
             {
                 step.Status = status;
+
+                if (status == StepStatus.Active)
+                {
+                    var index = _steps.IndexOf(step);
+                    if (index > 0)
+                    {
+                        _steps[index - 1].Status = StepStatus.Completed;
+                    }
+                }
+
+                await UpdateStepDisplayAsync(_steps.IndexOf(step));
                 await InvokeAsync(StateHasChanged);
-                Logger.Debug("UpdateStepStatusAsync: Updated StepName={StepName} to Status={Status}", stepName, status);
-            }
-            else
-            {
-                Logger.Debug("UpdateStepStatusAsync: StepName={StepName} not found in _steps.", stepName);
             }
         }
         catch (OperationCanceledException)
         {
             Logger.Debug("UpdateStepStatusAsync: Operation canceled");
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+    }
+
+    private async Task TransitionStep(string stepName)
+    {
+        if (_isTransitioning)
+        {
+            return;
+        }
+
+        try
+        {
+            _isTransitioning = true;
+            await SetStepActiveAsync(stepName);
+            await Task.Delay(300, _progressCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Debug("TransitionStep: Operation canceled");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during step transition");
+        }
+        finally
+        {
+            _isTransitioning = false;
         }
     }
 
@@ -545,21 +587,19 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// </summary>
     private int GetCurrentStepIndex()
     {
+        if (!_steps.Any())
+        {
+            return 0;
+        }
+
         var activeStep = _steps.FirstOrDefault(s => s.Status == StepStatus.Active);
+        if (activeStep != null)
+        {
+            return _steps.IndexOf(activeStep);
+        }
+
         var completedCount = _steps.Count(s => s.Status == StepStatus.Completed);
-        var index = activeStep != null
-            ? _steps.IndexOf(activeStep)
-            : completedCount;
-
-        // Add logging to understand what's happening
-        Logger.Debug(
-            "GetCurrentStepIndex called. StepsCount={StepsCount}, CompletedCount={CompletedCount}, ActiveStepName={ActiveStepName}, ReturningIndex={Index}",
-            _steps.Count,
-            completedCount,
-            activeStep?.Name ?? "None",
-            index);
-
-        return index;
+        return Math.Min(completedCount, _steps.Count - 1);
     }
 
 

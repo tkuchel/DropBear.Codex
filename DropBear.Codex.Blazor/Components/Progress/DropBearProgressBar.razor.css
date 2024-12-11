@@ -1,10 +1,7 @@
-/* DropBearProgressBar.razor.css */
-
 /* Core Variables */
 .dropbear-progress-container {
   --progress-height: 0.25rem;
   --step-progress-height: 0.75rem;
-
   --progress-color: var(--clr-viking, #62dbc8);
   --progress-bg: var(--clr-surface-secondary, #343639);
   --progress-success: var(--clr-success, #7cd651);
@@ -12,10 +9,7 @@
   --progress-warning: var(--clr-warning, #ffd14d);
   --transition-speed: 300ms;
   --transition-timing: cubic-bezier(0.4, 0, 0.2, 1);
-}
 
-/* Container Layout */
-.dropbear-progress-container {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
@@ -27,7 +21,7 @@
   border: 1px solid var(--clr-border, #343639);
 }
 
-/* Header Styling */
+/* Header */
 .progress-header {
   display: flex;
   justify-content: space-between;
@@ -63,12 +57,12 @@
   width: 100%;
   background-color: var(--progress-color);
   opacity: 0.3;
-  transition: width var(--transition-speed) var(--transition-timing);
-  will-change: width;
   transform-origin: left;
+  transition: width var(--transition-speed) var(--transition-timing);
+  will-change: transform, width;
 }
 
-/* Steps Layout */
+/* Steps Container */
 .progress-steps {
   position: relative;
   width: 100%;
@@ -76,30 +70,26 @@
 
 .step-window {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1rem;
   width: 100%;
-  align-items: start;
-  justify-items: center;
-  overflow: hidden;
+  min-height: 150px;
 }
 
-/* Individual Step Styling */
+/* Step Base Styles */
 .step {
   position: relative;
-  min-width: 8rem;
+  min-width: 0;
   width: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  transform-origin: center;
-  will-change: transform, opacity;
+  padding: 1rem;
+  box-sizing: border-box;
+  opacity: 0.4;
   transition: all var(--transition-speed) var(--transition-timing);
+  will-change: opacity, transform;
 }
 
+/* Step States */
 .step.active {
-  transform: none;
   opacity: 1;
 }
 
@@ -111,13 +101,63 @@
   opacity: 1;
 }
 
-.step:not(.active):not(.completed) {
-  opacity: 0.4;
+.step.current {
+  opacity: 1;
+  border: 1px solid var(--progress-color);
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
 }
 
-/* Step Position Badges */
+.step.previous,
+.step.next {
+  opacity: 0.8;
+}
+
+/* Step Progress */
+.step-progress {
+  height: var(--step-progress-height);
+  width: 100%;
+  background-color: var(--progress-bg);
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.step-progress-bar {
+  position: relative;
+  height: 100%;
+  background: linear-gradient(to right, var(--progress-color), var(--progress-success));
+  transform-origin: left;
+  transition: width var(--transition-speed) var(--transition-timing);
+  will-change: transform, width;
+}
+
+/* Step Content */
+.step-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  position: relative;
+  justify-content: center;
+}
+
+.step-label {
+  font-size: 0.875rem;
+  transition: color var(--transition-speed) var(--transition-timing);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 150px;
+}
+
+/* Status Badges */
 .step-position-badge {
-  margin-top: 0.5rem;
+  position: absolute;
+  top: -1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1;
   font-size: 0.75rem;
   text-transform: uppercase;
   color: var(--clr-text-secondary);
@@ -137,51 +177,9 @@
   color: var(--progress-success);
 }
 
-/* Highlighting the current step */
-.step.current {
-  border: 1px solid var(--progress-color);
-  border-radius: 0.25rem;
-  padding: 0.5rem;
-  background: rgba(255, 255, 255, 0.05);
-}
-
-/* Step Progress Bar */
-.step-progress {
-  height: var(--step-progress-height);
-  width: 100%;
-  background-color: var(--progress-bg);
-  border-radius: 9999px;
-  overflow: hidden;
-  margin-bottom: 1rem;
-}
-
-.step-progress-bar {
-  height: 100%;
-  background: linear-gradient(to right, var(--progress-color), var(--progress-success));
-  transition: width var(--transition-speed) var(--transition-timing);
-  position: relative;
-}
-
-/* Step Content Layout */
-.step-content {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  position: relative;
-  justify-content: center;
-}
-
-.step-label {
-  font-size: 0.875rem;
-  transition: color var(--transition-speed) var(--transition-timing);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 150px;
-}
-
 /* Status Indicators */
-.step-indicator {
+.step-indicator,
+.step-indicator-completed {
   position: absolute;
   right: -8px;
   top: -8px;
@@ -190,6 +188,10 @@
   border-radius: 50%;
   border: 2px solid var(--clr-surface-primary);
   z-index: 2;
+}
+
+.step-indicator-completed {
+  background-color: var(--progress-success);
 }
 
 .step.completed .step-indicator {
@@ -204,7 +206,16 @@
   background-color: var(--progress-error);
 }
 
-/* Tooltip Styling */
+/* Status-specific Progress Bars */
+.step.error .step-progress-bar {
+  background: linear-gradient(to right, var(--progress-error), #ff8080);
+}
+
+.step.warning .step-progress-bar {
+  background: linear-gradient(to right, var(--progress-warning), #ffe4a3);
+}
+
+/* Tooltip */
 .step-tooltip {
   position: absolute;
   top: calc(100% + 0.5rem);
@@ -214,49 +225,25 @@
 }
 
 /* Animations */
-@keyframes shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes progressPulse {
-  0% {
+@keyframes progress-pulse {
+  0%, 100% {
     opacity: 0.8;
   }
   50% {
     opacity: 1;
   }
-  100% {
-    opacity: 0.8;
-  }
 }
 
 @keyframes progress-slide {
-  to {
-    transform: translateX(200%);
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
   }
 }
 
 .progress-glow {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    to right,
-    transparent,
-    rgba(255, 255, 255, 0.1),
-    transparent
-  );
-  transform: translateX(-100%);
-  animation: shimmer 2s infinite;
-}
-
-.step.active .step-progress-bar {
-  animation: progressPulse 2s ease-in-out infinite;
-}
-
-.step.active .step-progress-bar::after {
-  content: '';
   position: absolute;
   inset: 0;
   background: linear-gradient(
@@ -268,11 +255,6 @@
   animation: progress-slide 2s linear infinite;
 }
 
-/* Status-specific Progress Bars */
-.step.error .step-progress-bar {
-  background: linear-gradient(to right, var(--progress-error), #ff8080);
-}
-
-.step.warning .step-progress-bar {
-  background: linear-gradient(to right, var(--progress-warning), #ffe4a3);
+.step.current .step-progress-bar {
+  animation: progress-pulse 2s ease-in-out infinite;
 }

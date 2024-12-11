@@ -46,9 +46,8 @@
                     }
                     else
                     {
-                        // Display a placeholder step as if it were a valid step, just no data
                         <StepItem
-                            Step="@CreatePlaceholderStep("No Previous")"
+                            Step="@CreatePlaceholderStep("")"
                             IsActive="false"
                             Progress="0"
                             OnHover="OnStepHover"
@@ -56,27 +55,14 @@
                             Position="StepPosition.Previous"/>
                     }
 
-                    @if (GetCurrentStepIndex() < _steps.Count)
-                    {
-                        var currentStep = _steps.ElementAt(GetCurrentStepIndex());
-                        <StepItem
-                            Step="currentStep"
-                            IsActive="true"
-                            Progress="TaskProgress"
-                            OnHover="OnStepHover"
-                            HoveredStep="_hoveredStep"
-                            Position="StepPosition.Current"/>
-                    }
-                    else
-                    {
-                        <StepItem
-                            Step="@CreatePlaceholderStep("No Current")"
-                            IsActive="false"
-                            Progress="0"
-                            OnHover="OnStepHover"
-                            HoveredStep="_hoveredStep"
-                            Position="StepPosition.Current"/>
-                    }
+                    @{ var currentStep = _steps.ElementAtOrDefault(GetCurrentStepIndex()); }
+                    <StepItem
+                        Step="@(currentStep ?? CreatePlaceholderStep(""))"
+                        IsActive="true"
+                        Progress="TaskProgress"
+                        OnHover="OnStepHover"
+                        HoveredStep="_hoveredStep"
+                        Position="StepPosition.Current"/>
 
                     @if (GetCurrentStepIndex() < _steps.Count - 1)
                     {
@@ -92,7 +78,7 @@
                     else
                     {
                         <StepItem
-                            Step="@CreatePlaceholderStep("No Next")"
+                            Step="@CreatePlaceholderStep("")"
                             IsActive="false"
                             Progress="0"
                             OnHover="OnStepHover"

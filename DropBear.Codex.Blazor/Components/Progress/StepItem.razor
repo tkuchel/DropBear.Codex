@@ -1,4 +1,5 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Progress
+@using DropBear.Codex.Blazor.Enums
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div class="step @GetStepClass()"
@@ -9,6 +10,10 @@
             @if (IsActive)
             {
                 <div class="progress-glow"></div>
+            }
+            @if (Step.Status == StepStatus.Completed)
+            {
+                <div class="step-indicator-completed"></div>
             }
         </div>
     </div>
