@@ -343,32 +343,50 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
-    /// <summary>
-    ///     Explicitly mark a step as active. This ensures that when a task starts, we know which step to highlight.
-    /// </summary>
-    private async Task SetStepActiveAsync(string stepName)
+    public async Task SetStepsAsync(IEnumerable<ProgressStep> steps)
     {
-        await _updateLock.WaitAsync();
+        if (steps == null)
+        {
+            Logger.Warning("SetStepsAsync called with null steps.");
+            return;
+        }
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
 
         try
         {
+            await _updateLock.WaitAsync(cts.Token);
+            Logger.Debug("SetStepsAsync: Acquired update lock.");
+
+            // Reset steps collection
+            _steps = new ObservableCollection<ProgressStep>(steps);
+            Logger.Information("SetStepsAsync: {StepCount} steps initialized.", _steps.Count);
+
+            // Reset status for all steps
             foreach (var step in _steps)
             {
-                if (step.Name == stepName)
-                {
-                    step.Status = StepStatus.Active;
-                }
-                else if (step.Status != StepStatus.Completed)
-                {
-                    step.Status = StepStatus.NotStarted;
-                }
+                step.Status = StepStatus.NotStarted;
             }
 
-            Logger.Debug("SetStepActiveAsync: Active step set to {StepName}", stepName);
-            StateHasChanged();
+            // Reset the progress bar to its initial state
+            await UpdateProgressAsync(0, 0, _steps.Count);
+            Logger.Debug("SetStepsAsync: Progress bar reset to initial state.");
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Debug("SetStepsAsync: Operation canceled.");
+        }
+        catch (ObjectDisposedException)
+        {
+            Logger.Debug("SetStepsAsync: Component disposed.");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "SetStepsAsync encountered an error.");
         }
         finally
         {
+            Logger.Debug("SetStepsAsync: Releasing update lock.");
             _updateLock.Release();
         }
     }
@@ -377,7 +395,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <summary>
     ///     Mark a specific step as completed and trigger StepCompleted event.
     /// </summary>
-    private async Task MarkStepCompleteAsync(string stepName)
+    public async Task MarkStepCompleteAsync(string stepName)
     {
         await _updateLock.WaitAsync();
 
@@ -573,37 +591,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         finally
         {
             _updateLock.Release();
-        }
-    }
-
-    private async Task TransitionStep(string stepName)
-    {
-        if (_isTransitioning)
-        {
-            Logger.Debug("TransitionStep: Already transitioning, skipping");
-            return;
-        }
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_progressCts.Token);
-        try
-        {
-            _isTransitioning = true;
-            Logger.Debug("TransitionStep: Starting transition for StepName={StepName}", stepName);
-            await SetStepActiveAsync(stepName);
-            await Task.Delay(300, cts.Token);
-            Logger.Debug("TransitionStep: Completed transition for StepName={StepName}", stepName);
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.Debug("TransitionStep: Operation canceled");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during step transition");
-        }
-        finally
-        {
-            _isTransitioning = false;
         }
     }
 
