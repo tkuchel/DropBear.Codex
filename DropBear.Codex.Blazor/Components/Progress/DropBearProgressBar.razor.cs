@@ -146,6 +146,12 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         };
     }
 
+    private ProgressStep CreatePlaceholderStep(string label)
+    {
+        // Create a step that has a label but maybe no meaningful data
+        return new ProgressStep { Name = label, Label = label, Status = StepStatus.NotStarted };
+    }
+
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {

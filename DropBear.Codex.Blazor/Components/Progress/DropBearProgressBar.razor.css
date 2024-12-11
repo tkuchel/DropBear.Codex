@@ -19,7 +19,7 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 48rem;
+  max-width: 50rem;
   margin: 0 auto;
   padding: 1.5rem;
   background: var(--clr-surface-primary, #1e1f22);
@@ -79,16 +79,19 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
   width: 100%;
-  overflow: hidden;
   align-items: start;
   justify-items: center;
+  overflow: hidden;
 }
 
 /* Individual Step Styling */
 .step {
   position: relative;
-  min-width: 0;
+  min-width: 8rem;
   width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   transform-origin: center;
   will-change: transform, opacity;
@@ -110,15 +113,6 @@
 
 .step:not(.active):not(.completed) {
   opacity: 0.4;
-}
-
-/* Placeholder Steps for Consistency */
-.step.placeholder {
-  opacity: 0.3;
-  background: transparent;
-  border: 1px dashed var(--clr-border);
-  border-radius: 0.25rem;
-  padding: 0.5rem;
 }
 
 /* Step Position Badges */

@@ -1,5 +1,4 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Progress
-@using DropBear.Codex.Blazor.Enums
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div class="step @GetStepClass()"
@@ -18,20 +17,6 @@
         <i class="@GetStepIcon()"></i>
         <span class="step-label" title="@Step.Label">@Step.Label</span>
         <div class="step-indicator" title="@GetStatusText()"></div>
-
-        <!-- Position Label moved inside .step-content for consistency -->
-        @if (Position == StepPosition.Previous)
-        {
-            <div class="step-position-badge previous">Previous</div>
-        }
-        else if (Position == StepPosition.Current)
-        {
-            <div class="step-position-badge current">Current</div>
-        }
-        else if (Position == StepPosition.Next)
-        {
-            <div class="step-position-badge next">Next</div>
-        }
     </div>
 
     @if (IsHovered)
