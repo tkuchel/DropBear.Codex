@@ -391,6 +391,36 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Explicitly mark a step as active. This ensures that when a task starts, we know which step to highlight.
+    /// </summary>
+    public async Task SetStepActiveAsync(string stepName)
+    {
+        await _updateLock.WaitAsync();
+
+        try
+        {
+            foreach (var step in _steps)
+            {
+                if (step.Name == stepName)
+                {
+                    step.Status = StepStatus.Active;
+                }
+                else if (step.Status != StepStatus.Completed)
+                {
+                    step.Status = StepStatus.NotStarted;
+                }
+            }
+
+            Logger.Debug("SetStepActiveAsync: Active step set to {StepName}", stepName);
+            StateHasChanged();
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+    }
+
 
     /// <summary>
     ///     Mark a specific step as completed and trigger StepCompleted event.
