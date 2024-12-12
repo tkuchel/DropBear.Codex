@@ -2,107 +2,89 @@
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @namespace DropBear.Codex.Blazor.Components.Progress
 
-<div class="dropbear-progress-container"
-     @onkeydown="HandleKeyDown"
-     tabindex="0"
-     role="progressbar"
-     aria-valuemin="0"
-     aria-valuemax="100"
-     aria-valuenow="@OverallProgress">
-    <div class="dropbear-progress @GetProgressClass() @(_failedSteps.Any() ? "has-errors" : "")" id="@_progressId">
+<div class="dropbear-progress-container @(IsIndeterminate ? "indeterminate" : "")" role="progressbar"
+     aria-valuemin="0" aria-valuemax="100" aria-valuenow="@(_state?.OverallProgress ?? 0)">
+    <div class="dropbear-progress">
         <div class="progress-header">
-            <div class="progress-label">@Label</div>
-            @if (Type == ProgressBarType.Stepped && _steps?.Any() == true)
+            <div class="progress-message">@Message</div>
+            @if (!IsIndeterminate)
             {
-                <div class="step-counter">
-                    Step @Math.Min(GetCurrentStepIndex() + 1, _steps.Count) of @_steps.Count
-                </div>
+                <div class="progress-step">@($"{_state?.OverallProgress:F0}%")</div>
             }
         </div>
 
-        <div class="progress-bar-overall">
-            <div class="progress-bar-track">
-                @if (_isIndeterminate)
-                {
-                    <div class="progress-bar-fill indeterminate"></div>
-                }
-                else
-                {
-                    <div class="progress-bar-fill" style="width: @OverallProgress%">
-                        <div class="progress-glow"></div>
-                    </div>
-                }
+        <div class="progress-bar-container">
+            <div class="progress-bar @(IsIndeterminate ? "indeterminate" : "")"
+                 style="@(!IsIndeterminate ? $"width: {_state?.OverallProgress:F1}%" : "")">
             </div>
         </div>
 
-        @if (Type == ProgressBarType.Stepped && _steps?.Any() == true)
+        @if (!IsIndeterminate && Steps?.Any() == true)
         {
-            <div class="progress-steps @(_isTransitioning ? "transitioning" : "")">
-                <div class="step-window">
-                    @{
-                        var currentIndex = GetCurrentStepIndex();
-                        var showPrevious = currentIndex > 0 && currentIndex < _steps.Count;
-                        var previousStep = showPrevious ? _steps.ElementAtOrDefault(currentIndex - 1) : null;
-                    }
+            <div class="steps-container">
+                @foreach (var (step, index) in GetVisibleSteps())
+                {
+                    var position = index switch
+                    {
+                        0 => StepPosition.Previous,
+                        1 => StepPosition.Current,
+                        2 => StepPosition.Next,
+                        _ => StepPosition.Next
+                    };
 
-                    @if (previousStep != null)
-                    {
-                        <StepItem
-                            Step="previousStep"
-                            IsActive="false"
-                            Progress="100"
-                            OnHover="OnStepHover"
-                            HoveredStep="_hoveredStep"
-                            Position="StepPosition.Previous"/>
-                    }
-                    else
-                    {
-                        <StepItem
-                            Step="@CreatePlaceholderStep("")"
-                            IsActive="false"
-                            Progress="0"
-                            OnHover="OnStepHover"
-                            HoveredStep="_hoveredStep"
-                            Position="StepPosition.Previous"/>
-                    }
+                    var stepState = _state?.GetOrCreateStepState(step.Id);
 
-                    @{
-                        var currentStep = _steps.ElementAtOrDefault(currentIndex);
-                    }
-                    <StepItem
-                        Step="@(currentStep ?? CreatePlaceholderStep(""))"
-                        IsActive="true"
-                        Progress="TaskProgress"
-                        OnHover="OnStepHover"
-                        HoveredStep="_hoveredStep"
-                        Position="StepPosition.Current"/>
+                    <DropBearProgressBarStep
+                        Config="step"
+                        Position="position"
+                        Progress="stepState?.Progress ?? 0"
+                        Status="stepState?.Status ?? StepStatus.NotStarted"/>
+                }
+            </div>
+        }
 
-                    @{
-                        var showNext = currentIndex < _steps.Count - 1;
-                        var nextStep = showNext ? _steps.ElementAtOrDefault(currentIndex + 1) : null;
-                    }
-                    @if (nextStep != null)
-                    {
-                        <StepItem
-                            Step="nextStep"
-                            IsActive="false"
-                            Progress="0"
-                            OnHover="OnStepHover"
-                            HoveredStep="_hoveredStep"
-                            Position="StepPosition.Next"/>
-                    }
-                    else
-                    {
-                        <StepItem
-                            Step="@CreatePlaceholderStep("")"
-                            IsActive="false"
-                            Progress="0"
-                            OnHover="OnStepHover"
-                            HoveredStep="_hoveredStep"
-                            Position="StepPosition.Next"/>
-                    }
-                </div>
+        @if (!IsIndeterminate && _state?.OverallProgress is > 0 and < 100)
+        {
+            <div class="estimated-time">
+                <i class="fas fa-clock"></i>
+                <span>Estimated time remaining: @GetEstimatedTimeRemaining()</span>
             </div>
         }
     </div>
 </div>
+
+@code {
+
+    private string GetEstimatedTimeRemaining()
+    {
+        if (_state == null || _currentSteps == null)
+        {
+            return string.Empty;
+        }
+
+        var completedSteps = _state.StepStates.Count(s => s.Value.Status == StepStatus.Completed);
+        var activeStep = _state.StepStates.FirstOrDefault(s => s.Value.Status == StepStatus.InProgress);
+
+        if (activeStep.Value == null)
+        {
+            return string.Empty;
+        }
+
+        var averageStepTime = activeStep.Value.RunningTime.TotalSeconds / activeStep.Value.Progress;
+        var remainingSteps = _currentSteps.Count - completedSteps;
+        var estimatedSeconds = averageStepTime * remainingSteps * 100;
+
+        if (estimatedSeconds < 60)
+        {
+            return $"{estimatedSeconds:F0} seconds";
+        }
+
+        if (estimatedSeconds < 3600)
+        {
+            return $"{estimatedSeconds / 60:F0} minutes";
+        }
+
+        return $"{estimatedSeconds / 3600:F1} hours";
+    }
+
+}
