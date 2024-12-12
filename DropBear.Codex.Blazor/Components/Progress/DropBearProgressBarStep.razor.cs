@@ -146,6 +146,9 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
                         Logger.Debug("Step {StepId} progress: {Progress}", Config.Id, progress);
 
                         DisplayProgress = progress;
+
+                        Logger.Debug("Step {StepId} DisplayProgress: {DisplayProgress}", Config.Id, DisplayProgress);
+
                         await InvokeAsync(StateHasChanged);
                     }
 
