@@ -37,6 +37,8 @@ public sealed class ProgressState : IAsyncDisposable
     /// </summary>
     public IReadOnlyDictionary<string, StepProgressState> StepStates => _stepStates;
 
+    public DateTime StartTime { get; } = DateTime.UtcNow;
+
     /// <summary>
     ///     Disposes of resources
     /// </summary>

@@ -47,7 +47,7 @@
         {
             <div class="estimated-time">
                 <i class="fas fa-clock"></i>
-                <span>Estimated time remaining: @GetEstimatedTimeRemaining()</span>
+                <span>@GetEstimatedTimeRemaining()</span>
             </div>
         }
     </div>
@@ -57,34 +57,22 @@
 
     private string GetEstimatedTimeRemaining()
     {
-        if (_state == null || _currentSteps == null)
-        {
-            return string.Empty;
-        }
+        if (_state == null || _state.OverallProgress <= 0) return string.Empty;
 
-        var completedSteps = _state.StepStates.Count(s => s.Value.Status == StepStatus.Completed);
-        var activeStep = _state.StepStates.FirstOrDefault(s => s.Value.Status == StepStatus.InProgress);
+        var elapsed = DateTime.UtcNow - _state.StartTime;
+        var estimatedTotal = TimeSpan.FromTicks((long)(elapsed.Ticks / (_state.OverallProgress / 100)));
+        var remaining = estimatedTotal - elapsed;
 
-        if (activeStep.Value == null)
-        {
-            return string.Empty;
-        }
+        return $"Estimated time remaining: {FormatTimeSpan(remaining)}";
+    }
 
-        var averageStepTime = activeStep.Value.RunningTime.TotalSeconds / activeStep.Value.Progress;
-        var remainingSteps = _currentSteps.Count - completedSteps;
-        var estimatedSeconds = averageStepTime * remainingSteps * 100;
-
-        if (estimatedSeconds < 60)
-        {
-            return $"{estimatedSeconds:F0} seconds";
-        }
-
-        if (estimatedSeconds < 3600)
-        {
-            return $"{estimatedSeconds / 60:F0} minutes";
-        }
-
-        return $"{estimatedSeconds / 3600:F1} hours";
+    private string FormatTimeSpan(TimeSpan span)
+    {
+        if (span.TotalHours >= 1)
+            return $"{span.TotalHours:F1} hours";
+        if (span.TotalMinutes >= 1)
+            return $"{span.TotalMinutes:F0} minutes";
+        return $"{span.TotalSeconds:F0} seconds";
     }
 
 }
