@@ -143,11 +143,11 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
                         nextTransition.UpdateProgress(progress);
 
                         // Added to help see why DisplayProgress isn't updating.
-                        Logger.Debug("Step {StepId} progress: {Progress}", Config.Id, progress);
+                        // Logger.Debug("Step {StepId} progress: {Progress}", Config.Id, progress);
 
                         DisplayProgress = progress;
 
-                        Logger.Debug("Step {StepId} DisplayProgress: {DisplayProgress}", Config.Id, DisplayProgress);
+                        // Logger.Debug("Step {StepId} DisplayProgress: {DisplayProgress}", Config.Id, DisplayProgress);
 
                         await InvokeAsync(StateHasChanged);
                     }
