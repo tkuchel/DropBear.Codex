@@ -130,7 +130,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         {
             var shouldUpdate = false;
 
-            await _updateLock.WaitAsync();
+            await _updateLock?.WaitAsync();
             try
             {
                 // Check if we need to update state
@@ -155,7 +155,20 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             }
             finally
             {
-                _updateLock.Release();
+                try
+                {
+                    _updateLock?.Release();
+                }
+                catch (ObjectDisposedException e)
+                {
+                    Logger.Warning("Object disposed exception in {ComponentName}", nameof(DropBearProgressBar));
+                    // Ignore
+                }
+                catch (Exception e)
+                {
+                    Logger.Error(e, "Error releasing update lock in {ComponentName}", nameof(DropBearProgressBar));
+                    throw;
+                }
             }
 
             if (shouldUpdate)
