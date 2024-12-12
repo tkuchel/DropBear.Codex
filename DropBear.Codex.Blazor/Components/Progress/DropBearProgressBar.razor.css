@@ -89,7 +89,7 @@
   position: relative;
 }
 
-.step-progress .progress-bar-container {
+::deep .step-progress .progress-bar-container {
   height: var(--step-progress-height);
 }
 
