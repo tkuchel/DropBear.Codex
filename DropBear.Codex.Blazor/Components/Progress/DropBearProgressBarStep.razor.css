@@ -111,7 +111,7 @@
 }
 
 /* Step Progress Bar within the step */
-.step-progress .progress-bar-container {
+.step-progress.progress-bar-container {
   height: var(--step-progress-height);
 }
 
