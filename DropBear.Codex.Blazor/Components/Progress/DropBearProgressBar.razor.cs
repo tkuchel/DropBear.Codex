@@ -19,7 +19,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private int _currentStepIndex;
     private List<ProgressStepConfig>? _currentSteps;
     private bool _isInitialized;
-    private string? _lastMessage;
+    private string? _lastMessage = string.Empty;
     private double _lastProgress;
     private CancellationTokenSource? _smoothingCts;
     private ProgressState? _state;
@@ -121,8 +121,15 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
-        if (!_isInitialized || IsDisposed)
+        if (!_isInitialized)
         {
+            return;
+        }
+
+        if (IsDisposed)
+        {
+            Logger.Warning("Component is disposed in {ComponentName} OnParametersSetAsync",
+                nameof(DropBearProgressBar));
             return;
         }
 
