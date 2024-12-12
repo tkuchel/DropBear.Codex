@@ -1,1 +1,259 @@
-﻿
+﻿/*
+  DropBearProgressBarStep.razor.css
+
+  Contains only the styles relevant to the step subcomponent.
+  Any color variables or theme variables should remain if needed by these selectors.
+  If these variables are defined globally elsewhere, you may omit their redefinition here.
+*/
+
+* {
+  /* Define or retain necessary CSS variables for the step component */
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.125);
+  --text-primary: #333333;
+  --text-secondary: #666666;
+  --progress-bg: #f0f0f0;
+  --step-box-bg: #f8f8f8;
+  --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  --tooltip-bg: rgba(0, 0, 0, 0.8);
+
+  --progress-height: 16px;
+  --step-progress-height: 8px;
+  --progress-radius: 8px;
+  --step-gap: 16px;
+  --transition-duration: 0.3s;
+
+  /* If needed, ensure color variables for statuses are defined */
+  /* Example:
+  --clr-success: #7cd651;
+  --clr-warning: #ffd14d;
+  --clr-error: #ff5757;
+  --clr-information: #4ebafd;
+  */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card-bg: #2d2d2d;
+    --card-border: rgba(255, 255, 255, 0.125);
+    --text-primary: #e0e0e0;
+    --text-secondary: #b0b0b0;
+    --progress-bg: #404040;
+    --step-box-bg: #363636;
+    --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    --tooltip-bg: rgba(255, 255, 255, 0.9);
+  }
+}
+
+/* Step Box & Related Elements */
+::deep .step-box {
+  background: var(--step-box-bg);
+  border-radius: 8px;
+  padding: 1rem;
+  box-shadow: var(--box-shadow);
+  transition: all var(--transition-duration) ease-in-out;
+  position: relative;
+}
+
+::deep .step-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+::deep .step-icon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color var(--transition-duration) ease-in-out;
+}
+
+::deep .step-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+}
+
+/* Tooltip for step name */
+::deep .step-name[data-tooltip] {
+  cursor: help;
+}
+
+::deep .step-name[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  z-index: 1000;
+  bottom: calc(100% + 5px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--tooltip-bg);
+  color: var(--card-bg);
+  font-size: 12px;
+  white-space: normal;
+  max-width: 200px;
+  text-align: center;
+  box-shadow: var(--box-shadow);
+}
+
+/* Step Status Text */
+::deep .step-status {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  margin-top: 0.5rem;
+}
+
+/* Step Progress Bar within the step */
+::deep .step-progress .progress-bar-container {
+  height: var(--step-progress-height);
+}
+
+::deep .progress-bar {
+  height: 100%;
+  background-color: var(--clr-information);
+  border-radius: var(--progress-radius);
+  transition: width var(--transition-duration) ease-in-out;
+}
+
+/* Indeterminate animation for step progress-bar */
+::deep .progress-bar.indeterminate {
+  width: 50%;
+  background: linear-gradient(
+    90deg,
+    var(--clr-information-light) 0%,
+    var(--clr-information) 50%,
+    var(--clr-information-light) 100%
+  );
+  animation: indeterminate 2s infinite linear;
+}
+
+/* Status-specific colors */
+::deep .step-box[data-status="success"] .step-icon {
+  color: var(--clr-success);
+}
+
+::deep .step-box[data-status="warning"] .step-icon {
+  color: var(--clr-warning);
+}
+
+::deep .step-box[data-status="error"] .step-icon {
+  color: var(--clr-error);
+}
+
+::deep .step-box[data-status="current"] .step-icon {
+  color: var(--clr-information);
+}
+
+/* Progress bar colors by status */
+::deep .step-box[data-status="success"] .progress-bar {
+  background-color: var(--clr-success);
+}
+
+::deep .step-box[data-status="warning"] .progress-bar {
+  background-color: var(--clr-warning);
+}
+
+::deep .step-box[data-status="error"] .progress-bar {
+  background-color: var(--clr-error);
+}
+
+/* Animations for step position transitions */
+::deep .step-box.previous-step {
+  animation: slideRight var(--transition-duration) ease-out;
+}
+
+::deep .step-box.next-step {
+  animation: slideLeft var(--transition-duration) ease-out;
+}
+
+/* Current step animations */
+::deep .step-box[data-status="current"] .step-icon .fa-spinner {
+  animation: spin 2s linear infinite;
+}
+
+::deep .step-box[data-status="current"] .progress-bar {
+  animation: pulse 2s infinite;
+}
+
+/* Dark mode tooltip adaptation */
+@media (prefers-color-scheme: dark) {
+  ::deep .step-name[data-tooltip]:hover::after {
+    background: rgba(255, 255, 255, 0.9);
+    color: var(--text-primary);
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  ::deep .progress-bar,
+  ::deep .step-box,
+  ::deep .step-icon {
+    transition: none;
+  }
+
+  ::deep .progress-bar.indeterminate,
+  ::deep .step-box[data-status="current"] .step-icon .fa-spinner,
+  ::deep .step-box[data-status="current"] .progress-bar {
+    animation: none;
+  }
+}
+
+/* Keyframes for animations */
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(200%);
+  }
+}
+
+@keyframes slideRight {
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideLeft {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.7;
+  }
+  100% {
+    opacity: 1;
+  }
+}
