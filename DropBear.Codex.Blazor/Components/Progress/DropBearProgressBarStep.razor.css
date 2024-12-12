@@ -45,15 +45,8 @@
   }
 }
 
-.steps-container {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--step-gap);
-  margin-top: 2rem;
-}
-
 /* Step Box & Related Elements */
-.step-box {
+::deep .step-box {
   background: var(--step-box-bg);
   border-radius: 8px;
   padding: 1rem;
@@ -62,14 +55,14 @@
   position: relative;
 }
 
-.step-header {
+::deep .step-header {
   display: flex;
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
 }
 
-.step-icon {
+::deep .step-icon {
   width: 20px;
   height: 20px;
   display: flex;
@@ -78,7 +71,7 @@
   transition: color var(--transition-duration) ease-in-out;
 }
 
-.step-name {
+::deep .step-name {
   font-weight: 500;
   color: var(--text-primary);
   white-space: nowrap;
@@ -88,11 +81,11 @@
 }
 
 /* Tooltip for step name */
-.step-name[data-tooltip] {
+::deep .step-name[data-tooltip] {
   cursor: help;
 }
 
-.step-name[data-tooltip]:hover::after {
+::deep .step-name[data-tooltip]:hover::after {
   content: attr(data-tooltip);
   position: absolute;
   z-index: 1000;
@@ -111,18 +104,18 @@
 }
 
 /* Step Status Text */
-.step-status {
+::deep .step-status {
   font-size: 0.875rem;
   color: var(--text-secondary);
   margin-top: 0.5rem;
 }
 
 /* Step Progress Bar within the step */
-.step-progress .progress-bar-container {
+::deep .step-progress .progress-bar-container {
   height: var(--step-progress-height);
 }
 
-.progress-bar {
+::deep .progress-bar {
   height: 100%;
   background-color: var(--clr-information);
   border-radius: var(--progress-radius);
@@ -130,7 +123,7 @@
 }
 
 /* Indeterminate animation for step progress-bar */
-.progress-bar.indeterminate {
+::deep .progress-bar.indeterminate {
   width: 50%;
   background: linear-gradient(
     90deg,
@@ -142,56 +135,56 @@
 }
 
 /* Status-specific colors */
-.step-box[data-status="success"] .step-icon {
+::deep .step-box[data-status="success"] .step-icon {
   color: var(--clr-success);
 }
 
-.step-box[data-status="warning"] .step-icon {
+::deep .step-box[data-status="warning"] .step-icon {
   color: var(--clr-warning);
 }
 
-.step-box[data-status="error"] .step-icon {
+::deep .step-box[data-status="error"] .step-icon {
   color: var(--clr-error);
 }
 
-.step-box[data-status="current"] .step-icon {
+::deep .step-box[data-status="current"] .step-icon {
   color: var(--clr-information);
 }
 
 /* Progress bar colors by status */
-.step-box[data-status="success"] .progress-bar {
+::deep .step-box[data-status="success"] .progress-bar {
   background-color: var(--clr-success);
 }
 
-.step-box[data-status="warning"] .progress-bar {
+::deep .step-box[data-status="warning"] .progress-bar {
   background-color: var(--clr-warning);
 }
 
-.step-box[data-status="error"] .progress-bar {
+::deep .step-box[data-status="error"] .progress-bar {
   background-color: var(--clr-error);
 }
 
 /* Animations for step position transitions */
-.step-box.previous-step {
+::deep .step-box.previous-step {
   animation: slideRight var(--transition-duration) ease-out;
 }
 
-.step-box.next-step {
+::deep .step-box.next-step {
   animation: slideLeft var(--transition-duration) ease-out;
 }
 
 /* Current step animations */
-.step-box[data-status="current"] .step-icon .fa-spinner {
+::deep .step-box[data-status="current"] .step-icon .fa-spinner {
   animation: spin 2s linear infinite;
 }
 
-.step-box[data-status="current"] .progress-bar {
+::deep .step-box[data-status="current"] .progress-bar {
   animation: pulse 2s infinite;
 }
 
 /* Dark mode tooltip adaptation */
 @media (prefers-color-scheme: dark) {
-  .step-name[data-tooltip]:hover::after {
+  ::deep .step-name[data-tooltip]:hover::after {
     background: rgba(255, 255, 255, 0.9);
     color: var(--text-primary);
   }
@@ -199,15 +192,15 @@
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
-  .progress-bar,
-  .step-box,
-  .step-icon {
+  ::deep .progress-bar,
+  ::deep .step-box,
+  ::deep .step-icon {
     transition: none;
   }
 
-  .progress-bar.indeterminate,
-  .step-box[data-status="current"] .step-icon .fa-spinner,
-  .step-box[data-status="current"] .progress-bar {
+  ::deep .progress-bar.indeterminate,
+  ::deep .step-box[data-status="current"] .step-icon .fa-spinner,
+  ::deep .step-box[data-status="current"] .progress-bar {
     animation: none;
   }
 }
