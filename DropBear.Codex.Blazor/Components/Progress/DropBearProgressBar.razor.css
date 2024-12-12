@@ -20,7 +20,8 @@
   --progress-height: 16px;
   --progress-radius: 8px;
   --transition-duration: 0.3s;
-
+  --step-gap: 16px;
+  --step-box-bg: #f8f8f8;
   /* Primary informational color for the progress bar */
   --clr-information: #4ebafd;
   --clr-information-light: #80ccff;
