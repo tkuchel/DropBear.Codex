@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Timers;
+using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using Timer = System.Timers.Timer;
 
@@ -14,7 +15,7 @@ namespace DropBear.Codex.Blazor.Services;
 ///     Provides progress tracking for various types of operations, including indeterminate,
 ///     single-task, and step-based progress.
 /// </summary>
-public class ProgressManager : IDisposable
+public class ProgressManager : IProgressManager
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly Timer _progressTimer;
