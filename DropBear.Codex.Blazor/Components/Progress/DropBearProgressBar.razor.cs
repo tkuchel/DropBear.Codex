@@ -140,6 +140,12 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             await _updateLock?.WaitAsync();
             try
             {
+                if (_state == null)
+                {
+                    Logger.Warning("State is null in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBar));
+                    return;
+                }
+
                 // Check if we need to update state
                 shouldUpdate = IsIndeterminate != _state!.IsIndeterminate ||
                                Message != _lastMessage ||
