@@ -45,12 +45,7 @@
   }
 }
 
-::deep .steps-container {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--step-gap);
-  margin-top: 2rem;
-}
+
 
 /* Step Box & Related Elements */
 ::deep .step-box {

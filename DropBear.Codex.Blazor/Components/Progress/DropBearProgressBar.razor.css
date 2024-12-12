@@ -47,6 +47,14 @@
   margin-bottom: 2rem;
 }
 
+/* Container for the progress steps */
+.steps-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--step-gap);
+  margin-top: 2rem;
+}
+
 /* Inner wrapper for spacing/centering */
 .dropbear-progress {
   max-width: 1200px;
