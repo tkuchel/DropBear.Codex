@@ -78,6 +78,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         try
         {
             _state = _statePool.Get();
+            _smoothingCts = new CancellationTokenSource();
             await InitializeStateAsync();
             _isInitialized = true;
         }
