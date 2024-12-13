@@ -174,6 +174,9 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// <returns>A result indicating the success or failure of the operation.</returns>
     public Result<Unit, TaskExecutionError> ClearTasks()
     {
+        // Log the calling method
+        _logger.Debug("ClearTasks called by {Caller}.", GetCallerName());
+
         if (SafeIsExecuting)
         {
             _logger.Warning("Cannot clear tasks while execution is in progress.");
@@ -189,7 +192,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 
         // Reset internal state
         ResetEngineState();
-
 
         _logger.Information("Cleared all tasks from the execution engine.");
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
