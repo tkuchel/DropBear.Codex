@@ -103,6 +103,10 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// </summary>
     public bool IsExecuting => Interlocked.CompareExchange(ref _isExecuting, 0, 0) == 1;
 
+    /// <summary>
+    ///   Gets the task execution tracker for monitoring task progress and statistics.
+    /// </summary>
+    public TaskExecutionTracker Tracker => _executionTracker;
 
     /// <summary>
     ///     Indicates whether the execution engine should execute tasks in parallel.
