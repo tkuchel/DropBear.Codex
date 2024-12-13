@@ -30,6 +30,7 @@ public class ProgressManager : IProgressManager
     {
         _progressTimer = new Timer(100) { AutoReset = true, Enabled = false };
         _progressTimer.Elapsed += OnTimerElapsed;
+        IsDisposed = false;
     }
 
     /// <summary>
