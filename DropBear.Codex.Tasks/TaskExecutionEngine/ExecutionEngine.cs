@@ -36,6 +36,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 
     private readonly TaskExecutionTracker _executionTracker = new();
     private readonly ILogger _logger;
+
     private readonly ExecutionOptions _options;
     private readonly IAsyncPublisher<Guid, TaskProgressMessage> _progressPublisher;
     private readonly IServiceScopeFactory _scopeFactory;
@@ -43,12 +44,11 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     private readonly IAsyncPublisher<Guid, TaskFailedMessage> _taskFailedPublisher;
 
     private readonly ConcurrentDictionary<string, ITask> _tasks = new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim _tasksLock = new(1, 1); // Lock for task management
 
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
     private DependencyGraph _dependencyGraph = new();
     private bool _disposed;
-    private readonly List<Task> _ongoingTasks = new(); // Track ongoing tasks
-    private readonly SemaphoreSlim _tasksLock = new(1, 1); // Lock for task management
 
     private int _isExecuting; // Backing field for thread-safe boolean
 
@@ -135,8 +135,10 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             if (IsExecuting)
             {
                 _logger.Information("Cancelling ongoing tasks during disposal...");
-                _disposalCts.Cancel();
+                await _disposalCts.CancelAsync().ConfigureAwait(false);
             }
+
+            await _executionTracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
 
             _tasks.Clear();
             _dependencyGraph = new DependencyGraph();
@@ -162,7 +164,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     }
 
 
-
     /// <summary>
     ///     Clears all tasks from the execution engine.
     /// </summary>
@@ -184,6 +185,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 
         // Reset internal state
         ResetEngineState();
+
 
         _logger.Information("Cleared all tasks from the execution engine.");
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
@@ -301,98 +303,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
         }
     }
-
-     /// <summary>
-        /// Waits synchronously for all tasks to complete, with a timeout.
-        /// </summary>
-        /// <param name="timeout">The maximum duration to wait.</param>
-        public void WaitForAllTasksToComplete(TimeSpan timeout)
-        {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(ExecutionEngine));
-            }
-
-            _tasksLock.Wait();
-            try
-            {
-                var taskArray = _ongoingTasks.ToArray();
-                Task.WaitAll(taskArray, timeout);
-            }
-            catch (AggregateException ex)
-            {
-                _logger.Warning(ex, "One or more tasks threw exceptions during synchronous wait.");
-            }
-            finally
-            {
-                _tasksLock.Release();
-            }
-        }
-
-        /// <summary>
-        /// Waits asynchronously for all tasks to complete, with a timeout.
-        /// </summary>
-        /// <param name="timeout">The maximum duration to wait.</param>
-        /// <returns>A task that completes when either all tasks complete or the timeout is reached.</returns>
-        public async Task WaitForAllTasksToCompleteAsync(TimeSpan timeout)
-        {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(ExecutionEngine));
-            }
-
-            await _tasksLock.WaitAsync();
-            try
-            {
-                var taskArray = _ongoingTasks.ToArray();
-                var timeoutTask = Task.Delay(timeout);
-                var allTasksTask = Task.WhenAll(taskArray);
-
-                await Task.WhenAny(allTasksTask, timeoutTask);
-            }
-            catch (AggregateException ex)
-            {
-                _logger.Warning(ex, "One or more tasks threw exceptions during asynchronous wait.");
-            }
-            finally
-            {
-                _tasksLock.Release();
-            }
-        }
-
-        /// <summary>
-        /// Adds a task to the list of ongoing tasks.
-        /// </summary>
-        /// <param name="task">The task to add.</param>
-        private void TrackTask(Task task)
-        {
-            if (task == null) throw new ArgumentNullException(nameof(task));
-
-            _tasksLock.Wait();
-            try
-            {
-                _ongoingTasks.Add(task);
-            }
-            finally
-            {
-                _tasksLock.Release();
-            }
-
-            // Remove task upon completion
-            task.ContinueWith(t =>
-            {
-                _tasksLock.Wait();
-                try
-                {
-                    _ongoingTasks.Remove(t);
-                }
-                finally
-                {
-                    _tasksLock.Release();
-                }
-            });
-        }
-
 
     /// <summary>
     ///     Validates a task before execution, including conditions and custom validations.
@@ -764,7 +674,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                         500, // Duration for simulation (ms)
                         10, // Steps for simulation
                         cancellationToken
-                    );
+                    ).ConfigureAwait(false);
 
                     // Execute the task
                     var executeResult = await ExecuteTaskAsync(task, executionScope, cancellationToken)
@@ -777,7 +687,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                         var progressMessage = ProgressMessagePool.Get();
                         progressMessage.Initialize(task.Name, 100.0, null, null, TaskStatus.Completed,
                             "Task completed");
-                        await _progressPublisher.PublishAsync(_channelId, progressMessage, cancellationToken);
+                        await _progressPublisher.PublishAsync(_channelId, progressMessage, cancellationToken)
+                            .ConfigureAwait(false);
                         ProgressMessagePool.Return(progressMessage);
                     }
 
@@ -945,7 +856,11 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 return validationResult;
             }
 
-            executionScope.Tracker.StartTask(task.Name);
+            // Create the task to execute
+            var executionTask = ExecuteWithRetryAsync(task, executionScope, cancellationToken);
+
+            // Start tracking the task
+            executionScope.Tracker.StartTask(task.Name, executionTask);
 
             var taskStartedMessage = TaskStartedMessage.Get(task.Name);
             try
@@ -961,11 +876,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 
             _logger.Debug("Starting task '{TaskName}'.", task.Name);
 
-
-            var executionResult = await ExecuteWithRetryAsync(task, executionScope, cancellationToken)
-                .ConfigureAwait(false);
-
-            executionScope.Tracker.CompleteTask(task.Name, executionResult.IsSuccess);
+            // Await and capture the result of the execution
+            var executionResult = await executionTask.ConfigureAwait(false);
 
             if (executionResult.IsSuccess)
             {
@@ -975,6 +887,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                     await _taskCompletedPublisher
                         .PublishAsync(_channelId, taskCompletedMessage, cancellationToken)
                         .ConfigureAwait(false);
+
+                    executionScope.Tracker.CompleteTask(task.Name, executionResult.IsSuccess);
                 }
                 finally
                 {
@@ -984,7 +898,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 _logger.Debug("Task '{TaskName}' completed successfully.", task.Name);
                 return Result<Unit, TaskExecutionError>.Success(Unit.Value);
             }
-
 
             // Handle failure
             if (executionResult.Error?.Exception != null)
@@ -1002,6 +915,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 new TaskExecutionError("Unexpected error executing task", task.Name, ex));
         }
     }
+
 
     private async Task<Result<Unit, TaskExecutionError>> HandleTaskFailureAsync(
         ITask task,
@@ -1151,6 +1065,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             try
             {
                 _logger.Debug("Executing task {TaskName}. Caller: {Caller}", task.Name, GetCallerName());
+                _executionTracker.StartTask(task.Name, task.ExecuteAsync(executionScope.Context, cancellationToken));
                 await task.ExecuteAsync(executionScope.Context, cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -1164,7 +1079,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         }
 
         var result = await ExecuteTasksAsync(tasks, executionScope, cancellationToken).ConfigureAwait(false);
-
+        await _executionTracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         _logger.Debug("Execution of resolved tasks completed. Logging execution stats.");
         LogExecutionStats(executionScope.Tracker.GetStats());
 

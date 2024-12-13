@@ -14,10 +14,12 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 public sealed class TaskExecutionTracker
 {
     private readonly Dictionary<string, double> _lastProgress = new();
+    private readonly ConcurrentDictionary<string, Task> _ongoingTasks = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTime> _startTimes = new(StringComparer.Ordinal);
     private readonly TaskExecutionStats _stats = new();
     private readonly ConcurrentDictionary<string, bool> _taskStatus = new(StringComparer.Ordinal);
     private int _totalTaskCount;
+
 
     /// <summary>
     ///     Gets the last reported progress for a specified task.
@@ -44,11 +46,15 @@ public sealed class TaskExecutionTracker
     ///     Starts tracking a task by recording its start time.
     /// </summary>
     /// <param name="taskName">The name of the task to start tracking.</param>
+    /// <param name="task">The task being started</param>
     /// <exception cref="ArgumentException">Thrown if the task name is null or empty.</exception>
-    public void StartTask(string taskName)
+    public void StartTask(string taskName, Task task)
     {
         ArgumentNullException.ThrowIfNull(taskName);
+        ArgumentNullException.ThrowIfNull(task);
+
         _startTimes[taskName] = DateTime.UtcNow;
+        _ongoingTasks[taskName] = task;
     }
 
     /// <summary>
@@ -66,9 +72,18 @@ public sealed class TaskExecutionTracker
             _stats.TaskDurations[taskName] = DateTime.UtcNow - startTime;
         }
 
+        if (_ongoingTasks.TryRemove(taskName, out var completedTask))
+        {
+            if (!completedTask.IsCompletedSuccessfully && completedTask.Exception != null)
+            {
+                // Log or handle task exceptions
+            }
+        }
+
         if (success)
         {
             _stats.IncrementCompletedTasks();
+            _taskStatus[taskName] = success;
         }
         else
         {
@@ -127,5 +142,23 @@ public sealed class TaskExecutionTracker
         _stats.TaskDurations.Clear();
         _totalTaskCount = 0;
         _stats.TotalTasks = 0;
+    }
+
+    public void WaitForAllTasksToComplete(TimeSpan timeout)
+    {
+        Task.WhenAll(_ongoingTasks.Values).Wait(timeout);
+    }
+
+    public async Task WaitForAllTasksToCompleteAsync(TimeSpan timeout)
+    {
+        using var cts = new CancellationTokenSource(timeout);
+        try
+        {
+            await Task.WhenAll(_ongoingTasks.Values).WaitAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Handle timeout gracefully
+        }
     }
 }
