@@ -47,6 +47,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
     private DependencyGraph _dependencyGraph = new();
     private bool _disposed;
+    private readonly List<Task> _ongoingTasks = new(); // Track ongoing tasks
+    private readonly SemaphoreSlim _tasksLock = new(1, 1); // Lock for task management
 
     private int _isExecuting; // Backing field for thread-safe boolean
 
@@ -139,7 +141,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             _tasks.Clear();
             _dependencyGraph = new DependencyGraph();
             _executionTracker.Reset();
-
+            _tasksLock.Dispose();
             _disposalCts.Dispose();
             _logger.Information("ExecutionEngine disposed successfully.");
         }
@@ -158,6 +160,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         // Block until async disposal completes
         DisposeAsync().AsTask().GetAwaiter().GetResult();
     }
+
 
 
     /// <summary>
@@ -298,6 +301,97 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             throw new ArgumentException("Task name cannot be null or whitespace.", nameof(taskName));
         }
     }
+
+     /// <summary>
+        /// Waits synchronously for all tasks to complete, with a timeout.
+        /// </summary>
+        /// <param name="timeout">The maximum duration to wait.</param>
+        public void WaitForAllTasksToComplete(TimeSpan timeout)
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(ExecutionEngine));
+            }
+
+            _tasksLock.Wait();
+            try
+            {
+                var taskArray = _ongoingTasks.ToArray();
+                Task.WaitAll(taskArray, timeout);
+            }
+            catch (AggregateException ex)
+            {
+                _logger.Warning(ex, "One or more tasks threw exceptions during synchronous wait.");
+            }
+            finally
+            {
+                _tasksLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Waits asynchronously for all tasks to complete, with a timeout.
+        /// </summary>
+        /// <param name="timeout">The maximum duration to wait.</param>
+        /// <returns>A task that completes when either all tasks complete or the timeout is reached.</returns>
+        public async Task WaitForAllTasksToCompleteAsync(TimeSpan timeout)
+        {
+            if (_disposed)
+            {
+                throw new ObjectDisposedException(nameof(ExecutionEngine));
+            }
+
+            await _tasksLock.WaitAsync();
+            try
+            {
+                var taskArray = _ongoingTasks.ToArray();
+                var timeoutTask = Task.Delay(timeout);
+                var allTasksTask = Task.WhenAll(taskArray);
+
+                await Task.WhenAny(allTasksTask, timeoutTask);
+            }
+            catch (AggregateException ex)
+            {
+                _logger.Warning(ex, "One or more tasks threw exceptions during asynchronous wait.");
+            }
+            finally
+            {
+                _tasksLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Adds a task to the list of ongoing tasks.
+        /// </summary>
+        /// <param name="task">The task to add.</param>
+        private void TrackTask(Task task)
+        {
+            if (task == null) throw new ArgumentNullException(nameof(task));
+
+            _tasksLock.Wait();
+            try
+            {
+                _ongoingTasks.Add(task);
+            }
+            finally
+            {
+                _tasksLock.Release();
+            }
+
+            // Remove task upon completion
+            task.ContinueWith(t =>
+            {
+                _tasksLock.Wait();
+                try
+                {
+                    _ongoingTasks.Remove(t);
+                }
+                finally
+                {
+                    _tasksLock.Release();
+                }
+            });
+        }
 
 
     /// <summary>

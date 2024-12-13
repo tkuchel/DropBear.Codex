@@ -21,7 +21,7 @@ public class ProgressManager : IProgressManager
     private readonly Timer _progressTimer;
     private readonly ConcurrentDictionary<string, double> _taskProgress = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
-    private bool _isDisposed;
+
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ProgressManager" /> class.
@@ -31,6 +31,11 @@ public class ProgressManager : IProgressManager
         _progressTimer = new Timer(100) { AutoReset = true, Enabled = false };
         _progressTimer.Elapsed += OnTimerElapsed;
     }
+
+    /// <summary>
+    ///     Gets a value indicating whether the instance has been disposed.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
 
     /// <summary>
     ///     Gets the current progress message.
@@ -62,12 +67,12 @@ public class ProgressManager : IProgressManager
     /// </summary>
     public void Dispose()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        _isDisposed = true;
+        IsDisposed = true;
         StopTimer();
         _cancellationTokenSource.Cancel();
         _cancellationTokenSource.Dispose();
@@ -241,7 +246,7 @@ public class ProgressManager : IProgressManager
 
     private void ValidateNotDisposed()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             throw new ObjectDisposedException(nameof(ProgressManager));
         }
