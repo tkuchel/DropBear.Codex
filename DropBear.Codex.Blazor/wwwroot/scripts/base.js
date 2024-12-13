@@ -1236,7 +1236,7 @@
         const duration = 300;
         const startProgress = parseFloat(this.element.querySelector('.progress-bar-fill').style.width) || 0;
 
-        const animate = (currentTime) => {
+        const animate = currentTime => {
           const elapsed = currentTime - start;
           const progress = Math.min(elapsed / duration, 1);
           const eased = this.easeInOutQuad(progress);
@@ -1320,6 +1320,16 @@
 
   window.getWindowDimensions = DropBearUtilities.getWindowDimensions;
 
+  window.clickElementById = function (id) {
+    console.log(`Attempting to click element with id: ${id}`);
+    let element = document.getElementById(id);
+    if (element) {
+      element.click();
+      console.log(`Clicked element with id: ${id}`);
+    } else {
+      console.error(`Element with id '${id}' not found.`);
+    }
+  };
   const initializeDropBear = async () => {
     try {
       await new Promise((resolve, reject) => {
