@@ -71,4 +71,10 @@ public interface IProgressManager : IDisposable
     ///     Marks the current progress operation as complete.
     /// </summary>
     void Complete();
+
+
+    /// <summary>
+    /// Gets the IsDisposed property
+    /// </summary>
+    bool IsDisposed { get; }
 }
