@@ -82,6 +82,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         _taskFailedPublisher = taskFailedPublisher ?? throw new ArgumentNullException(nameof(taskFailedPublisher));
 
         _logger = LoggerFactory.Logger.ForContext<ExecutionEngine>();
+        _logger.Debug("ExecutionEngine instance created.");
     }
 
 
@@ -130,6 +131,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         {
             return;
         }
+
+        _logger.Debug("ExecutionEngine disposal started.");
 
         lock (_disposalLock)
         {

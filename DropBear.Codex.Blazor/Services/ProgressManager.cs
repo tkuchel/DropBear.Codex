@@ -5,6 +5,8 @@ using System.Diagnostics;
 using System.Timers;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
+using Serilog;
 using Timer = System.Timers.Timer;
 
 #endregion
@@ -18,10 +20,10 @@ namespace DropBear.Codex.Blazor.Services;
 public class ProgressManager : IProgressManager
 {
     private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private readonly ILogger _logger;
     private readonly Timer _progressTimer;
     private readonly ConcurrentDictionary<string, double> _taskProgress = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
-
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ProgressManager" /> class.
@@ -31,6 +33,8 @@ public class ProgressManager : IProgressManager
         _progressTimer = new Timer(100) { AutoReset = true, Enabled = false };
         _progressTimer.Elapsed += OnTimerElapsed;
         IsDisposed = false;
+        _logger = LoggerFactory.Logger.ForContext<ProgressManager>();
+        _logger.Debug("ProgressManager instance created.");
     }
 
     /// <summary>
@@ -79,6 +83,8 @@ public class ProgressManager : IProgressManager
         _cancellationTokenSource.Dispose();
         _updateLock.Dispose();
         _progressTimer.Dispose();
+
+        _logger.Debug("ProgressManager instance disposed.");
     }
 
     /// <summary>
