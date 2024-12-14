@@ -34,7 +34,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     private readonly CancellationTokenSource _disposalCts = new();
     private readonly object _disposalLock = new();
 
-    private readonly TaskExecutionTracker _executionTracker = new();
     private readonly ILogger _logger;
 
     private readonly ExecutionOptions _options;
@@ -104,9 +103,9 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     public bool IsExecuting => Interlocked.CompareExchange(ref _isExecuting, 0, 0) == 1;
 
     /// <summary>
-    ///   Gets the task execution tracker for monitoring task progress and statistics.
+    ///     Gets the task execution tracker for monitoring task progress and statistics.
     /// </summary>
-    public TaskExecutionTracker Tracker => _executionTracker;
+    public TaskExecutionTracker Tracker { get; } = new();
 
     /// <summary>
     ///     Indicates whether the execution engine should execute tasks in parallel.
@@ -142,11 +141,11 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 await _disposalCts.CancelAsync().ConfigureAwait(false);
             }
 
-            await _executionTracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+            await Tracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
 
             _tasks.Clear();
             _dependencyGraph = new DependencyGraph();
-            _executionTracker.Reset();
+            Tracker.Reset();
             _tasksLock.Dispose();
             _disposalCts.Dispose();
             _logger.Information("ExecutionEngine disposed successfully.");
@@ -204,7 +203,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     {
         _tasks.Clear();
         _dependencyGraph = new DependencyGraph();
-        _executionTracker.Reset();
+        Tracker.Reset();
     }
 
     // Add this method to check disposal state
@@ -245,7 +244,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         try
         {
             progress = Math.Clamp(progress, 0, 100);
-            var stats = _executionTracker.GetStats();
+            var stats = Tracker.GetStats();
 
             if (stats.TotalTasks == 0)
             {
@@ -254,7 +253,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             }
 
             // Smooth Progress Simulation for significant jumps
-            var lastProgress = _executionTracker.GetLastProgress(taskName); // A method to track last progress
+            var lastProgress = Tracker.GetLastProgress(taskName); // A method to track last progress
             if (progress > lastProgress + 5.0 && progress - lastProgress < 50.0) // Adjust thresholds as needed
             {
                 await SimulateSmoothProgress(
@@ -286,7 +285,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             ProgressMessagePool.Return(progressMessage);
 
             // Update last progress
-            _executionTracker.UpdateLastProgress(taskName, progress); // Ensure last progress is stored
+            Tracker.UpdateLastProgress(taskName, progress); // Ensure last progress is stored
         }
         catch (OperationCanceledException)
         {
@@ -854,6 +853,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     {
         try
         {
+            _logger.Debug("Executing task initialization '{TaskName}'.", task.Name);
+
             cancellationToken.ThrowIfCancellationRequested();
 
             var validationResult = await ValidateTaskAsync(task, executionScope).ConfigureAwait(false);
@@ -1034,7 +1035,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         }
 
         // Set total task count
-        _executionTracker.SetTotalTaskCount(_tasks.Count);
+        Tracker.SetTotalTaskCount(_tasks.Count);
 
         SafeIsExecuting = true;
         _logger.Information("Pre-execution checks passed. Starting task execution.");
@@ -1046,7 +1047,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     {
         return new TaskExecutionScope(
             rootScope,
-            _executionTracker,
+            Tracker,
             new ExecutionContext(_logger, _options, _scopeFactory) { TotalTaskCount = _tasks.Count },
             _logger);
     }
@@ -1060,32 +1061,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             tasks.Count,
             GetCallerName());
 
-        foreach (var task in tasks)
-        {
-            if (cancellationToken.IsCancellationRequested)
-            {
-                _logger.Debug("Execution canceled for task {TaskName}. Caller: {Caller}", task.Name, GetCallerName());
-                break;
-            }
-
-            try
-            {
-                _logger.Debug("Executing task {TaskName}. Caller: {Caller}", task.Name, GetCallerName());
-                _executionTracker.StartTask(task.Name, task.ExecuteAsync(executionScope.Context, cancellationToken));
-                await task.ExecuteAsync(executionScope.Context, cancellationToken).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.Debug("Task execution canceled: {TaskName}.", task.Name);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error(ex, "Error executing task: {TaskName}", task.Name);
-            }
-        }
-
         var result = await ExecuteTasksAsync(tasks, executionScope, cancellationToken).ConfigureAwait(false);
-        await _executionTracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        await Tracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
         _logger.Debug("Execution of resolved tasks completed. Logging execution stats.");
         LogExecutionStats(executionScope.Tracker.GetStats());
 
