@@ -843,7 +843,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 _dependencyGraph.AddDependency(task.Name, dependency);
             }
 
-            _logger.Debug("Added task '{TaskName}' to the execution engine.", task.Name);
+            _logger.Debug("[ExecutingEngine] Added task '{TaskName}' to the execution engine.", task.Name);
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
         catch (Exception ex)
