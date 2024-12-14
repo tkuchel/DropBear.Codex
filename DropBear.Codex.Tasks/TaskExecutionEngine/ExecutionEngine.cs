@@ -271,6 +271,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                     _progressPublisher,
                     _channelId,
                     taskName,
+                    message,
                     lastProgress,
                     progress,
                     500, // Total duration for simulation (ms)
@@ -445,6 +446,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         IAsyncPublisher<Guid, TaskProgressMessage> progressPublisher,
         Guid channelId,
         string taskName,
+        string message,
         double startProgress,
         double endProgress,
         int totalDurationMs,
@@ -454,6 +456,11 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         if (startProgress >= endProgress)
         {
             return;
+        }
+
+        if (string.IsNullOrEmpty(message))
+        {
+            message = $"Task '{taskName}' execution progress.";
         }
 
         var delayPerStep = totalDurationMs / totalSteps;
@@ -471,7 +478,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             var currentProgress = startProgress + (i * progressIncrement);
             var progressMessage = ProgressMessagePool.Get();
             progressMessage.Initialize(taskName, currentProgress, null, null, TaskStatus.InProgress,
-                "Simulating progress");
+                message);
 
             await progressPublisher.PublishAsync(channelId, progressMessage, cancellationToken).ConfigureAwait(false);
             ProgressMessagePool.Return(progressMessage);
@@ -482,7 +489,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         // Ensure the final progress value is sent
         var finalProgressMessage = ProgressMessagePool.Get();
         finalProgressMessage.Initialize(taskName, endProgress, null, null, TaskStatus.InProgress,
-            "Final simulated progress");
+            message);
 
         await progressPublisher.PublishAsync(channelId, finalProgressMessage, cancellationToken).ConfigureAwait(false);
         ProgressMessagePool.Return(finalProgressMessage);
@@ -685,6 +692,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                         _progressPublisher,
                         _channelId,
                         task.Name,
+                        "Preparing to execute task",
                         0,
                         50, // Progress to simulate before execution
                         500, // Duration for simulation (ms)
