@@ -848,6 +848,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         }
         catch (Exception ex)
         {
+            _logger.Error(ex, "Failed to add task '{TaskName}'.", task.Name);
             return Result<Unit, TaskExecutionError>.Failure(
                 new TaskExecutionError("Failed to add task", task.Name, ex));
         }
