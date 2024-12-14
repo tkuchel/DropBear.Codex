@@ -107,6 +107,14 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     /// </summary>
     public TaskExecutionTracker Tracker { get; } = new();
 
+
+    /// <summary>
+    ///     Gets the dictionary of tasks being managed by the execution engine.
+    ///     This property is read-only.
+    /// </summary>
+    public IReadOnlyDictionary<string, ITask> Tasks => _tasks;
+
+
     /// <summary>
     ///     Indicates whether the execution engine should execute tasks in parallel.
     ///     Default is false to preserve existing behavior.
