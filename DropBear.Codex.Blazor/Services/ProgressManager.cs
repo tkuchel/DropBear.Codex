@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Timers;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
@@ -22,6 +23,7 @@ public class ProgressManager : IProgressManager
     private readonly CancellationTokenSource _cancellationTokenSource = new();
     private readonly ILogger _logger;
     private readonly Timer _progressTimer;
+    private readonly ConcurrentDictionary<string, StepState> _stepStates = new();
     private readonly ConcurrentDictionary<string, double> _taskProgress = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
 
@@ -41,6 +43,11 @@ public class ProgressManager : IProgressManager
     ///     Gets a value indicating whether the instance has been disposed.
     /// </summary>
     public bool IsDisposed { get; private set; }
+
+    /// <summary>
+    ///     Gets the current step states.
+    /// </summary>
+    public IReadOnlyList<StepState> CurrentStepStates => _stepStates.Values.ToList();
 
     /// <summary>
     ///     Gets the current progress message.
@@ -83,6 +90,11 @@ public class ProgressManager : IProgressManager
         _cancellationTokenSource.Dispose();
         _updateLock.Dispose();
         _progressTimer.Dispose();
+
+        foreach (var step in _stepStates.Values)
+        {
+            step.OnStateChanged -= HandleStepStateChanged;
+        }
 
         _logger.Debug("ProgressManager instance disposed.");
     }
@@ -136,51 +148,17 @@ public class ProgressManager : IProgressManager
 
         Reset();
         Steps = steps;
-        Message = $"Step 1 of {steps.Count}";
+
+        foreach (var step in steps)
+        {
+            var stepState = new StepState(step.Id, step.Name, step.Tooltip ?? string.Empty);
+            stepState.OnStateChanged += HandleStepStateChanged;
+            _stepStates[step.Id] = stepState;
+        }
+
+        // Initialize overall progress based on steps
+        UpdateOverallProgress();
         NotifyStateChanged();
-    }
-
-    /// <summary>
-    ///     Updates progress for a specific task or step.
-    /// </summary>
-    /// <param name="taskId">The ID of the task or step.</param>
-    /// <param name="progress">The progress percentage (0-100).</param>
-    /// <param name="message">An optional progress message.</param>
-    /// <exception cref="ObjectDisposedException">Thrown if the instance has been disposed.</exception>
-    public async Task UpdateProgressAsync(string taskId, double progress, string? message = null)
-    {
-        ValidateNotDisposed();
-        if (string.IsNullOrEmpty(taskId))
-        {
-            throw new ArgumentException("Task ID cannot be null or empty.", nameof(taskId));
-        }
-
-        if (progress < 0 || progress > 100)
-        {
-            throw new ArgumentOutOfRangeException(nameof(progress), "Progress must be between 0 and 100.");
-        }
-
-        await _updateLock.WaitAsync(CancellationToken).ConfigureAwait(false);
-        try
-        {
-            _taskProgress[taskId] = progress;
-            Progress = _taskProgress.Values.DefaultIfEmpty(0).Average();
-
-            if (!string.IsNullOrEmpty(message))
-            {
-                Message = message;
-            }
-
-            NotifyStateChanged();
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error updating progress: {ex.Message}");
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
     }
 
     /// <summary>
@@ -194,6 +172,66 @@ public class ProgressManager : IProgressManager
         NotifyStateChanged();
     }
 
+    /// <summary>
+    ///     Updates progress for a specific task or step.
+    /// </summary>
+    /// <param name="taskId">The ID of the task or step.</param>
+    /// <param name="progress">The progress percentage (0-100).</param>
+    /// <param name="status">The current status of the step.</param>
+    /// <param name="message">An optional progress message.</param>
+    /// <exception cref="ObjectDisposedException">Thrown if the instance has been disposed.</exception>
+    public async Task UpdateProgressAsync(string taskId, double progress, StepStatus status, string? message = null)
+    {
+        ValidateNotDisposed();
+        if (string.IsNullOrEmpty(taskId))
+        {
+            throw new ArgumentException("Task ID cannot be null or empty.", nameof(taskId));
+        }
+
+        // Determine if updating a step or a single task
+        if (_stepStates.TryGetValue(taskId, out var stepState))
+        {
+            // It's a step
+            stepState.UpdateProgress(progress, status);
+            // Message update can be optional or related to the step
+            if (!string.IsNullOrEmpty(message))
+            {
+                Message = message;
+            }
+        }
+        else
+        {
+            // It's a single task
+            if (progress < 0 || progress > 100)
+            {
+                throw new ArgumentOutOfRangeException(nameof(progress), "Progress must be between 0 and 100.");
+            }
+
+            await _updateLock.WaitAsync(CancellationToken).ConfigureAwait(false);
+            try
+            {
+                _taskProgress[taskId] = progress;
+                Progress = _taskProgress.Values.DefaultIfEmpty(0).Average();
+
+                if (!string.IsNullOrEmpty(message))
+                {
+                    Message = message;
+                }
+
+                NotifyStateChanged();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error updating progress: {ex.Message}");
+                _logger.Error(ex, "Error updating single task progress.");
+            }
+            finally
+            {
+                _updateLock.Release();
+            }
+        }
+    }
+
     private void Reset()
     {
         StopTimer();
@@ -201,6 +239,18 @@ public class ProgressManager : IProgressManager
         Progress = 0;
         Message = string.Empty;
         IsIndeterminate = false;
+
+        // Reset steps if any
+        if (_stepStates.Any())
+        {
+            foreach (var step in _stepStates.Values)
+            {
+                step.OnStateChanged -= HandleStepStateChanged;
+            }
+
+            _stepStates.Clear();
+        }
+
         Steps = null;
         NotifyStateChanged();
     }
@@ -219,6 +269,7 @@ public class ProgressManager : IProgressManager
         catch (Exception ex)
         {
             Debug.WriteLine($"Timer error: {ex.Message}");
+            _logger.Error(ex, "Timer elapsed error.");
         }
     }
 
@@ -239,6 +290,7 @@ public class ProgressManager : IProgressManager
         catch (Exception ex)
         {
             Debug.WriteLine($"Error incrementing progress: {ex.Message}");
+            _logger.Error(ex, "Error incrementing progress.");
         }
         finally
         {
@@ -257,5 +309,19 @@ public class ProgressManager : IProgressManager
         {
             throw new ObjectDisposedException(nameof(ProgressManager));
         }
+    }
+
+    private void HandleStepStateChanged(StepState stepState)
+    {
+        // Update overall progress based on step states
+        UpdateOverallProgress();
+        NotifyStateChanged();
+    }
+
+    private void UpdateOverallProgress()
+    {
+        Progress = !_stepStates.IsEmpty
+            ? _stepStates.Values.Average(s => s.Progress)
+            : _taskProgress.Values.DefaultIfEmpty(0).Average();
     }
 }
