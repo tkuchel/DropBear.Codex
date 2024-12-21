@@ -68,6 +68,7 @@
   <ItemGroup>
     <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj"/>
     <ProjectReference Include="..\DropBear.Codex.Notifications\DropBear.Codex.Notifications.csproj" />
+    <ProjectReference Include="..\DropBear.Codex.Tasks\DropBear.Codex.Tasks.csproj" />
     <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj" />
   </ItemGroup>
 
