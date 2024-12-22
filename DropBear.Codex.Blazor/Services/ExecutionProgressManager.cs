@@ -21,16 +21,6 @@ namespace DropBear.Codex.Blazor.Services;
 #endregion
 
 /// <summary>
-///     Represents the current state of the progress manager
-/// </summary>
-public sealed record ProgressManagerState(
-    bool IsIndeterminate,
-    string Message,
-    double Progress,
-    IReadOnlyList<ProgressStepConfig>? Steps,
-    IReadOnlyDictionary<string, StepProgress>? StepStates = null);
-
-/// <summary>
 ///     Represents the progress state of a single step
 /// </summary>
 public sealed record StepProgress(double Progress, StepStatus Status);
@@ -40,8 +30,6 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, StepProgress> _stepStates = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
-
-    // MessagePipe subscription management
     private DisposableBagBuilder? _bagBuilder;
     private string _currentMessage = string.Empty;
     private double _currentProgress;
@@ -49,7 +37,6 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     private bool _isDisposed;
     private bool _isIndeterminateMode;
     private bool _isSteppedMode;
-
     private DropBearProgressBar? _progressBar;
 
     public ExecutionProgressManager()
