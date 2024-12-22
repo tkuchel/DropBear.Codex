@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     A versatile progress bar component that supports indeterminate, normal, and stepped progress modes
+///     A versatile progress bar component that supports indeterminate, normal, and stepped progress modes.
 /// </summary>
 public sealed partial class DropBearProgressBar : DropBearComponentBase
 {
@@ -18,6 +18,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private readonly SemaphoreSlim _updateLock = new(1, 1);
     private int _currentStepIndex;
     private List<ProgressStepConfig>? _currentSteps;
+
     private bool _isInitialized;
     private string? _lastMessage = string.Empty;
     private double _lastProgress;
@@ -25,49 +26,54 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private ProgressState? _state;
 
     /// <summary>
-    ///     Gets or sets whether the progress bar is in indeterminate mode
+    ///     Gets or sets whether the progress bar is in indeterminate mode.
+    ///     <para>
+    ///         Normally set by the parent component, but if you are driving this from
+    ///         an external service, call <see cref="SetIndeterminateModeAsync" /> or
+    ///         <see cref="SetNormalProgressAsync" /> to avoid warnings.
+    ///     </para>
     /// </summary>
     [Parameter]
     public bool IsIndeterminate { get; set; }
 
     /// <summary>
-    ///     Gets or sets the current message to display
+    ///     Gets or sets the current message to display.
     /// </summary>
     [Parameter]
     public string Message { get; set; } = string.Empty;
 
     /// <summary>
-    ///     Gets or sets the overall progress (0-100)
+    ///     Gets or sets the overall progress (0-100).
     /// </summary>
     [Parameter]
     public double Progress { get; set; }
 
     /// <summary>
-    ///     Gets or sets the step configurations when in stepped mode
+    ///     Gets or sets the step configurations when in stepped mode.
     /// </summary>
     [Parameter]
     public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
 
     /// <summary>
-    ///     Gets or sets the minimum time to display each step in milliseconds
+    ///     Gets or sets the minimum time to display each step in milliseconds.
     /// </summary>
     [Parameter]
     public int MinStepDisplayTimeMs { get; set; } = 500;
 
     /// <summary>
-    ///     Gets or sets whether to use smooth progress transitions
+    ///     Gets or sets whether to use smooth progress transitions.
     /// </summary>
     [Parameter]
     public bool UseSmoothProgress { get; set; } = true;
 
     /// <summary>
-    ///     Gets or sets the easing function for progress transitions
+    ///     Gets or sets the easing function for progress transitions.
     /// </summary>
     [Parameter]
     public EasingFunction EasingFunction { get; set; } = EasingFunction.EaseInOutCubic;
 
     /// <summary>
-    ///     Event raised when a step's state changes
+    ///     Event raised when a step's state changes.
     /// </summary>
     [Parameter]
     public EventCallback<(string StepId, StepStatus Status)> OnStepStateChanged { get; set; }
@@ -121,6 +127,9 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
+        // If you are controlling this component from a parent that uses normal Blazor data binding,
+        // this logic updates the internal state. If you're using the new public methods below,
+        // the OnParametersSetAsync logic might be secondary or unused.
         if (!_isInitialized)
         {
             return;
@@ -128,8 +137,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
         if (IsDisposed)
         {
-            Logger.Warning("Component is disposed in {ComponentName} OnParametersSetAsync",
-                nameof(DropBearProgressBar));
             return;
         }
 
@@ -137,19 +144,18 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         {
             var shouldUpdate = false;
 
-            await _updateLock?.WaitAsync();
+            await _updateLock.WaitAsync();
             try
             {
                 if (_state == null)
                 {
-                    Logger.Warning("State is null in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBar));
                     return;
                 }
 
-                // Check if we need to update state
-                shouldUpdate = IsIndeterminate != _state!.IsIndeterminate ||
-                               Message != _lastMessage ||
-                               (!IsIndeterminate && Math.Abs(Progress - _lastProgress) > 0.001);
+                shouldUpdate =
+                    IsIndeterminate != _state.IsIndeterminate ||
+                    Message != _lastMessage ||
+                    (!IsIndeterminate && Math.Abs(Progress - _lastProgress) > 0.001);
 
                 if (shouldUpdate)
                 {
@@ -168,20 +174,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             }
             finally
             {
-                try
-                {
-                    _updateLock?.Release();
-                }
-                catch (ObjectDisposedException e)
-                {
-                    Logger.Warning("Object disposed exception in {ComponentName}", nameof(DropBearProgressBar));
-                    // Ignore
-                }
-                catch (Exception e)
-                {
-                    Logger.Error(e, "Error releasing update lock in {ComponentName}", nameof(DropBearProgressBar));
-                    throw;
-                }
+                _updateLock.Release();
             }
 
             if (shouldUpdate)
@@ -196,7 +189,186 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Updates the progress of a specific step
+    ///     Public method to request UI re-render from external consumers or services.
+    /// </summary>
+    public void RequestRender()
+    {
+        try
+        {
+            if (!IsDisposed)
+            {
+                InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // If the component is already disposed, ignore
+        }
+    }
+
+    // ----------------------------------------------------------------------------------
+    // PUBLIC METHODS that set the 'parameters' without triggering Blazor warnings
+    // ----------------------------------------------------------------------------------
+
+    /// <summary>
+    ///     Sets the progress bar into indeterminate mode (e.g. unknown length).
+    ///     Use this if you're driving the component from a service or orchestrator.
+    /// </summary>
+    /// <param name="message">A message to display (e.g. "Please wait...").</param>
+    public async Task SetIndeterminateModeAsync(string message)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        await _updateLock.WaitAsync();
+        try
+        {
+            IsIndeterminate = true;
+            Message = message;
+            Progress = 0;
+
+            if (_isInitialized && _state != null)
+            {
+                await _state.SetIndeterminateAsync(message);
+            }
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+
+        RequestRender();
+    }
+
+    /// <summary>
+    ///     Sets the progress bar to normal (non-indeterminate) mode with a progress percentage.
+    /// </summary>
+    /// <param name="progress">A value from 0 to 100 representing overall progress.</param>
+    /// <param name="message">The message to display.</param>
+    public async Task SetNormalProgressAsync(double progress, string message)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        await _updateLock.WaitAsync();
+        try
+        {
+            IsIndeterminate = false;
+            Progress = Math.Clamp(progress, 0, 100);
+            Message = message;
+
+            if (_isInitialized && _state != null)
+            {
+                await _state.UpdateOverallProgressAsync(Progress, Message);
+            }
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+
+        RequestRender();
+    }
+
+    /// <summary>
+    ///     Updates or sets the step configurations (stepped mode).
+    /// </summary>
+    /// <param name="steps">A list of step configurations, or null if none.</param>
+    public async Task SetStepsAsync(IReadOnlyList<ProgressStepConfig>? steps)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        await _updateLock.WaitAsync();
+        try
+        {
+            Steps = steps;
+
+            if (_isInitialized && steps?.Any() == true)
+            {
+                _currentSteps = new List<ProgressStepConfig>(steps);
+                foreach (var step in _currentSteps)
+                {
+                    _state?.GetOrCreateStepState(step.Id);
+                }
+            }
+            else
+            {
+                _currentSteps = null;
+            }
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+
+        RequestRender();
+    }
+
+    /// <summary>
+    ///     Updates both normal/indeterminate mode and steps in one go if desired.
+    /// </summary>
+    public async Task SetParametersManuallyAsync(
+        bool isIndeterminate,
+        double progress,
+        string message,
+        IReadOnlyList<ProgressStepConfig>? steps)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        await _updateLock.WaitAsync();
+        try
+        {
+            IsIndeterminate = isIndeterminate;
+            Progress = Math.Clamp(progress, 0, 100);
+            Message = message;
+            Steps = steps;
+
+            if (_isInitialized && _state != null)
+            {
+                if (isIndeterminate)
+                {
+                    await _state.SetIndeterminateAsync(message);
+                }
+                else
+                {
+                    await _state.UpdateOverallProgressAsync(Progress, Message);
+                }
+
+                if (steps?.Any() == true)
+                {
+                    _currentSteps = new List<ProgressStepConfig>(steps);
+                    foreach (var step in _currentSteps)
+                    {
+                        _state.GetOrCreateStepState(step.Id);
+                    }
+                }
+                else
+                {
+                    _currentSteps = null;
+                }
+            }
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+
+        RequestRender();
+    }
+    // ----------------------------------------------------------------------------------
+
+    /// <summary>
+    ///     Updates the progress of a specific step in stepped mode.
     /// </summary>
     public async Task UpdateStepProgressAsync(string stepId, double progress, StepStatus status)
     {
