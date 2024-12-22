@@ -83,7 +83,7 @@ public interface IExecutionProgressManager : IAsyncDisposable
         ISubscriber<Guid, TaskFailedMessage> taskFailedSubscriber);
 
     /// <summary>
-    /// Event raised when the progress manager's state changes
+    ///     Event raised when the progress manager's state changes
     /// </summary>
-    event Action<ExecutionProgressManager.ProgressManagerState>? OnStateChanged;
+    event Action<ProgressManagerState>? OnStateChanged;
 }
