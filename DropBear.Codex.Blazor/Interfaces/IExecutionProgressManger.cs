@@ -4,6 +4,7 @@ using DropBear.Codex.Blazor.Components.Progress;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Exceptions;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Blazor.Services;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using MessagePipe;
@@ -80,4 +81,9 @@ public interface IExecutionProgressManager : IAsyncDisposable
         ISubscriber<Guid, TaskProgressMessage> taskProgressSubscriber,
         ISubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
         ISubscriber<Guid, TaskFailedMessage> taskFailedSubscriber);
+
+    /// <summary>
+    /// Event raised when the progress manager's state changes
+    /// </summary>
+    event Action<ExecutionProgressManager.ProgressManagerState>? OnStateChanged;
 }
