@@ -79,6 +79,13 @@ public interface IExecutionProgressManager : IAsyncDisposable
     /// <returns>A result indicating success or failure.</returns>
     ValueTask<Result<Unit, ProgressManagerError>> CompleteAsync();
 
+
+    /// <summary>
+    ///     A flag indicating whether this manager has been disposed.
+    /// </summary>
+    /// <returns>A bool indicating if the manager has been disposed.</returns>
+    bool IsDisposed { get; }
+
     /// <summary>
     ///     Subscribes to execution engine events (started, progress, completed, failed) using the given
     ///     <paramref name="channelId" />.

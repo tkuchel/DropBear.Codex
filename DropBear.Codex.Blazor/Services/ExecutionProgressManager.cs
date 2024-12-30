@@ -35,7 +35,6 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     private double _currentProgress;
     private IDisposable? _disposableBag;
-    private bool _isDisposed;
     private bool _isIndeterminateMode;
     private bool _isSteppedMode;
     private bool _isVisible;
@@ -51,6 +50,11 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     {
         _logger = LoggerFactory.Logger.ForContext<ExecutionProgressManager>();
     }
+
+    /// <summary>
+    ///     A flag indicating whether this manager has been disposed.
+    /// </summary>
+    public bool IsDisposed { get; private set; }
 
     /// <summary>
     ///     Event fired whenever the manager updates progress (if needed by external observers).
@@ -366,12 +370,12 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// </summary>
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             return;
         }
 
-        _isDisposed = true;
+        IsDisposed = true;
         DisableExecutionEngineIntegration();
         _updateLock.Dispose();
         _progressBar = null;
@@ -435,7 +439,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     private async Task HandleTaskProgressAsync(TaskProgressMessage message, CancellationToken cancellationToken)
     {
-        if (_isDisposed || cancellationToken.IsCancellationRequested)
+        if (IsDisposed || cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -462,7 +466,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     private async Task HandleTaskStartedAsync(TaskStartedMessage message, CancellationToken cancellationToken)
     {
-        if (_isDisposed || cancellationToken.IsCancellationRequested)
+        if (IsDisposed || cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -477,7 +481,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     private async Task HandleTaskCompletedAsync(TaskCompletedMessage message, CancellationToken cancellationToken)
     {
-        if (_isDisposed || cancellationToken.IsCancellationRequested)
+        if (IsDisposed || cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -492,7 +496,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     private async Task HandleTaskFailedAsync(TaskFailedMessage message, CancellationToken cancellationToken)
     {
-        if (_isDisposed || cancellationToken.IsCancellationRequested)
+        if (IsDisposed || cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -510,7 +514,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     private void ThrowIfDisposed()
     {
-        if (_isDisposed)
+        if (IsDisposed)
         {
             throw new ObjectDisposedException(nameof(ExecutionProgressManager));
         }
