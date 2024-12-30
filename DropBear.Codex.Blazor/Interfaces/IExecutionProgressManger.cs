@@ -92,9 +92,9 @@ public interface IExecutionProgressManager : IAsyncDisposable
     /// <returns>A result indicating success or failure of enabling integration.</returns>
     Result<Unit, ProgressManagerError> EnableExecutionEngineIntegration(
         Guid channelId,
-        ISubscriber<Guid, TaskStartedMessage> taskStartedSubscriber,
-        ISubscriber<Guid, TaskProgressMessage> taskProgressSubscriber,
-        ISubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
-        ISubscriber<Guid, TaskFailedMessage> taskFailedSubscriber
+        IAsyncSubscriber<Guid, TaskStartedMessage> taskStartedSubscriber,
+        IAsyncSubscriber<Guid, TaskProgressMessage> taskProgressSubscriber,
+        IAsyncSubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
+        IAsyncSubscriber<Guid, TaskFailedMessage> taskFailedSubscriber
     );
 }

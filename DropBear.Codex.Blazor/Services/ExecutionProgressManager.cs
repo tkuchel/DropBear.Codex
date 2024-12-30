@@ -360,54 +360,6 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    /// <summary>
-    ///     Subscribes to ExecutionEngine events for the given <paramref name="channelId" /> and updates the progress bar.
-    /// </summary>
-    public Result<Unit, ProgressManagerError> EnableExecutionEngineIntegration(
-        Guid channelId,
-        ISubscriber<Guid, TaskStartedMessage> taskStartedSubscriber,
-        ISubscriber<Guid, TaskProgressMessage> taskProgressSubscriber,
-        ISubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
-        ISubscriber<Guid, TaskFailedMessage> taskFailedSubscriber)
-    {
-        ThrowIfDisposed();
-
-        try
-        {
-            DisableExecutionEngineIntegration();
-
-            _bagBuilder = DisposableBag.CreateBuilder();
-
-            // Subscribe to TaskProgress
-            taskProgressSubscriber
-                .Subscribe(channelId, message => _ = HandleTaskProgressAsync(message, CancellationToken.None))
-                .AddTo(_bagBuilder);
-
-            // Subscribe to TaskStarted
-            taskStartedSubscriber
-                .Subscribe(channelId, message => _ = HandleTaskStartedAsync(message, CancellationToken.None))
-                .AddTo(_bagBuilder);
-
-            // Subscribe to TaskCompleted
-            taskCompletedSubscriber
-                .Subscribe(channelId, message => _ = HandleTaskCompletedAsync(message, CancellationToken.None))
-                .AddTo(_bagBuilder);
-
-            // Subscribe to TaskFailed
-            taskFailedSubscriber
-                .Subscribe(channelId, message => _ = HandleTaskFailedAsync(message, CancellationToken.None))
-                .AddTo(_bagBuilder);
-
-            _disposableBag = _bagBuilder.Build();
-            return Result<Unit, ProgressManagerError>.Success(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to enable execution engine integration");
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Failed to enable execution engine integration", ex));
-        }
-    }
 
     /// <summary>
     ///     Disposes this manager asynchronously.
@@ -425,6 +377,48 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         _progressBar = null;
 
         await ValueTask.CompletedTask;
+    }
+
+    public Result<Unit, ProgressManagerError> EnableExecutionEngineIntegration(
+        Guid channelId,
+        IAsyncSubscriber<Guid, TaskStartedMessage> taskStartedSubscriber,
+        IAsyncSubscriber<Guid, TaskProgressMessage> taskProgressSubscriber,
+        IAsyncSubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
+        IAsyncSubscriber<Guid, TaskFailedMessage> taskFailedSubscriber)
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            DisableExecutionEngineIntegration();
+            _bagBuilder = DisposableBag.CreateBuilder();
+
+            // Example of subscribing with an async handler
+            taskProgressSubscriber
+                .Subscribe(channelId, async (message, ct) => await HandleTaskProgressAsync(message, ct))
+                .AddTo(_bagBuilder);
+
+            taskStartedSubscriber
+                .Subscribe(channelId, async (message, ct) => await HandleTaskStartedAsync(message, ct))
+                .AddTo(_bagBuilder);
+
+            taskCompletedSubscriber
+                .Subscribe(channelId, async (message, ct) => await HandleTaskCompletedAsync(message, ct))
+                .AddTo(_bagBuilder);
+
+            taskFailedSubscriber
+                .Subscribe(channelId, async (message, ct) => await HandleTaskFailedAsync(message, ct))
+                .AddTo(_bagBuilder);
+
+            _disposableBag = _bagBuilder.Build();
+            return Result<Unit, ProgressManagerError>.Success(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to enable execution engine integration");
+            return Result<Unit, ProgressManagerError>.Failure(
+                new ProgressManagerError("Failed to enable execution engine integration", ex));
+        }
     }
 
     /// <summary>
