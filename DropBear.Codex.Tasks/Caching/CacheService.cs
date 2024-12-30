@@ -48,35 +48,53 @@ public class CacheService : ICacheService
         CacheEntryOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        var metrics = new CacheMetrics($"GetOrSet<{typeof(T).Name}>");
+
         try
         {
             // Try to get the value from cache first
-            if (_cache.TryGetValue<T>(key, out var cachedValue) && cachedValue is not null)
+            if (_cache.TryGetValue<CacheEntry<T>>(key, out var cachedEntry))
             {
-                return Result<T, CacheError>.Success(cachedValue);
+                metrics.LogCacheHit(key);
+
+                // Check if entry is expired but within stale window
+                if (IsStale(cachedEntry, options) && !cachedEntry.IsRefreshing)
+                {
+                    // Trigger background refresh
+                    _ = RefreshCacheInBackgroundAsync(key, factory, options, cachedEntry);
+                }
+
+                return Result<T, CacheError>.Success(cachedEntry.Value);
             }
 
-            // Get or create a lock for this key
+            metrics.LogCacheMiss(key);
             var lockObj = _locks.GetOrAdd(key, k => new SemaphoreSlim(1, 1));
 
-            // Ensure only one thread can update the cache at a time
             await lockObj.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 // Double-check pattern
-                if (_cache.TryGetValue(key, out cachedValue) && cachedValue is not null)
+                if (_cache.TryGetValue(key, out cachedEntry))
                 {
-                    return Result<T, CacheError>.Success(cachedValue);
+                    metrics.LogCacheHit(key);
+                    return Result<T, CacheError>.Success(cachedEntry.Value);
                 }
 
                 // Execute the factory method to get the value
+                var factoryMetrics = new CacheMetrics($"Factory<{typeof(T).Name}>");
                 var value = await factory(cancellationToken).ConfigureAwait(false);
+                factoryMetrics.LogCacheMiss(key);
+
+                var entry = new CacheEntry<T>
+                {
+                    Value = value, CreatedAt = DateTime.UtcNow, LastRefreshed = DateTime.UtcNow
+                };
 
                 // Configure cache entry options
                 var entryOptions = ConfigureCacheEntry(options);
 
                 // Store in cache
-                _cache.Set(key, value, entryOptions);
+                _cache.Set(key, entry, entryOptions);
 
                 // Track region if specified
                 if (!string.IsNullOrEmpty(options?.Region))
@@ -107,6 +125,7 @@ public class CacheService : ICacheService
     {
         try
         {
+            _logger.Information("Invalidating cache key: {Key}", key);
             _cache.Remove(key);
             return ValueTask.FromResult(Result<Unit, CacheError>.Success(Unit.Value));
         }
@@ -128,6 +147,7 @@ public class CacheService : ICacheService
     {
         try
         {
+            _logger.Information("Invalidating cache region: {Region}", region);
             if (!_regionKeys.TryGetValue(region, out var keys))
             {
                 return Result<Unit, CacheError>.Success(Unit.Value);
@@ -135,6 +155,7 @@ public class CacheService : ICacheService
 
             foreach (var key in keys)
             {
+                _logger.Information("Invalidating key {Key} from region {Region}", key, region);
                 await RemoveAsync(key).ConfigureAwait(false);
             }
 
@@ -186,6 +207,73 @@ public class CacheService : ICacheService
         _locks.Clear();
         _regionKeys.Clear();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Checks if a cache entry is stale based on its options
+    /// </summary>
+    private bool IsStale<T>(CacheEntry<T> entry, CacheEntryOptions? options)
+    {
+        if (options?.StaleWhileRevalidate == null || entry.LastRefreshed == null)
+        {
+            return false;
+        }
+
+        var staleness = DateTime.UtcNow - entry.LastRefreshed.Value;
+        var totalAllowedStaleness = options.SlidingExpiration + options.StaleWhileRevalidate;
+
+        return staleness > options.SlidingExpiration && staleness <= totalAllowedStaleness;
+    }
+
+    /// <summary>
+    ///     Refreshes a cache entry in the background
+    /// </summary>
+    private async Task RefreshCacheInBackgroundAsync<T>(
+        string key,
+        Func<CancellationToken, Task<T>> factory,
+        CacheEntryOptions? options,
+        CacheEntry<T> existingEntry)
+    {
+        try
+        {
+            // Mark as refreshing to prevent multiple refresh attempts
+            existingEntry.IsRefreshing = true;
+
+            // Create a new cancellation token with a reasonable timeout
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+
+            _logger.Information("Starting background refresh for cache key: {Key}", key);
+
+            // Execute factory to get fresh value
+            var freshValue = await factory(cts.Token).ConfigureAwait(false);
+
+            var lockObj = _locks.GetOrAdd(key, k => new SemaphoreSlim(1, 1));
+            await lockObj.WaitAsync(cts.Token).ConfigureAwait(false);
+            try
+            {
+                // Update the existing entry
+                existingEntry.Value = freshValue;
+                existingEntry.LastRefreshed = DateTime.UtcNow;
+                existingEntry.IsRefreshing = false;
+
+                // Reconfigure cache options
+                var entryOptions = ConfigureCacheEntry(options);
+
+                // Store updated entry
+                _cache.Set(key, existingEntry, entryOptions);
+
+                _logger.Information("Successfully refreshed cache key: {Key}", key);
+            }
+            finally
+            {
+                lockObj.Release();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error refreshing cache in background for key: {Key}", key);
+            existingEntry.IsRefreshing = false;
+        }
     }
 
     /// <summary>
