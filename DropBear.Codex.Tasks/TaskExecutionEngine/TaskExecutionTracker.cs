@@ -13,13 +13,12 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// </summary>
 public sealed class TaskExecutionTracker
 {
-    private readonly Dictionary<string, double> _lastProgress = new();
+    private readonly Dictionary<string, double> _lastProgress = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, Task> _ongoingTasks = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, DateTime> _startTimes = new(StringComparer.Ordinal);
     private readonly TaskExecutionStats _stats = new();
     private readonly ConcurrentDictionary<string, bool> _taskStatus = new(StringComparer.Ordinal);
     private int _totalTaskCount;
-
 
     /// <summary>
     ///     Gets the last reported progress for a specified task.
@@ -40,7 +39,6 @@ public sealed class TaskExecutionTracker
     {
         _lastProgress[taskName] = progress;
     }
-
 
     /// <summary>
     ///     Starts tracking a task by recording its start time.
@@ -65,32 +63,25 @@ public sealed class TaskExecutionTracker
     public void CompleteTask(string taskName, bool success)
     {
         ArgumentNullException.ThrowIfNull(taskName);
-        _taskStatus[taskName] = success;
+
+        _taskStatus.AddOrUpdate(taskName, success, (_, _) => success);
 
         if (_startTimes.TryRemove(taskName, out var startTime))
         {
             _stats.TaskDurations[taskName] = DateTime.UtcNow - startTime;
         }
 
-        if (_ongoingTasks.TryRemove(taskName, out var completedTask))
-        {
-            if (!completedTask.IsCompletedSuccessfully && completedTask.Exception != null)
-            {
-                // Log or handle task exceptions
-            }
-        }
+        _ongoingTasks.TryRemove(taskName, out _);
 
         if (success)
         {
             _stats.IncrementCompletedTasks();
-            _taskStatus[taskName] = success;
         }
         else
         {
             _stats.IncrementFailedTasks();
         }
     }
-
 
     /// <summary>
     ///     Retrieves the current statistics for task execution, including completed and failed tasks.
@@ -144,21 +135,42 @@ public sealed class TaskExecutionTracker
         _stats.TotalTasks = 0;
     }
 
-    public void WaitForAllTasksToComplete(TimeSpan timeout)
-    {
-        Task.WhenAll(_ongoingTasks.Values).Wait(timeout);
-    }
-
-    public async Task WaitForAllTasksToCompleteAsync(TimeSpan timeout)
+    /// <summary>
+    ///     Asynchronously waits for all ongoing tasks to complete within the specified timeout.
+    /// </summary>
+    /// <param name="timeout">The maximum time to wait for task completion.</param>
+    /// <returns>True if all tasks completed within the specified timeout; otherwise, false.</returns>
+    public async Task<bool> WaitForAllTasksToCompleteAsync(TimeSpan timeout)
     {
         using var cts = new CancellationTokenSource(timeout);
         try
         {
             await Task.WhenAll(_ongoingTasks.Values).WaitAsync(cts.Token).ConfigureAwait(false);
+            return true;
         }
         catch (OperationCanceledException)
         {
-            // Handle timeout gracefully
+            return false;
         }
+    }
+
+    /// <summary>
+    ///     Retrieves the status of a specific task by its name.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <returns>True if the task completed successfully; false if it failed; null if the task is not found.</returns>
+    public bool? GetTaskStatus(string taskName)
+    {
+        return _taskStatus.TryGetValue(taskName, out var success) ? success : null;
+    }
+
+    /// <summary>
+    ///     Retrieves the duration of a specific task by its name.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <returns>The duration of the task if found; otherwise, TimeSpan.Zero.</returns>
+    public TimeSpan GetTaskDuration(string taskName)
+    {
+        return _stats.TaskDurations.TryGetValue(taskName, out var duration) ? duration : TimeSpan.Zero;
     }
 }

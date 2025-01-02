@@ -1,9 +1,6 @@
-﻿#region
-
+﻿using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
-
-#endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
@@ -13,7 +10,6 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 public sealed class SimpleTask : ITask
 {
     private readonly List<string> _dependencies = new();
-    private readonly Action<ExecutionContext>? _execute;
     private readonly Func<ExecutionContext, CancellationToken, Task> _executeAsync;
 
     /// <summary>
@@ -36,7 +32,6 @@ public sealed class SimpleTask : ITask
     public SimpleTask(string name, Action<ExecutionContext> execute)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
-        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
         _executeAsync = (context, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -59,16 +54,25 @@ public sealed class SimpleTask : ITask
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
 
     /// <inheritdoc />
-    public bool ContinueOnFailure { get; set; } = false;
+    public bool ContinueOnFailure { get; set; }
 
     /// <inheritdoc />
     public IReadOnlyList<string> Dependencies => _dependencies.AsReadOnly();
+
+    /// <inheritdoc />
+    public TimeSpan EstimatedDuration { get; set; } = TimeSpan.Zero;
+
+    /// <inheritdoc />
+    public TaskPriority Priority { get; set; } = TaskPriority.Normal;
 
     /// <inheritdoc />
     public Func<ExecutionContext, CancellationToken, Task>? CompensationActionAsync { get; set; }
 
     /// <inheritdoc />
     public Dictionary<string, object> Metadata { get; set; }
+
+    /// <inheritdoc />
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(5);
 
     /// <inheritdoc />
     public bool Validate()
@@ -88,6 +92,11 @@ public sealed class SimpleTask : ITask
             return false;
         }
 
+        if (Timeout < TimeSpan.Zero)
+        {
+            return false;
+        }
+
         return true;
     }
 
@@ -97,18 +106,6 @@ public sealed class SimpleTask : ITask
         return _executeAsync(context, cancellationToken);
     }
 
-    /// <inheritdoc />
-    public void Execute(ExecutionContext context)
-    {
-        if (_execute != null)
-        {
-            _execute(context);
-        }
-        else
-        {
-            _executeAsync(context, CancellationToken.None).GetAwaiter().GetResult();
-        }
-    }
 
     /// <inheritdoc />
     public void AddDependency(string dependency)
@@ -133,7 +130,7 @@ public sealed class SimpleTask : ITask
         }
 
         _dependencies.Clear();
-        foreach (var dependency in dependencies)
+        foreach (var dependency in dependencies.Where(d => !string.IsNullOrWhiteSpace(d)))
         {
             AddDependency(dependency);
         }

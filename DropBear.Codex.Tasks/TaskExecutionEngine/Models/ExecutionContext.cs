@@ -1,6 +1,10 @@
-﻿using System.Collections.Concurrent;
+﻿#region
+
+using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
+
+#endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
@@ -16,7 +20,7 @@ public sealed class ExecutionContext
     }
 
     public ConcurrentDictionary<string, object> Data { get; } = new(StringComparer.Ordinal);
-
+    public TaskResources Resources { get; set; } = null!;
     public ILogger Logger { get; }
     public ExecutionOptions Options { get; }
     public IServiceScopeFactory ScopeFactory { get; }
@@ -24,12 +28,12 @@ public sealed class ExecutionContext
     public int TotalTaskCount { get; init; }
 
     /// <summary>
-    /// Gets the count of completed tasks.
+    ///     Gets the count of completed tasks.
     /// </summary>
     public int CompletedTaskCount => _completedTaskCount; // Read-only property backed by a field
 
     /// <summary>
-    /// Atomically increments the completed task count.
+    ///     Atomically increments the completed task count.
     /// </summary>
     public void IncrementCompletedTaskCount()
     {

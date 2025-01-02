@@ -1,4 +1,5 @@
-﻿using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
+﻿using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
+using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
@@ -13,6 +14,9 @@ public interface ITask
     TimeSpan RetryDelay { get; set; }
     bool ContinueOnFailure { get; set; }
     IReadOnlyList<string> Dependencies { get; }
+    TimeSpan EstimatedDuration { get; }
+
+    TaskPriority Priority { get; }
 
     Func<ExecutionContext, CancellationToken, Task>?
         CompensationActionAsync { get; set; } // Updated for cancellation support
@@ -24,8 +28,7 @@ public interface ITask
 
     bool Validate();
     Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken);
-    void Execute(ExecutionContext context);
-
+ 
     /// <summary>
     ///     Adds a dependency to this task.
     /// </summary>

@@ -64,24 +64,14 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
     /// <returns>A result containing the execution engine or an error if creation fails.</returns>
     public Result<ExecutionEngine, ExecutionEngineError> CreateExecutionEngine(Guid channelId)
     {
-        try
+        var validationResult = ValidateParameters(channelId);
+        if (!validationResult.IsSuccess)
         {
-            // Consolidated validation
-            var validationResult = ValidateParameters(channelId);
-            if (!validationResult.IsSuccess)
-            {
-                _logger.Error("Validation failed: {ErrorMessage}", validationResult.Error?.Message);
-                return Result<ExecutionEngine, ExecutionEngineError>.Failure(validationResult.Error!);
-            }
+            _logger.Error("Validation failed: {ErrorMessage}", validationResult.Error?.Message);
+            return Result<ExecutionEngine, ExecutionEngineError>.Failure(validationResult.Error!);
+        }
 
-            return CreateEngineInstance(channelId);
-        }
-        catch (Exception ex)
-        {
-            var error = new ExecutionEngineError("Unexpected error creating execution engine", ex);
-            _logger.Error(ex, "Failed to create ExecutionEngine: {ErrorMessage}", error.Message);
-            return Result<ExecutionEngine, ExecutionEngineError>.Failure(error);
-        }
+        return CreateEngineInstance(channelId);
     }
 
     /// <summary>
@@ -94,11 +84,10 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
         if (channelId == Guid.Empty)
         {
             _logger.Error("Invalid channel ID provided");
-            return Result<Unit, ExecutionEngineError>.Failure(
-                new ExecutionEngineError("Channel ID cannot be empty"));
+            return Result<Unit, ExecutionEngineError>.Failure(new ExecutionEngineError("Channel ID cannot be empty"));
         }
 
-        if (_options?.Value == null)
+        if (_options.Value == null)
         {
             _logger.Error("ExecutionOptions is not configured");
             return Result<Unit, ExecutionEngineError>.Failure(

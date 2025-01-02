@@ -212,7 +212,7 @@ public class CacheService : ICacheService
     /// <summary>
     ///     Checks if a cache entry is stale based on its options
     /// </summary>
-    private bool IsStale<T>(CacheEntry<T> entry, CacheEntryOptions? options)
+    private static bool IsStale<T>(CacheEntry<T> entry, CacheEntryOptions? options)
     {
         if (options?.StaleWhileRevalidate == null || entry.LastRefreshed == null)
         {

@@ -395,7 +395,7 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
 
         _columns.Add(column);
-        Logger.Debug("Column added: {PropertyName}", column.PropertyName);
+        // Logger.Debug("Column added: {PropertyName}", column.PropertyName);
         StateHasChanged();
     }
 

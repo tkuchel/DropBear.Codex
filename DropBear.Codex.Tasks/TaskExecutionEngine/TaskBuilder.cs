@@ -1,5 +1,6 @@
 ﻿#region
 
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
 
@@ -17,11 +18,14 @@ public class TaskBuilder
     private Func<ExecutionContext, Task>? _compensationActionAsync;
     private Func<ExecutionContext, bool>? _condition;
     private bool _continueOnFailure;
+    private TimeSpan _estimatedDuration = TimeSpan.Zero;
     private Action<ExecutionContext>? _execute;
     private Func<ExecutionContext, CancellationToken, Task>? _executeAsync;
     private int _maxRetryCount = 3;
     private string _name = string.Empty;
+    private TaskPriority _priority = TaskPriority.Normal;
     private TimeSpan _retryDelay = TimeSpan.FromSeconds(1);
+    private TimeSpan _timeout = TimeSpan.FromMinutes(5);
 
     /// <summary>
     ///     Creates a new instance of the <see cref="TaskBuilder" /> with the specified task name.
@@ -75,7 +79,7 @@ public class TaskBuilder
     {
         if (maxRetryCount < 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(maxRetryCount));
+            throw new ArgumentOutOfRangeException(nameof(maxRetryCount), "Max retry count cannot be negative.");
         }
 
         _maxRetryCount = maxRetryCount;
@@ -91,7 +95,7 @@ public class TaskBuilder
     {
         if (retryDelay < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(retryDelay));
+            throw new ArgumentOutOfRangeException(nameof(retryDelay), "Retry delay cannot be negative.");
         }
 
         _retryDelay = retryDelay;
@@ -172,6 +176,49 @@ public class TaskBuilder
     }
 
     /// <summary>
+    ///     Sets the priority of the task.
+    /// </summary>
+    /// <param name="priority">The task priority.</param>
+    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    public TaskBuilder WithPriority(TaskPriority priority)
+    {
+        _priority = priority;
+        return this;
+    }
+
+    /// <summary>
+    ///     Sets the estimated duration of the task.
+    /// </summary>
+    /// <param name="estimatedDuration">The estimated duration of the task.</param>
+    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    public TaskBuilder WithEstimatedDuration(TimeSpan estimatedDuration)
+    {
+        if (estimatedDuration < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(estimatedDuration), "Estimated duration cannot be negative.");
+        }
+
+        _estimatedDuration = estimatedDuration;
+        return this;
+    }
+
+    /// <summary>
+    ///     Sets the timeout for the task execution.
+    /// </summary>
+    /// <param name="timeout">The timeout for the task execution.</param>
+    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    public TaskBuilder WithTimeout(TimeSpan timeout)
+    {
+        if (timeout < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout cannot be negative.");
+        }
+
+        _timeout = timeout;
+        return this;
+    }
+
+    /// <summary>
     ///     Builds the task with the specified configurations.
     /// </summary>
     /// <returns>An instance of <see cref="ITask" />.</returns>
@@ -196,6 +243,9 @@ public class TaskBuilder
         task.RetryDelay = _retryDelay;
         task.ContinueOnFailure = _continueOnFailure;
         task.Condition = _condition;
+        task.Priority = _priority;
+        task.EstimatedDuration = _estimatedDuration;
+        task.Timeout = _timeout;
 
         // Wrap compensation action
         task.CompensationActionAsync = _compensationActionAsync == null
