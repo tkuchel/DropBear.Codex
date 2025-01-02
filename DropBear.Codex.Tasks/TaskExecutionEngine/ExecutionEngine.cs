@@ -490,6 +490,8 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
 
+
+
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
@@ -524,6 +526,9 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                     {
                         TotalTaskCount = _tasks.Count
                     };
+
+                    // Set total task count
+                    Tracker.SetTotalTaskCount(_tasks.Count);
 
                     var executionScope = new TaskExecutionScope(
                         rootScope,
