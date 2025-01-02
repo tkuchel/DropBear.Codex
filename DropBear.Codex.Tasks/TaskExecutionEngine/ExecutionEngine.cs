@@ -94,24 +94,40 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             if (IsExecuting)
             {
                 _logger.Information("Cancelling ongoing tasks during disposal...");
-                await _disposalCts.CancelAsync().ConfigureAwait(false);
+                await _disposalCts.CancelAsync().ConfigureAwait(false); // Cancel without awaiting to avoid deadlocks
             }
 
-            await Tracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
-            await _messagePublisher.DisposeAsync().ConfigureAwait(false);
-            await _batchingReporter.DisposeAsync().ConfigureAwait(false);
+            // Ensure all tasks complete within the allowed timeframe
+            var trackerTask = Tracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10));
+            var messagePublisherTask = _messagePublisher.DisposeAsync().AsTask();
+            var batchingReporterTask = _batchingReporter.DisposeAsync().AsTask();
+
+            // Wait for all resource cleanup tasks to complete
+            await Task.WhenAll(trackerTask, messagePublisherTask, batchingReporterTask).ConfigureAwait(false);
+
+            _logger.Debug("All cleanup tasks completed. Clearing internal state.");
+
+            // Clear internal state
             _tasks.Clear();
             _dependencyInfo.Clear();
             Tracker.Reset();
+
+            // Dispose locks and cancellation token
             _tasksLock.Dispose();
             _disposalCts.Dispose();
+
             _logger.Information("ExecutionEngine disposed successfully.");
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.Warning("ExecutionEngine disposal was canceled.");
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error occurred during ExecutionEngine disposal.");
         }
     }
+
 
     /// <summary>
     ///     Synchronously disposes of the execution engine and its resources.
@@ -195,6 +211,16 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                         new TaskExecutionError($"Unresolved dependency: '{dependency}'", task.Name));
                 }
 
+                // Check for circular dependency
+                if (DetectCircularDependency(task.Name, dependency))
+                {
+                    _logger.Error("Circular dependency detected between task '{TaskName}' and '{DependencyName}'.",
+                        task.Name, dependency);
+                    return Result<Unit, TaskExecutionError>.Failure(
+                        new TaskExecutionError($"Circular dependency detected between '{task.Name}' and '{dependency}'",
+                            task.Name));
+                }
+
                 info.Dependencies.Add(dependency);
                 _dependencyInfo.GetOrAdd(dependency, _ => new DependencyInfo())
                     .DependentTasks.Add(task.Name);
@@ -214,6 +240,44 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
             _dependencyLock.ExitWriteLock();
         }
     }
+
+    /// <summary>
+    ///     Detects circular dependencies between tasks.
+    /// </summary>
+    /// <param name="taskName">The task being added.</param>
+    /// <param name="dependencyName">The dependency being checked.</param>
+    /// <returns>True if a circular dependency is detected; otherwise, false.</returns>
+    private bool DetectCircularDependency(string taskName, string dependencyName)
+    {
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var stack = new Stack<string>();
+        stack.Push(dependencyName);
+
+        while (stack.Count > 0)
+        {
+            var current = stack.Pop();
+            if (string.Equals(current, taskName, StringComparison.Ordinal))
+            {
+                return true; // Circular dependency detected
+            }
+
+            if (!visited.Add(current))
+            {
+                continue; // Skip already visited tasks
+            }
+
+            if (_dependencyInfo.TryGetValue(current, out var info))
+            {
+                foreach (var childDependency in info.Dependencies)
+                {
+                    stack.Push(childDependency);
+                }
+            }
+        }
+
+        return false;
+    }
+
 
     /// <summary>
     ///     Clears all tasks from the execution engine.
@@ -489,7 +553,6 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
 
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
-
 
 
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)

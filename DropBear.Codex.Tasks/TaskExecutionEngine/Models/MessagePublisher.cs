@@ -57,11 +57,48 @@ public sealed class MessagePublisher : IAsyncDisposable
         }
 
         _disposed = true;
+
+        // Cancel the publishing task
         await _publisherCts.CancelAsync().ConfigureAwait(false);
-        await _publisherTask.ConfigureAwait(false);
-        _publishLock.Dispose();
-        _publisherCts.Dispose();
+
+        // Ensure pending messages are processed
+        await _publishLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            while (_messageQueue.TryDequeue(out var message))
+            {
+                try
+                {
+                    await PublishMessageAsync(message.ChannelId, message.Message, message.MessageType)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Failed to publish message during disposal. MessageType: {MessageType}", message.MessageType);
+                }
+            }
+        }
+        finally
+        {
+            _publishLock.Release();
+        }
+
+        // Wait for the publishing task to complete
+        try
+        {
+            await _publisherTask.ConfigureAwait(false);
+        }
+        catch (TaskCanceledException)
+        {
+            _logger.Information("MessagePublisher disposed during cancellation.");
+        }
+        finally
+        {
+            _publishLock.Dispose();
+            _publisherCts.Dispose();
+        }
     }
+
 
     /// <summary>
     ///     Queues a message for publishing.
@@ -103,9 +140,18 @@ public sealed class MessagePublisher : IAsyncDisposable
                 _publishLock.Release();
             }
 
-            await Task.Delay(10, _publisherCts.Token).ConfigureAwait(false);
+            try
+            {
+                await Task.Delay(10, _publisherCts.Token).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException)
+            {
+                _logger.Debug("Publishing loop cancelled.");
+                break; // Exit loop gracefully
+            }
         }
     }
+
 
     private async Task PublishMessageAsync(Guid channelId, object message, Type messageType)
     {
