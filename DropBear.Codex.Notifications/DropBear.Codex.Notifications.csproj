@@ -11,8 +11,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2024.10.0</Version>
-    <PackageVersion>2024.12.0</PackageVersion> <!-- Specifies the version of the package -->
+    <Version>2025.1.0</Version>
+    <PackageVersion>2025.1.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.Notifications</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex Notifications</Title>
     <Description>Notification system for the DropBear Codex ecosystem, supporting user-specific notifications and optional serialization.</Description>
