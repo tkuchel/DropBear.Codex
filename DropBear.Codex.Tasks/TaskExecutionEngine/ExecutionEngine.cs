@@ -183,6 +183,10 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         {
             _dependencyLock.EnterWriteLock();
 
+            _logger.Debug("Adding task '{TaskName}' with dependencies: {Dependencies}", task.Name,
+                string.Join(", ", task.Dependencies));
+
+
             if (IsExecuting)
             {
                 _logger.Warning("Cannot add tasks while execution is in progress.");
@@ -224,9 +228,14 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
                 info.Dependencies.Add(dependency);
                 _dependencyInfo.GetOrAdd(dependency, _ => new DependencyInfo())
                     .DependentTasks.Add(task.Name);
+
+                _logger.Debug("Current dependency graph: {Graph}",
+                    string.Join(", ",
+                        _dependencyInfo.Select(d => $"{d.Key} -> {string.Join(", ", d.Value.Dependencies)}")));
             }
 
             _logger.Debug("[ExecutingEngine] Added task '{TaskName}' to the execution engine.", task.Name);
+
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -492,63 +501,72 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         Dictionary<string, TaskVisitState> visited,
         List<ITask> sortedTasks)
     {
+        _logger.Debug("Visiting task: {TaskName}", task.Name);
+
         if (visited.TryGetValue(task.Name, out var state))
         {
-            if (state == TaskVisitState.Visiting)
+            switch (state)
             {
-                return LogDependencyResolutionError(
-                    $"Circular dependency detected for task '{task.Name}'.",
-                    task.Name);
-            }
-
-            if (state == TaskVisitState.Visited)
-            {
-                return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+                case TaskVisitState.Visiting:
+                    _logger.Error("Circular dependency detected for task: {TaskName}. Dependency chain: {Chain}",
+                        task.Name, GetDependencyChain(task.Name, visited));
+                    return LogDependencyResolutionError(
+                        $"Circular dependency detected for task '{task.Name}'.",
+                        task.Name);
+                case TaskVisitState.Visited:
+                    _logger.Debug("Task '{TaskName}' already visited.", task.Name);
+                    return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+                case TaskVisitState.NotVisited:
+                    break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(state));
             }
         }
 
         visited[task.Name] = TaskVisitState.Visiting;
+        _logger.Debug("Marked task '{TaskName}' as Visiting.", task.Name);
 
         if (_dependencyInfo.TryGetValue(task.Name, out var info))
         {
+            if (info.Dependencies.Count == 0)
+            {
+                _logger.Debug("Task '{TaskName}' has no dependencies.", task.Name);
+            }
+
             foreach (var dependencyName in info.Dependencies)
             {
+                _logger.Debug("Task '{TaskName}' depends on '{DependencyName}'.", task.Name, dependencyName);
+
                 if (!_tasks.TryGetValue(dependencyName, out var dependencyTask))
                 {
+                    _logger.Error("Task '{TaskName}' has an unresolved dependency: '{DependencyName}'.",
+                        task.Name, dependencyName);
                     return LogDependencyResolutionError(
                         $"Task '{task.Name}' depends on an unknown task '{dependencyName}'.",
                         task.Name);
                 }
 
                 var visitResult = await VisitAsync(dependencyTask, visited, sortedTasks).ConfigureAwait(false);
-                if (!visitResult.IsSuccess)
+                if (visitResult.IsSuccess)
                 {
-                    return visitResult;
+                    continue;
                 }
-            }
 
-            foreach (var dependentTaskName in info.DependentTasks)
-            {
-                if (!visited.TryGetValue(dependentTaskName, out var dependentState) ||
-                    dependentState == TaskVisitState.NotVisited)
-                {
-                    if (_tasks.TryGetValue(dependentTaskName, out var dependentTask))
-                    {
-                        var visitResult = await VisitAsync(dependentTask, visited, sortedTasks).ConfigureAwait(false);
-                        if (!visitResult.IsSuccess)
-                        {
-                            return visitResult;
-                        }
-                    }
-                }
+                _logger.Error(
+                    "Dependency resolution failed for task '{TaskName}' due to dependency '{DependencyName}'.",
+                    task.Name,
+                    dependencyName);
+                return visitResult;
             }
         }
 
         visited[task.Name] = TaskVisitState.Visited;
+        _logger.Debug("Marked task '{TaskName}' as Visited.", task.Name);
 
-        if (!sortedTasks.Contains(task))
+        if (_sortedTaskNames.Add(task.Name)) // Use HashSet for efficiency
         {
             sortedTasks.Add(task);
+            _logger.Debug("Added task '{TaskName}' to sorted tasks.", task.Name);
         }
 
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
@@ -1085,6 +1103,7 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     private readonly ConcurrentDictionary<string, TaskMetrics> _taskMetrics = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, ITask> _tasks = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _tasksLock = new(1, 1);
+    private readonly HashSet<string> _sortedTaskNames = new(StringComparer.Ordinal);
 
     private readonly ConcurrentDictionary<string, (bool IsValid, DateTime ExpiresAt)> _validationCache =
         new(StringComparer.Ordinal);
@@ -1126,6 +1145,19 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
     #endregion
 
     #region Utility Methods
+
+    private string GetDependencyChain(string taskName, Dictionary<string, TaskVisitState> visited)
+    {
+        var chain = new List<string>();
+        foreach (var kvp in visited.Where(kvp => kvp.Value == TaskVisitState.Visiting))
+        {
+            chain.Add(kvp.Key);
+        }
+
+        chain.Add(taskName); // Add the current task to complete the chain
+        return string.Join(" -> ", chain);
+    }
+
 
     private int CalculateOptimalBatchSize(IReadOnlyCollection<ITask> tasks)
     {
