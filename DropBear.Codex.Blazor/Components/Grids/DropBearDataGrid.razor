@@ -41,12 +41,14 @@ else
                         }
                         @if (AllowAdd)
                         {
-                            <button class="btn-primary" @onclick="AddItemAsync"><i class="fas fa-plus"></i> Add</button>
+                            <button class="btn-primary" @onclick="AddItemAsync">
+                                <i class="fas fa-plus"></i> Add
+                            </button>
                         }
                         @if (AllowExport)
                         {
-                            <button class="btn-secondary" @onclick="ExportDataAsync"><i class="fas fa-file-export"></i>
-                                Export
+                            <button class="btn-secondary" @onclick="ExportDataAsync">
+                                <i class="fas fa-file-export"></i> Export
                             </button>
                         }
                     </div>
@@ -61,7 +63,8 @@ else
                             @if (EnableMultiSelect)
                             {
                                 <th class="datagrid-cell" style="width: 40px;">
-                                    <input type="checkbox" @onchange="@(e => ToggleSelectAll(e.Value is bool b && b))"/>
+                                    <input type="checkbox"
+                                           @onchange="@(e => ToggleSelectAll(e.Value is bool b && b))"/>
                                 </th>
                             }
                             @foreach (var column in _columns)
@@ -143,14 +146,16 @@ else
                                         <td class="datagrid-cell datagrid-cell-actions">
                                             @if (AllowEdit)
                                             {
-                                                <button class="btn-icon" @onclick:stopPropagation="true"
+                                                <button class="btn-icon"
+                                                        @onclick:stopPropagation="true"
                                                         @onclick="@(() => EditItemAsync(item))">
                                                     <i class="fas fa-edit"></i>
                                                 </button>
                                             }
                                             @if (AllowDelete)
                                             {
-                                                <button class="btn-icon" @onclick:stopPropagation="true"
+                                                <button class="btn-icon"
+                                                        @onclick:stopPropagation="true"
                                                         @onclick="@(() => DeleteItemAsync(item))">
                                                     <i class="fas fa-trash"></i>
                                                 </button>

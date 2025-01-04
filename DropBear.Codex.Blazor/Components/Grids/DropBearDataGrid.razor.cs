@@ -9,6 +9,7 @@ using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Serilog;
+using Timer = System.Threading.Timer;
 
 #endregion
 
@@ -18,19 +19,21 @@ namespace DropBear.Codex.Blazor.Components.Grids;
 ///     A Blazor component for rendering a data grid with sorting, searching, and pagination capabilities.
 /// </summary>
 /// <typeparam name="TItem">The type of the data items.</typeparam>
-public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposable
+public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposable
 {
     private const int DebounceDelay = 300; // milliseconds
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>();
 
     private readonly List<DataGridColumn<TItem>> _columns = new();
     private readonly List<TItem> _selectedItems = new();
+
     private DataGridColumn<TItem>? _currentSortColumn;
     private SortDirection _currentSortDirection = SortDirection.Ascending;
     private Timer? _debounceTimer;
     private bool _isInitialized;
     private bool _isSearching;
 
+    // We track this to detect when Items has changed.
     private IEnumerable<TItem>? _previousItems = Enumerable.Empty<TItem>();
     private ElementReference _searchInput;
 
@@ -74,41 +77,53 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
 
     [Parameter] public RenderFragment? NoDataTemplate { get; set; }
 
+    /// <summary>
+    ///     The current text value for searching/filtering the grid.
+    /// </summary>
     private string SearchTerm { get; set; } = string.Empty;
 
     private int CurrentPage { get; set; } = 1;
 
-    private int TotalPages => (int)Math.Ceiling(FilteredItems.Count() / (double)ItemsPerPage);
-
     private IEnumerable<TItem> FilteredItems { get; set; } = new List<TItem>();
-
     private IEnumerable<TItem> DisplayedItems { get; set; } = new List<TItem>();
 
     private IReadOnlyCollection<int> ItemsPerPageOptions { get; } =
         new ReadOnlyCollection<int>(new[] { 10, 25, 50, 100 });
 
     private bool IsLoading { get; set; } = true;
-
     private bool HasData => FilteredItems.Any();
 
-    private int TotalColumnCount => _columns.Count + (EnableMultiSelect ? 1 : 0) + (AllowEdit || AllowDelete ? 1 : 0);
+    private int TotalPages =>
+        (int)Math.Ceiling(FilteredItems.Count() / (double)ItemsPerPage);
 
+    private int TotalColumnCount =>
+        _columns.Count + (EnableMultiSelect ? 1 : 0) + (AllowEdit || AllowDelete ? 1 : 0);
+
+    /// <summary>
+    ///     Returns a read-only list of the columns configured for this data grid.
+    /// </summary>
     public IReadOnlyList<DataGridColumn<TItem>> GetColumns => _columns.AsReadOnly();
 
+    /// <summary>
+    ///     Dispose of any unmanaged resources (timers, etc.).
+    /// </summary>
     public void Dispose()
     {
         _debounceTimer?.Dispose();
     }
 
+    /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         await base.OnInitializedAsync();
     }
 
+    /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
+        // Reload data if the Items reference has changed.
         if (!ReferenceEquals(_previousItems, Items))
         {
             _previousItems = Items;
@@ -118,19 +133,20 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         _isInitialized = true;
     }
 
-
+    /// <summary>
+    ///     Handles the data loading process (simulated with a small delay).
+    /// </summary>
     private async Task LoadDataAsync()
     {
         try
         {
             IsLoading = true;
-            StateHasChanged(); // Notify the UI that loading has started
+            StateHasChanged();
 
-            // Simulate data loading delay if necessary
-            await Task.Delay(200);
+            // Simulate data loading delay if necessary.
+            await Task.Delay(50);
 
-            FilteredItems = Items != null ? Items.ToList() : new List<TItem>();
-
+            FilteredItems = Items?.ToList() ?? new List<TItem>();
             UpdateDisplayedItems();
         }
         catch (Exception ex)
@@ -140,11 +156,13 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         finally
         {
             IsLoading = false;
-            StateHasChanged(); // Notify the UI that loading has completed
+            StateHasChanged();
         }
     }
 
-
+    /// <summary>
+    ///     Called whenever the user types in the search box. Debounces the search.
+    /// </summary>
     private void OnSearchInput(ChangeEventArgs e)
     {
         SearchTerm = e.Value?.ToString() ?? string.Empty;
@@ -153,6 +171,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         _debounceTimer = new Timer(async _ => await DebounceSearchAsync(), null, DebounceDelay, Timeout.Infinite);
     }
 
+    /// <summary>
+    ///     Runs the search logic after the debounce period.
+    /// </summary>
     private async Task DebounceSearchAsync()
     {
         try
@@ -161,25 +182,22 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
             await InvokeAsync(StateHasChanged);
 
             Logger.Debug("Performing search with term: {SearchTerm}", SearchTerm);
-
-            await Task.Delay(100); // Simulate search delay
+            await Task.Delay(50); // Simulate search delay
 
             if (string.IsNullOrWhiteSpace(SearchTerm))
             {
-                if (Items != null)
-                {
-                    FilteredItems = Items.ToList();
-                }
-
-
+                FilteredItems = Items?.ToList() ?? new List<TItem>();
             }
             else
             {
                 var searchLower = SearchTerm.ToLowerInvariant();
-                if (Items != null)
+                if (Items is not null)
                 {
-                    FilteredItems = Items.Where(item => _columns.Any(column =>
-                        MatchesSearchTerm(column.PropertySelector, item, searchLower, column.Format))).ToList();
+                    // Evaluate search against all columns where a PropertySelector is defined.
+                    FilteredItems = Items
+                        .Where(item => _columns.Any(column =>
+                            MatchesSearchTerm(column.PropertySelector, item, searchLower, column.Format)))
+                        .ToList();
                 }
             }
 
@@ -197,15 +215,19 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Re-applies sorting and pagination to update the items displayed on the current page.
+    /// </summary>
     private void UpdateDisplayedItems()
     {
         var items = FilteredItems;
 
-        if (_currentSortColumn?.PropertySelector != null)
+        if (_currentSortColumn?.PropertySelector is not null)
         {
+            var selector = _currentSortColumn.PropertySelector.Compile();
             items = _currentSortDirection == SortDirection.Ascending
-                ? items.OrderBy(_currentSortColumn.PropertySelector.Compile())
-                : items.OrderByDescending(_currentSortColumn.PropertySelector.Compile());
+                ? items.OrderBy(selector)
+                : items.OrderByDescending(selector);
         }
 
         DisplayedItems = items
@@ -217,32 +239,40 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
             CurrentPage, ItemsPerPage);
     }
 
-    private static bool MatchesSearchTerm(Expression<Func<TItem, object>>? selector, TItem item, string searchTerm,
+    /// <summary>
+    ///     Checks whether a given item matches a search term based on a column's property selector and format.
+    /// </summary>
+    private static bool MatchesSearchTerm(
+        Expression<Func<TItem, object>>? selector,
+        TItem item,
+        string searchTerm,
         string format)
     {
-        if (selector == null)
+        if (selector is null)
         {
             return false;
         }
 
         var compiledSelector = selector.Compile();
         var value = compiledSelector(item);
-
-        if (value == null)
+        if (value is null)
         {
             return false;
         }
 
         var valueString = value switch
         {
-            DateTime dateTime => dateTime.ToString(format),
-            DateTimeOffset dateTimeOffset => dateTimeOffset.ToString(format),
+            DateTime dateTime => dateTime.ToString(format).ToLowerInvariant(),
+            DateTimeOffset dateTimeOffset => dateTimeOffset.ToString(format).ToLowerInvariant(),
             _ => value.ToString()?.ToLowerInvariant() ?? string.Empty
         };
 
         return valueString.Contains(searchTerm);
     }
 
+    /// <summary>
+    ///     Invoked when the user clicks on a column header to sort by that column.
+    /// </summary>
     private void SortBy(DataGridColumn<TItem> column)
     {
         if (!column.Sortable)
@@ -252,6 +282,7 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
 
         if (_currentSortColumn == column)
         {
+            // Toggle sort direction
             _currentSortDirection = _currentSortDirection == SortDirection.Ascending
                 ? SortDirection.Descending
                 : SortDirection.Ascending;
@@ -266,12 +297,18 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         UpdateDisplayedItems();
     }
 
+    /// <summary>
+    ///     Returns the current sort direction for the specified column, or null if it is not being sorted.
+    /// </summary>
     private SortDirection? GetSortDirection(DataGridColumn<TItem> column)
     {
         return _currentSortColumn == column ? _currentSortDirection : null;
     }
 
-    private string GetSortIconClass(SortDirection? sortDirection)
+    /// <summary>
+    ///     Determines which icon class to display based on the current sort direction.
+    /// </summary>
+    private static string GetSortIconClass(SortDirection? sortDirection)
     {
         return sortDirection switch
         {
@@ -281,26 +318,39 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         };
     }
 
+    /// <summary>
+    ///     Moves to the previous page of items (if not on the first page).
+    /// </summary>
     private void PreviousPage()
     {
-        if (CurrentPage > 1)
+        if (CurrentPage <= 1)
         {
-            CurrentPage--;
-            Logger.Debug("Navigated to previous page: {CurrentPage}", CurrentPage);
-            UpdateDisplayedItems();
+            return;
         }
+
+        CurrentPage--;
+        Logger.Debug("Navigated to previous page: {CurrentPage}", CurrentPage);
+        UpdateDisplayedItems();
     }
 
+    /// <summary>
+    ///     Moves to the next page of items (if not on the last page).
+    /// </summary>
     private void NextPage()
     {
-        if (CurrentPage < TotalPages)
+        if (CurrentPage >= TotalPages)
         {
-            CurrentPage++;
-            Logger.Debug("Navigated to next page: {CurrentPage}", CurrentPage);
-            UpdateDisplayedItems();
+            return;
         }
+
+        CurrentPage++;
+        Logger.Debug("Navigated to next page: {CurrentPage}", CurrentPage);
+        UpdateDisplayedItems();
     }
 
+    /// <summary>
+    ///     Handles changes to the 'ItemsPerPage' dropdown.
+    /// </summary>
     private void ItemsPerPageChanged(ChangeEventArgs e)
     {
         if (int.TryParse(e.Value?.ToString(), out var itemsPerPage))
@@ -308,10 +358,14 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
             ItemsPerPage = itemsPerPage;
             CurrentPage = 1;
             UpdateDisplayedItems();
+
             Logger.Debug("Items per page changed to: {ItemsPerPage}", ItemsPerPage);
         }
     }
 
+    /// <summary>
+    ///     Toggles selection of an individual item.
+    /// </summary>
     private void ToggleSelection(TItem item, bool isSelected)
     {
         if (isSelected)
@@ -332,10 +386,13 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Toggles selection of all items in the filtered set (i.e., select all or deselect all).
+    /// </summary>
     private void ToggleSelectAll(bool selectAll)
     {
         _selectedItems.Clear();
-        if (selectAll)
+        if (selectAll && FilteredItems.Any())
         {
             _selectedItems.AddRange(FilteredItems);
             Logger.Debug("All items selected.");
@@ -349,6 +406,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Triggers the export action if provided via OnExportData callback.
+    /// </summary>
     private async Task ExportDataAsync()
     {
         Logger.Debug("Export data triggered.");
@@ -358,6 +418,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Triggers the add-item action if provided via OnAddItem callback.
+    /// </summary>
     private async Task AddItemAsync()
     {
         Logger.Debug("Add item triggered.");
@@ -367,6 +430,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Triggers the edit action for a specific item if provided via OnEditItem callback.
+    /// </summary>
     private async Task EditItemAsync(TItem item)
     {
         Logger.Debug("Edit item triggered for item: {Item}", item);
@@ -376,6 +442,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Triggers the delete action for a specific item if provided via OnDeleteItem callback.
+    /// </summary>
     private async Task DeleteItemAsync(TItem item)
     {
         Logger.Debug("Delete item triggered for item: {Item}", item);
@@ -385,6 +454,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Adds a new column to the grid if not already present.
+    /// </summary>
     public void AddColumn(DataGridColumn<TItem> column)
     {
         if (_columns.Any(c => c.PropertyName == column.PropertyName))
@@ -395,10 +467,12 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
 
         _columns.Add(column);
-        // Logger.Debug("Column added: {PropertyName}", column.PropertyName);
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Clears all columns from the grid.
+    /// </summary>
     public void ResetColumns()
     {
         _columns.Clear();
@@ -406,22 +480,31 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Returns the string representation of a column's value for a given item,
+    ///     formatted if the value is IFormattable.
+    /// </summary>
     private string GetFormattedValue(TItem item, DataGridColumn<TItem> column)
     {
         var value = column.PropertySelector?.Compile()(item);
-        if (value is IFormattable formattable)
+        return value switch
         {
-            return formattable.ToString(column.Format, null);
-        }
-
-        return value?.ToString() ?? string.Empty;
+            IFormattable formattable => formattable.ToString(column.Format, null),
+            _ => value?.ToString() ?? string.Empty
+        };
     }
 
+    /// <summary>
+    ///     Checks if an item is in the currently selected items list.
+    /// </summary>
     private bool IsItemSelected(TItem item)
     {
         return _selectedItems.Contains(item);
     }
 
+    /// <summary>
+    ///     Handles a row click event.
+    /// </summary>
     private async Task HandleRowClickAsync(TItem item)
     {
         Logger.Debug("Row clicked for item: {Item}", item);
@@ -431,6 +514,9 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Handles a row double-click event.
+    /// </summary>
     private async Task HandleRowDoubleClickAsync(TItem item)
     {
         Logger.Debug("Row double-clicked for item: {Item}", item);
@@ -440,9 +526,12 @@ public partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposabl
         }
     }
 
+    /// <summary>
+    ///     Handles a right-click event on a row, also preventing the default context menu.
+    /// </summary>
     private async Task HandleRowContextMenuAsync(MouseEventArgs e, TItem item)
     {
         await HandleRowClickAsync(item);
-        // The context menu will be handled by the DropBearContextMenu component
+        // The DropBearContextMenu component can handle its own context menu display.
     }
 }
