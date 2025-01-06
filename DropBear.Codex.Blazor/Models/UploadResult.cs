@@ -12,14 +12,14 @@ namespace DropBear.Codex.Blazor.Models;
 ///     Represents the result of an upload operation,
 ///     extending a <see cref="Result{T}" /> with <see cref="UploadStatus" />.
 /// </summary>
-public abstract class UploadResult : Result<string>
+public sealed class UploadResult : Result<string>
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="UploadResult" /> class.
     /// </summary>
     /// <param name="status">The status of the upload operation (e.g., Success, Failure).</param>
     /// <param name="message">A message describing the upload result.</param>
-    protected UploadResult(UploadStatus status, string message)
+    public UploadResult(UploadStatus status, string message)
         : base(message, message, null, MapResultState(status))
     {
         Status = status;
