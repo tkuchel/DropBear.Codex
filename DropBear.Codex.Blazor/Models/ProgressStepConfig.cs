@@ -9,7 +9,7 @@ namespace DropBear.Codex.Blazor.Models;
 /// <summary>
 ///     Configuration for a single progress step in a multistep progress bar.
 /// </summary>
-public abstract class ProgressStepConfig
+public sealed class ProgressStepConfig
 {
     /// <summary>
     ///     Gets or sets the unique identifier for this step.
