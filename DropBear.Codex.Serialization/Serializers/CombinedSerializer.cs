@@ -86,10 +86,10 @@ public class CombinedSerializer : ISerializer
             throw new InvalidOperationException($"{typeof(T).Name} type is not specified.");
         }
 
-        var constructor = providerType.GetConstructor(new[] { typeof(SerializationConfig) })
+        var constructor = providerType.GetConstructor([typeof(SerializationConfig)])
                           ?? throw new InvalidOperationException(
                               $"No suitable constructor found for {providerType.FullName}.");
 
-        return constructor.Invoke(new object[] { _config }) as T;
+        return constructor.Invoke([_config]) as T;
     }
 }

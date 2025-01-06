@@ -1,6 +1,6 @@
 ﻿namespace DropBear.Codex.Serialization.Exceptions;
 
-public class CompressionException : Exception
+public sealed class CompressionException : Exception
 {
     public CompressionException(string message) : base(message)
     {

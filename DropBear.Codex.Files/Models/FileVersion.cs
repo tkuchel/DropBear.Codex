@@ -1,16 +1,16 @@
 ﻿namespace DropBear.Codex.Files.Models;
 
 /// <summary>
-///     Represents a version of a file, including a version label and the date of the version.
+///     Represents a version label and date for a file, allowing basic equality checks.
 /// </summary>
 public sealed class FileVersion : IEquatable<FileVersion>
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="FileVersion" /> class.
     /// </summary>
-    /// <param name="versionLabel">The label of the version.</param>
-    /// <param name="versionDate">The date of the version.</param>
-    /// <exception cref="ArgumentNullException">Thrown when the version label is null.</exception>
+    /// <param name="versionLabel">A string label identifying the version (e.g., "1.0.0").</param>
+    /// <param name="versionDate">The <see cref="DateTimeOffset" /> representing when this version was created.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="versionLabel" /> is null.</exception>
     public FileVersion(string versionLabel, DateTimeOffset versionDate)
     {
         VersionLabel = versionLabel ?? throw new ArgumentNullException(nameof(versionLabel));
@@ -18,20 +18,16 @@ public sealed class FileVersion : IEquatable<FileVersion>
     }
 
     /// <summary>
-    ///     Gets the date of the version.
+    ///     Gets the date/time associated with this version (UTC or local).
     /// </summary>
     public DateTimeOffset VersionDate { get; }
 
     /// <summary>
-    ///     Gets the label of the version.
+    ///     Gets the string label describing this version.
     /// </summary>
     public string VersionLabel { get; }
 
-    /// <summary>
-    ///     Determines whether the specified FileVersion is equal to the current FileVersion.
-    /// </summary>
-    /// <param name="other">The FileVersion to compare with the current FileVersion.</param>
-    /// <returns>True if the specified FileVersion is equal to the current FileVersion; otherwise, false.</returns>
+    /// <inheritdoc />
     public bool Equals(FileVersion? other)
     {
         if (other is null)
@@ -44,24 +40,17 @@ public sealed class FileVersion : IEquatable<FileVersion>
             return true;
         }
 
-        return string.Equals(VersionLabel, other.VersionLabel, StringComparison.OrdinalIgnoreCase) &&
-               VersionDate.Equals(other.VersionDate);
+        return string.Equals(VersionLabel, other.VersionLabel, StringComparison.OrdinalIgnoreCase)
+               && VersionDate.Equals(other.VersionDate);
     }
 
-    /// <summary>
-    ///     Determines whether the specified object is equal to the current object.
-    /// </summary>
-    /// <param name="obj">The object to compare with the current object.</param>
-    /// <returns>True if the specified object is equal to the current object; otherwise, false.</returns>
+    /// <inheritdoc />
     public override bool Equals(object? obj)
     {
         return Equals(obj as FileVersion);
     }
 
-    /// <summary>
-    ///     Serves as the default hash function.
-    /// </summary>
-    /// <returns>A hash code for the current object.</returns>
+    /// <inheritdoc />
     public override int GetHashCode()
     {
         return HashCode.Combine(
@@ -69,6 +58,9 @@ public sealed class FileVersion : IEquatable<FileVersion>
             VersionDate.GetHashCode());
     }
 
+    /// <summary>
+    ///     Equality operator for two <see cref="FileVersion" /> instances.
+    /// </summary>
     public static bool operator ==(FileVersion? left, FileVersion? right)
     {
         if (left is null)
@@ -79,15 +71,15 @@ public sealed class FileVersion : IEquatable<FileVersion>
         return left.Equals(right);
     }
 
+    /// <summary>
+    ///     Inequality operator for two <see cref="FileVersion" /> instances.
+    /// </summary>
     public static bool operator !=(FileVersion? left, FileVersion? right)
     {
         return !(left == right);
     }
 
-    /// <summary>
-    ///     Returns a string that represents the current object.
-    /// </summary>
-    /// <returns>A string that represents the current object.</returns>
+    /// <inheritdoc />
     public override string ToString()
     {
         return $"{VersionLabel} ({VersionDate:g})";

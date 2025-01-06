@@ -8,14 +8,16 @@ using DropBear.Codex.Core.Results.Errors;
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Provides combination extension methods for Result types
+///     Provides combination (merge) extension methods for various <see cref="Result{T,TError}" /> types,
+///     including tuple creation and sequence operations.
 /// </summary>
 public static class ResultCombinationExtensions
 {
     #region Tuple Combinations
 
     /// <summary>
-    ///     Combines two Results into a tuple Result
+    ///     Combines two results into a single result containing a <see cref="ValueTuple{T1, T2}" />.
+    ///     If either result is not successful, returns a failure with a combined <see cref="CompositeError" />.
     /// </summary>
     public static Result<(T1, T2), TError> Combine<T1, T2, TError>(
         this Result<T1, TError> result1,
@@ -34,12 +36,12 @@ public static class ResultCombinationExtensions
         CollectError(result1, errors);
         CollectError(result2, errors);
 
-        return Result<(T1, T2), TError>.Failure(
-            CreateCompositeError(errors));
+        return Result<(T1, T2), TError>.Failure(CreateCompositeError(errors));
     }
 
     /// <summary>
-    ///     Combines three Results into a tuple Result
+    ///     Combines three results into a single result containing a <see cref="ValueTuple{T1, T2, T3}" />.
+    ///     If any result is not successful, returns a failure with a combined <see cref="CompositeError" />.
     /// </summary>
     public static Result<(T1, T2, T3), TError> Combine<T1, T2, T3, TError>(
         this Result<T1, TError> result1,
@@ -61,8 +63,7 @@ public static class ResultCombinationExtensions
         CollectError(result2, errors);
         CollectError(result3, errors);
 
-        return Result<(T1, T2, T3), TError>.Failure(
-            CreateCompositeError(errors));
+        return Result<(T1, T2, T3), TError>.Failure(CreateCompositeError(errors));
     }
 
     #endregion
@@ -70,7 +71,9 @@ public static class ResultCombinationExtensions
     #region Collection Operations
 
     /// <summary>
-    ///     Converts a sequence of Results into a Result of sequence
+    ///     Converts a sequence of <see cref="Result{T, TError}" /> into a single
+    ///     <see cref="Result{IReadOnlyList{T}, TError}" />,
+    ///     which is successful if all items are successful, or partial/failure otherwise.
     /// </summary>
     public static Result<IReadOnlyList<T>, TError> Sequence<T, TError>(
         this IEnumerable<Result<T, TError>> results)
@@ -81,7 +84,9 @@ public static class ResultCombinationExtensions
     }
 
     /// <summary>
-    ///     Transforms a sequence of Results into a Result of sequence, collecting all errors
+    ///     Transforms a sequence of <see cref="Result{T, TError}" /> into a single
+    ///     <see cref="Result{IReadOnlyList{T}, TError}" />,
+    ///     collecting all errors into a <see cref="CompositeError" />.
     /// </summary>
     public static Result<IReadOnlyList<T>, TError> Traverse<T, TError>(
         this IEnumerable<Result<T, TError>> results)
@@ -110,15 +115,12 @@ public static class ResultCombinationExtensions
         }
 
         return successes.Count > 0
-            ? Result<IReadOnlyList<T>, TError>.PartialSuccess(
-                successes,
-                CreateCompositeError(errors))
-            : Result<IReadOnlyList<T>, TError>.Failure(
-                CreateCompositeError(errors));
+            ? Result<IReadOnlyList<T>, TError>.PartialSuccess(successes, CreateCompositeError(errors))
+            : Result<IReadOnlyList<T>, TError>.Failure(CreateCompositeError(errors));
     }
 
     /// <summary>
-    ///     Gets the first element of a Result sequence or returns a failure
+    ///     Retrieves the first element from a <see cref="Result{IEnumerable{T}, TError}" /> or returns a failure if empty.
     /// </summary>
     public static Result<T, TError> FirstOrFailure<T, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -138,7 +140,8 @@ public static class ResultCombinationExtensions
     }
 
     /// <summary>
-    ///     Gets the first element of a Result sequence or a default value
+    ///     Retrieves the first element from a <see cref="Result{IEnumerable{T}, TError}" /> or
+    ///     <paramref name="defaultValue" /> if empty.
     /// </summary>
     public static Result<T, TError> FirstOrDefault<T, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -153,12 +156,10 @@ public static class ResultCombinationExtensions
 
     #region Helper Methods
 
-    private static void CollectError<T, TError>(
-        Result<T, TError> result,
-        ICollection<TError> errors)
+    private static void CollectError<T, TError>(Result<T, TError> result, ICollection<TError> errors)
         where TError : ResultError
     {
-        if (!result.IsSuccess && result.Error is not null)
+        if (result is { IsSuccess: false, Error: not null })
         {
             errors.Add(result.Error);
         }
@@ -168,6 +169,7 @@ public static class ResultCombinationExtensions
         where TError : ResultError
     {
         var compositeError = new CompositeError(errors);
+        // Convert CompositeError back to TError by casting
         return (TError)(ResultError)compositeError;
     }
 

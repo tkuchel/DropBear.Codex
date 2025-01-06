@@ -11,7 +11,7 @@ namespace DropBear.Codex.Serialization.ConfigurationPresets;
 /// <summary>
 ///     Represents the configuration settings for serialization.
 /// </summary>
-public class SerializationConfig
+public sealed class SerializationConfig
 {
     /// <summary>
     ///     Gets or sets the type of serializer to be used.

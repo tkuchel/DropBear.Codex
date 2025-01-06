@@ -12,7 +12,7 @@ namespace DropBear.Codex.Serialization.Serializers;
 ///     Serializer that applies compression to serialized data before serialization and decompression after
 ///     deserialization.
 /// </summary>
-public class CompressedSerializer : ISerializer
+public sealed class CompressedSerializer : ISerializer
 {
     private readonly ICompressor _compressor;
     private readonly ISerializer _innerSerializer;

@@ -8,10 +8,12 @@ using Stateless;
 namespace DropBear.Codex.StateManagement.StateMachine.Builder;
 
 /// <summary>
-///     A fluent builder for configuring a state machine.
+///     A fluent builder for configuring a <see cref="StateMachine{TState,TTrigger}" />.
+///     Allows adding states, triggers, transitions, and actions in a fluent manner
+///     before finally constructing the state machine.
 /// </summary>
-/// <typeparam name="TState">The type of the state.</typeparam>
-/// <typeparam name="TTrigger">The type of the trigger.</typeparam>
+/// <typeparam name="TState">The enumeration or class representing the states.</typeparam>
+/// <typeparam name="TTrigger">The enumeration or class representing the triggers.</typeparam>
 public class StateMachineBuilder<TState, TTrigger>
 {
     private readonly ILogger _logger;
@@ -19,40 +21,54 @@ public class StateMachineBuilder<TState, TTrigger>
     private bool _isBuilt;
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="StateMachineBuilder{TState,TTrigger}" /> class.
+    ///     Initializes a new instance of the <see cref="StateMachineBuilder{TState, TTrigger}" /> class.
     /// </summary>
-    /// <param name="initialState">The initial state of the state machine.</param>
-    /// <param name="logger">The logger instance for logging state machine configuration.</param>
+    /// <param name="initialState">The initial state of the state machine. Must not be null.</param>
+    /// <param name="logger">
+    ///     An optional <see cref="ILogger" /> for logging state machine configuration. If null, a default logger is used.
+    /// </param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="initialState" /> is null.</exception>
     public StateMachineBuilder(TState initialState, ILogger? logger = null)
     {
         ArgumentNullException.ThrowIfNull(initialState, nameof(initialState));
+
+        // Lazy instantiation of the underlying Stateless state machine
         _stateMachine =
             new Lazy<StateMachine<TState, TTrigger>>(() => new StateMachine<TState, TTrigger>(initialState));
+
+        // If no logger provided, create a default for this type
         _logger = logger ?? Log.Logger.ForContext<StateMachineBuilder<TState, TTrigger>>();
         _logger.Debug("State machine initialized with initial state: {State}", initialState);
     }
 
     /// <summary>
-    ///     Configures the specified state.
+    ///     Configures the specified <paramref name="state" />, returning its
+    ///     <see cref="StateMachine{TState, TTrigger}.StateConfiguration" />.
+    ///     Further actions (e.g., Permit, OnEntry) can be chained on the returned configuration.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <returns>The state configuration for further chaining.</returns>
+    /// <returns>The <see cref="StateMachine{TState, TTrigger}.StateConfiguration" /> for further chaining.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the builder has already been built.</exception>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="state" /> is null.</exception>
     public StateMachine<TState, TTrigger>.StateConfiguration ConfigureState(TState state)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
+
         _logger.Debug("Configuring state: {State}", state);
         return _stateMachine.Value.Configure(state);
     }
 
     /// <summary>
-    ///     Configures the state machine to permit transitioning from the specified state to the destination state when the
-    ///     specified trigger is fired.
+    ///     Configures a simple transition from <paramref name="state" /> to <paramref name="destinationState" />
+    ///     when <paramref name="trigger" /> is fired.
     /// </summary>
-    /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the transition.</param>
-    /// <param name="destinationState">The destination state.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <param name="state">The source state.</param>
+    /// <param name="trigger">The trigger causing the transition.</param>
+    /// <param name="destinationState">The target state.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the builder has already been built.</exception>
+    /// <exception cref="ArgumentNullException">Thrown if any parameter is null.</exception>
     public StateMachineBuilder<TState, TTrigger> Permit(TState state, TTrigger trigger, TState destinationState)
     {
         EnsureNotBuilt();
@@ -60,7 +76,8 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(destinationState, nameof(destinationState));
 
-        _logger.Debug("Configuring transition: {State} --({Trigger})--> {DestinationState}",
+        _logger.Debug(
+            "Configuring transition: {State} --({Trigger})--> {DestinationState}",
             state, trigger, destinationState);
 
         _stateMachine.Value.Configure(state).Permit(trigger, destinationState);
@@ -68,11 +85,12 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to permit reentry into the specified state when the specified trigger is fired.
+    ///     Configures a reentry transition, so firing <paramref name="trigger" /> in <paramref name="state" />
+    ///     remains in that same state (<paramref name="state" />).
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the reentry.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <param name="trigger">The trigger that causes reentry.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> PermitReentry(TState state, TTrigger trigger)
     {
         EnsureNotBuilt();
@@ -86,13 +104,12 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to permit reentry into the specified state when the specified trigger is fired,
-    ///     executing the specified action.
+    ///     Configures a reentry transition with an action on entry to <paramref name="state" />.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the reentry.</param>
-    /// <param name="action">The action to execute during reentry.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <param name="trigger">The trigger that causes reentry.</param>
+    /// <param name="action">An action to execute upon reentry to <paramref name="state" />.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> PermitReentry(TState state, TTrigger trigger, Action action)
     {
         EnsureNotBuilt();
@@ -100,19 +117,20 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(action, nameof(action));
 
-        _logger.Debug("Configuring reentry for state: {State} on trigger: {Trigger} with action.", state,
-            trigger);
+        _logger.Debug(
+            "Configuring reentry for state: {State} on trigger: {Trigger} with action.",
+            state, trigger);
 
         _stateMachine.Value.Configure(state).PermitReentry(trigger).OnEntry(action);
         return this;
     }
 
     /// <summary>
-    ///     Configures the state machine to ignore the specified trigger when in the specified state.
+    ///     Configures the machine to ignore <paramref name="trigger" /> while in <paramref name="state" />.
     /// </summary>
     /// <param name="state">The state to configure.</param>
     /// <param name="trigger">The trigger to ignore.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> Ignore(TState state, TTrigger trigger)
     {
         EnsureNotBuilt();
@@ -126,15 +144,19 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to ignore the specified trigger when in the specified state, if the specified guard
-    ///     condition is met.
+    ///     Configures the machine to ignore <paramref name="trigger" /> in <paramref name="state" /> if
+    ///     <paramref name="guard" />
+    ///     returns <c>true</c>.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger to ignore.</param>
-    /// <param name="guard">The guard condition that must be met for the trigger to be ignored.</param>
-    /// <param name="guardDescription">The description of the guard condition.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> IgnoreIf(TState state, TTrigger trigger, Func<bool> guard,
+    /// <param name="trigger">The trigger to ignore if <paramref name="guard" /> is true.</param>
+    /// <param name="guard">A condition (delegate) to check before ignoring the trigger.</param>
+    /// <param name="guardDescription">An optional description for logging or debugging the guard.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> IgnoreIf(
+        TState state,
+        TTrigger trigger,
+        Func<bool> guard,
         string? guardDescription = null)
     {
         EnsureNotBuilt();
@@ -151,14 +173,16 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to ignore the specified trigger when in the specified state, if any of the specified
-    ///     guard conditions are met.
+    ///     Configures the machine to ignore <paramref name="trigger" /> in <paramref name="state" /> if **any** guard
+    ///     in <paramref name="guards" /> returns <c>true</c>.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger to ignore.</param>
-    /// <param name="guards">The guard conditions that must be met for the trigger to be ignored.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> IgnoreIf(TState state, TTrigger trigger,
+    /// <param name="trigger">The trigger to ignore if any guard conditions are met.</param>
+    /// <param name="guards">An array of (Func&lt;bool&gt;, string) tuples representing guard conditions and descriptions.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> IgnoreIf(
+        TState state,
+        TTrigger trigger,
         params Tuple<Func<bool>, string>[] guards)
     {
         EnsureNotBuilt();
@@ -166,7 +190,8 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(guards, nameof(guards));
 
-        _logger.Debug("Configuring state: {State} to ignore trigger: {Trigger} if any guard conditions are met.",
+        _logger.Debug(
+            "Configuring state: {State} to ignore trigger: {Trigger} if any guard conditions are met.",
             state, trigger);
 
         _stateMachine.Value.Configure(state).IgnoreIf(trigger, guards);
@@ -174,11 +199,11 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to execute the specified action when entering the specified state.
+    ///     Configures an action to be executed upon entering <paramref name="state" />.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="entryAction">The action to execute when entering the state.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <param name="entryAction">The action to execute on entry.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> OnEntry(TState state, Action entryAction)
     {
         EnsureNotBuilt();
@@ -192,20 +217,26 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to execute the specified action when entering the specified state.
+    ///     Configures an action to be executed upon entering <paramref name="state" />.
+    ///     Receives the transition info and an optional action description.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="entryAction">The action to execute when entering the state.</param>
-    /// <param name="entryActionDescription">The description of the entry action.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> OnEntry(TState state,
-        Action<StateMachine<TState, TTrigger>.Transition> entryAction, string? entryActionDescription = null)
+    /// <param name="entryAction">
+    ///     A delegate taking <see cref="StateMachine{TState,TTrigger}.Transition" /> to perform upon entry.
+    /// </param>
+    /// <param name="entryActionDescription">An optional description of the action for logging.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> OnEntry(
+        TState state,
+        Action<StateMachine<TState, TTrigger>.Transition> entryAction,
+        string? entryActionDescription = null)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(entryAction, nameof(entryAction));
 
-        _logger.Debug("Configuring state: {State} to execute entry action: {EntryActionDescription}.",
+        _logger.Debug(
+            "Configuring state: {State} to execute entry action: {EntryActionDescription}.",
             state, entryActionDescription ?? "Unnamed action");
 
         _stateMachine.Value.Configure(state).OnEntry(entryAction, entryActionDescription);
@@ -213,11 +244,11 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to execute the specified action when exiting the specified state.
+    ///     Configures an action to be executed upon exiting <paramref name="state" />.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="exitAction">The action to execute when exiting the state.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <param name="exitAction">The action to execute on exit.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> OnExit(TState state, Action exitAction)
     {
         EnsureNotBuilt();
@@ -231,20 +262,26 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to execute the specified action when exiting the specified state.
+    ///     Configures an action to be executed upon exiting <paramref name="state" />.
+    ///     Receives the transition info and an optional action description.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="exitAction">The action to execute when exiting the state.</param>
-    /// <param name="exitActionDescription">The description of the exit action.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> OnExit(TState state,
-        Action<StateMachine<TState, TTrigger>.Transition> exitAction, string? exitActionDescription = null)
+    /// <param name="exitAction">
+    ///     A delegate taking <see cref="StateMachine{TState,TTrigger}.Transition" /> to perform upon exit.
+    /// </param>
+    /// <param name="exitActionDescription">An optional description of the action for logging.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> OnExit(
+        TState state,
+        Action<StateMachine<TState, TTrigger>.Transition> exitAction,
+        string? exitActionDescription = null)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(exitAction, nameof(exitAction));
 
-        _logger.Debug("Configuring state: {State} to execute exit action: {ExitActionDescription}.",
+        _logger.Debug(
+            "Configuring state: {State} to execute exit action: {ExitActionDescription}.",
             state, exitActionDescription ?? "Unnamed action");
 
         _stateMachine.Value.Configure(state).OnExit(exitAction, exitActionDescription);
@@ -252,11 +289,12 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the specified state as a substate of the specified superstate.
+    ///     Declares that <paramref name="state" /> is a substate of <paramref name="superstate" />.
+    ///     So transitions not handled by the substate are delegated to the superstate.
     /// </summary>
-    /// <param name="state">The substate to configure.</param>
+    /// <param name="state">The substate.</param>
     /// <param name="superstate">The superstate.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> SubstateOf(TState state, TState superstate)
     {
         EnsureNotBuilt();
@@ -270,14 +308,18 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine with an internal transition for the specified state and trigger, executing the
-    ///     specified action.
+    ///     Configures an internal transition within <paramref name="state" /> triggered by <paramref name="trigger" />,
+    ///     executing <paramref name="transitionAction" /> if fired.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the internal transition.</param>
-    /// <param name="transitionAction">The action to execute during the internal transition.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> InternalTransition(TState state, TTrigger trigger,
+    /// <param name="trigger">The trigger for the internal transition.</param>
+    /// <param name="transitionAction">
+    ///     The action to execute when <paramref name="trigger" /> is fired while in <paramref name="state" />.
+    /// </param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> InternalTransition(
+        TState state,
+        TTrigger trigger,
         Action<StateMachine<TState, TTrigger>.Transition> transitionAction)
     {
         EnsureNotBuilt();
@@ -285,7 +327,8 @@ public class StateMachineBuilder<TState, TTrigger>
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(transitionAction, nameof(transitionAction));
 
-        _logger.Debug("Configuring internal transition for state: {State} on trigger: {Trigger}.",
+        _logger.Debug(
+            "Configuring internal transition for state: {State} on trigger: {Trigger}.",
             state, trigger);
 
         _stateMachine.Value.Configure(state).InternalTransition(trigger, transitionAction);
@@ -293,17 +336,21 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to permit transitioning from the specified state to the destination state when the
-    ///     specified trigger is fired, if the specified guard condition is met.
+    ///     Configures a transition from <paramref name="state" /> to <paramref name="destinationState" /> triggered by
+    ///     <paramref name="trigger" />, but only if <paramref name="guard" /> returns <c>true</c>.
     /// </summary>
-    /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the transition.</param>
-    /// <param name="destinationState">The destination state.</param>
-    /// <param name="guard">The guard condition that must be met for the transition to occur.</param>
-    /// <param name="guardDescription">The description of the guard condition.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> PermitIf(TState state, TTrigger trigger, TState destinationState,
-        Func<bool> guard, string? guardDescription = null)
+    /// <param name="state">The source state.</param>
+    /// <param name="trigger">The trigger causing the transition.</param>
+    /// <param name="destinationState">The target state.</param>
+    /// <param name="guard">A condition that must be met for the transition to occur.</param>
+    /// <param name="guardDescription">An optional description of the guard for logging.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> PermitIf(
+        TState state,
+        TTrigger trigger,
+        TState destinationState,
+        Func<bool> guard,
+        string? guardDescription = null)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
@@ -320,15 +367,18 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine to permit transitioning from the specified state to the destination state when the
-    ///     specified trigger is fired, if all of the specified guard conditions are met.
+    ///     Configures a transition from <paramref name="state" /> to <paramref name="destinationState" /> triggered by
+    ///     <paramref name="trigger" />, but only if **all** specified guard conditions are met.
     /// </summary>
-    /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the transition.</param>
-    /// <param name="destinationState">The destination state.</param>
-    /// <param name="guards">The guard conditions that must be met for the transition to occur.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> PermitIf(TState state, TTrigger trigger, TState destinationState,
+    /// <param name="state">The source state.</param>
+    /// <param name="trigger">The trigger causing the transition.</param>
+    /// <param name="destinationState">The target state.</param>
+    /// <param name="guards">An array of (Func&lt;bool&gt;, string) representing guard conditions.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> PermitIf(
+        TState state,
+        TTrigger trigger,
+        TState destinationState,
         params Tuple<Func<bool>, string>[] guards)
     {
         EnsureNotBuilt();
@@ -346,52 +396,60 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Configures the state machine with an initial transition to the specified state when entering the specified state.
+    ///     Configures an initial transition from <paramref name="state" /> to <paramref name="initialState" />.
+    ///     Typically used for states that have an immediate child or substate to transition into.
     /// </summary>
-    /// <param name="state">The state to configure.</param>
-    /// <param name="initialState">The initial state to transition to.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
+    /// <param name="state">The parent (or super) state.</param>
+    /// <param name="initialState">The initial substate to transition into.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
     public StateMachineBuilder<TState, TTrigger> InitialTransition(TState state, TState initialState)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(initialState, nameof(initialState));
 
-        _logger.Debug("Configuring initial transition for state: {State} to {InitialState}.", state,
-            initialState);
+        _logger.Debug("Configuring initial transition for state: {State} to {InitialState}.", state, initialState);
 
         _stateMachine.Value.Configure(state).InitialTransition(initialState);
         return this;
     }
 
     /// <summary>
-    ///     Configures the state machine to execute the specified action when entering the specified state via the specified
-    ///     trigger.
+    ///     Configures an entry action that executes specifically when entering <paramref name="state" />
+    ///     from <paramref name="trigger" />.
     /// </summary>
     /// <param name="state">The state to configure.</param>
-    /// <param name="trigger">The trigger that causes the transition.</param>
-    /// <param name="entryAction">The action to execute when entering the state via the specified trigger.</param>
-    /// <param name="entryActionDescription">The description of the entry action.</param>
-    /// <returns>The state machine builder for fluent chaining.</returns>
-    public StateMachineBuilder<TState, TTrigger> OnEntryFrom(TState state, TTrigger trigger,
-        Action<StateMachine<TState, TTrigger>.Transition> entryAction, string? entryActionDescription = null)
+    /// <param name="trigger">The trigger that initiated the entry.</param>
+    /// <param name="entryAction">
+    ///     An action taking <see cref="StateMachine{TState, TTrigger}.Transition" /> describing the transition.
+    /// </param>
+    /// <param name="entryActionDescription">Optional description for logging the entry action.</param>
+    /// <returns>This <see cref="StateMachineBuilder{TState, TTrigger}" /> for fluent chaining.</returns>
+    public StateMachineBuilder<TState, TTrigger> OnEntryFrom(
+        TState state,
+        TTrigger trigger,
+        Action<StateMachine<TState, TTrigger>.Transition> entryAction,
+        string? entryActionDescription = null)
     {
         EnsureNotBuilt();
         ArgumentNullException.ThrowIfNull(state, nameof(state));
         ArgumentNullException.ThrowIfNull(trigger, nameof(trigger));
         ArgumentNullException.ThrowIfNull(entryAction, nameof(entryAction));
 
-        _logger.Debug("Configuring OnEntryFrom action for state: {State} triggered by {Trigger}.", state,
-            trigger);
+        _logger.Debug(
+            "Configuring OnEntryFrom action for state: {State} triggered by {Trigger}.",
+            state, trigger);
 
         _stateMachine.Value.Configure(state).OnEntryFrom(trigger, entryAction, entryActionDescription);
         return this;
     }
 
     /// <summary>
-    ///     Builds and returns the configured state machine.
+    ///     Finalizes configuration and returns the underlying <see cref="StateMachine{TState, TTrigger}" />.
+    ///     No further configuration is allowed after calling this method.
     /// </summary>
-    /// <returns>The configured state machine.</returns>
+    /// <returns>The configured <see cref="StateMachine{TState, TTrigger}" /> instance.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if the state machine has already been built.</exception>
     public StateMachine<TState, TTrigger> Build()
     {
         if (_isBuilt)
@@ -405,8 +463,10 @@ public class StateMachineBuilder<TState, TTrigger>
     }
 
     /// <summary>
-    ///     Ensures that the state machine has not been built before allowing further configuration.
+    ///     Throws an <see cref="InvalidOperationException" /> if <see cref="_isBuilt" /> is true,
+    ///     preventing further modifications.
     /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown if the state machine has already been built.</exception>
     private void EnsureNotBuilt()
     {
         if (_isBuilt)

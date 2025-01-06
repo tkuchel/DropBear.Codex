@@ -9,28 +9,48 @@ using DropBear.Codex.Core.Results.Errors;
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Provides validation extension methods for Result types
+///     Provides validation-oriented extension methods for <see cref="Result{T,ValidationError}" />
+///     and for direct value validation.
 /// </summary>
 public static class ResultValidationExtensions
 {
     #region Validation Pipeline
 
     /// <summary>
-    ///     Validates a value using multiple validators
+    ///     Validates a value using one or more synchronous validators.
+    ///     Each validator is a function that returns a <see cref="Result{T, ValidationError}" />.
     /// </summary>
+    /// <typeparam name="T">The type of the value being validated.</typeparam>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="validators">A params array of validator functions.</param>
+    /// <returns>
+    ///     A combined result indicating success if all validators pass,
+    ///     or failure with combined <see cref="ValidationError" /> if any fail.
+    /// </returns>
     public static Result<T, ValidationError> Validate<T>(
         this T value,
         params Func<T, Result<T, ValidationError>>[] validators)
     {
         ArgumentNullException.ThrowIfNull(validators);
-        return ValidateAsync(value, validators.Select(v =>
-            new Func<T, ValueTask<Result<T, ValidationError>>>(x =>
-                new ValueTask<Result<T, ValidationError>>(v(x))))).Result;
+
+        // Convert sync validators to async form for reuse
+        var asyncValidators = validators.Select(v => new Func<T, ValueTask<Result<T, ValidationError>>>(x =>
+            new ValueTask<Result<T, ValidationError>>(v(x))));
+
+        return ValidateAsync(value, asyncValidators).Result;
     }
 
     /// <summary>
-    ///     Validates a value asynchronously using multiple validators
+    ///     Validates a value asynchronously using one or more validators returning <see cref="ValueTask{TResult}" />.
     /// </summary>
+    /// <typeparam name="T">The type of the value being validated.</typeparam>
+    /// <param name="value">The value to validate.</param>
+    /// <param name="validators">A collection of async validator functions.</param>
+    /// <param name="cancellationToken">An optional token to cancel validation.</param>
+    /// <returns>
+    ///     A combined result indicating success if all validators pass,
+    ///     or failure with combined <see cref="ValidationError" /> if any fail.
+    /// </returns>
     public static async ValueTask<Result<T, ValidationError>> ValidateAsync<T>(
         this T value,
         IEnumerable<Func<T, ValueTask<Result<T, ValidationError>>>> validators,
@@ -69,7 +89,8 @@ public static class ResultValidationExtensions
     #region Predicate Validation
 
     /// <summary>
-    ///     Ensures a Result value meets a specified condition
+    ///     Ensures that a <see cref="Result{T, ValidationError}" /> value satisfies <paramref name="predicate" />.
+    ///     If not, returns a failure with a <see cref="ValidationError" />.
     /// </summary>
     public static Result<T, ValidationError> Ensure<T>(
         this Result<T, ValidationError> result,
@@ -100,7 +121,9 @@ public static class ResultValidationExtensions
     }
 
     /// <summary>
-    ///     Ensures a Result value meets a specified condition asynchronously
+    ///     Asynchronously ensures that a <see cref="Result{T, ValidationError}" /> value satisfies
+    ///     <paramref name="predicate" />.
+    ///     If not, returns a failure with a <see cref="ValidationError" />.
     /// </summary>
     public static async ValueTask<Result<T, ValidationError>> EnsureAsync<T>(
         this Result<T, ValidationError> result,
@@ -137,7 +160,7 @@ public static class ResultValidationExtensions
     #region Null Validation
 
     /// <summary>
-    ///     Validates that a reference type value is not null
+    ///     Ensures that a reference type <typeparamref name="T" /> is not <c>null</c>.
     /// </summary>
     public static Result<T, ValidationError> NotNull<T>(
         this T? value,
@@ -145,13 +168,14 @@ public static class ResultValidationExtensions
         where T : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(field);
+
         return value is not null
             ? Result<T, ValidationError>.Success(value)
             : Result<T, ValidationError>.Failure(new ValidationError(field, "Value cannot be null"));
     }
 
     /// <summary>
-    ///     Validates that a nullable value type is not null
+    ///     Ensures that a nullable value type <typeparamref name="T" /> is not <c>null</c>.
     /// </summary>
     public static Result<T, ValidationError> NotNull<T>(
         this T? value,
@@ -159,6 +183,7 @@ public static class ResultValidationExtensions
         where T : struct
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(field);
+
         return value.HasValue
             ? Result<T, ValidationError>.Success(value.Value)
             : Result<T, ValidationError>.Failure(new ValidationError(field, "Value cannot be null"));
@@ -169,33 +194,35 @@ public static class ResultValidationExtensions
     #region String Validation
 
     /// <summary>
-    ///     Validates that a string is not null or empty
+    ///     Ensures that a string value is not <c>null</c> or empty.
     /// </summary>
     public static Result<string, ValidationError> NotNullOrEmpty(
         this string? value,
         string field)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(field);
+
         return !string.IsNullOrEmpty(value)
             ? Result<string, ValidationError>.Success(value)
             : Result<string, ValidationError>.Failure(new ValidationError(field, "Value cannot be empty"));
     }
 
     /// <summary>
-    ///     Validates that a string is not null or whitespace
+    ///     Ensures that a string value is not <c>null</c> or whitespace.
     /// </summary>
     public static Result<string, ValidationError> NotNullOrWhiteSpace(
         this string? value,
         string field)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(field);
+
         return !string.IsNullOrWhiteSpace(value)
             ? Result<string, ValidationError>.Success(value)
             : Result<string, ValidationError>.Failure(new ValidationError(field, "Value cannot be whitespace"));
     }
 
     /// <summary>
-    ///     Validates that a string matches a regex pattern
+    ///     Ensures that a string value matches the specified <paramref name="pattern" /> (regex).
     /// </summary>
     public static Result<string, ValidationError> MatchesPattern(
         this string? value,
@@ -223,7 +250,8 @@ public static class ResultValidationExtensions
     #region Range Validation
 
     /// <summary>
-    ///     Validates that a value is within a specified range
+    ///     Ensures that <paramref name="value" /> is within the inclusive range [<paramref name="min" />,
+    ///     <paramref name="max" />].
     /// </summary>
     public static Result<T, ValidationError> InRange<T>(
         this T value,
@@ -248,7 +276,7 @@ public static class ResultValidationExtensions
     }
 
     /// <summary>
-    ///     Validates that a value is greater than a specified minimum
+    ///     Ensures that <paramref name="value" /> is greater than <paramref name="min" />.
     /// </summary>
     public static Result<T, ValidationError> GreaterThan<T>(
         this T value,

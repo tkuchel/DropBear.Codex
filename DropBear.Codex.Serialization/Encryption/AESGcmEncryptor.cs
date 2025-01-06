@@ -12,7 +12,7 @@ namespace DropBear.Codex.Serialization.Encryption;
 /// <summary>
 ///     Provides methods to encrypt and decrypt data using AES-GCM encryption.
 /// </summary>
-public class AesGcmEncryptor : IEncryptor, IDisposable
+public sealed class AesGcmEncryptor : IEncryptor, IDisposable
 {
     private const int KeySize = 32; // AES-256 key size in bytes
     private const int TagSize = 16; // GCM tag size in bytes

@@ -17,12 +17,12 @@ namespace DropBear.Codex.Serialization.Extensions;
 [SupportedOSPlatform("windows")]
 public static class SerializerFactoryExtensions
 {
-    private static readonly ILogger _logger = LoggerFactory.Logger.ForContext(typeof(SerializerFactoryExtensions));
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(SerializerFactoryExtensions));
 
     public static SerializationBuilder WithDefaultJsonOptions(this SerializationBuilder builder,
         bool writeIndented = false)
     {
-        _logger.Information("Configuring JSON serialization with WriteIndented: {WriteIndented}", writeIndented);
+        Logger.Information("Configuring JSON serialization with WriteIndented: {WriteIndented}", writeIndented);
         var options = new JsonSerializerOptions { WriteIndented = writeIndented };
         return builder.WithJsonSerializerOptions(options);
     }
@@ -30,7 +30,7 @@ public static class SerializerFactoryExtensions
     public static SerializationBuilder WithDefaultMessagePackOptions(this SerializationBuilder builder,
         bool resolverEnabled = true)
     {
-        _logger.Information("Configuring MessagePack serialization with ResolverEnabled: {ResolverEnabled}",
+        Logger.Information("Configuring MessagePack serialization with ResolverEnabled: {ResolverEnabled}",
             resolverEnabled);
         var options = MessagePackSerializerOptions.Standard;
         if (resolverEnabled)
@@ -45,12 +45,12 @@ public static class SerializerFactoryExtensions
         Func<Type> providerTypeSelector)
     {
         var providerType = providerTypeSelector();
-        _logger.Information("Selecting compression provider type: {ProviderType}", providerType.Name);
+        Logger.Information("Selecting compression provider type: {ProviderType}", providerType.Name);
 
         if (!typeof(ICompressionProvider).IsAssignableFrom(providerType))
         {
             var errorMessage = $"Selected type {providerType.Name} does not implement ICompressionProvider.";
-            _logger.Error(errorMessage);
+            Logger.Error(errorMessage);
             throw new ArgumentException(errorMessage, nameof(providerTypeSelector));
         }
 
@@ -61,12 +61,12 @@ public static class SerializerFactoryExtensions
         Func<Type> providerTypeSelector)
     {
         var providerType = providerTypeSelector();
-        _logger.Information("Selecting encryption provider type: {ProviderType}", providerType.Name);
+        Logger.Information("Selecting encryption provider type: {ProviderType}", providerType.Name);
 
         if (!typeof(IEncryptionProvider).IsAssignableFrom(providerType))
         {
             var errorMessage = $"Selected type {providerType.Name} does not implement IEncryptionProvider.";
-            _logger.Error(errorMessage);
+            Logger.Error(errorMessage);
             throw new ArgumentException(errorMessage, nameof(providerTypeSelector));
         }
 
@@ -75,13 +75,13 @@ public static class SerializerFactoryExtensions
 
     public static bool ValidateConfiguration(this SerializationConfig config)
     {
-        _logger.Information("Validating serialization configuration.");
+        Logger.Information("Validating serialization configuration.");
         var isValid = config.SerializerType is not null && config.EncodingProviderType is not null &&
                       (config.CompressionProviderType is not null || config.EncryptionProviderType is not null);
 
         if (!isValid)
         {
-            _logger.Warning(
+            Logger.Warning(
                 "Serialization configuration is invalid. SerializerType: {SerializerType}, EncodingProviderType: {EncodingProviderType}, CompressionProviderType: {CompressionProviderType}, EncryptionProviderType: {EncryptionProviderType}",
                 config.SerializerType, config.EncodingProviderType, config.CompressionProviderType,
                 config.EncryptionProviderType);

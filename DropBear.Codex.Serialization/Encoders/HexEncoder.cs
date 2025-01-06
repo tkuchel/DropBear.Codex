@@ -12,7 +12,7 @@ namespace DropBear.Codex.Serialization.Encoders;
 /// <summary>
 ///     Provides methods to encode and decode data using hexadecimal encoding.
 /// </summary>
-public class HexEncoder : IEncoder
+public sealed class HexEncoder : IEncoder
 {
     private readonly ILogger _logger;
 

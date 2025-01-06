@@ -7,24 +7,12 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Core.Results.Errors;
 
 /// <summary>
-///     Represents validation errors that occur during data validation
+///     Represents validation errors that occur during data validation,
+///     potentially across multiple fields.
 /// </summary>
 public sealed record ValidationError : ResultError
 {
     private readonly Dictionary<string, HashSet<string>> _fieldErrors;
-
-    #region Public Properties
-
-    /// <summary>
-    ///     Gets a read-only dictionary of field-specific validation errors
-    /// </summary>
-    public IReadOnlyDictionary<string, IReadOnlySet<string>> FieldErrors =>
-        _fieldErrors.ToDictionary(
-            kvp => kvp.Key,
-            kvp => (IReadOnlySet<string>)kvp.Value,
-            StringComparer.Ordinal);
-
-    #endregion
 
     #region Private Methods
 
@@ -35,6 +23,7 @@ public sealed record ValidationError : ResultError
             return "Validation failed";
         }
 
+        // Build a concise message summarizing field errors
         var errorMessages = fieldErrors
             .Where(kvp => kvp.Value.Any())
             .Select(kvp => $"{kvp.Key}: {string.Join(", ", kvp.Value)}");
@@ -44,18 +33,39 @@ public sealed record ValidationError : ResultError
 
     #endregion
 
+    #region Public Properties
+
+    /// <summary>
+    ///     Gets a read-only dictionary mapping field names to sets of error messages.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlySet<string>> FieldErrors =>
+        _fieldErrors.ToDictionary(
+            kvp => kvp.Key,
+            kvp => (IReadOnlySet<string>)kvp.Value,
+            StringComparer.Ordinal);
+
+    /// <summary>
+    ///     Gets the total count of all field errors combined.
+    /// </summary>
+    public int ErrorCount => _fieldErrors.Sum(kvp => kvp.Value.Count);
+
+    #endregion
+
     #region Constructors
 
     /// <summary>
-    ///     Creates a new ValidationError with a general message
+    ///     Creates a new <see cref="ValidationError" /> with a general message.
     /// </summary>
-    public ValidationError(string message) : base(message)
+    /// <param name="message">The overall validation error message.</param>
+    public ValidationError(string message)
+        : base(message)
     {
         _fieldErrors = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
     }
 
     /// <summary>
-    ///     Creates a new ValidationError with a specific field error
+    ///     Creates a new <see cref="ValidationError" /> targeting a specific <paramref name="field" /> with
+    ///     <paramref name="message" />.
     /// </summary>
     public ValidationError(string field, string message)
         : this($"{field}: {message}")
@@ -64,7 +74,7 @@ public sealed record ValidationError : ResultError
     }
 
     /// <summary>
-    ///     Creates a new ValidationError from a dictionary of field errors
+    ///     Creates a new <see cref="ValidationError" /> from a dictionary mapping fields to enumerations of messages.
     /// </summary>
     public ValidationError(IDictionary<string, IEnumerable<string>> fieldErrors)
         : this(FormatErrorMessage(fieldErrors))
@@ -84,8 +94,10 @@ public sealed record ValidationError : ResultError
     #region Public Methods
 
     /// <summary>
-    ///     Adds a validation error for a specific field
+    ///     Adds a validation error message for the specified <paramref name="field" />.
     /// </summary>
+    /// <param name="field">The field that failed validation.</param>
+    /// <param name="message">The error message for that field.</param>
     public ValidationError AddError(string field, string message)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(field);
@@ -102,7 +114,7 @@ public sealed record ValidationError : ResultError
     }
 
     /// <summary>
-    ///     Adds multiple validation errors for a specific field
+    ///     Adds multiple validation error messages for the specified <paramref name="field" />.
     /// </summary>
     public ValidationError AddErrors(string field, IEnumerable<string> messages)
     {
@@ -124,7 +136,8 @@ public sealed record ValidationError : ResultError
     }
 
     /// <summary>
-    ///     Merges another ValidationError's errors into this one
+    ///     Merges another <see cref="ValidationError" /> into this one,
+    ///     combining field errors from both.
     /// </summary>
     public ValidationError Merge(ValidationError other)
     {
@@ -145,7 +158,7 @@ public sealed record ValidationError : ResultError
     }
 
     /// <summary>
-    ///     Checks if there are any errors for a specific field
+    ///     Checks if the specified <paramref name="field" /> has any errors.
     /// </summary>
     public bool HasFieldErrors(string field)
     {
@@ -154,7 +167,7 @@ public sealed record ValidationError : ResultError
     }
 
     /// <summary>
-    ///     Gets all error messages for a specific field
+    ///     Gets all error messages for the specified <paramref name="field" />, if any.
     /// </summary>
     public IReadOnlySet<string> GetFieldErrors(string field)
     {
@@ -163,11 +176,6 @@ public sealed record ValidationError : ResultError
             ? errors
             : new HashSet<string>(StringComparer.Ordinal);
     }
-
-    /// <summary>
-    ///     Gets the total number of field errors
-    /// </summary>
-    public int ErrorCount => _fieldErrors.Sum(kvp => kvp.Value.Count);
 
     #endregion
 }

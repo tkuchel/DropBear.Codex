@@ -1,17 +1,18 @@
 ﻿namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
-///     Base record for all Result error types
+///     An abstract record representing an error in a result-based operation.
+///     Derived types can provide domain-specific error information.
 /// </summary>
 public abstract record ResultError
 {
     private const string DefaultErrorMessage = "An unknown error occurred";
 
     /// <summary>
-    ///     Initializes a new instance of ResultError
+    ///     Initializes a new instance of the <see cref="ResultError" /> record.
     /// </summary>
-    /// <param name="message">The error message</param>
-    /// <exception cref="ArgumentException">If message is null or whitespace</exception>
+    /// <param name="message">The error message describing the failure condition.</param>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="message" /> is null or whitespace.</exception>
     protected ResultError(string message)
     {
         Message = ValidateAndFormatMessage(message);
@@ -19,27 +20,27 @@ public abstract record ResultError
     }
 
     /// <summary>
-    ///     Gets the error message
+    ///     Gets the error message.
     /// </summary>
     public string Message { get; init; }
 
     /// <summary>
-    ///     Gets the UTC timestamp when the error was created
+    ///     Gets the UTC timestamp when this error was created.
     /// </summary>
     public DateTime Timestamp { get; init; }
 
     /// <summary>
-    ///     Gets whether this is a default/unknown error
+    ///     Indicates whether this error is a default/unknown error (i.e., no message provided).
     /// </summary>
     public bool IsDefaultError => Message.Equals(DefaultErrorMessage, StringComparison.Ordinal);
 
     /// <summary>
-    ///     Gets how long ago this error occurred
+    ///     Gets how long ago (relative to now) this error occurred.
     /// </summary>
     public TimeSpan Age => DateTime.UtcNow - Timestamp;
 
     /// <summary>
-    ///     Creates a string representation of the error
+    ///     Creates a string representation of this error, including how long ago it occurred.
     /// </summary>
     public override string ToString()
     {
@@ -47,8 +48,15 @@ public abstract record ResultError
     }
 
     /// <summary>
-    ///     Validates and formats the error message
+    ///     Creates a new error object with an updated message.
     /// </summary>
+    /// <param name="newMessage">The new error message.</param>
+    /// <returns>A new <see cref="ResultError" /> instance with the updated message.</returns>
+    protected ResultError WithUpdatedMessage(string newMessage)
+    {
+        return this with { Message = ValidateAndFormatMessage(newMessage) };
+    }
+
     private static string ValidateAndFormatMessage(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -56,16 +64,13 @@ public abstract record ResultError
             return DefaultErrorMessage;
         }
 
-        // Normalize line endings and remove extra whitespace
+        // Normalize line endings and trim whitespace
         return message
             .Replace("\r\n", "\n")
             .Replace("\r", "\n")
             .Trim();
     }
 
-    /// <summary>
-    ///     Formats a TimeSpan into a human-readable age string
-    /// </summary>
     private static string FormatAge(TimeSpan age)
     {
         if (age.TotalMilliseconds < 1000)
@@ -89,13 +94,5 @@ public abstract record ResultError
         }
 
         return $"{age.TotalDays:F1}d";
-    }
-
-    /// <summary>
-    ///     Creates a new error with an updated message
-    /// </summary>
-    protected ResultError WithUpdatedMessage(string newMessage)
-    {
-        return this with { Message = ValidateAndFormatMessage(newMessage) };
     }
 }

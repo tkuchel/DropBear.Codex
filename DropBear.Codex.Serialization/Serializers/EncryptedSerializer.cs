@@ -11,7 +11,7 @@ namespace DropBear.Codex.Serialization.Serializers;
 /// <summary>
 ///     Serializer that applies encryption to serialized data before serialization and decryption after deserialization.
 /// </summary>
-public class EncryptedSerializer : ISerializer
+public sealed class EncryptedSerializer : ISerializer
 {
     private readonly IEncryptor _encryptor;
     private readonly ISerializer _innerSerializer;

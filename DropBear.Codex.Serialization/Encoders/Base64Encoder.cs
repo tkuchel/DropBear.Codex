@@ -12,7 +12,7 @@ namespace DropBear.Codex.Serialization.Encoders;
 /// <summary>
 ///     Provides methods to encode and decode data using Base64 encoding.
 /// </summary>
-public class Base64Encoder : IEncoder
+public sealed class Base64Encoder : IEncoder
 {
     private readonly ILogger _logger;
 

@@ -8,18 +8,18 @@ using DropBear.Codex.Core.Results.Errors;
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Provides extension methods for working with Result error types
+///     Provides extension methods for working with <see cref="ResultError" /> types,
+///     including <see cref="ValidationError" /> and <see cref="CompositeError" />.
 /// </summary>
 public static class ResultErrorExtensions
 {
     #region Validation Error Extensions
 
     /// <summary>
-    ///     Combines multiple validation errors into a single ValidationError
+    ///     Combines multiple <see cref="ValidationError" /> instances into a single one by merging their field errors.
     /// </summary>
-    /// <param name="errors">The collection of validation errors to combine</param>
-    /// <returns>A combined ValidationError containing all error messages</returns>
-    /// <exception cref="ArgumentNullException">If errors is null</exception>
+    /// <param name="errors">The collection of <see cref="ValidationError" /> objects to combine.</param>
+    /// <returns>A new <see cref="ValidationError" /> that contains all merged field errors.</returns>
     public static ValidationError Combine(this IEnumerable<ValidationError> errors)
     {
         ArgumentNullException.ThrowIfNull(errors);
@@ -35,9 +35,7 @@ public static class ResultErrorExtensions
             return errorsList[0];
         }
 
-        var combined = new ValidationError(
-            $"Multiple validation errors occurred ({errorsList.Count})");
-
+        var combined = new ValidationError($"Multiple validation errors occurred ({errorsList.Count})");
         foreach (var error in errorsList)
         {
             combined = combined.Merge(error);
@@ -47,11 +45,9 @@ public static class ResultErrorExtensions
     }
 
     /// <summary>
-    ///     Combines multiple validation errors into a single ValidationError with a custom message
+    ///     Combines multiple <see cref="ValidationError" /> instances into a single one,
+    ///     using a custom <paramref name="message" /> for the resulting <see cref="ValidationError" />.
     /// </summary>
-    /// <param name="errors">The collection of validation errors to combine</param>
-    /// <param name="message">Custom message for the combined error</param>
-    /// <returns>A combined ValidationError containing all error messages</returns>
     public static ValidationError Combine(this IEnumerable<ValidationError> errors, string message)
     {
         ArgumentNullException.ThrowIfNull(errors);
@@ -71,11 +67,8 @@ public static class ResultErrorExtensions
     #region Composite Error Extensions
 
     /// <summary>
-    ///     Creates a CompositeError from a collection of ResultErrors
+    ///     Converts a sequence of <see cref="ResultError" /> objects into a single <see cref="CompositeError" />.
     /// </summary>
-    /// <param name="errors">The collection of errors to combine</param>
-    /// <returns>A new CompositeError containing all errors</returns>
-    /// <exception cref="ArgumentNullException">If errors is null</exception>
     public static CompositeError ToCompositeError(this IEnumerable<ResultError> errors)
     {
         ArgumentNullException.ThrowIfNull(errors);
@@ -83,10 +76,9 @@ public static class ResultErrorExtensions
     }
 
     /// <summary>
-    ///     Extracts and combines all validation errors from a CompositeError
+    ///     Extracts and combines all <see cref="ValidationError" /> objects from a <see cref="CompositeError" />,
+    ///     returning a single <see cref="ValidationError" /> if found, or <c>null</c> if none exist.
     /// </summary>
-    /// <param name="compositeError">The CompositeError to extract validation errors from</param>
-    /// <returns>A combined ValidationError, or null if no validation errors exist</returns>
     public static ValidationError? ExtractValidationErrors(this CompositeError compositeError)
     {
         ArgumentNullException.ThrowIfNull(compositeError);
@@ -98,7 +90,7 @@ public static class ResultErrorExtensions
     }
 
     /// <summary>
-    ///     Extracts all errors of a specific type from a CompositeError
+    ///     Extracts all errors of a specific type <typeparamref name="TError" /> from a <see cref="CompositeError" />.
     /// </summary>
     public static IReadOnlyList<TError> ExtractErrors<TError>(this CompositeError compositeError)
         where TError : ResultError
@@ -112,7 +104,7 @@ public static class ResultErrorExtensions
     #region General Error Extensions
 
     /// <summary>
-    ///     Determines if a ResultError is of a specific error type
+    ///     Checks if a <see cref="ResultError" /> is of type <typeparamref name="TError" />.
     /// </summary>
     public static bool IsErrorType<TError>(this ResultError error)
         where TError : ResultError
@@ -122,7 +114,8 @@ public static class ResultErrorExtensions
     }
 
     /// <summary>
-    ///     Attempts to cast a ResultError to a specific error type
+    ///     Attempts to cast a <see cref="ResultError" /> to <typeparamref name="TError" />.
+    ///     Returns the casted error if successful, or <c>null</c> if the type is incompatible.
     /// </summary>
     public static TError? AsErrorType<TError>(this ResultError error)
         where TError : ResultError
@@ -132,8 +125,12 @@ public static class ResultErrorExtensions
     }
 
     /// <summary>
-    ///     Creates a new CompositeError by combining multiple ResultErrors
+    ///     Creates a new <see cref="CompositeError" /> that contains this <paramref name="error" />
+    ///     and any additional errors provided.
     /// </summary>
+    /// <param name="error">The primary <see cref="ResultError" />.</param>
+    /// <param name="additional">An array of additional errors to include.</param>
+    /// <returns>A new <see cref="CompositeError" /> containing all errors.</returns>
     public static CompositeError Combine(this ResultError error, params ResultError[] additional)
     {
         ArgumentNullException.ThrowIfNull(error);

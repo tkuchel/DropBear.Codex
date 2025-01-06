@@ -9,20 +9,25 @@ using Serilog;
 namespace DropBear.Codex.Files.Factories;
 
 /// <summary>
-///     Factory class for creating various types of blob storage instances.
+///     Factory class for creating various types of blob storage instances using FluentStorage.
+///     Supports synchronous and asynchronous creation of Azure Blob Storage instances.
 /// </summary>
 public static class BlobStorageFactory
 {
     private static readonly ILogger Logger = Log.ForContext(typeof(BlobStorageFactory));
 
     /// <summary>
-    ///     Creates an IBlobStorage instance for Azure Blob Storage using shared key authentication.
+    ///     Creates an <see cref="IBlobStorage" /> instance for Azure Blob Storage using shared key authentication.
     /// </summary>
     /// <param name="accountName">The Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
-    /// <returns>An instance of IBlobStorage configured for Azure Blob Storage.</returns>
-    /// <exception cref="ArgumentException">Thrown when accountName or accountKey is null or empty.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the creation of Azure Blob Storage fails.</exception>
+    /// <returns>An <see cref="IBlobStorage" /> configured for Azure Blob Storage.</returns>
+    /// <exception cref="ArgumentException">
+    ///     Thrown if <paramref name="accountName" /> or <paramref name="accountKey" /> is null or empty.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown if creation of the Azure Blob Storage instance fails.
+    /// </exception>
     public static IBlobStorage CreateAzureBlobStorage(string accountName, string accountKey)
     {
         Logger.Debug("Creating Azure Blob Storage with account name: {AccountName}", accountName);
@@ -49,16 +54,21 @@ public static class BlobStorageFactory
     }
 
     /// <summary>
-    ///     Creates an IBlobStorage instance for Azure Blob Storage using shared key authentication asynchronously.
+    ///     Asynchronously creates an <see cref="IBlobStorage" /> instance for Azure Blob Storage using shared key
+    ///     authentication.
     /// </summary>
     /// <param name="accountName">The Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
     /// <returns>
-    ///     A task that represents the asynchronous operation. The task result contains an instance of IBlobStorage
-    ///     configured for Azure Blob Storage.
+    ///     A task representing the asynchronous operation. The task result is an <see cref="IBlobStorage" />
+    ///     instance configured for Azure Blob Storage.
     /// </returns>
-    /// <exception cref="ArgumentException">Thrown when accountName or accountKey is null or empty.</exception>
-    /// <exception cref="InvalidOperationException">Thrown when the creation of Azure Blob Storage fails.</exception>
+    /// <exception cref="ArgumentException">
+    ///     Thrown if <paramref name="accountName" /> or <paramref name="accountKey" /> is null or empty.
+    /// </exception>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown if creation of the Azure Blob Storage instance fails.
+    /// </exception>
     public static async Task<IBlobStorage> CreateAzureBlobStorageAsync(string accountName, string accountKey)
     {
         Logger.Debug("Creating Azure Blob Storage asynchronously with account name: {AccountName}", accountName);
@@ -70,6 +80,7 @@ public static class BlobStorageFactory
         {
             var storage = await Task.Run(() =>
                 StorageFactory.Blobs.AzureBlobStorageWithSharedKey(accountName, accountKey)).ConfigureAwait(false);
+
             if (storage == null)
             {
                 throw new InvalidOperationException("Failed to create Azure Blob Storage.");
@@ -87,6 +98,14 @@ public static class BlobStorageFactory
         }
     }
 
+    /// <summary>
+    ///     Validates that the provided <paramref name="input" /> is neither null nor empty.
+    /// </summary>
+    /// <param name="input">The input string to validate.</param>
+    /// <param name="paramName">The name of the parameter (for exception messages).</param>
+    /// <exception cref="ArgumentException">
+    ///     Thrown if <paramref name="input" /> is null or empty.
+    /// </exception>
     private static void ValidateInput(string input, string paramName)
     {
         if (string.IsNullOrEmpty(input))

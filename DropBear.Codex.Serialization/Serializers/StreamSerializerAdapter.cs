@@ -11,7 +11,7 @@ namespace DropBear.Codex.Serialization.Serializers;
 /// <summary>
 ///     Adapter that allows an IStreamSerializer to be used where an ISerializer is expected.
 /// </summary>
-public class StreamSerializerAdapter : ISerializer
+public sealed class StreamSerializerAdapter : ISerializer
 {
     private readonly ILogger _logger = LoggerFactory.Logger.ForContext<StreamSerializerAdapter>();
     private readonly IStreamSerializer _streamSerializer;

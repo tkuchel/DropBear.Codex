@@ -1,6 +1,6 @@
 ﻿namespace DropBear.Codex.Serialization.Exceptions;
 
-public class SerializationException : Exception
+public sealed class SerializationException : Exception
 {
     public SerializationException(string message, Exception? innerException = null)
         : base(message, innerException)

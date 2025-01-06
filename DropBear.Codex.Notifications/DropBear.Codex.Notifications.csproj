@@ -74,7 +74,6 @@
 
   <!-- Folders (if required) -->
   <ItemGroup>
-    <Folder Include="Helpers\" />
     <Folder Include="Models\" />
     <Folder Include="Enums\" />
   </ItemGroup>

@@ -14,7 +14,7 @@ namespace DropBear.Codex.Serialization.Providers;
 /// <summary>
 ///     Provides methods to generate or load RSA keys from files.
 /// </summary>
-public class RSAKeyProvider
+public sealed class RSAKeyProvider
 {
     private readonly ILogger _logger = LoggerFactory.Logger.ForContext<RSAKeyProvider>();
     private readonly string _privateKeyPath;

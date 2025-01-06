@@ -13,7 +13,7 @@ namespace DropBear.Codex.Serialization.Compression;
 /// <summary>
 ///     Provides methods to compress and decompress data using the GZip algorithm.
 /// </summary>
-public class GZipCompressor : ICompressor
+public sealed class GZipCompressor : ICompressor
 {
     private readonly ILogger _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;

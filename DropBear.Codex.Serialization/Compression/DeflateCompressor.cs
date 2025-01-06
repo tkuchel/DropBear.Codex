@@ -14,7 +14,7 @@ namespace DropBear.Codex.Serialization.Compression;
 /// <summary>
 ///     Provides methods to compress and decompress data using the Deflate algorithm.
 /// </summary>
-public class DeflateCompressor : ICompressor
+public sealed class DeflateCompressor : ICompressor
 {
     private readonly ILogger _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;

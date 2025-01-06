@@ -15,7 +15,7 @@ namespace DropBear.Codex.Serialization.Encryption;
 ///     Provides methods to encrypt and decrypt data using AES encryption.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public class AESCNGEncryptor : IEncryptor, IDisposable
+public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 {
     private readonly AesCng _aesCng;
     private readonly ILogger _logger;
@@ -42,7 +42,7 @@ public class AESCNGEncryptor : IEncryptor, IDisposable
     public void Dispose()
     {
         _aesCng.Dispose();
-        GC.SuppressFinalize(this);
+        // GC.SuppressFinalize(this);
     }
 
     /// <inheritdoc />

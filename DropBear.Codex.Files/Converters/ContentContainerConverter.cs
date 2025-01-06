@@ -24,19 +24,25 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContentContainerConverter" /> class.
     /// </summary>
-    /// <param name="logger">The logger instance for logging errors and information.</param>
+    /// <param name="logger">
+    ///     An optional <see cref="ILogger" /> instance for logging errors and information.
+    ///     If not provided, a default logger is created.
+    /// </param>
     public ContentContainerConverter(ILogger? logger = null)
     {
         _logger = logger ?? LoggerFactory.Logger.ForContext<ContentContainerConverter>();
     }
 
     /// <summary>
-    ///     Reads and converts the JSON to a <see cref="ContentContainer" />.
+    ///     Reads and converts JSON into a <see cref="ContentContainer" />.
     /// </summary>
-    /// <param name="reader">The UTF-8 JSON reader.</param>
-    /// <param name="typeToConvert">The type to convert.</param>
-    /// <param name="options">The serializer options.</param>
-    /// <returns>The <see cref="ContentContainer" /> represented by the JSON object.</returns>
+    /// <param name="reader">A <see cref="Utf8JsonReader" /> pointing to the JSON input.</param>
+    /// <param name="typeToConvert">The type to convert (always <see cref="ContentContainer" />).</param>
+    /// <param name="options">Serializer options, including any custom converters.</param>
+    /// <returns>A new <see cref="ContentContainer" /> instance populated from JSON.</returns>
+    /// <exception cref="JsonException">
+    ///     Thrown when the JSON is invalid or lacks expected tokens/properties.
+    /// </exception>
     public override ContentContainer Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         var container = new ContentContainer();
@@ -48,6 +54,7 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
             {
                 if (reader.TokenType == JsonTokenType.EndObject)
                 {
+                    // Once we reach the end of this object, set the providers on the container
                     container.SetProviders(providers);
                     return container;
                 }
@@ -63,23 +70,30 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
                 switch (propertyName?.ToLowerInvariant())
                 {
                     case "flags":
+                        // Convert integer to enum flags
                         container.EnableFlag((ContentContainerFlags)reader.GetInt32());
                         break;
+
                     case "contenttype":
                         container.SetContentType(reader.GetString() ?? string.Empty);
                         break;
+
                     case "data":
+                        // data is either null or a base64-encoded byte array
                         container.Data = reader.TokenType == JsonTokenType.Null
                             ? null
                             : JsonSerializer.Deserialize<byte[]>(ref reader, options);
                         break;
+
                     case "hash":
                         container.SetHash(reader.GetString());
                         break;
+
                     case "providers":
                         providers = JsonSerializer.Deserialize<Dictionary<string, Type>>(ref reader, options)
                                     ?? new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
                         break;
+
                     default:
                         _logger.Warning("Unsupported property encountered: {PropertyName}", propertyName);
                         break;
@@ -94,16 +108,17 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
             throw new JsonException(errorMessage.ToString(), ex);
         }
 
-        _logger.Error("EndObject token was expected but not found.");
-        throw new JsonException("Expected EndObject token.");
+        // If we exit the loop normally, we never hit EndObject
+        _logger.Error("EndObject token was expected but not found during ContentContainer deserialization.");
+        throw new JsonException("Expected EndObject token for ContentContainer object.");
     }
 
     /// <summary>
-    ///     Writes the <see cref="ContentContainer" /> to JSON.
+    ///     Writes a <see cref="ContentContainer" /> to JSON format.
     /// </summary>
-    /// <param name="writer">The UTF-8 JSON writer.</param>
-    /// <param name="value">The <see cref="ContentContainer" /> to write.</param>
-    /// <param name="options">The serializer options.</param>
+    /// <param name="writer">A <see cref="Utf8JsonWriter" /> to which the container is serialized.</param>
+    /// <param name="value">The <see cref="ContentContainer" /> instance being serialized.</param>
+    /// <param name="options">Serializer options, including custom converters.</param>
     public override void Write(Utf8JsonWriter writer, ContentContainer value, JsonSerializerOptions options)
     {
         writer.WriteStartObject();

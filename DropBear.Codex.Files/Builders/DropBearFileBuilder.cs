@@ -10,7 +10,8 @@ using Serilog;
 namespace DropBear.Codex.Files.Builders;
 
 /// <summary>
-///     Builder class for creating instances of <see cref="DropBearFile" /> with various properties and content.
+///     A builder class for creating <see cref="DropBearFile" /> instances,
+///     including metadata, version info, and content containers.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public class DropBearFileBuilder
@@ -30,11 +31,10 @@ public class DropBearFileBuilder
     }
 
     /// <summary>
-    ///     Sets the file name for the DropBearFile.
+    ///     Sets the filename for the resulting <see cref="DropBearFile" />.
     /// </summary>
-    /// <param name="fileName">The name of the file.</param>
-    /// <returns>The current <see cref="DropBearFileBuilder" /> instance.</returns>
-    /// <exception cref="ArgumentException">Thrown when fileName is null or empty.</exception>
+    /// <param name="fileName">The file name to assign.</param>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="fileName" /> is null or empty.</exception>
     public DropBearFileBuilder WithFileName(string fileName)
     {
         try
@@ -56,12 +56,11 @@ public class DropBearFileBuilder
     }
 
     /// <summary>
-    ///     Sets the version for the DropBearFile.
+    ///     Sets the version information for the resulting <see cref="DropBearFile" />.
     /// </summary>
-    /// <param name="versionLabel">The label of the version.</param>
-    /// <param name="versionDate">The date of the version.</param>
-    /// <returns>The current <see cref="DropBearFileBuilder" /> instance.</returns>
-    /// <exception cref="ArgumentException">Thrown when versionLabel is null or empty.</exception>
+    /// <param name="versionLabel">The version label (e.g. "1.0.0").</param>
+    /// <param name="versionDate">A <see cref="DateTimeOffset" /> indicating the version date.</param>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="versionLabel" /> is null or empty.</exception>
     public DropBearFileBuilder WithVersion(string versionLabel, DateTimeOffset versionDate)
     {
         try
@@ -83,12 +82,11 @@ public class DropBearFileBuilder
     }
 
     /// <summary>
-    ///     Adds metadata to the DropBearFile.
+    ///     Adds metadata (key-value pairs) to the resulting <see cref="DropBearFile" />.
     /// </summary>
     /// <param name="key">The metadata key.</param>
     /// <param name="value">The metadata value.</param>
-    /// <returns>The current <see cref="DropBearFileBuilder" /> instance.</returns>
-    /// <exception cref="ArgumentException">Thrown when key or value is null or empty.</exception>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="key" /> or <paramref name="value" /> is null or empty.</exception>
     public DropBearFileBuilder AddMetadata(string key, string value)
     {
         try
@@ -120,11 +118,10 @@ public class DropBearFileBuilder
     }
 
     /// <summary>
-    ///     Adds a ContentContainer to the DropBearFile.
+    ///     Adds a pre-built <see cref="ContentContainer" /> to the resulting <see cref="DropBearFile" />.
     /// </summary>
-    /// <param name="container">The ContentContainer to add.</param>
-    /// <returns>The current <see cref="DropBearFileBuilder" /> instance.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when container is null.</exception>
+    /// <param name="container">The <see cref="ContentContainer" /> to include.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="container" /> is null.</exception>
     public DropBearFileBuilder AddContentContainer(ContentContainer container)
     {
         try
@@ -134,7 +131,7 @@ public class DropBearFileBuilder
                 throw new ArgumentNullException(nameof(container), "ContentContainer cannot be null.");
             }
 
-            // Check if the container is valid (e.g., ensure the container is properly built)
+            // Optionally verify the container is built (e.g., container.Data != null)
             if (container.Data == null)
             {
                 _logger.Warning("The ContentContainer has no data set. Ensure it is built properly.");
@@ -152,10 +149,10 @@ public class DropBearFileBuilder
     }
 
     /// <summary>
-    ///     Builds and returns the configured DropBearFile instance.
+    ///     Builds and returns a <see cref="DropBearFile" /> instance with all configured metadata, version, and content
+    ///     containers.
     /// </summary>
-    /// <returns>The built <see cref="DropBearFile" /> instance.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when the DropBearFile is in an invalid state.</exception>
+    /// <exception cref="InvalidOperationException">Thrown if a file name or version is not set.</exception>
     public DropBearFile Build()
     {
         try

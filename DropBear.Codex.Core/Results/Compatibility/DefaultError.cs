@@ -7,9 +7,18 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Core.Results.Compatibility;
 
 /// <summary>
-///     Backwards compatible Result type using default error type
+///     A default error type that extends <see cref="ResultError" />,
+///     intended for backward-compatibility scenarios.
 /// </summary>
 public record DefaultError : ResultError
 {
-    public DefaultError(string message) : base(message) { }
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="DefaultError" /> record
+    ///     with the specified message.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    public DefaultError(string message)
+        : base(message)
+    {
+    }
 }

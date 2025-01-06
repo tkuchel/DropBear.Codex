@@ -8,17 +8,28 @@ using Serilog;
 
 namespace DropBear.Codex.Hashing.Helpers;
 
+/// <summary>
+///     Provides helper methods for hashing-related operations, such as salt generation and
+///     combining/extracting byte arrays.
+/// </summary>
 public static class HashingHelper
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(HashingHelper));
 
     /// <summary>
-    ///     Generates a random salt of the specified size.
+    ///     Generates a random salt of the specified size in bytes.
     /// </summary>
-    /// <param name="saltSize">The size of the salt to generate.</param>
-    /// <returns>The generated salt as a byte array.</returns>
+    /// <param name="saltSize">The size of the salt to generate, in bytes.</param>
+    /// <returns>A newly generated salt as a byte array.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="saltSize" /> is less than 1.</exception>
     public static byte[] GenerateRandomSalt(int saltSize)
     {
+        if (saltSize < 1)
+        {
+            Logger.Error("Salt size must be at least 1 byte. Requested: {SaltSize}", saltSize);
+            throw new ArgumentOutOfRangeException(nameof(saltSize), "Salt size must be at least 1.");
+        }
+
         Logger.Information("Generating a random salt of size {SaltSize} bytes.", saltSize);
 
         var buffer = new byte[saltSize];
@@ -26,7 +37,7 @@ public static class HashingHelper
         {
             using var rng = RandomNumberGenerator.Create();
             rng.GetBytes(buffer);
-            Logger.Debug("Random salt generated successfully.");
+            Logger.Debug("Random salt generated successfully: {SaltSize} bytes.", saltSize);
         }
         catch (Exception ex)
         {
@@ -38,17 +49,19 @@ public static class HashingHelper
     }
 
     /// <summary>
-    ///     Combines two byte arrays into one.
+    ///     Combines two byte arrays (salt + hash) into a single array.
     /// </summary>
     /// <param name="salt">The salt byte array. Cannot be null.</param>
-    /// <param name="hash">The hash byte array.</param>
-    /// <returns>The combined byte array.</returns>
+    /// <param name="hash">The hash byte array. Cannot be null.</param>
+    /// <returns>The combined byte array, with salt first, then hash.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="salt" /> or <paramref name="hash" /> is null.</exception>
     public static byte[] CombineBytes(byte[] salt, byte[] hash)
     {
         ArgumentNullException.ThrowIfNull(salt, nameof(salt));
         ArgumentNullException.ThrowIfNull(hash, nameof(hash));
 
-        Logger.Information("Combining salt and hash arrays. Salt size: {SaltSize} bytes, Hash size: {HashSize} bytes.",
+        Logger.Information(
+            "Combining salt and hash arrays. Salt size: {SaltSize} bytes, Hash size: {HashSize} bytes.",
             salt.Length, hash.Length);
 
         try
@@ -56,6 +69,7 @@ public static class HashingHelper
             var combinedBytes = new byte[salt.Length + hash.Length];
             Buffer.BlockCopy(salt, 0, combinedBytes, 0, salt.Length);
             Buffer.BlockCopy(hash, 0, combinedBytes, salt.Length, hash.Length);
+
             Logger.Debug("Salt and hash combined successfully.");
             return combinedBytes;
         }
@@ -67,24 +81,36 @@ public static class HashingHelper
     }
 
     /// <summary>
-    ///     Extracts salt and hash bytes from a combined byte array.
+    ///     Extracts salt and hash bytes from a combined byte array, assuming the salt is at the start.
     /// </summary>
-    /// <param name="combinedBytes">The combined byte array containing salt and hash bytes.</param>
-    /// <param name="saltSize">The size of the salt bytes.</param>
-    /// <returns>A tuple containing salt and hash bytes.</returns>
+    /// <param name="combinedBytes">The combined byte array containing salt + hash.</param>
+    /// <param name="saltSize">The size (in bytes) of the salt portion.</param>
+    /// <returns>
+    ///     A tuple <c>(salt, hash)</c>, where <c>salt</c> is <paramref name="saltSize" /> bytes,
+    ///     and <c>hash</c> is the remainder.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="combinedBytes" /> is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     Thrown if <paramref name="saltSize" /> is invalid relative to <paramref name="combinedBytes" />.
+    /// </exception>
     public static (byte[] salt, byte[] hash) ExtractBytes(byte[] combinedBytes, int saltSize)
     {
         ArgumentNullException.ThrowIfNull(combinedBytes, nameof(combinedBytes));
+        if (saltSize < 0 || saltSize > combinedBytes.Length)
+        {
+            throw new ArgumentOutOfRangeException(nameof(saltSize), "Salt size is invalid for the combined array.");
+        }
 
-        Logger.Information("Extracting salt and hash from combined byte array. Salt size: {SaltSize} bytes.",
-            saltSize);
+        Logger.Information("Extracting salt and hash from combined byte array. Salt size: {SaltSize} bytes.", saltSize);
 
         try
         {
             var salt = new byte[saltSize];
             var hash = new byte[combinedBytes.Length - saltSize];
+
             Buffer.BlockCopy(combinedBytes, 0, salt, 0, saltSize);
             Buffer.BlockCopy(combinedBytes, saltSize, hash, 0, hash.Length);
+
             Logger.Debug("Salt and hash extracted successfully.");
             return (salt, hash);
         }
@@ -96,10 +122,11 @@ public static class HashingHelper
     }
 
     /// <summary>
-    ///     Converts a byte array to a base64 string.
+    ///     Converts a byte array to a Base64-encoded string.
     /// </summary>
-    /// <param name="byteArray">The byte array to convert.</param>
-    /// <returns>The base64 string representation of the byte array.</returns>
+    /// <param name="byteArray">The byte array to convert. Cannot be null.</param>
+    /// <returns>A Base64-encoded string representing <paramref name="byteArray" />.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="byteArray" /> is null.</exception>
     public static string ConvertByteArrayToBase64String(byte[] byteArray)
     {
         ArgumentNullException.ThrowIfNull(byteArray, nameof(byteArray));
@@ -121,10 +148,11 @@ public static class HashingHelper
     }
 
     /// <summary>
-    ///     Converts a base64 string to a byte array.
+    ///     Converts a Base64-encoded string to a byte array.
     /// </summary>
-    /// <param name="str">The base64 string to convert.</param>
-    /// <returns>The byte array representation of the base64 string.</returns>
+    /// <param name="str">The Base64-encoded string. Cannot be null.</param>
+    /// <returns>A byte array decoded from the Base64 string.</returns>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="str" /> is null.</exception>
     public static byte[] ConvertBase64StringToByteArray(string str)
     {
         ArgumentNullException.ThrowIfNull(str, nameof(str));

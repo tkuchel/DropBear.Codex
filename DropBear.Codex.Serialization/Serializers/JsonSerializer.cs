@@ -15,7 +15,7 @@ namespace DropBear.Codex.Serialization.Serializers;
 /// <summary>
 ///     Serializer implementation for JSON serialization and deserialization.
 /// </summary>
-public class JsonSerializer : ISerializer
+public sealed class JsonSerializer : ISerializer
 {
     private readonly ILogger _logger = LoggerFactory.Logger.ForContext<JsonSerializer>();
     private readonly RecyclableMemoryStreamManager _memoryManager;

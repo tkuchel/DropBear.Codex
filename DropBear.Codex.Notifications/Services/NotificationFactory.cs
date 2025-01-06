@@ -1,14 +1,14 @@
 ﻿#region
 
-using DropBear.Codex.Core;
 using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
-using DropBear.Codex.Notifications.Services;
 
 #endregion
 
-public class NotificationFactory : INotificationFactory
+namespace DropBear.Codex.Notifications.Services;
+
+public sealed class NotificationFactory : INotificationFactory
 {
     /// <summary>
     ///     Creates a new notification with the specified parameters.
