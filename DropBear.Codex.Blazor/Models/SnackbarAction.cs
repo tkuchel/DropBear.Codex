@@ -3,7 +3,7 @@
 /// <summary>
 ///     Represents an actionable button on a snackbar notification.
 /// </summary>
-public abstract class SnackbarAction
+public sealed class SnackbarAction
 {
     /// <summary>
     ///     Gets or sets the label (text) displayed on the action button.
