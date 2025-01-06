@@ -25,26 +25,32 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 {
     private readonly ILogger _logger;
 
-    // Keep step states if you want them for some extra UI or logic
+    /// <summary>
+    ///     Concurrent dictionary holding step states for stepped mode.
+    ///     Thread-safe for multiple updates from different tasks.
+    /// </summary>
     private readonly ConcurrentDictionary<string, StepUpdate> _stepStates = new();
+
+    /// <summary>
+    ///     A semaphore lock to protect critical sections in async update methods.
+    /// </summary>
     private readonly SemaphoreSlim _updateLock = new(1, 1);
 
-    // MessagePipe clean-up
+    // Holds disposable resources from MessagePipe subscriptions.
     private DisposableBagBuilder? _bagBuilder;
     private string _currentMessage = string.Empty;
-
     private double _currentProgress;
     private IDisposable? _disposableBag;
     private bool _isIndeterminateMode;
     private bool _isSteppedMode;
     private bool _isVisible;
 
-    // Flags / data
+    // Current state flags & data
     private DropBearProgressBar? _progressBar;
     private IReadOnlyList<ProgressStepConfig>? _steps;
 
     /// <summary>
-    ///     Constructs a new instance of <see cref="ExecutionProgressManager" />.
+    ///     Creates a new <see cref="ExecutionProgressManager" /> instance.
     /// </summary>
     public ExecutionProgressManager()
     {
@@ -52,19 +58,22 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     A flag indicating whether this manager has been disposed.
+    ///     Indicates whether this manager has been disposed.
     /// </summary>
     public bool IsDisposed { get; private set; }
 
     /// <summary>
-    ///     Event fired whenever the manager updates progress (if needed by external observers).
+    ///     Event fired whenever the manager updates progress, providing a <see cref="ProgressUpdate" />.
+    ///     Allows external observers to react (e.g., re-render) on progress changes.
     /// </summary>
     public event Action<ProgressUpdate>? OnProgressUpdated;
 
     /// <summary>
     ///     Initializes the manager with a target <see cref="DropBearProgressBar" /> instance.
-    ///     Must be called before other methods.
+    ///     Must be called before other methods are used.
     /// </summary>
+    /// <param name="progressBar">The progress bar component to control.</param>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public Result<Unit, ProgressManagerError> Initialize(DropBearProgressBar progressBar)
     {
         ThrowIfDisposed();
@@ -83,9 +92,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     Sets the progress bar to indeterminate mode.
+    ///     Sets the progress bar to indeterminate mode (e.g., spinner).
     /// </summary>
     /// <param name="message">Message displayed to the user.</param>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public Result<Unit, ProgressManagerError> SetIndeterminateMode(string message)
     {
         ThrowIfDisposed();
@@ -100,7 +110,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             _isVisible = true;
             _steps = null;
 
-            // Call the public method on DropBearProgressBar
+            // Asynchronously set the progress bar to indeterminate mode
             _ = _progressBar!.SetIndeterminateModeAsync(message);
 
             NotifyProgressUpdate();
@@ -115,8 +125,9 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     Sets the progress bar to normal mode (non-indeterminate, but no discrete steps).
+    ///     Sets the progress bar to normal (determinate) mode without discrete steps.
     /// </summary>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public Result<Unit, ProgressManagerError> SetNormalMode()
     {
         ThrowIfDisposed();
@@ -131,7 +142,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             _isVisible = true;
             _steps = null;
 
-            // Use the bar's public method
+            // Asynchronously set the bar to normal mode
             _ = _progressBar!.SetNormalProgressAsync(0, _currentMessage);
 
             NotifyProgressUpdate();
@@ -146,8 +157,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     Sets the progress bar to stepped mode, using a list of step configurations.
+    ///     Sets the progress bar to stepped mode with a provided list of step configurations.
     /// </summary>
+    /// <param name="steps">A read-only list of step configurations.</param>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public Result<Unit, ProgressManagerError> SetSteppedMode(IReadOnlyList<ProgressStepConfig> steps)
     {
         ThrowIfDisposed();
@@ -162,7 +175,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             _currentProgress = 0;
             _steps = steps;
 
-            // Initialize our local step states
+            // Clear any existing step states and create new ones
             _stepStates.Clear();
             foreach (var step in steps)
             {
@@ -170,8 +183,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _stepStates[step.Id] = stepUpdate;
             }
 
-            // Set both normal progress (0) and the steps in the bar
-            // Option A: call two separate methods
+            // Initialize the bar in normal mode (0%) and set steps
             _ = _progressBar!.SetNormalProgressAsync(0, _currentMessage);
             _ = _progressBar.SetStepsAsync(steps);
 
@@ -187,10 +199,12 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     Updates the overall progress (0-100) in normal mode. Fails if in indeterminate or stepped mode.
+    ///     Updates overall progress (0-100) in normal mode.
+    ///     Fails if the bar is currently in indeterminate or stepped mode.
     /// </summary>
-    /// <param name="progress">A value from 0 to 100.</param>
-    /// <param name="message">Optional message to display.</param>
+    /// <param name="progress">A value from 0 to 100 representing the progress percentage.</param>
+    /// <param name="message">An optional message to display.</param>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public async ValueTask<Result<Unit, ProgressManagerError>> UpdateProgressAsync(
         double progress,
         string? message = null)
@@ -212,7 +226,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         try
         {
-            await _updateLock.WaitAsync();
+            await _updateLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 _currentProgress = Math.Clamp(progress, 0, 100);
@@ -221,8 +235,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                     _currentMessage = message;
                 }
 
-                // Update the bar using its method
-                await _progressBar!.SetNormalProgressAsync(_currentProgress, _currentMessage);
+                // Update the bar using its asynchronous method
+                await _progressBar!.SetNormalProgressAsync(_currentProgress, _currentMessage).ConfigureAwait(false);
 
                 NotifyProgressUpdate();
                 return Result<Unit, ProgressManagerError>.Success(Unit.Value);
@@ -241,8 +255,13 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     Updates a specific step in stepped mode (progress and status).
+    ///     Updates progress for a specific step in stepped mode (including progress and status).
+    ///     Fails if not in stepped mode.
     /// </summary>
+    /// <param name="stepId">Unique identifier for the step.</param>
+    /// <param name="progress">A value from 0 to 100 for the step's completion percentage.</param>
+    /// <param name="status">The step's new status (e.g., InProgress, Completed).</param>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public async ValueTask<Result<Unit, ProgressManagerError>> UpdateStepProgressAsync(
         string stepId,
         double progress,
@@ -259,29 +278,35 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         try
         {
-            await _updateLock.WaitAsync();
+            await _updateLock.WaitAsync().ConfigureAwait(false);
             try
             {
-                // Update local dictionary
                 var stepUpdate = new StepUpdate(stepId, Math.Clamp(progress, 0, 100), status);
                 _stepStates[stepId] = stepUpdate;
 
-                // Also call the bar's new method so UI is updated
-                await _progressBar!.UpdateStepProgressAsync(stepId, stepUpdate.Progress, stepUpdate.Status);
+                // Update the UI asynchronously
+                await _progressBar!.UpdateStepProgressAsync(stepId, stepUpdate.Progress, stepUpdate.Status)
+                    .ConfigureAwait(false);
 
-                // Optionally adjust the bar's message to reflect the current step
+                // Optionally update the overall message (e.g. "Step 2 of 5")
                 if (_steps is { Count: > 0 })
                 {
-                    var stepIndex = _steps.ToList().FindIndex(s => s.Id == stepId);
+                    // Avoid creating a new list
+                    var stepList = _steps as List<ProgressStepConfig>
+                                   ?? [.._steps];
+
+                    var stepIndex = stepList.FindIndex(s => s.Id == stepId);
                     if (stepIndex >= 0)
                     {
                         _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
-                        // Then optionally also set the bar to the new message if desired:
-                        await _progressBar.SetNormalProgressAsync(_currentProgress, _currentMessage);
+
+                        // Keep the normal progress bar text consistent
+                        await _progressBar.SetNormalProgressAsync(_currentProgress, _currentMessage)
+                            .ConfigureAwait(false);
                     }
                 }
 
-                NotifyProgressUpdate(new[] { stepUpdate });
+                NotifyProgressUpdate([stepUpdate]);
                 return Result<Unit, ProgressManagerError>.Success(Unit.Value);
             }
             finally
@@ -298,21 +323,25 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     }
 
     /// <summary>
-    ///     Called when all progress completes; marks everything as 100% and hides the bar after a short delay.
+    ///     Completes the current progress operation, marking all steps as 100% if in stepped mode,
+    ///     then hides the progress bar after a short delay.
     /// </summary>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public async ValueTask<Result<Unit, ProgressManagerError>> CompleteAsync()
     {
+        const int completionDelayMs = 500; // minor optimization: use a named constant
+
         ThrowIfDisposed();
         EnsureProgressBarInitialized();
 
         try
         {
-            await _updateLock.WaitAsync();
+            await _updateLock.WaitAsync().ConfigureAwait(false);
             try
             {
                 if (_isSteppedMode)
                 {
-                    // Mark incomplete steps as Completed
+                    // Mark incomplete steps as completed
                     var updates = new List<StepUpdate>();
                     foreach (var (stepId, oldState) in _stepStates)
                     {
@@ -320,13 +349,14 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                         {
                             var stepUpdate = new StepUpdate(stepId, 100, StepStatus.Completed);
                             _stepStates[stepId] = stepUpdate;
-                            // Update bar
-                            await _progressBar!.UpdateStepProgressAsync(stepId, 100, StepStatus.Completed);
+                            // Update bar UI
+                            await _progressBar!.UpdateStepProgressAsync(stepId, 100, StepStatus.Completed)
+                                .ConfigureAwait(false);
                             updates.Add(stepUpdate);
                         }
                     }
 
-                    if (updates.Any())
+                    if (updates.Count > 0)
                     {
                         NotifyProgressUpdate(updates);
                     }
@@ -336,16 +366,20 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                     // Normal mode
                     _currentProgress = 100;
                     _currentMessage = "Completed";
-                    await _progressBar!.SetNormalProgressAsync(_currentProgress, _currentMessage);
+                    await _progressBar!.SetNormalProgressAsync(_currentProgress, _currentMessage)
+                        .ConfigureAwait(false);
                     NotifyProgressUpdate();
                 }
 
-                // Hide progress bar after a small delay so user sees final state
-                await Task.Delay(500);
+                // Small delay so user can see "Completed" state
+                await Task.Delay(completionDelayMs).ConfigureAwait(false);
 
-                // If you want to forcibly reset the bar state:
-                await _progressBar.SetNormalProgressAsync(0, string.Empty);
-                await _progressBar.SetStepsAsync(null);
+                // Reset the bar UI
+                if (_progressBar != null)
+                {
+                    await _progressBar.SetNormalProgressAsync(0, string.Empty).ConfigureAwait(false);
+                    await _progressBar.SetStepsAsync(null).ConfigureAwait(false);
+                }
 
                 _isVisible = false;
                 NotifyProgressUpdate();
@@ -364,9 +398,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-
     /// <summary>
-    ///     Disposes this manager asynchronously.
+    ///     Disposes this manager asynchronously, releasing all resources.
     /// </summary>
     public async ValueTask DisposeAsync()
     {
@@ -376,13 +409,22 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
 
         IsDisposed = true;
-        DisableExecutionEngineIntegration();
-        _updateLock.Dispose();
-        _progressBar = null;
+        DisableExecutionEngineIntegration(); // Unsubscribe from any MessagePipe integrations
+        _updateLock.Dispose(); // Dispose semaphore
+        _progressBar = null; // Remove reference
 
         await ValueTask.CompletedTask;
     }
 
+    /// <summary>
+    ///     Enables integration with the ExecutionEngine via MessagePipe subscribers.
+    /// </summary>
+    /// <param name="channelId">The channel ID for subscribing to engine messages.</param>
+    /// <param name="taskStartedSubscriber">Subscriber for <see cref="TaskStartedMessage" />.</param>
+    /// <param name="taskProgressSubscriber">Subscriber for <see cref="TaskProgressMessage" />.</param>
+    /// <param name="taskCompletedSubscriber">Subscriber for <see cref="TaskCompletedMessage" />.</param>
+    /// <param name="taskFailedSubscriber">Subscriber for <see cref="TaskFailedMessage" />.</param>
+    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
     public Result<Unit, ProgressManagerError> EnableExecutionEngineIntegration(
         Guid channelId,
         IAsyncSubscriber<Guid, TaskStartedMessage> taskStartedSubscriber,
@@ -397,7 +439,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             DisableExecutionEngineIntegration();
             _bagBuilder = DisposableBag.CreateBuilder();
 
-            // Example of subscribing with an async handler
+            // Subscribe to engine messages
             taskProgressSubscriber
                 .Subscribe(channelId, async (message, ct) => await HandleTaskProgressAsync(message, ct))
                 .AddTo(_bagBuilder);
@@ -425,8 +467,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
+    #region Private Integration Methods
+
     /// <summary>
-    ///     Disables integration (unsubscribes from all engine events).
+    ///     Disables integration by disposing all engine event subscriptions.
     /// </summary>
     private void DisableExecutionEngineIntegration()
     {
@@ -434,8 +478,6 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         _disposableBag = null;
         _bagBuilder = null;
     }
-
-    #region MessagePipe Handlers
 
     private async Task HandleTaskProgressAsync(TaskProgressMessage message, CancellationToken cancellationToken)
     {
@@ -446,13 +488,13 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_isSteppedMode)
         {
-            // If the engine is reporting per-step progress
+            // If the engine is reporting step-level progress
             if (message.TaskProgressPercentage.HasValue)
             {
                 await UpdateStepProgressAsync(
                     message.TaskName,
                     message.TaskProgressPercentage.Value,
-                    StepStatus.InProgress);
+                    StepStatus.InProgress).ConfigureAwait(false);
             }
         }
         else if (!_isIndeterminateMode && message.OverallProgressPercentage.HasValue)
@@ -460,7 +502,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             // For normal mode, update overall progress
             await UpdateProgressAsync(
                 message.OverallProgressPercentage.Value,
-                message.Message);
+                message.Message).ConfigureAwait(false);
         }
     }
 
@@ -473,10 +515,9 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_isSteppedMode)
         {
-            // Mark step as "In Progress" at 0% to visually show that it's running
-            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.InProgress);
+            // Mark step as "In Progress" at 0% for visual feedback
+            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.InProgress).ConfigureAwait(false);
         }
-        // If normal mode, do nothing or set message
     }
 
     private async Task HandleTaskCompletedAsync(TaskCompletedMessage message, CancellationToken cancellationToken)
@@ -488,10 +529,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_isSteppedMode)
         {
-            // Mark that step as completed
-            await UpdateStepProgressAsync(message.TaskName, 100, StepStatus.Completed);
+            await UpdateStepProgressAsync(message.TaskName, 100, StepStatus.Completed).ConfigureAwait(false);
         }
-        // If normal mode, you could do something else like set the progress to 100
     }
 
     private async Task HandleTaskFailedAsync(TaskFailedMessage message, CancellationToken cancellationToken)
@@ -503,9 +542,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_isSteppedMode)
         {
-            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.Failed);
+            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.Failed).ConfigureAwait(false);
         }
-        // For normal mode, optionally set some "failed" state or do nothing
     }
 
     #endregion
@@ -528,6 +566,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
+    /// <summary>
+    ///     Fires <see cref="OnProgressUpdated" /> with the current progress state.
+    /// </summary>
+    /// <param name="stepUpdates">An optional collection of step updates.</param>
     private void NotifyProgressUpdate(IEnumerable<StepUpdate>? stepUpdates = null)
     {
         OnProgressUpdated?.Invoke(

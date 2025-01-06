@@ -7,14 +7,28 @@ using DropBear.Codex.Blazor.Enums;
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents the current state of the progress manager.
+///     Represents the current state of the progress manager, including
+///     overall progress, a message, and optional step data.
 /// </summary>
 public sealed record ProgressUpdate
 {
-    // Optional parameterless constructor if you want to create blank records easily
-    public ProgressUpdate() { }
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="ProgressUpdate" /> record.
+    /// </summary>
+    public ProgressUpdate()
+    {
+        // Parameterless constructor for easy creation if needed
+    }
 
-    // Example convenience constructor:
+    /// <summary>
+    ///     Convenience constructor for fully specifying all update fields.
+    /// </summary>
+    /// <param name="isVisible">Whether the progress bar is currently visible.</param>
+    /// <param name="isIndeterminate">Whether the progress is in indeterminate mode.</param>
+    /// <param name="message">Message or label to display on the progress bar.</param>
+    /// <param name="progress">Overall percentage progress (0-100).</param>
+    /// <param name="steps">List of step configurations for stepped progress (if used).</param>
+    /// <param name="stepUpdates">Recent updates to individual steps.</param>
     public ProgressUpdate(
         bool isVisible,
         bool isIndeterminate,
@@ -37,32 +51,36 @@ public sealed record ProgressUpdate
     public bool IsVisible { get; init; }
 
     /// <summary>
-    ///     Whether the progress bar is in indeterminate mode (i.e. unknown completion time).
+    ///     Whether the progress bar is in indeterminate mode.
     /// </summary>
     public bool IsIndeterminate { get; init; }
 
     /// <summary>
-    ///     Message or label to display on the progress bar.
+    ///     A user-facing message or label describing the current progress/task.
     /// </summary>
     public string Message { get; init; } = string.Empty;
 
     /// <summary>
-    ///     Overall percentage progress in normal mode (0-100).
+    ///     The overall progress percentage (0-100) if not in indeterminate mode.
     /// </summary>
     public double Progress { get; init; }
 
     /// <summary>
-    ///     If in stepped mode, this list defines each step in the progress workflow.
+    ///     An optional list of step configurations if the progress is step-based.
     /// </summary>
     public IReadOnlyList<ProgressStepConfig>? Steps { get; init; }
 
     /// <summary>
-    ///     The most recent step updates, if relevant.
+    ///     A collection of the most recent step updates, if relevant.
     /// </summary>
     public IReadOnlyList<StepUpdate>? StepUpdates { get; init; }
 }
 
 /// <summary>
-///     Represents a single step update: which step, how much progress, and its status.
+///     Represents an update for a specific step in a stepped progress workflow,
+///     including its ID, progress, and status.
 /// </summary>
+/// <param name="StepId">The unique identifier for the step.</param>
+/// <param name="Progress">Current progress (0-100) for this step.</param>
+/// <param name="Status">The current <see cref="StepStatus" /> (e.g., InProgress, Completed).</param>
 public sealed record StepUpdate(string StepId, double Progress, StepStatus Status);

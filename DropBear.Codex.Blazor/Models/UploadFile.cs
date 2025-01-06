@@ -5,6 +5,12 @@ using Microsoft.AspNetCore.Components.Forms;
 
 #endregion
 
+namespace DropBear.Codex.Blazor.Models;
+
+/// <summary>
+///     Represents a file that is to be uploaded, with support for both
+///     <see cref="IBrowserFile" /> (from &lt;InputFile /&gt;) and raw byte array (dropped files).
+/// </summary>
 public sealed class UploadFile
 {
     private int _uploadProgress;
@@ -12,13 +18,22 @@ public sealed class UploadFile
     /// <summary>
     ///     Initializes a new instance of the <see cref="UploadFile" /> class.
     /// </summary>
-    /// <param name="name">The name of the file.</param>
-    /// <param name="size">The size of the file in bytes.</param>
-    /// <param name="contentType">The MIME type of the file.</param>
-    /// <param name="fileData">The browser file data.</param>
-    /// <param name="droppedFileData">The byte array data for dropped files.</param>
-    /// <param name="uploadStatus">The initial upload status of the file (optional).</param>
-    /// <param name="uploadProgress">The initial upload progress percentage (optional, between 0 and 100).</param>
+    /// <param name="name">The name of the file (including extension if any).</param>
+    /// <param name="size">The file size in bytes.</param>
+    /// <param name="contentType">The MIME type of the file (e.g., "image/png").</param>
+    /// <param name="fileData">An optional <see cref="IBrowserFile" /> for files uploaded via &lt;InputFile /&gt;.</param>
+    /// <param name="droppedFileData">An optional byte array for files dropped in a drag-and-drop scenario.</param>
+    /// <param name="uploadStatus">
+    ///     An initial <see cref="UploadStatus" />, default is
+    ///     <see cref="DropBear.Codex.Blazor.Enums.UploadStatus.Ready" />.
+    /// </param>
+    /// <param name="uploadProgress">Initial progress (0-100). Defaults to 0.</param>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown if <paramref name="name" /> or <paramref name="contentType" /> is null/empty.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     Thrown if <paramref name="size" /> is negative or <paramref name="uploadProgress" /> is outside 0..100.
+    /// </exception>
     public UploadFile(
         string name,
         long size,
@@ -68,18 +83,21 @@ public sealed class UploadFile
     public long Size { get; }
 
     /// <summary>
-    ///     Gets the MIME type of the file.
+    ///     Gets the MIME type of the file (e.g. "image/png").
     /// </summary>
     public string ContentType { get; }
 
     /// <summary>
-    ///     Gets or sets the upload status of the file.
+    ///     Gets or sets the status of the file upload (e.g. Ready, InProgress, Success, Failure).
     /// </summary>
     public UploadStatus UploadStatus { get; set; }
 
     /// <summary>
-    ///     Gets or sets the upload progress of the file as a percentage.
+    ///     Gets or sets the upload progress (0-100).
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    ///     Thrown if the assigned value is outside 0..100.
+    /// </exception>
     public int UploadProgress
     {
         get => _uploadProgress;
@@ -89,12 +107,12 @@ public sealed class UploadFile
     }
 
     /// <summary>
-    ///     Gets or sets the browser file data (used for files from InputFile).
+    ///     Gets or sets the <see cref="IBrowserFile" /> data (used when uploaded from an &lt;InputFile /&gt;).
     /// </summary>
     public IBrowserFile? FileData { get; set; }
 
     /// <summary>
-    ///     Gets or sets the dropped file data (used for dropped files as byte array).
+    ///     Gets or sets the raw byte array of the file (used when files are dragged and dropped).
     /// </summary>
     public byte[]? DroppedFileData { get; set; }
 }

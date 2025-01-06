@@ -1,15 +1,59 @@
-﻿using DropBear.Codex.Blazor.Enums;
+﻿#region
+
+using DropBear.Codex.Blazor.Enums;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Models;
 
-
+/// <summary>
+///     Represents a specific snackbar to be displayed, including its content, duration, and actions.
+/// </summary>
 public sealed class SnackbarInstance
 {
-    public string Id { get; } = $"snackbar-{Guid.NewGuid():N}";
-    public string Title { get; set; } = string.Empty;
-    public string Message { get; set; } = string.Empty;
-    public SnackbarType Type { get; set; } = SnackbarType.Information;
-    public int Duration { get; set; } = 5000;
-    public bool RequiresManualClose { get; set; }
-    public List<SnackbarAction> Actions { get; set; } = new();
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="SnackbarInstance" /> class
+    ///     with a generated unique identifier.
+    /// </summary>
+    public SnackbarInstance()
+    {
+        Id = $"snackbar-{Guid.NewGuid():N}";
+    }
+
+    /// <summary>
+    ///     Gets the unique identifier for this snackbar instance (e.g. "snackbar-<guid>").
+    /// </summary>
+    public string Id { get; }
+
+    /// <summary>
+    ///     Gets or sets the title of the snackbar.
+    /// </summary>
+    public string Title { get; init; } = string.Empty;
+
+    /// <summary>
+    ///     Gets or sets the message/body text of the snackbar.
+    /// </summary>
+    public string Message { get; init; } = string.Empty;
+
+    /// <summary>
+    ///     Gets or sets the visual type of the snackbar (e.g., Information, Success, Error).
+    /// </summary>
+    public SnackbarType Type { get; init; } = SnackbarType.Information;
+
+    /// <summary>
+    ///     Gets or sets the display duration in milliseconds.
+    ///     Defaults to 5000 (5 seconds).
+    /// </summary>
+    public int Duration { get; init; } = 5000;
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether the snackbar must be closed manually,
+    ///     rather than automatically disappearing after <see cref="Duration" />.
+    /// </summary>
+    public bool RequiresManualClose { get; init; }
+
+    /// <summary>
+    ///     Gets or sets a list of actions (buttons) displayed on the snackbar.
+    /// </summary>
+    public List<SnackbarAction> Actions { get; init; } = [];
 }

@@ -2,7 +2,6 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Interfaces;
-using DropBear.Codex.Core;
 using DropBear.Codex.Core.Results.Compatibility;
 using Microsoft.Extensions.Logging;
 
@@ -11,12 +10,17 @@ using Microsoft.Extensions.Logging;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Manages modal components within the application.
+///     Manages the display of modals in the application, ensuring only one modal
+///     is visible at a time and queuing others if necessary.
 /// </summary>
 public sealed class ModalService : IModalService
 {
     private readonly object _lock = new();
     private readonly ILogger<ModalService> _logger;
+
+    /// <summary>
+    ///     Queue to hold modals if another one is currently displayed.
+    /// </summary>
     private readonly Queue<(Type ComponentType, IDictionary<string, object> Parameters)> _modalQueue = new();
 
     private Type? _currentComponent;
@@ -24,9 +28,9 @@ public sealed class ModalService : IModalService
     private bool _isModalVisible;
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ModalService" /> class.
+    ///     Creates a new instance of the <see cref="ModalService" /> class.
     /// </summary>
-    /// <param name="logger">The logger instance.</param>
+    /// <param name="logger">A logger instance for logging debug information.</param>
     public ModalService(ILogger<ModalService> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -34,7 +38,7 @@ public sealed class ModalService : IModalService
     }
 
     /// <summary>
-    ///     Gets the current modal component type.
+    ///     Gets the currently visible modal component type, or <c>null</c> if none.
     /// </summary>
     public Type? CurrentComponent
     {
@@ -55,7 +59,7 @@ public sealed class ModalService : IModalService
     }
 
     /// <summary>
-    ///     Gets the parameters for the current modal component.
+    ///     Gets the parameters for the current modal component, if any.
     /// </summary>
     public IDictionary<string, object>? CurrentParameters
     {
@@ -76,7 +80,7 @@ public sealed class ModalService : IModalService
     }
 
     /// <summary>
-    ///     Gets a value indicating whether a modal is currently visible.
+    ///     Indicates whether a modal is currently visible.
     /// </summary>
     public bool IsModalVisible
     {
@@ -97,16 +101,16 @@ public sealed class ModalService : IModalService
     }
 
     /// <summary>
-    ///     Occurs when the modal state changes.
+    ///     Event fired whenever the modal state changes, allowing the UI to re-render.
     /// </summary>
     public event Action? OnChange;
 
     /// <summary>
-    ///     Shows the specified component as a modal with parameters.
-    ///     Queues the modal if another one is already visible.
+    ///     Shows a modal of type <typeparamref name="T" />. If another modal is already visible,
+    ///     the new modal is added to a queue and displayed later.
     /// </summary>
-    /// <typeparam name="T">Component type to display.</typeparam>
-    /// <param name="parameters">Optional parameters to pass to the component.</param>
+    /// <typeparam name="T">A Blazor component derived from <see cref="DropBearComponentBase" />.</typeparam>
+    /// <param name="parameters">Optional parameters to pass to the modal component.</param>
     /// <returns>A <see cref="Result" /> indicating the outcome of the operation.</returns>
     public Result Show<T>(IDictionary<string, object>? parameters = null) where T : DropBearComponentBase
     {
@@ -119,14 +123,14 @@ public sealed class ModalService : IModalService
         {
             if (_isModalVisible)
             {
-                _logger.LogDebug("Modal of type {ComponentType} is enqueued as another modal is currently displayed.",
-                    typeof(T));
+                // Another modal is active; enqueue this one
+                _logger.LogDebug("Modal of type {ComponentType} is enqueued (another is displayed).", typeof(T));
                 _modalQueue.Enqueue((typeof(T), parameters));
             }
             else
             {
-                _logger.LogDebug("No modal is currently displayed, displaying modal of type {ComponentType}.",
-                    typeof(T));
+                // No active modal, display immediately
+                _logger.LogDebug("No modal currently displayed; showing modal of type {ComponentType}.", typeof(T));
                 _currentComponent = typeof(T);
                 _currentParameters = parameters;
                 _isModalVisible = true;
@@ -143,7 +147,7 @@ public sealed class ModalService : IModalService
     }
 
     /// <summary>
-    ///     Closes the current modal and displays the next one in the queue, if available.
+    ///     Closes the current modal and, if any modals are queued, displays the next one.
     /// </summary>
     public void Close()
     {
@@ -156,10 +160,10 @@ public sealed class ModalService : IModalService
             _currentParameters = null;
             _isModalVisible = false;
 
+            // Check if we have a queued modal
             if (_modalQueue.TryDequeue(out var nextModal))
             {
-                _logger.LogDebug("Displaying next modal from the queue of type {ComponentType}.",
-                    nextModal.ComponentType);
+                _logger.LogDebug("Displaying next modal from queue: type {ComponentType}.", nextModal.ComponentType);
                 _currentComponent = nextModal.ComponentType;
                 _currentParameters = nextModal.Parameters;
                 _isModalVisible = true;
@@ -179,14 +183,14 @@ public sealed class ModalService : IModalService
     }
 
     /// <summary>
-    ///     Notifies subscribers of a state change in the modal service.
+    ///     Invokes the <see cref="OnChange" /> event to notify any subscribers of the modal state update.
     /// </summary>
     private void NotifyStateChanged()
     {
         try
         {
             OnChange?.Invoke();
-            _logger.LogDebug("Modal state changed.");
+            _logger.LogDebug("Modal state changed notification triggered.");
         }
         catch (Exception ex)
         {

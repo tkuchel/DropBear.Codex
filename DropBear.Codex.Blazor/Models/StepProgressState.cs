@@ -7,7 +7,8 @@ using DropBear.Codex.Blazor.Enums;
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents the current state of progress for a step
+///     Represents a thread-safe state tracking for a single progress step,
+///     including start time, progress percentage, and status.
 /// </summary>
 public sealed class StepProgressState
 {
@@ -16,7 +17,8 @@ public sealed class StepProgressState
     private volatile StepStatus _status;
 
     /// <summary>
-    ///     Creates a new instance of StepProgressState
+    ///     Creates a new instance of <see cref="StepProgressState" />,
+    ///     initializing <see cref="StartTime" /> to the current UTC date/time.
     /// </summary>
     public StepProgressState()
     {
@@ -25,7 +27,8 @@ public sealed class StepProgressState
     }
 
     /// <summary>
-    ///     Gets or sets the current progress (0-100)
+    ///     Gets or sets the current progress percentage (0-100).
+    ///     Values are clamped within this range.
     /// </summary>
     public double Progress
     {
@@ -34,7 +37,8 @@ public sealed class StepProgressState
     }
 
     /// <summary>
-    ///     Gets or sets the current status of the step
+    ///     Gets or sets the current status of this step (e.g., NotStarted, InProgress, Completed).
+    ///     When set to <see cref="StepStatus.InProgress" /> for the first time, the <see cref="StartTime" /> is recorded.
     /// </summary>
     public StepStatus Status
     {
@@ -51,28 +55,34 @@ public sealed class StepProgressState
     }
 
     /// <summary>
-    ///     Gets the time when this step started
+    ///     Gets the date/time when this step started (UTC).
+    ///     If never started, it's the time this object was constructed.
     /// </summary>
-    public DateTimeOffset StartTime { get; private set; }
+    private DateTimeOffset StartTime { get; set; }
 
     /// <summary>
-    ///     Gets the time of the last progress update
+    ///     Gets the date/time of the last update to progress or status.
     /// </summary>
     public DateTimeOffset LastUpdateTime { get; private set; }
 
     /// <summary>
-    ///     Gets the lock for thread-safe updates
+    ///     A <see cref="SemaphoreSlim" /> used to synchronize updates in multi-threaded scenarios.
     /// </summary>
     public SemaphoreSlim UpdateLock { get; } = new(1, 1);
 
     /// <summary>
-    ///     Gets how long this step has been running
+    ///     Gets how long this step has been actively running (from <see cref="StartTime" /> to now).
+    ///     Returns <see cref="TimeSpan.Zero" /> if <see cref="_hasStarted" /> is false.
     /// </summary>
     public TimeSpan RunningTime => _hasStarted ? DateTimeOffset.UtcNow - StartTime : TimeSpan.Zero;
 
     /// <summary>
-    ///     Updates the progress with proper locking
+    ///     Updates the progress and status of this step in a thread-safe manner,
+    ///     also refreshing <see cref="LastUpdateTime" />.
     /// </summary>
+    /// <param name="newProgress">New progress value (0-100).</param>
+    /// <param name="newStatus">New step status (e.g., InProgress, Completed).</param>
+    /// <returns>An awaitable <see cref="Task" /> that completes when the update is done.</returns>
     public async Task UpdateProgressAsync(double newProgress, StepStatus newStatus)
     {
         await UpdateLock.WaitAsync().ConfigureAwait(false);

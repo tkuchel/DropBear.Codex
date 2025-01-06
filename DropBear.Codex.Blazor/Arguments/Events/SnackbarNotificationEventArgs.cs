@@ -11,7 +11,9 @@ public sealed class SnackbarNotificationEventArgs : EventArgs
     ///     Initializes a new instance of the <see cref="SnackbarNotificationEventArgs" /> class.
     /// </summary>
     /// <param name="options">The options for the snackbar notification.</param>
-    /// <exception cref="ArgumentNullException">Thrown when the <paramref name="options"/> argument is null.</exception>
+    /// <exception cref="ArgumentNullException">
+    ///     Thrown when the <paramref name="options" /> argument is null.
+    /// </exception>
     public SnackbarNotificationEventArgs(SnackbarNotificationOptions options)
     {
         Options = options ?? throw new ArgumentNullException(nameof(options));

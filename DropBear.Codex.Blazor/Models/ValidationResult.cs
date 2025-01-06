@@ -9,71 +9,86 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents the result of a validation operation.
+///     Represents the result of a validation operation,
+///     including any <see cref="ValidationError" /> objects and an optional exception.
 /// </summary>
 public sealed class ValidationResult
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ValidationResult>();
+
     private readonly List<ValidationError> _errors;
 
-    private ValidationResult(IEnumerable<ValidationError> errors, string? message, Exception? exception,
+    private ValidationResult(
+        IEnumerable<ValidationError> errors,
+        string? message,
+        Exception? exception,
         ResultState state)
     {
         _errors = errors.ToList();
         Message = message;
         Exception = exception;
-        State = state == ResultState.Success && _errors.Any() ? ResultState.Failure : state;
+
+        // If we have any errors, we override success to Failure
+        State = state == ResultState.Success && _errors.Any()
+            ? ResultState.Failure
+            : state;
     }
 
+    /// <summary>
+    ///     Gets the result state (Success, Failure, etc.).
+    /// </summary>
     public ResultState State { get; }
 
     /// <summary>
-    ///     Gets whether the validation was successful.
+    ///     Indicates whether the validation succeeded (i.e., <see cref="State" /> == Success).
     /// </summary>
     public bool IsSuccess => State == ResultState.Success;
 
     /// <summary>
-    ///     Gets whether the validation failed.
+    ///     Indicates whether the validation failed (i.e., not <see cref="IsSuccess" />).
     /// </summary>
     public bool IsFailure => !IsSuccess;
 
     /// <summary>
-    ///     Gets whether the validation has any errors.
+    ///     Indicates whether the validation has any errors recorded.
     /// </summary>
     public bool HasErrors => _errors.Any();
 
     /// <summary>
-    ///     Gets the validation error message if any.
+    ///     Gets an optional message describing the validation result or errors.
     /// </summary>
     public string? Message { get; }
 
     /// <summary>
-    ///     Gets the exception that occurred during validation if any.
+    ///     Gets an optional exception that occurred during validation.
     /// </summary>
     public Exception? Exception { get; }
 
     /// <summary>
-    ///     Gets the collection of validation errors.
+    ///     Gets the collection of validation errors associated with this result.
     /// </summary>
     public IReadOnlyList<ValidationError> Errors => _errors.AsReadOnly();
 
+    #region Static Factory Methods
+
     /// <summary>
-    ///     Creates a successful validation result.
+    ///     Creates a new validation result representing success (no errors).
     /// </summary>
     public static ValidationResult Success()
     {
         return new ValidationResult(
-            [], // No errors
-            null, // No message
-            null, // No exception
-            ResultState.Success // Explicit success state
-        );
+            Array.Empty<ValidationError>(),
+            null,
+            null,
+            ResultState.Success);
     }
 
-
     /// <summary>
-    ///     Creates a failed validation result with multiple errors.
+    ///     Creates a new validation result representing failure with multiple errors.
     /// </summary>
+    /// <param name="errors">A collection of <see cref="ValidationError" /> objects.</param>
+    /// <param name="message">An optional message describing the failure.</param>
+    /// <param name="exception">An optional exception that caused or contributed to the failure.</param>
     public static ValidationResult Failure(
         IEnumerable<ValidationError> errors,
         string? message = null,
@@ -83,34 +98,49 @@ public sealed class ValidationResult
     }
 
     /// <summary>
-    ///     Creates a failed validation result with a single error.
+    ///     Creates a new validation result representing failure with a single error.
     /// </summary>
+    /// <param name="parameter">The parameter or field that caused the validation error.</param>
+    /// <param name="errorMessage">A message describing the validation failure.</param>
+    /// <param name="exception">An optional exception that caused or contributed to the failure.</param>
     public static ValidationResult Failure(
         string parameter,
         string errorMessage,
         Exception? exception = null)
     {
         return new ValidationResult(
-            new[] { new ValidationError(parameter, errorMessage) },
+            [new ValidationError(parameter, errorMessage)],
             errorMessage,
             exception,
             ResultState.Failure);
     }
 
     /// <summary>
-    ///     Creates a new ValidationResult by combining multiple results.
+    ///     Combines multiple <see cref="ValidationResult" /> objects into one.
+    ///     If any contain errors, the combined result is failure.
     /// </summary>
     public static ValidationResult Combine(params ValidationResult[] results)
     {
-        var errors = results.SelectMany(r => r.Errors).ToList();
-        var message = errors.Any() ? string.Join("\n", errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}")) : null;
-        var exception = results.Select(r => r.Exception).FirstOrDefault();
-        return new ValidationResult(errors, message, exception,
-            errors.Any() ? ResultState.Failure : ResultState.Success);
+        var combinedErrors = results.SelectMany(r => r.Errors).ToList();
+        var message = combinedErrors.Any()
+            ? string.Join("\n", combinedErrors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"))
+            : null;
+
+        // If there are multiple exceptions, only the first is stored
+        var exception = results.Select(r => r.Exception).FirstOrDefault(e => e != null);
+
+        var finalState = combinedErrors.Any() ? ResultState.Failure : ResultState.Success;
+
+        return new ValidationResult(combinedErrors, message, exception, finalState);
     }
 
+    #endregion
+
+    #region Instance Methods
+
     /// <summary>
-    ///     Adds additional errors to the current validation result.
+    ///     Adds additional <paramref name="errors" /> to this validation result,
+    ///     returning a new <see cref="ValidationResult" /> with merged state.
     /// </summary>
     public ValidationResult AddErrors(IEnumerable<ValidationError> errors)
     {
@@ -127,18 +157,18 @@ public sealed class ValidationResult
     }
 
     /// <summary>
-    ///     Adds a single error to the current validation result.
+    ///     Adds a single error to this validation result, returning a new combined result.
     /// </summary>
     public ValidationResult AddError(string parameter, string errorMessage)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(parameter);
         ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
 
-        return AddErrors(new[] { new ValidationError(parameter, errorMessage) });
+        return AddErrors([new ValidationError(parameter, errorMessage)]);
     }
 
     /// <summary>
-    ///     Executes different actions based on the validation state.
+    ///     Executes one of two functions based on whether the result is success or failure.
     /// </summary>
     public TResult Match<TResult>(
         Func<TResult> onSuccess,
@@ -161,7 +191,7 @@ public sealed class ValidationResult
     }
 
     /// <summary>
-    ///     Executes different async actions based on the validation state.
+    ///     Executes one of two async functions based on whether the result is success or failure.
     /// </summary>
     public async Task<TResult> MatchAsync<TResult>(
         Func<Task<TResult>> onSuccess,
@@ -184,7 +214,7 @@ public sealed class ValidationResult
     }
 
     /// <summary>
-    ///     Ensures a condition is met or adds an error.
+    ///     Ensures a specified condition is true, otherwise adds an error for the given <paramref name="parameter" />.
     /// </summary>
     public ValidationResult Ensure(Func<bool> predicate, string parameter, string errorMessage)
     {
@@ -206,16 +236,15 @@ public sealed class ValidationResult
     }
 
     /// <summary>
-    ///     Gets a formatted string containing all validation errors.
+    ///     Returns all validation errors as a single string, joined by <paramref name="separator" />.
     /// </summary>
     public string GetErrorsAsString(string separator = "\n")
     {
-        return string.Join(separator,
-            _errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"));
+        return string.Join(separator, _errors.Select(e => $"{e.Parameter}: {e.ErrorMessage}"));
     }
 
     /// <summary>
-    ///     Gets all errors for a specific parameter.
+    ///     Retrieves all errors related to a specific <paramref name="parameter" />.
     /// </summary>
     public IEnumerable<ValidationError> GetErrorsFor(string parameter)
     {
@@ -223,10 +252,15 @@ public sealed class ValidationResult
         return _errors.Where(e => e.Parameter.Equals(parameter, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    ///     Returns a human-readable string indicating success or listing all errors.
+    /// </summary>
     public override string ToString()
     {
         return IsSuccess
             ? "Validation succeeded"
             : $"Validation failed: {GetErrorsAsString()}";
     }
+
+    #endregion
 }
