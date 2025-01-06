@@ -2,8 +2,12 @@
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @namespace DropBear.Codex.Blazor.Components.Progress
 
-<div class="dropbear-progress-container @(IsIndeterminate ? "indeterminate" : "")" role="progressbar"
-     aria-valuemin="0" aria-valuemax="100" aria-valuenow="@(_state?.OverallProgress ?? 0)">
+<div class="dropbear-progress-container @(IsIndeterminate ? "indeterminate" : "")"
+     role="progressbar"
+     aria-valuemin="0"
+     aria-valuemax="100"
+     aria-valuenow="@(_state?.OverallProgress ?? 0)">
+
     <div class="dropbear-progress">
         <div class="progress-header">
             <div class="progress-message">@Message</div>
@@ -57,7 +61,7 @@
 
     private string GetEstimatedTimeRemaining()
     {
-        if (_state == null || _state.OverallProgress <= 0) return string.Empty;
+        if (_state is null || _state.OverallProgress <= 0) return string.Empty;
 
         var elapsed = DateTime.UtcNow - _state.StartTime;
         var estimatedTotal = TimeSpan.FromTicks((long)(elapsed.Ticks / (_state.OverallProgress / 100)));

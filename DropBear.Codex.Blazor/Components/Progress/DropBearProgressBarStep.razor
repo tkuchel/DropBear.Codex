@@ -26,49 +26,14 @@
                     break;
             }
         </div>
-        <div class="step-name" data-tooltip="@Config.Tooltip">@Config.Name</div>
+        <div class="step-name" data-tooltip="@Config.Tooltip">
+            @Config.Name
+        </div>
     </div>
+
     <div class="step-progress progress-bar-container">
         <div class="progress-bar" style="width: @($"{DisplayProgress:F1}%")"></div>
     </div>
+
     <div class="step-status">@GetStatusText()</div>
 </div>
-
-@code {
-
-    private string GetPositionClass()
-    {
-        return Position switch
-        {
-            StepPosition.Previous => "previous-step",
-            StepPosition.Current => "current-step",
-            StepPosition.Next => "next-step",
-            _ => string.Empty
-        };
-    }
-
-    private string GetStatusClass()
-    {
-        return Status switch
-        {
-            StepStatus.Completed => "success",
-            StepStatus.InProgress => "current",
-            StepStatus.Warning => "warning",
-            StepStatus.Failed => "error",
-            StepStatus.Skipped => "skipped",
-            _ => string.Empty
-        };
-    }
-
-    private string GetStatusText()
-    {
-        return Position switch
-        {
-            StepPosition.Previous => "Previous Step",
-            StepPosition.Current => "Current Step",
-            StepPosition.Next => "Next Step",
-            _ => string.Empty
-        };
-    }
-
-}

@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Notifications;
 using DropBear.Codex.Notifications.Enums;
@@ -13,16 +14,33 @@ using Microsoft.AspNetCore.Components;
 
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
+/// <summary>
+///     Manages and displays a collection of snackbars, subscribed to both a global channel and optional channel ID.
+/// </summary>
 public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 {
     private const int MaxSnackbars = 5;
-    private readonly List<SnackbarInstance> _activeSnackbars = [];
+
+    private readonly List<SnackbarInstance> _activeSnackbars = new();
     private readonly SemaphoreSlim _semaphore = new(1, 1);
+
     private IDisposable? _channelSubscription;
-    [Parameter] public string? ChannelId { get; set; }
 
-    [Parameter] public SnackbarPosition Position { get; set; } = SnackbarPosition.BottomRight;
+    /// <summary>
+    ///     An optional channel ID for targeted notifications.
+    /// </summary>
+    [Parameter]
+    public string? ChannelId { get; set; }
 
+    /// <summary>
+    ///     The position on screen where snackbars will appear (e.g., BottomRight).
+    /// </summary>
+    [Parameter]
+    public SnackbarPosition Position { get; set; } = SnackbarPosition.BottomRight;
+
+    /// <summary>
+    ///     Returns the CSS class corresponding to the chosen <see cref="SnackbarPosition" />.
+    /// </summary>
     private string GetPositionClass()
     {
         return Position switch
@@ -34,6 +52,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         };
     }
 
+    /// <inheritdoc />
     protected override void OnInitialized()
     {
         try
@@ -48,55 +67,43 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to initialize SnackbarContainer");
+            Logger.Error(ex, "Failed to initialize DropBearSnackbarContainer");
             throw;
         }
     }
 
-
+    /// <summary>
+    ///     Subscribes to the <see cref="ISnackbarService" /> events for showing snackbars.
+    /// </summary>
     private void SubscribeToSnackbarEvents()
     {
-        try
+        if (SnackbarService is null)
         {
-            if (SnackbarService is null)
-            {
-                Logger.Warning("SnackbarService is null during event subscription");
-                return;
-            }
-
-            SnackbarService.OnShow += ShowSnackbar;
-            Logger.Debug("Subscribed to SnackbarService events");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error subscribing to SnackbarService events");
-            throw;
-        }
-    }
-
-    private void UnsubscribeFromSnackbarEvents()
-    {
-        try
-        {
-            if (SnackbarService is not null)
-            {
-                SnackbarService.OnShow -= ShowSnackbar;
-                Logger.Debug("Unsubscribed from SnackbarService events");
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error unsubscribing from SnackbarService events");
-        }
-    }
-
-    private void SubscribeToChannelNotifications()
-    {
-        if (string.IsNullOrEmpty(ChannelId))
-        {
+            Logger.Warning("SnackbarService is null, cannot subscribe to events");
             return;
         }
 
+        SnackbarService.OnShow += ShowSnackbar;
+        Logger.Debug("Subscribed to SnackbarService OnShow event.");
+    }
+
+    /// <summary>
+    ///     Unsubscribes from the <see cref="ISnackbarService" /> events.
+    /// </summary>
+    private void UnsubscribeFromSnackbarEvents()
+    {
+        if (SnackbarService is not null)
+        {
+            SnackbarService.OnShow -= ShowSnackbar;
+            Logger.Debug("Unsubscribed from SnackbarService OnShow event.");
+        }
+    }
+
+    /// <summary>
+    ///     Subscribes to channel-specific notifications if <see cref="ChannelId" /> is provided.
+    /// </summary>
+    private void SubscribeToChannelNotifications()
+    {
         var channel = $"{GlobalConstants.UserNotificationChannel}.{ChannelId}";
         var bag = DisposableBag.CreateBuilder();
         NotificationSubscriber.Subscribe(channel, HandleNotificationAsync).AddTo(bag);
@@ -105,15 +112,23 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         Logger.Debug("Subscribed to channel notifications for {ChannelId}", ChannelId);
     }
 
+    /// <summary>
+    ///     Subscribes to global notifications for showing snackbars.
+    /// </summary>
     private void SubscribeToGlobalNotifications()
     {
         var bag = DisposableBag.CreateBuilder();
-        NotificationSubscriber.Subscribe(GlobalConstants.GlobalNotificationChannel, HandleNotificationAsync).AddTo(bag);
-        _channelSubscription = bag.Build();
+        NotificationSubscriber.Subscribe(GlobalConstants.GlobalNotificationChannel, HandleNotificationAsync)
+            .AddTo(bag);
 
-        Logger.Debug("Subscribed to global notifications");
+        _channelSubscription = bag.Build();
+        Logger.Debug("Subscribed to global notifications.");
     }
 
+    /// <summary>
+    ///     Handles incoming notifications of <see cref="NotificationType.Toast" />.
+    ///     Converts them to <see cref="SnackbarInstance" /> objects and shows them.
+    /// </summary>
     private async ValueTask HandleNotificationAsync(Notification notification, CancellationToken token)
     {
         if (notification.Type != NotificationType.Toast)
@@ -135,23 +150,13 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling notification");
+            Logger.Error(ex, "Error handling notification as snackbar.");
         }
     }
 
-    private static int GetDurationForSeverity(NotificationSeverity severity)
-    {
-        return severity switch
-        {
-            NotificationSeverity.Success => 5000,
-            NotificationSeverity.Information => 5000,
-            NotificationSeverity.Warning => 8000,
-            NotificationSeverity.Error => 0, // Requires manual dismissal
-            NotificationSeverity.Critical => 0, // Requires manual dismissal
-            _ => 5000
-        };
-    }
-
+    /// <summary>
+    ///     Maps a <see cref="NotificationSeverity" /> to a <see cref="SnackbarType" />.
+    /// </summary>
     private static SnackbarType MapNotificationSeverityToSnackbarType(NotificationSeverity severity)
     {
         return severity switch
@@ -165,6 +170,27 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         };
     }
 
+    /// <summary>
+    ///     Returns the duration (in ms) for auto-dismiss, based on the severity.
+    ///     Zero means manual dismissal required.
+    /// </summary>
+    private static int GetDurationForSeverity(NotificationSeverity severity)
+    {
+        return severity switch
+        {
+            NotificationSeverity.Success => 5000,
+            NotificationSeverity.Information => 5000,
+            NotificationSeverity.Warning => 8000,
+            NotificationSeverity.Error => 0,
+            NotificationSeverity.Critical => 0,
+            _ => 5000
+        };
+    }
+
+    /// <summary>
+    ///     Adds a new snackbar, removing the oldest if the maximum count is exceeded.
+    ///     Then triggers JS to display it.
+    /// </summary>
     private async Task ShowSnackbar(SnackbarInstance snackbar)
     {
         try
@@ -182,20 +208,22 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 
             try
             {
-                // Allow render to complete
+                // Allow a short delay for rendering
                 await Task.Delay(50);
+
                 await SafeJsVoidInteropAsync("DropBearSnackbar.show", snackbar.Id);
 
+                // If auto-dismiss (Duration > 0), start progress
                 if (snackbar is { RequiresManualClose: false, Duration: > 0 })
                 {
-                    await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
-                        snackbar.Id, snackbar.Duration);
+                    await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress", snackbar.Id, snackbar.Duration);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error showing snackbar: {Id}", snackbar.Id);
-                // Clean up on failure
+
+                // If something goes wrong, remove the snackbar
                 _activeSnackbars.Remove(snackbar);
                 await InvokeAsync(StateHasChanged);
             }
@@ -206,19 +234,9 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
     }
 
-    private async Task AutoHideSnackbarAsync(SnackbarInstance snackbar)
-    {
-        try
-        {
-            await Task.Delay(snackbar.Duration);
-            await RemoveSnackbar(snackbar.Id);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error auto-hiding snackbar: {SnackbarId}", snackbar.Id);
-        }
-    }
-
+    /// <summary>
+    ///     Removes a snackbar by ID, hiding it in JS first, then removing it from the list.
+    /// </summary>
     private async Task RemoveSnackbar(string id)
     {
         try
@@ -230,13 +248,8 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
             {
                 try
                 {
-                    // First handle the JS side
                     await SafeJsVoidInteropAsync("DropBearSnackbar.hide", id);
-
-                    // Wait for animation
-                    await Task.Delay(300);
-
-                    // Then update the state
+                    await Task.Delay(300); // Wait for CSS animation
                     _activeSnackbars.Remove(snackbar);
                     await InvokeAsync(StateHasChanged);
                 }
@@ -252,14 +265,19 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
     }
 
+    /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        await base.OnAfterRenderAsync(firstRender);
+
         if (firstRender)
         {
+            // Initialize the container in JS if needed
             await SafeJsVoidInteropAsync("DropBearSnackbar.initialize", ComponentId);
         }
     }
 
+    /// <inheritdoc />
     protected override async ValueTask DisposeAsync(bool disposing)
     {
         if (disposing)
@@ -269,13 +287,13 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
                 UnsubscribeFromSnackbarEvents();
                 _channelSubscription?.Dispose();
 
-                // Dispose snackbars one by one with a delay
+                // Dispose each active snackbar in JS
                 foreach (var snackbar in _activeSnackbars.ToList())
                 {
                     try
                     {
                         await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", snackbar.Id);
-                        await Task.Delay(50); // Small delay between disposals
+                        await Task.Delay(50); // small delay
                     }
                     catch (Exception ex)
                     {

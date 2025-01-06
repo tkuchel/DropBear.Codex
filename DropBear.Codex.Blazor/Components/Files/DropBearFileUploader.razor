@@ -1,7 +1,6 @@
 ﻿@using Microsoft.AspNetCore.Components.Forms
-@using Microsoft.JSInterop
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
-@inject IJSRuntime JsRuntime
+
 
 <div class="file-upload-container">
     <div class="file-upload-component">
@@ -9,9 +8,15 @@
         <div class="file-upload-dropzone">
             <i class="fas fa-cloud-upload-alt fa-2x file-upload-icon"></i>
             <p>Drag & Drop files here or</p>
-            <InputFile OnChange="HandleFileSelectionAsync" multiple id="fileInput" style="opacity:0; width:0; height:0; position:absolute;" />
 
-            <button type="button" @onclick="OpenFileDialog" class="file-upload-label">
+            <InputFile OnChange="HandleFileSelectionAsync"
+                       multiple
+                       id="fileInput"
+                       style="opacity: 0; width: 0; height: 0; position: absolute;"/>
+
+            <button type="button"
+                    @onclick="OpenFileDialog"
+                    class="file-upload-label">
                 Choose Files
             </button>
         </div>
@@ -27,7 +32,8 @@
                     </div>
                     <div class="file-upload-status">@file.UploadStatus</div>
                 </div>
-                <button class="file-upload-remove-btn" @onclick="() => RemoveFile(file)">
+                <button class="file-upload-remove-btn"
+                        @onclick="() => RemoveFile(file)">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -49,7 +55,9 @@
                 }
             </button>
             <div class="file-upload-progress">
-                <div class="file-upload-progress-bar" style="width: @(UploadProgress)%"></div>
+                <div class="file-upload-progress-bar"
+                     style="width: @(UploadProgress)%">
+                </div>
             </div>
         </div>
     </div>

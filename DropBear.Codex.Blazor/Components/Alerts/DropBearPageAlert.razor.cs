@@ -8,8 +8,12 @@ using Microsoft.AspNetCore.Components;
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
+/// <summary>
+///     A page-level alert component for displaying success/error/warning/info messages.
+/// </summary>
 public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
+    // Stores the SVG path data for each alert type.
     private static readonly Dictionary<PageAlertType, string> IconPaths = new()
     {
         { PageAlertType.Success, "<path d=\"M20 6L9 17L4 12\"></path>" },
@@ -24,47 +28,64 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         }
     };
 
-    // Use AlertId directly, no "alert-" prefix or additional modifications.
+    /// <summary>
+    ///     The unique identifier for this alert, used as the HTML element ID.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public string? AlertId { get; set; }
+
+    /// <summary>
+    ///     The alert title text to display in bold.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public string? Title { get; set; }
+
+    /// <summary>
+    ///     The main message text displayed in the alert.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public string? Message { get; set; }
+
+    /// <summary>
+    ///     Specifies the alert type (Success, Error, Warning, Info).
+    /// </summary>
+    [Parameter]
+    public PageAlertType Type { get; set; } = PageAlertType.Info;
+
+    /// <summary>
+    ///     If set to true, the alert remains visible indefinitely (no progress bar).
+    /// </summary>
+    [Parameter]
+    public bool IsPermanent { get; set; }
+
+    /// <summary>
+    ///     Optional duration in milliseconds for how long the alert should remain visible.
+    /// </summary>
+    [Parameter]
+    public int? Duration { get; set; }
+
+    /// <summary>
+    ///     Callback invoked when the alert is closed by the user.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    ///     Derives the CSS class for the alert's type (e.g., "success", "error", etc.).
+    /// </summary>
+    private string AlertTypeCssClass => Type.ToString().ToLowerInvariant();
+
+    /// <summary>
+    ///     A convenience property returning <see cref="AlertId" /> non-null.
+    /// </summary>
     private string Id => AlertId!;
 
-    [Parameter] [EditorRequired] public string? AlertId { get; set; } = null!;
-    [Parameter] [EditorRequired] public string? Title { get; set; } = null!;
-    [Parameter] [EditorRequired] public string? Message { get; set; } = null!;
-    [Parameter] public PageAlertType Type { get; set; } = PageAlertType.Info;
-    [Parameter] public bool IsPermanent { get; set; }
-    [Parameter] public int? Duration { get; set; }
-    [Parameter] public EventCallback OnClose { get; set; }
-
-    private string AlertTypeCssClass => Type.ToString().ToLower();
-
-    // **Remove OnAfterRenderAsync override**
-    // The container will handle calling create after the alert is rendered.
-    // protected override async Task OnAfterRenderAsync(bool firstRender)
-    // {
-    //     if (firstRender)
-    //     {
-    //         await InitializeAlert();
-    //     }
-    // }
-
-    // Remove InitializeAlert() method entirely.
-    // private async Task InitializeAlert()
-    // {
-    //     try
-    //     {
-    //         Logger.Debug("Initializing alert with ID: {AlertId}", Id);
-    //         var createResult = await SafeJsInteropAsync<bool>("DropBearPageAlert.create", Id, Duration, IsPermanent);
-    //         if (!createResult)
-    //         {
-    //             Logger.Warning("Failed to create alert with ID: {AlertId}", AlertId);
-    //         }
-    //     }
-    //     catch (Exception ex)
-    //     {
-    //         Logger.Error(ex, "Failed to initialize page alert {AlertId}", AlertId);
-    //     }
-    // }
-
+    /// <summary>
+    ///     Invoked when the user clicks the close button; calls the OnClose callback.
+    /// </summary>
     private async Task RequestClose()
     {
         try
@@ -77,21 +98,21 @@ public sealed partial class DropBearPageAlert : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Returns the SVG path(s) for the icon matching the current alert type.
+    /// </summary>
     private string GetIconPath()
     {
         return IconPaths.TryGetValue(Type, out var path) ? path : string.Empty;
     }
 
-    // **Remove DisposeAsync logic that calls hide.**
-    // The container will handle hiding the alert before removing it.
-    public override async ValueTask DisposeAsync()
-    {
-        // No JS calls here. Just call the base.
-        await base.DisposeAsync();
-    }
-
+    /// <summary>
+    ///     Validates that required parameters are set.
+    /// </summary>
     protected override void OnParametersSet()
     {
+        base.OnParametersSet();
+
         if (string.IsNullOrWhiteSpace(AlertId))
         {
             throw new ArgumentException("AlertId cannot be null or empty.", nameof(AlertId));

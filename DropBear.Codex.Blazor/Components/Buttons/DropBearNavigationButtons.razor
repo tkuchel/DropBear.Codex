@@ -3,13 +3,24 @@
 @inject IJSRuntime JsRuntime
 
 <div class="navigation-buttons">
-    <button class="nav-button back-button" @onclick="GoBack" aria-label="Go back" style="top: @BackButtonTop; left: @BackButtonLeft;">
+    <button class="nav-button back-button"
+            @onclick="GoBack"
+            aria-label="Go back"
+            style="top: @BackButtonTop; left: @BackButtonLeft;">
         <i class="fas fa-arrow-left"></i>
     </button>
-    <button class="nav-button home-button" @onclick="GoHome" aria-label="Go to home" style="top: @HomeButtonTop; left: @HomeButtonLeft;">
+
+    <button class="nav-button home-button"
+            @onclick="GoHome"
+            aria-label="Go to home"
+            style="top: @HomeButtonTop; left: @HomeButtonLeft;">
         <i class="fas fa-home"></i>
     </button>
-    <button class="nav-button scroll-top-button @(IsVisible ? "visible" : "")" @onclick="ScrollToTop" aria-label="Scroll to top" style="bottom: @ScrollTopButtonBottom; right: @ScrollTopButtonRight;">
+
+    <button class="nav-button scroll-top-button @(IsVisible ? "visible" : "")"
+            @onclick="ScrollToTop"
+            aria-label="Scroll to top"
+            style="bottom: @ScrollTopButtonBottom; right: @ScrollTopButtonRight;">
         <i class="fas fa-arrow-up"></i>
     </button>
 </div>

@@ -15,7 +15,7 @@ namespace DropBear.Codex.Blazor.Components.Lists;
 /// <typeparam name="T">The type of the data items in the list.</typeparam>
 public sealed partial class DropBearList<T> : DropBearComponentBase where T : class
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearList<T>>();
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearList<T>>();
 
     /// <summary>
     ///     The collection of items to render in the list.
@@ -30,13 +30,13 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
-    ///     An optional icon to display in the header.
+    ///     An optional icon (e.g., FontAwesome class) to display in the header.
     /// </summary>
     [Parameter]
     public string HeaderIcon { get; set; } = string.Empty;
 
     /// <summary>
-    ///     The color to use for the list header. It defaults to a CSS variable for consistent styling.
+    ///     The color to use for the list header. Defaults to a CSS variable for consistent styling.
     /// </summary>
     [Parameter]
     public string HeaderColor { get; set; } = "var(--clr-grey-500, #95989C)";
@@ -49,42 +49,46 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
     public RenderFragment<T> ItemTemplate { get; set; } = null!;
 
     /// <summary>
-    ///     Determines whether the list should be collapsed or expanded by default.
+    ///     If true, the list is collapsed by default on initial render.
     /// </summary>
     [Parameter]
     public bool CollapsedByDefault { get; set; }
 
     /// <summary>
-    ///     An event callback that is invoked whenever the list is collapsed or expanded.
+    ///     An event callback invoked whenever the list is collapsed or expanded.
+    ///     The boolean argument indicates whether the list is currently collapsed.
     /// </summary>
     [Parameter]
     public EventCallback<bool> OnToggle { get; set; }
 
+    /// <summary>
+    ///     Tracks whether the list is currently collapsed.
+    /// </summary>
     private bool IsCollapsed { get; set; }
 
+    /// <inheritdoc />
     protected override void OnInitialized()
     {
-        // Set the initial collapsed state based on the parameter
-        IsCollapsed = CollapsedByDefault;
-        Logger.Debug("DropBearList initialized with {IsCollapsed} state.", IsCollapsed);
+        base.OnInitialized();
 
-        // Validate that the ItemTemplate is provided
-        if (ItemTemplate == null)
+        IsCollapsed = CollapsedByDefault;
+        Logger.Debug("DropBearList initialized with Collapsed={Collapsed}", IsCollapsed);
+
+        if (ItemTemplate is null)
         {
             Logger.Error("ItemTemplate is required but was not provided.");
-            throw new InvalidOperationException($"{nameof(ItemTemplate)} is required and cannot be null.");
+            throw new InvalidOperationException($"{nameof(ItemTemplate)} cannot be null.");
         }
     }
 
     /// <summary>
-    ///     Toggles the collapsed state of the list.
+    ///     Toggles the collapsed state of the list and invokes the OnToggle callback.
     /// </summary>
     private async Task ToggleCollapse()
     {
         IsCollapsed = !IsCollapsed;
         // Logger.Debug("List {Title} collapsed state toggled to {IsCollapsed}.", Title, IsCollapsed);
 
-        // Trigger the OnToggle callback to notify parent components of the state change
         if (OnToggle.HasDelegate)
         {
             await OnToggle.InvokeAsync(IsCollapsed);

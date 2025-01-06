@@ -1,5 +1,6 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @typeparam TItem
+@namespace DropBear.Codex.Blazor.Components.Reports
 
 <div class="report-viewer dropbear-container">
     <div class="d-flex justify-content-between align-items-center mb-2">
@@ -27,8 +28,10 @@
                 @if (column.IsVisible)
                 {
                     <th>
-                        <input class="form-control" @bind="column.FilterValue" @bind:event="oninput"
-                               placeholder="Filter..."/>
+                        <input class="form-control"
+                               @bind="column.FilterValue"
+                               @bind:event="oninput"
+                               placeholder="Filter..." />
                     </th>
                 }
             }

@@ -1,7 +1,8 @@
 ﻿@typeparam T
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="drop-bear-list @(IsCollapsed ? "drop-bear-list--collapsed" : "")" style="--clr-surface-primary: @HeaderColor">
+<div class="drop-bear-list @(IsCollapsed ? "drop-bear-list--collapsed" : "")"
+     style="--clr-surface-primary: @HeaderColor">
     <div class="drop-bear-list-header" @onclick="ToggleCollapse">
         <h3 class="drop-bear-list-title">
             @if (!string.IsNullOrEmpty(HeaderIcon))
@@ -12,8 +13,9 @@
         </h3>
         <i class="fas fa-chevron-up drop-bear-list-icon @(IsCollapsed ? "collapsed" : "")"></i>
     </div>
+
     <ul class="drop-bear-list-list">
-        @if (Items == null || Items.Count == 0)
+        @if (Items is null || Items.Count == 0)
         {
             <li class="drop-bear-list-item">
                 <span class="drop-bear-list-item-empty">No items to display</span>
@@ -24,7 +26,7 @@
             @foreach (var item in Items)
             {
                 <li class="drop-bear-list-item">
-                    @if (ItemTemplate != null)
+                    @if (ItemTemplate is not null)
                     {
                         @ItemTemplate(item)
                     }

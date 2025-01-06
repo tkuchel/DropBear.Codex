@@ -9,9 +9,11 @@
     <div class="dropbear-snackbar-icon">
         @((MarkupString)GetIcon())
     </div>
+
     <div class="dropbear-snackbar-content">
         <div class="dropbear-snackbar-title">@SnackbarInstance.Title</div>
         <div class="dropbear-snackbar-message">@((MarkupString)SnackbarInstance.Message)</div>
+
         @if (SnackbarInstance.Actions.Any())
         {
             <div class="dropbear-snackbar-actions">
@@ -26,6 +28,7 @@
             </div>
         }
     </div>
+
     <button type="button"
             class="dropbear-snackbar-close"
             aria-label="Close notification"
@@ -34,7 +37,6 @@
             <path d="M18 6L6 18M6 6l12 12"/>
         </svg>
     </button>
+
     <div class="progress-bar"></div>
 </div>
-
-

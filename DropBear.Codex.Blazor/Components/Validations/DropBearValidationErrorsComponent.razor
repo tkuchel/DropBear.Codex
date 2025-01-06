@@ -43,9 +43,7 @@
                            aria-hidden="true"></i>
                     </div>
                     <div class="validation-errors__item-content">
-                        <div class="validation-errors__item-parameter">
-                            @error.Parameter
-                        </div>
+                        <div class="validation-errors__item-parameter">@error.Parameter</div>
                         <div class="validation-errors__item-message"
                              id="@($"{_componentId}-error-{error.Parameter}")">
                             @error.ErrorMessage

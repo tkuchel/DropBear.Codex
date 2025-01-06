@@ -10,49 +10,46 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Components.Loaders;
 
 /// <summary>
-///     A Blazor component for displaying a spinner for short wait times.
+///     A Blazor component for displaying a spinner during short wait times.
 /// </summary>
-public sealed partial class ShortWaitSpinner : DropBearComponentBase
+public sealed partial class DropBearShortWaitSpinner : DropBearComponentBase
 {
-    /// <summary>
-    ///     Gets or sets the logger instance.
-    /// </summary>
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ShortWaitSpinner>();
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearShortWaitSpinner>();
 
     /// <summary>
-    ///     Gets or sets the title displayed above the spinner.
+    ///     The title displayed above the spinner.
     /// </summary>
     [Parameter]
     public string Title { get; set; } = "Please Wait";
 
     /// <summary>
-    ///     Gets or sets the message displayed below the spinner.
+    ///     The message displayed below the spinner.
     /// </summary>
     [Parameter]
     public string Message { get; set; } = "Processing your request";
 
     /// <summary>
-    ///     Gets or sets the size of the spinner (e.g., "sm", "md", "lg"). Default is "md".
+    ///     The size of the spinner, e.g., "sm", "md", or "lg". Default is "md".
     /// </summary>
     [Parameter]
     public string SpinnerSize { get; set; } = "md";
 
     /// <summary>
-    ///     Gets or sets the color of the spinner. Default is "primary".
+    ///     The color of the spinner, e.g., "primary", "secondary". Default is "primary".
     /// </summary>
     [Parameter]
     public string SpinnerColor { get; set; } = "primary";
 
+    /// <inheritdoc />
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        Logger.Debug("ShortWaitSpinner initialized with title '{Title}' and message '{Message}'", Title, Message);
+        Logger.Debug("DropBearShortWaitSpinner initialized. Title='{Title}', Message='{Message}'", Title, Message);
     }
 
     /// <summary>
-    ///     Generates the ARIA label for the spinner for accessibility.
+    ///     Returns an ARIA label describing the spinner, for accessibility.
     /// </summary>
-    /// <returns>The ARIA label string.</returns>
     private string GetSpinnerAriaLabel()
     {
         return $"{Title}: {Message}";

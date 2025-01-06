@@ -2,21 +2,27 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Validations;
 
 /// <summary>
-///     A Blazor component for displaying validation errors with collapsible UI.
+///     A Blazor component for displaying validation errors with a collapsible UI.
 /// </summary>
-public sealed partial class ValidationErrorsComponent : DropBearComponentBase
+public sealed partial class DropBearValidationErrorsComponent : DropBearComponentBase
 {
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearValidationErrorsComponent>();
     private readonly string _componentId;
     private bool _isCollapsed;
 
-    public ValidationErrorsComponent()
+    /// <summary>
+    ///     Creates a new validation errors component and initializes its ID.
+    /// </summary>
+    public DropBearValidationErrorsComponent()
     {
         _componentId = $"validation-errors-{ComponentId}";
     }
@@ -28,24 +34,24 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
     public ValidationResult? ValidationResult { get; set; }
 
     /// <summary>
-    ///     Initial collapsed state of the validation errors panel.
+    ///     If true, the errors panel is initially collapsed.
     /// </summary>
     [Parameter]
     public bool InitialCollapsed { get; set; }
 
     /// <summary>
-    ///     CSS class to apply to the validation errors container.
+    ///     Additional CSS classes for the validation errors container.
     /// </summary>
     [Parameter]
     public string? CssClass { get; set; }
 
     /// <summary>
-    ///     Gets a value indicating whether there are validation errors to display.
+    ///     Indicates whether there are validation errors to display.
     /// </summary>
     private bool HasErrors => ValidationResult?.HasErrors == true;
 
     /// <summary>
-    ///     Gets the current collapse state.
+    ///     Gets or sets the current collapse state of the panel.
     /// </summary>
     private bool IsCollapsed
     {
@@ -55,11 +61,12 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
             if (_isCollapsed != value)
             {
                 _isCollapsed = value;
-                UpdateAriaAttributes();
+                _ = UpdateAriaAttributes();
             }
         }
     }
 
+    /// <inheritdoc />
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -72,25 +79,29 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
         }
     }
 
+    /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        await base.OnAfterRenderAsync(firstRender);
+
         if (firstRender)
         {
-            await InvokeAsync(async () =>
+            try
             {
-                try
-                {
-                    await Task.Delay(50); // Give DOM time to settle
-                    await UpdateAriaAttributes();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning(ex, "Error during first render initialization");
-                }
-            });
+                // Slight delay to ensure DOM availability
+                await Task.Delay(50);
+                await UpdateAriaAttributes();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning(ex, "Error during first render initialization");
+            }
         }
     }
 
+    /// <summary>
+    ///     Toggles the collapse state and updates ARIA attributes.
+    /// </summary>
     private async Task ToggleCollapseState()
     {
         IsCollapsed = !IsCollapsed;
@@ -98,6 +109,9 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
         Logger.Debug("Validation panel collapsed state: {State}", IsCollapsed);
     }
 
+    /// <summary>
+    ///     Updates ARIA attributes via JS interop to maintain accessibility state.
+    /// </summary>
     private async Task UpdateAriaAttributes()
     {
         if (IsDisposed)
@@ -107,12 +121,12 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
 
         try
         {
-            // First initialize the container
+            // Initialize the container first
             await SafeJsVoidInteropAsync(
                 "DropBearValidationErrors.initialize",
                 _componentId);
 
-            // Then update the aria attributes
+            // Then update the ARIA attributes
             await SafeJsVoidInteropAsync(
                 "validationErrors.updateAriaAttributes",
                 _componentId,
@@ -120,18 +134,16 @@ public sealed partial class ValidationErrorsComponent : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Warning(ex, "Error updating ARIA attributes: {Error}", ex.Message);
-            // Don't throw - allow graceful degradation
+            Logger.Warning(ex, "Error updating ARIA attributes: {Message}", ex.Message);
         }
     }
 
+    /// <inheritdoc />
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
-            await SafeJsVoidInteropAsync(
-                "DropBearValidationErrors.dispose",
-                _componentId);
+            await SafeJsVoidInteropAsync("DropBearValidationErrors.dispose", _componentId);
         }
         catch (Exception ex)
         {

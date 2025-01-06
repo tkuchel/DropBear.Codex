@@ -1,6 +1,9 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div @ref="_triggerElement" id="@_contextMenuId" @oncontextmenu="ShowContextMenuAsync" @oncontextmenu:preventDefault>
+<div @ref="_triggerElement"
+     id="@_contextMenuId"
+     @oncontextmenu="ShowContextMenuAsync"
+     @oncontextmenu:preventDefault>
     @ChildContent
 </div>
 
@@ -9,7 +12,7 @@
     <div class="context-menu active" style="left:@($"{_left}px"); top:@($"{_top}px");">
         @foreach (var item in MenuItems)
         {
-            if (item.IsSeparator)
+            @if (item.IsSeparator)
             {
                 <div class="context-menu-separator"></div>
             }
@@ -22,13 +25,14 @@
                         <i class="@item.IconClass"></i>
                     }
                     <span>@item.Text</span>
-                    @if (item.HasSubmenu)
+                    @if (item is { HasSubmenu: true, Submenu: not null })
                     {
                         <i class="fas fa-chevron-right submenu-icon"></i>
                         <div class="submenu">
                             @foreach (var subItem in item.Submenu)
                             {
-                                <div class="context-menu-item" @onclick="() => OnItemClickAsync(subItem)">
+                                <div class="context-menu-item"
+                                     @onclick="() => OnItemClickAsync(subItem)">
                                     @if (!string.IsNullOrEmpty(subItem.IconClass))
                                     {
                                         <i class="@subItem.IconClass"></i>

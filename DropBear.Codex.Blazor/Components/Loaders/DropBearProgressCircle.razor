@@ -1,6 +1,5 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-@* ProgressCircle.razor *@
 <div class="progress-circle" style="width: @(Size)px; height: @(Size)px;">
     <svg viewBox="0 0 @DefaultViewBoxSize @DefaultViewBoxSize">
         <circle class="progress-circle__background"
@@ -13,12 +12,8 @@
                 cy="@(DefaultViewBoxSize / 2)"
                 r="@Radius"
                 style="stroke-dasharray: @Circumference @Circumference;
-                       stroke-dashoffset: @Offset;">
+                stroke-dashoffset: @Offset;">
         </circle>
     </svg>
     <span class="progress-circle__text">@Progress%</span>
 </div>
-
-@code {
-    // The code behind handles all calculations
-}

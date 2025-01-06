@@ -10,46 +10,54 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Components.Bases;
 
 /// <summary>
-///     An abstract base class for all DropBear components that provides common functionality
-///     for handling component lifecycle, JS interop, and disposal patterns.
+///     An abstract base class for all DropBear components, providing common lifecycle,
+///     JS interop, and disposal patterns.
 /// </summary>
 public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 {
-    internal readonly CancellationTokenSource CircuitCts = new();
-    internal bool IsConnected { get; set; } = true;
+    /// <summary>
+    ///     Global circuit cancellation token, cancelled if the circuit is disconnected or disposed.
+    /// </summary>
+    private readonly CancellationTokenSource _circuitCts = new();
 
-    #region Helpers
-
-    private void LogCircuitDisconnection(string message)
-    {
-        Logger.Debug("{Message} in {ComponentName}", message, GetType().Name);
-    }
-
-    #endregion
-
-    #region Injected Services
-
-    [Inject] protected IJSRuntime JsRuntime { get; set; } = default!;
-    [Inject] protected internal ILogger Logger { get; set; } = default!;
-
-    #endregion
-
-    #region Properties
-
-    protected string ComponentId { get; } = $"dropbear-{Guid.NewGuid():N}";
-    private int _isDisposed; // Backing field for disposal state
+    private int _isDisposed; // Tracks disposal state (0 = not disposed, 1 = disposed)
 
     /// <summary>
-    ///     Gets a value indicating whether the component has been disposed.
+    ///     Unique ID assigned to this component instance.
+    /// </summary>
+    protected string ComponentId { get; } = $"dropbear-{Guid.NewGuid():N}";
+
+    /// <summary>
+    ///     Indicates if the component is currently connected (no circuit disconnection).
+    /// </summary>
+    internal bool IsConnected { get; private set; } = true;
+
+    /// <summary>
+    ///     Backing token for all JS calls. Cancelled on circuit disconnection or disposal.
+    /// </summary>
+    private CancellationToken CircuitToken => _circuitCts.Token;
+
+    /// <summary>
+    ///     Indicates whether this component has been disposed.
     /// </summary>
     protected bool IsDisposed => _isDisposed == 1;
 
-    private CancellationToken CircuitToken => CircuitCts.Token;
+    // Injected Services ------------------------------------------------------
 
-    #endregion
+    [Inject] protected IJSRuntime JsRuntime { get; set; } = null!;
 
-    #region Lifecycle Management
+    [Inject] protected internal ILogger Logger { get; set; } = null!;
 
+    /// <inheritdoc />
+    public virtual async ValueTask DisposeAsync()
+    {
+        await DisposeAsync(true);
+        GC.SuppressFinalize(this);
+    }
+
+    // Lifecycle Methods ------------------------------------------------------
+
+    /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         try
@@ -64,16 +72,15 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    public virtual async ValueTask DisposeAsync()
-    {
-        await DisposeAsync(true);
-        GC.SuppressFinalize(this);
-    }
-
+    /// <summary>
+    ///     Actual dispose logic. Derived classes can override to release additional resources.
+    /// </summary>
+    /// <param name="disposing">If true, indicates that we are in a managed disposal scenario.</param>
     protected virtual async ValueTask DisposeAsync(bool disposing)
     {
-        if (Interlocked.Exchange(ref _isDisposed, 1) == 1) // Ensure single disposal
+        if (Interlocked.Exchange(ref _isDisposed, 1) == 1)
         {
+            // Already disposed
             return;
         }
 
@@ -81,7 +88,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             try
             {
-                if (IsConnected && !CircuitCts.IsCancellationRequested)
+                // Attempt to clean up JS resources if the circuit is still connected
+                if (IsConnected && !_circuitCts.IsCancellationRequested)
                 {
                     await CleanupJavaScriptResourcesAsync()
                         .WaitAsync(TimeSpan.FromSeconds(2), CircuitToken)
@@ -90,7 +98,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                LogCircuitDisconnection("Circuit disconnected; skipping JS cleanup");
+                Logger.Debug("Circuit disconnected; skipping JS cleanup in {ComponentName}", GetType().Name);
             }
             catch (Exception ex)
             {
@@ -98,15 +106,22 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             }
             finally
             {
-                CircuitCts.Dispose();
+                _circuitCts.Dispose();
             }
         }
     }
 
-    #endregion
+    // JavaScript Interop -----------------------------------------------------
 
-    #region JavaScript Interop
-
+    /// <summary>
+    ///     Invokes a JS function returning a result of type <typeparamref name="T" />, with circuit cancellation support.
+    /// </summary>
+    /// <param name="identifier">The JS function to call.</param>
+    /// <param name="args">Additional arguments for the JS function.</param>
+    /// <exception cref="ObjectDisposedException">
+    ///     Thrown if the component is disposed before or during the call.
+    /// </exception>
+    /// <returns>The result of the JS invocation.</returns>
     protected async Task<T> SafeJsInteropAsync<T>(string identifier, params object[] args)
     {
         if (IsDisposed)
@@ -116,7 +131,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            return await JsRuntime.InvokeAsync<T>(identifier, CircuitToken, args)
+            return await JsRuntime
+                .InvokeAsync<T>(identifier, CircuitToken, args)
                 .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken)
                 .ConfigureAwait(false);
         }
@@ -133,6 +149,14 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Invokes a JS function returning no result (void) with circuit cancellation support.
+    /// </summary>
+    /// <param name="identifier">The JS function to call.</param>
+    /// <param name="args">Additional arguments for the JS function.</param>
+    /// <exception cref="ObjectDisposedException">
+    ///     Thrown if the component is disposed before or during the call.
+    /// </exception>
     protected async Task SafeJsVoidInteropAsync(string identifier, params object[] args)
     {
         if (IsDisposed)
@@ -142,7 +166,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            await JsRuntime.InvokeVoidAsync(identifier, CircuitToken, args)
+            await JsRuntime
+                .InvokeVoidAsync(identifier, CircuitToken, args)
                 .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken)
                 .ConfigureAwait(false);
         }
@@ -159,29 +184,20 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Override this in a derived class to clean up any JavaScript resources (listeners, etc.).
+    /// </summary>
     protected virtual Task CleanupJavaScriptResourcesAsync()
     {
         return Task.CompletedTask;
     }
 
-    #endregion
+    // State Management Helpers -----------------------------------------------
 
-    #region State Management
-
-    protected async Task InvokeStateHasChangedAsync(Func<Task> action)
-    {
-        try
-        {
-            await action().ConfigureAwait(false);
-            StateHasChanged();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error executing state change in {ComponentName}", GetType().Name);
-            throw;
-        }
-    }
-
+    /// <summary>
+    ///     Executes a <paramref name="action" /> and then calls <see cref="ComponentBase.StateHasChanged" />.
+    /// </summary>
+    /// <param name="action">Synchronous action to execute before updating UI.</param>
     protected void InvokeStateHasChanged(Action action)
     {
         try
@@ -196,5 +212,21 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    #endregion
+    /// <summary>
+    ///     Executes an asynchronous <paramref name="action" /> and then calls <see cref="ComponentBase.StateHasChanged" />.
+    /// </summary>
+    /// <param name="action">Asynchronous function to execute before updating UI.</param>
+    protected async Task InvokeStateHasChangedAsync(Func<Task> action)
+    {
+        try
+        {
+            await action().ConfigureAwait(false);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error executing state change in {ComponentName}", GetType().Name);
+            throw;
+        }
+    }
 }

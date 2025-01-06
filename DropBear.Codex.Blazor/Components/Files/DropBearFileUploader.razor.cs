@@ -13,33 +13,55 @@ using Serilog;
 
 namespace DropBear.Codex.Blazor.Components.Files;
 
-public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
+/// <summary>
+///     A Blazor component for uploading files with progress and status indication.
+/// </summary>
+public sealed partial class DropBearFileUploader : DropBearComponentBase, IDisposable
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileUploader>();
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileUploader>();
 
     private readonly List<UploadFile> _selectedFiles = new();
     private readonly List<UploadFile> _uploadedFiles = new();
+
     private ElementReference _fileInputRef;
-    [Parameter] public int MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB default
-
-    [Parameter] public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
-
-    [Parameter] public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }
-
-    [Parameter] public Func<UploadFile, IProgress<int>, Task<UploadResult>>? UploadFileAsync { get; set; }
 
     /// <summary>
-    ///     Gets a value indicating whether files are currently being uploaded.
+    ///     The maximum allowed file size in bytes (defaults to 10 MB).
+    /// </summary>
+    [Parameter]
+    public int MaxFileSize { get; set; } = 10 * 1024 * 1024; // 10MB
+
+    /// <summary>
+    ///     The list of allowed file types (MIME types).
+    ///     If empty, all types are allowed.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    ///     Event callback triggered after files are uploaded.
+    /// </summary>
+    [Parameter]
+    public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }
+
+    /// <summary>
+    ///     The delegate responsible for uploading each file (server logic).
+    /// </summary>
+    [Parameter]
+    public Func<UploadFile, IProgress<int>, Task<UploadResult>>? UploadFileAsync { get; set; }
+
+    /// <summary>
+    ///     Indicates whether any file upload operation is currently in progress.
     /// </summary>
     private bool IsUploading { get; set; }
 
     /// <summary>
-    ///     Gets the current upload progress percentage.
+    ///     Represents the overall upload progress (0..100).
     /// </summary>
     private int UploadProgress { get; set; }
 
     /// <summary>
-    ///     Gets the list of selected files.
+    ///     Gets the list of currently selected files (not yet uploaded).
     /// </summary>
     private IReadOnlyList<UploadFile> SelectedFiles => _selectedFiles;
 
@@ -49,15 +71,15 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     private IReadOnlyList<UploadFile> UploadedFiles => _uploadedFiles;
 
     /// <summary>
-    ///     Clean up resources on disposal.
+    ///     Disposes any necessary resources when the component is destroyed.
     /// </summary>
     public void Dispose()
     {
-        // Implement any necessary disposal logic here
+        // Add any cleanup logic here if needed
     }
 
     /// <summary>
-    ///     Handles file selection via the file input.
+    ///     Handles file selection from the file input. Validates and adds them to the list of selected files.
     /// </summary>
     private async Task HandleFileSelectionAsync(InputFileChangeEventArgs e)
     {
@@ -67,6 +89,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
             {
                 var uploadFile = new UploadFile(file.Name, file.Size, file.ContentType, file);
                 _selectedFiles.Add(uploadFile);
+
                 Logger.Debug("Selected file: {FileName} ({FileSize})", file.Name, FormatFileSize(file.Size));
             }
             else
@@ -79,17 +102,19 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Validates a file's size and type against allowed parameters.
+    ///     Validates a file's size and content type against <see cref="MaxFileSize" /> and <see cref="AllowedFileTypes" />.
     /// </summary>
     private bool IsFileValid(IBrowserFile file)
     {
-        return file.Size <= MaxFileSize &&
-               (AllowedFileTypes.Count == 0 ||
-                AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase));
+        var withinSizeLimit = file.Size <= MaxFileSize;
+        var allowedType = AllowedFileTypes.Count == 0 ||
+                          AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase);
+
+        return withinSizeLimit && allowedType;
     }
 
     /// <summary>
-    ///     Removes a file from the selected files list.
+    ///     Removes a file from the currently selected list.
     /// </summary>
     private void RemoveFile(UploadFile file)
     {
@@ -99,13 +124,13 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Uploads the selected files with progress tracking.
+    ///     Initiates upload for all selected files by calling <see cref="UploadFileAsync" />.
     /// </summary>
     private async Task UploadFilesAsync()
     {
         if (UploadFileAsync is null)
         {
-            Logger.Warning("UploadFileAsync delegate is null. Cannot upload files.");
+            Logger.Warning("UploadFileAsync delegate is null; cannot upload files.");
             return;
         }
 
@@ -119,6 +144,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
 
             try
             {
+                // Set up per-file progress
                 var progress = new Progress<int>(percent =>
                 {
                     file.UploadProgress = percent;
@@ -126,6 +152,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
                     StateHasChanged();
                 });
 
+                // Perform the actual file upload
                 var result = await UploadFileAsync(file, progress);
                 file.UploadStatus = result.Status;
 
@@ -145,16 +172,18 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
                 Logger.Error(ex, "Error uploading file: {FileName}", file.Name);
             }
 
+            // Recalculate overall progress
             UploadProgress = (int)((i + 1) / (float)_selectedFiles.Count * 100);
             StateHasChanged();
         }
 
+        // Inform the parent that files have been uploaded
         await OnFilesUploaded.InvokeAsync(_uploadedFiles.ToList());
 
         IsUploading = false;
         UploadProgress = 100;
 
-        // Remove successfully uploaded files from the selected files list
+        // Remove successfully uploaded files from the selected list
         _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
 
         Logger.Debug("File upload process completed.");
@@ -162,7 +191,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Formats the file size in a human-readable format.
+    ///     Converts a file size (in bytes) to a human-readable string (B, KB, MB, etc.).
     /// </summary>
     private static string FormatFileSize(long bytes)
     {
@@ -180,7 +209,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Retrieves the appropriate icon class for a file's upload status.
+    ///     Returns a CSS icon class representing the file's upload status.
     /// </summary>
     private static string GetFileStatusIconClass(UploadStatus status)
     {
@@ -194,7 +223,7 @@ public partial class DropBearFileUploader : DropBearComponentBase, IDisposable
     }
 
     /// <summary>
-    ///     Opens the file dialog to select files.
+    ///     Opens the file dialog via JS interop by programmatically clicking the hidden file input.
     /// </summary>
     private async Task OpenFileDialog()
     {

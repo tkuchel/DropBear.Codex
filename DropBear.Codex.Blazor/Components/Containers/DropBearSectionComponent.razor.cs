@@ -10,39 +10,37 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Components.Containers;
 
 /// <summary>
-///     A component that renders its content conditionally based on synchronous or asynchronous predicates.
+///     A component that conditionally renders its content based on synchronous or asynchronous predicates.
 /// </summary>
-public sealed partial class SectionComponent : DropBearComponentBase
+public sealed partial class DropBearSectionComponent : DropBearComponentBase
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SectionComponent>();
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSectionComponent>();
 
     private bool? _shouldRender;
     private bool ShouldRenderContent => _shouldRender == true;
 
     /// <summary>
-    ///     A synchronous predicate function that determines whether the section should be rendered.
-    ///     If the predicate is null or returns true, the section will be rendered.
+    ///     A synchronous predicate function determining if the section should be rendered.
+    ///     If null or returns true, the section is rendered.
     /// </summary>
     [Parameter]
     public Func<bool>? Predicate { get; set; }
 
     /// <summary>
-    ///     An asynchronous predicate function that determines whether the section should be rendered.
-    ///     If the predicate is null or returns true, the section will be rendered after evaluation.
+    ///     An asynchronous predicate function determining if the section should be rendered.
+    ///     If null or returns true, the section is rendered after evaluation.
     /// </summary>
     [Parameter]
     public Func<Task<bool>>? AsyncPredicate { get; set; }
 
     /// <summary>
-    ///     The content to be rendered within the section.
+    ///     The content to be displayed if the predicates succeed.
     /// </summary>
     [Parameter]
     [EditorRequired]
     public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    ///     Validates the component's parameters and initializes necessary properties.
-    /// </summary>
+    /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         if (ChildContent is null)
@@ -52,42 +50,42 @@ public sealed partial class SectionComponent : DropBearComponentBase
 
         try
         {
-            // Evaluate asynchronous predicate if provided
             if (AsyncPredicate is not null)
             {
-                Logger.Debug("Evaluating asynchronous predicate.");
+                Logger.Debug("Evaluating asynchronous predicate for DropBearSectionComponent.");
                 _shouldRender = await AsyncPredicate.Invoke();
-                Logger.Debug("Asynchronous predicate evaluated to: {ShouldRender}", _shouldRender);
+                Logger.Debug("Asynchronous predicate result: {ShouldRender}", _shouldRender);
             }
             else
             {
-                // Fallback to synchronous predicate
                 _shouldRender = Predicate?.Invoke() ?? true;
-                Logger.Debug("Synchronous predicate evaluated to: {ShouldRender}", _shouldRender);
+                Logger.Debug("Synchronous predicate result: {ShouldRender}", _shouldRender);
             }
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error occurred during predicate evaluation.");
+            Logger.Error(ex, "Error in DropBearSectionComponent predicate evaluation.");
             _shouldRender = false;
         }
 
         await base.OnInitializedAsync();
     }
 
+    /// <inheritdoc />
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
+
         if (AsyncPredicate is null && Predicate is not null)
         {
             try
             {
                 _shouldRender = Predicate.Invoke();
-                Logger.Debug("Synchronous predicate re-evaluated to: {ShouldRender}", _shouldRender);
+                Logger.Debug("Re-evaluated synchronous predicate: {ShouldRender}", _shouldRender);
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error occurred during synchronous predicate re-evaluation.");
+                Logger.Error(ex, "Error re-evaluating synchronous predicate in DropBearSectionComponent.");
                 _shouldRender = false;
             }
         }

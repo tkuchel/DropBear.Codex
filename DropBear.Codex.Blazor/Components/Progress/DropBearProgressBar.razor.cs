@@ -10,12 +10,13 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     A versatile progress bar component that supports indeterminate, normal, and stepped progress modes.
+///     A versatile progress bar component that supports indeterminate, normal (0-100), and stepped progress modes.
 /// </summary>
 public sealed partial class DropBearProgressBar : DropBearComponentBase
 {
     private readonly ProgressStatePool _statePool = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
+
     private int _currentStepIndex;
     private List<ProgressStepConfig>? _currentSteps;
 
@@ -26,54 +27,49 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     private ProgressState? _state;
 
     /// <summary>
-    ///     Gets or sets whether the progress bar is in indeterminate mode.
-    ///     <para>
-    ///         Normally set by the parent component, but if you are driving this from
-    ///         an external service, call <see cref="SetIndeterminateModeAsync" /> or
-    ///         <see cref="SetNormalProgressAsync" /> to avoid warnings.
-    ///     </para>
+    ///     Indicates whether the progress bar is currently indeterminate.
     /// </summary>
     [Parameter]
     public bool IsIndeterminate { get; set; }
 
     /// <summary>
-    ///     Gets or sets the current message to display.
+    ///     The message displayed above the progress bar (e.g., "Loading...").
     /// </summary>
     [Parameter]
     public string Message { get; set; } = string.Empty;
 
     /// <summary>
-    ///     Gets or sets the overall progress (0-100).
+    ///     The overall numeric progress (0..100).
     /// </summary>
     [Parameter]
     public double Progress { get; set; }
 
     /// <summary>
-    ///     Gets or sets the step configurations when in stepped mode.
+    ///     A list of step configurations for stepped progress mode.
     /// </summary>
     [Parameter]
     public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
 
     /// <summary>
-    ///     Gets or sets the minimum time to display each step in milliseconds.
+    ///     The minimum time (ms) to display each step before moving to the next.
     /// </summary>
     [Parameter]
     public int MinStepDisplayTimeMs { get; set; } = 500;
 
     /// <summary>
-    ///     Gets or sets whether to use smooth progress transitions.
+    ///     If true, progress transitions are eased smoothly instead of jumping.
     /// </summary>
     [Parameter]
     public bool UseSmoothProgress { get; set; } = true;
 
     /// <summary>
-    ///     Gets or sets the easing function for progress transitions.
+    ///     The easing function to apply to progress transitions (e.g., EaseInOutCubic).
     /// </summary>
     [Parameter]
     public EasingFunction EasingFunction { get; set; } = EasingFunction.EaseInOutCubic;
 
     /// <summary>
-    ///     Event raised when a step's state changes.
+    ///     Event raised when a step's status changes (e.g., from InProgress to Completed).
     /// </summary>
     [Parameter]
     public EventCallback<(string StepId, StepStatus Status)> OnStepStateChanged { get; set; }
@@ -111,7 +107,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
             if (Steps?.Any() == true)
             {
-                _currentSteps = new List<ProgressStepConfig>(Steps);
+                _currentSteps = [..Steps];
                 foreach (var step in _currentSteps)
                 {
                     _state.GetOrCreateStepState(step.Id);
@@ -127,15 +123,8 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
-        // If you are controlling this component from a parent that uses normal Blazor data binding,
-        // this logic updates the internal state. If you're using the new public methods below,
-        // the OnParametersSetAsync logic might be secondary or unused.
-        if (!_isInitialized)
-        {
-            return;
-        }
-
-        if (IsDisposed)
+        // Only update if the component is initialized and not disposed.
+        if (!_isInitialized || IsDisposed)
         {
             return;
         }
@@ -147,11 +136,12 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             await _updateLock.WaitAsync();
             try
             {
-                if (_state == null)
+                if (_state is null)
                 {
                     return;
                 }
 
+                // Check if Indeterminate or message/progress changed significantly.
                 shouldUpdate =
                     IsIndeterminate != _state.IsIndeterminate ||
                     Message != _lastMessage ||
@@ -189,32 +179,151 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Public method to request UI re-render from external consumers or services.
+    ///     Public method to trigger a re-render from external code.
     /// </summary>
-    public void RequestRender()
+    private void RequestRender()
     {
-        try
+        if (!IsDisposed)
         {
-            if (!IsDisposed)
+            try
             {
                 InvokeAsync(StateHasChanged);
             }
-        }
-        catch (ObjectDisposedException)
-        {
-            // If the component is already disposed, ignore
+            catch (ObjectDisposedException)
+            {
+                // Component already disposed, ignore
+            }
         }
     }
 
-    // ----------------------------------------------------------------------------------
-    // PUBLIC METHODS that set the 'parameters' without triggering Blazor warnings
-    // ----------------------------------------------------------------------------------
+    /// <summary>
+    ///     Updates the progress and status of a particular step in stepped mode.
+    /// </summary>
+    public async Task UpdateStepProgressAsync(string stepId, double progress, StepStatus status)
+    {
+        if (!_isInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _updateLock.WaitAsync();
+            try
+            {
+                var stepState = _state!.GetOrCreateStepState(stepId);
+                var previousStatus = stepState.Status;
+
+                await stepState.UpdateProgressAsync(progress, status);
+
+                if (status != previousStatus)
+                {
+                    await OnStepStateChanged.InvokeAsync((stepId, status));
+                }
+
+                // If the step is completed or failed/skipped, move to next step automatically
+                if (status is StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped)
+                {
+                    await MoveToNextStepAsync();
+                }
+            }
+            finally
+            {
+                _updateLock.Release();
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex) when (ex is not ObjectDisposedException)
+        {
+            Logger.Error(ex, "Error updating step progress in {ComponentName}", nameof(DropBearProgressBar));
+        }
+    }
+
+    private async Task MoveToNextStepAsync()
+    {
+        if (_currentSteps == null || _currentStepIndex >= _currentSteps.Count - 1)
+        {
+            return;
+        }
+
+        // Cancel any smoothing in progress
+        await _smoothingCts?.CancelAsync()!;
+        _smoothingCts = new CancellationTokenSource();
+
+        try
+        {
+            var token = _smoothingCts.Token;
+            _currentStepIndex++;
+
+            // Force minimum display time if smoothing is enabled
+            if (UseSmoothProgress)
+            {
+                await Task.Delay(MinStepDisplayTimeMs, token);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Transition canceled
+        }
+    }
 
     /// <summary>
-    ///     Sets the progress bar into indeterminate mode (e.g. unknown length).
-    ///     Use this if you're driving the component from a service or orchestrator.
+    ///     Returns a small subset of steps (previous, current, next) for display, if relevant.
     /// </summary>
-    /// <param name="message">A message to display (e.g. "Please wait...").</param>
+    private IEnumerable<(ProgressStepConfig Config, int Index)> GetVisibleSteps()
+    {
+        if (_currentSteps == null)
+        {
+            yield break;
+        }
+
+        // Show up to 3 steps: the previous, current, and next.
+        var startIdx = Math.Max(0, _currentStepIndex - 1);
+        var endIdx = Math.Min(_currentSteps.Count - 1, startIdx + 2);
+
+        for (var i = startIdx; i <= endIdx; i++)
+        {
+            yield return (_currentSteps[i], i - startIdx);
+        }
+    }
+
+    /// <inheritdoc />
+    protected override async ValueTask DisposeAsync(bool disposing)
+    {
+        if (disposing)
+        {
+            try
+            {
+                if (_smoothingCts != null)
+                {
+                    await _smoothingCts.CancelAsync();
+                    _smoothingCts.Dispose();
+                }
+
+                _updateLock.Dispose();
+
+                if (_state != null)
+                {
+                    await _state.DisposeAsync();
+                    _statePool.Return(_state);
+                    _state = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error disposing {ComponentName}", nameof(DropBearProgressBar));
+            }
+        }
+
+        await base.DisposeAsync(disposing);
+    }
+
+    #region Public Methods for External Control
+
+    /// <summary>
+    ///     Switches the progress bar into indeterminate mode (no numeric progress).
+    /// </summary>
     public async Task SetIndeterminateModeAsync(string message)
     {
         if (IsDisposed)
@@ -243,10 +352,8 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Sets the progress bar to normal (non-indeterminate) mode with a progress percentage.
+    ///     Sets the progress bar to a specific numeric value (0-100) and updates the message.
     /// </summary>
-    /// <param name="progress">A value from 0 to 100 representing overall progress.</param>
-    /// <param name="message">The message to display.</param>
     public async Task SetNormalProgressAsync(double progress, string message)
     {
         if (IsDisposed)
@@ -275,9 +382,8 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Updates or sets the step configurations (stepped mode).
+    ///     Updates the step configurations for stepped progress mode.
     /// </summary>
-    /// <param name="steps">A list of step configurations, or null if none.</param>
     public async Task SetStepsAsync(IReadOnlyList<ProgressStepConfig>? steps)
     {
         if (IsDisposed)
@@ -292,7 +398,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
             if (_isInitialized && steps?.Any() == true)
             {
-                _currentSteps = new List<ProgressStepConfig>(steps);
+                _currentSteps = [..steps];
                 foreach (var step in _currentSteps)
                 {
                     _state?.GetOrCreateStepState(step.Id);
@@ -312,7 +418,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Updates both normal/indeterminate mode and steps in one go if desired.
+    ///     Sets all parameters at once: mode (indeterminate or not), progress, message, and steps.
     /// </summary>
     public async Task SetParametersManuallyAsync(
         bool isIndeterminate,
@@ -346,7 +452,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
                 if (steps?.Any() == true)
                 {
-                    _currentSteps = new List<ProgressStepConfig>(steps);
+                    _currentSteps = [..steps];
                     foreach (var step in _currentSteps)
                     {
                         _state.GetOrCreateStepState(step.Id);
@@ -365,121 +471,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
         RequestRender();
     }
-    // ----------------------------------------------------------------------------------
 
-    /// <summary>
-    ///     Updates the progress of a specific step in stepped mode.
-    /// </summary>
-    public async Task UpdateStepProgressAsync(string stepId, double progress, StepStatus status)
-    {
-        if (!_isInitialized || IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _updateLock.WaitAsync();
-            try
-            {
-                var stepState = _state!.GetOrCreateStepState(stepId);
-                var previousStatus = stepState.Status;
-
-                await stepState.UpdateProgressAsync(progress, status);
-
-                if (status != previousStatus)
-                {
-                    await OnStepStateChanged.InvokeAsync((stepId, status));
-                }
-
-                // Move to next step if completed
-                if (status is StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped)
-                {
-                    await MoveToNextStepAsync();
-                }
-            }
-            finally
-            {
-                _updateLock.Release();
-            }
-
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex) when (ex is not ObjectDisposedException)
-        {
-            Logger.Error(ex, "Error updating step progress in {ComponentName}", nameof(DropBearProgressBar));
-        }
-    }
-
-    private async Task MoveToNextStepAsync()
-    {
-        if (_currentSteps == null || _currentStepIndex >= _currentSteps.Count - 1)
-        {
-            return;
-        }
-
-        // Cancel any ongoing smoothing
-        await _smoothingCts?.CancelAsync();
-        _smoothingCts = new CancellationTokenSource();
-
-        try
-        {
-            var token = _smoothingCts.Token;
-            _currentStepIndex++;
-
-            // Ensure smooth transition even for fast steps
-            if (UseSmoothProgress)
-            {
-                await Task.Delay(MinStepDisplayTimeMs, token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Transition was cancelled
-        }
-    }
-
-    private IEnumerable<(ProgressStepConfig Config, int Index)> GetVisibleSteps()
-    {
-        if (_currentSteps == null)
-        {
-            yield break;
-        }
-
-        // Always show 3 steps (previous, current, next)
-        var startIdx = Math.Max(0, _currentStepIndex - 1);
-        var endIdx = Math.Min(_currentSteps.Count - 1, startIdx + 2);
-
-        for (var i = startIdx; i <= endIdx; i++)
-        {
-            yield return (_currentSteps[i], i - startIdx);
-        }
-    }
-
-    /// <inheritdoc />
-    protected override async ValueTask DisposeAsync(bool disposing)
-    {
-        if (disposing)
-        {
-            try
-            {
-                await _smoothingCts?.CancelAsync();
-                _smoothingCts?.Dispose();
-                _updateLock.Dispose();
-
-                if (_state != null)
-                {
-                    await _state.DisposeAsync();
-                    _statePool.Return(_state);
-                    _state = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error disposing {ComponentName}", nameof(DropBearProgressBar));
-            }
-        }
-
-        await base.DisposeAsync(disposing);
-    }
+    #endregion
 }

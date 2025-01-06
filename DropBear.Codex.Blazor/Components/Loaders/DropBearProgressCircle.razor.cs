@@ -10,51 +10,54 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Components.Loaders;
 
 /// <summary>
-///     A circular progress indicator.
+///     A circular progress indicator displaying a percentage from 0 to 100.
 /// </summary>
-public sealed partial class ProgressCircle : DropBearComponentBase
+public sealed partial class DropBearProgressCircle : DropBearComponentBase
 {
     private const int DefaultViewBoxSize = 60;
     private const int StrokeWidth = 4;
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ProgressCircle>();
+
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearProgressCircle>();
     private static readonly int Radius = (DefaultViewBoxSize / 2) - StrokeWidth;
     private static readonly double Circumference = 2 * Math.PI * Radius;
 
     /// <summary>
-    ///     The progress percentage (0-100) to be displayed.
+    ///     The progress percentage (0-100) to display.
     /// </summary>
     [Parameter]
     public int Progress { get; set; }
 
     /// <summary>
-    ///     The size of the circular progress indicator.
+    ///     The overall diameter in px for the circle.
     /// </summary>
     [Parameter]
     public int Size { get; set; } = DefaultViewBoxSize;
 
     /// <summary>
-    ///     The offset used to calculate the visible portion of the progress circle.
+    ///     Calculates the stroke-dashoffset needed to visually represent the given Progress.
     /// </summary>
     private double Offset => Circumference - (Progress / 100.0 * Circumference);
 
+    /// <inheritdoc />
     protected override void OnParametersSet()
     {
-        // Ensure Progress is between 0 and 100
+        // Clamp progress to [0..100]
         var originalProgress = Progress;
         Progress = Math.Clamp(Progress, 0, 100);
 
         if (Progress != originalProgress)
         {
-            Logger.Warning("Progress value clamped to {Progress} from {OriginalProgress}", Progress, originalProgress);
+            Logger.Warning("Progress value clamped to {Progress} from {Original}", Progress, originalProgress);
         }
 
-        // Ensure Size is a positive value
+        // Ensure Size is positive
         if (Size <= 0)
         {
-            Logger.Error("Invalid size parameter {Size}. Size must be greater than zero.", Size);
-            throw new ArgumentException("Size must be a positive value greater than zero.");
+            Logger.Error("Invalid size parameter: {Size}. Must be > 0.", Size);
+            throw new ArgumentException("Size must be a positive integer greater than zero.");
         }
 
-        Logger.Debug("ProgressCircle parameters set: Progress = {Progress}, Size = {Size}", Progress, Size);
+        Logger.Debug("DropBearProgressCircle parameters set: Progress={Progress}, Size={Size}",
+            Progress, Size);
     }
 }

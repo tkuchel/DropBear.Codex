@@ -31,8 +31,12 @@ else
                         @if (EnableSearch)
                         {
                             <div class="search-wrapper">
-                                <input @ref="_searchInput" type="text" class="search-input" placeholder="Search..."
-                                       @oninput="OnSearchInput" @bind="SearchTerm"/>
+                                <input @ref="_searchInput"
+                                       type="text"
+                                       class="search-input"
+                                       placeholder="Search..."
+                                       @oninput="OnSearchInput"
+                                       @bind="SearchTerm"/>
                                 @if (_isSearching)
                                 {
                                     <span class="search-indicator">Searching...</span>
@@ -64,12 +68,13 @@ else
                             {
                                 <th class="datagrid-cell" style="width: 40px;">
                                     <input type="checkbox"
-                                           @onchange="@(e => ToggleSelectAll(e.Value is bool b && b))"/>
+                                           @onchange="@(e => ToggleSelectAll(e.Value is true))"/>
                                 </th>
                             }
                             @foreach (var column in _columns)
                             {
-                                <th class="datagrid-cell" style="min-width: @(column.Width)px;"
+                                <th class="datagrid-cell"
+                                    style="min-width: @(column.Width)px;"
                                     @onclick="@(() => SortBy(column))">
                                     <div class="datagrid-cell-content">
                                         @column.Title
@@ -113,7 +118,8 @@ else
                         {
                             @foreach (var item in DisplayedItems)
                             {
-                                <tr @key="item" class="datagrid-row @(IsItemSelected(item) ? "selected" : "")"
+                                <tr @key="item"
+                                    class="datagrid-row @(IsItemSelected(item) ? "selected" : "")"
                                     @onclick="() => HandleRowClickAsync(item)"
                                     @ondblclick="() => HandleRowDoubleClickAsync(item)"
                                     @oncontextmenu="e => HandleRowContextMenuAsync(e, item)"
@@ -121,8 +127,9 @@ else
                                     @if (EnableMultiSelect)
                                     {
                                         <td class="datagrid-cell" style="width: 40px;">
-                                            <input type="checkbox" checked="@IsItemSelected(item)"
-                                                   @onchange="@(e => ToggleSelection(item, e.Value is bool b && b))"
+                                            <input type="checkbox"
+                                                   checked="@IsItemSelected(item)"
+                                                   @onchange="@(e => ToggleSelection(item, e.Value is true))"
                                                    @onclick:stopPropagation="true"/>
                                         </td>
                                     }

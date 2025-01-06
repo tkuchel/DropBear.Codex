@@ -1,6 +1,7 @@
 ﻿@inject IModalService ModalService
 @using DropBear.Codex.Blazor.Interfaces
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
 @if (ModalService.IsModalVisible)
 {
     <div class="modal-overlay" @onclick="HandleOutsideClick">

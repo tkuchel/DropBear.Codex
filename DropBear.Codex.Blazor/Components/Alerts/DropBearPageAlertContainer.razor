@@ -1,6 +1,5 @@
 ﻿@inject IPageAlertService PageAlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
-<!-- DropBearPageAlertContainer.razor -->
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
 @using MessagePipe
@@ -16,7 +15,6 @@
             Type="@alert.Type"
             IsPermanent="@alert.IsPermanent"
             Duration="@alert.Duration"
-            OnClose="@(() => RemoveAlert(alert.Id))"/>
+            OnClose="@(() => RemoveAlert(alert.Id))" />
     }
 </div>
-

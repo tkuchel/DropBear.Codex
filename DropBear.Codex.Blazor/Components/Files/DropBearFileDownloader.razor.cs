@@ -16,39 +16,64 @@ namespace DropBear.Codex.Blazor.Components.Files;
 public sealed partial class DropBearFileDownloader : DropBearComponentBase, IAsyncDisposable
 {
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearFileDownloader>();
+
     private CancellationTokenSource? _dismissCancellationTokenSource;
     private int _downloadProgress;
     private bool _isDownloading;
 
-    [Parameter] public string FileName { get; set; } = string.Empty;
-
-    [Parameter] public string FileSize { get; set; } = string.Empty;
-
-    [Parameter] public string FileIconClass { get; set; } = "fas fa-file-pdf";
-
-    [Parameter] public Func<IProgress<int>, CancellationToken, Task<Stream>>? DownloadFileAsync { get; set; }
-
-    [Parameter] public EventCallback<bool> OnDownloadComplete { get; set; }
-
-    [Parameter] public string ContentType { get; set; } = "application/octet-stream";
+    /// <summary>
+    ///     The displayed file name (e.g., "document.pdf").
+    /// </summary>
+    [Parameter]
+    public string FileName { get; set; } = string.Empty;
 
     /// <summary>
-    ///     Asynchronously disposes of the component's resources.
+    ///     The displayed file size (e.g., "2.5 MB").
+    /// </summary>
+    [Parameter]
+    public string FileSize { get; set; } = string.Empty;
+
+    /// <summary>
+    ///     The CSS class for the file icon (e.g., "fas fa-file-pdf").
+    /// </summary>
+    [Parameter]
+    public string FileIconClass { get; set; } = "fas fa-file-pdf";
+
+    /// <summary>
+    ///     A delegate returning a stream for the file to be downloaded.
+    ///     The <see cref="IProgress{T}" /> reports the download progress (0..100).
+    /// </summary>
+    [Parameter]
+    public Func<IProgress<int>, CancellationToken, Task<Stream>>? DownloadFileAsync { get; set; }
+
+    /// <summary>
+    ///     An event callback invoked upon download completion (true if success, false otherwise).
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnDownloadComplete { get; set; }
+
+    /// <summary>
+    ///     The MIME content type used when saving the file on the client.
+    /// </summary>
+    [Parameter]
+    public string ContentType { get; set; } = "application/octet-stream";
+
+    /// <summary>
+    ///     Asynchronously disposes component resources, including cancellation tokens.
     /// </summary>
     public new async ValueTask DisposeAsync()
     {
         if (_dismissCancellationTokenSource != null)
         {
             await _dismissCancellationTokenSource.CancelAsync();
-
             try
             {
-                // Wait briefly to allow any pending operations to complete
+                // Brief wait to let pending tasks wrap up.
                 await Task.Delay(100);
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error during asynchronous disposal of DropBearFileDownloader");
+                Logger.Error(ex, "Error during asynchronous disposal of DropBearFileDownloader.");
             }
             finally
             {
@@ -58,18 +83,17 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IAsy
         }
 
         await base.DisposeAsync();
-        GC.SuppressFinalize(this);
+        // GC.SuppressFinalize(this);
     }
 
     /// <summary>
-    ///     Starts the file download process and monitors progress.
+    ///     Initiates the file download process and updates progress.
     /// </summary>
     private async Task StartDownload()
     {
         if (_isDownloading || DownloadFileAsync is null)
         {
-            Logger.Warning(
-                "Download attempt skipped because a download is already in progress or DownloadFileAsync is null.");
+            Logger.Warning("Download attempt skipped: already downloading or DownloadFileAsync is null.");
             return;
         }
 
@@ -87,63 +111,63 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase, IAsy
         {
             Logger.Information("Starting download for file: {FileName}", FileName);
 
-            // Set up progress reporting
+            // Create progress reporter
             var progress = new Progress<int>(percent =>
             {
                 _downloadProgress = percent;
-                Logger.Debug("Download progress updated: {Progress}%", percent);
+                Logger.Debug("Download progress: {Progress}%", percent);
                 InvokeAsync(StateHasChanged);
             });
 
-            // Call the download function, passing progress and cancellation token
+            // Download the file via the provided delegate
             await using var resultStream = await DownloadFileAsync(progress, _dismissCancellationTokenSource.Token);
 
-            // Use JS interop to trigger the download using a stream reference
+            // Create DotNetStreamReference for JS side
             var streamRef = new DotNetStreamReference(resultStream);
 
-            Logger.Debug("Download completed for file: {FileName}, preparing to save file on client.", FileName);
+            Logger.Debug("Download completed. Saving file on client: {FileName}", FileName);
 
             await SafeJsVoidInteropAsync(
                 "DropBearFileDownloader.downloadFileFromStream",
                 FileName,
                 streamRef,
-                ContentType);
+                ContentType
+            );
 
-            // Notify completion with success
+            // Fire the completion event with success = true
             await OnDownloadComplete.InvokeAsync(true);
         }
         catch (JSDisconnectedException)
         {
-            Logger.Warning("JSInterop call failed due to disconnected circuit during download of file: {FileName}",
-                FileName);
-            await OnDownloadComplete.InvokeAsync(false); // Notify failure
+            Logger.Warning("JSInterop call failed: circuit disconnected during download of {FileName}", FileName);
+            await OnDownloadComplete.InvokeAsync(false);
         }
         catch (OperationCanceledException)
         {
-            Logger.Warning("Download canceled for file: {FileName}", FileName);
-            await OnDownloadComplete.InvokeAsync(false); // Notify cancellation as failure
+            Logger.Warning("Download canceled: {FileName}", FileName);
+            await OnDownloadComplete.InvokeAsync(false);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error occurred during file download for file: {FileName}", FileName);
-            await OnDownloadComplete.InvokeAsync(false); // Notify failure
+            Logger.Error(ex, "Error during file download: {FileName}", FileName);
+            await OnDownloadComplete.InvokeAsync(false);
         }
         finally
         {
             _isDownloading = false;
             _dismissCancellationTokenSource?.Dispose();
             _dismissCancellationTokenSource = null;
-            Logger.Debug("Download process finalized for file: {FileName}", FileName);
+            Logger.Debug("Download process finalized: {FileName}", FileName);
             await InvokeAsync(StateHasChanged);
         }
     }
 
     /// <summary>
-    ///     Overrides the base class method to clean up any JavaScript resources if necessary.
+    ///     Override of base method for cleaning up JS resources.
+    ///     Returns a completed task here as there are no additional JS resources to release.
     /// </summary>
     protected override Task CleanupJavaScriptResourcesAsync()
     {
-        // No additional JS resources to clean up for this component
         return Task.CompletedTask;
     }
 }

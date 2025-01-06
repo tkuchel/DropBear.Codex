@@ -8,7 +8,7 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Components.Containers;
 
 /// <summary>
-///     A container for displaying modals, with customizable width, height, and transitions.
+///     A container for displaying modals with customizable width, height, and transitions.
 /// </summary>
 public sealed partial class DropBearModalContainer : DropBearComponentBase, IDisposable
 {
@@ -16,30 +16,24 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase, IDis
     private string _customHeight = "auto"; // Default height
     private string _customWidth = "auto"; // Default width
     private bool _isSubscribed;
-    private string _transitionDuration = "0.3s"; // Default transition duration
+    private string _transitionDuration = "0.3s"; // Default animation duration
 
     /// <summary>
-    ///     Cleanup on component disposal, ensuring event unsubscription.
+    ///     Ensures we unsubscribe from the modal service event on disposal.
     /// </summary>
     public void Dispose()
     {
         UnsubscribeFromModalService();
-        GC.SuppressFinalize(this);
+        // GC.SuppressFinalize(this);
     }
 
-    /// <summary>
-    ///     Subscribes to the ModalService's OnChange event during initialization.
-    /// </summary>
+    /// <inheritdoc />
     protected override void OnInitialized()
     {
         base.OnInitialized();
         SubscribeToModalService();
     }
 
-
-    /// <summary>
-    ///     Subscribes to the ModalService OnChange event.
-    /// </summary>
     private void SubscribeToModalService()
     {
         if (!_isSubscribed)
@@ -47,13 +41,11 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase, IDis
             ModalService.OnChange += StateHasChanged;
             _isSubscribed = true;
             SetCustomParameters();
+
             Log.Debug("Subscribed to ModalService OnChange event.");
         }
     }
 
-    /// <summary>
-    ///     Unsubscribes from the ModalService OnChange event.
-    /// </summary>
     private void UnsubscribeFromModalService()
     {
         if (_isSubscribed)
@@ -65,36 +57,35 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase, IDis
     }
 
     /// <summary>
-    ///     Retrieves custom parameters for width, height, and transition duration.
+    ///     Reads and applies custom parameters (width, height, transition duration) from <see cref="ModalService" />.
     /// </summary>
     private void SetCustomParameters()
     {
         if (ModalService.CurrentParameters != null)
         {
-            // Retrieve custom width, height, and transition duration if specified
             if (ModalService.CurrentParameters.TryGetValue("CustomWidth", out var width))
             {
-                _customWidth = width?.ToString() ?? "auto";
+                _customWidth = width.ToString() ?? "auto";
             }
 
             if (ModalService.CurrentParameters.TryGetValue("CustomHeight", out var height))
             {
-                _customHeight = height?.ToString() ?? "auto";
+                _customHeight = height.ToString() ?? "auto";
             }
 
             if (ModalService.CurrentParameters.TryGetValue("TransitionDuration", out var duration))
             {
-                _transitionDuration = duration?.ToString() ?? "0.3s";
+                _transitionDuration = duration.ToString() ?? "0.3s";
             }
         }
 
         Log.Debug(
-            "Modal container initialized with custom dimensions: Width = {Width}, Height = {Height}, Transition Duration = {Duration}",
+            "Modal container initialized with custom dimensions: Width={Width}, Height={Height}, Duration={Duration}",
             _customWidth, _customHeight, _transitionDuration);
     }
 
     /// <summary>
-    ///     Handles clicking outside the modal to trigger its closure, if allowed.
+    ///     Handles a click outside the modal content to close the modal if allowed.
     /// </summary>
     private async Task HandleOutsideClick()
     {
@@ -112,7 +103,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase, IDis
     }
 
     /// <summary>
-    ///     Manually triggers the modal close operation.
+    ///     Allows manual triggering of modal closure from external code.
     /// </summary>
     public void TriggerClose()
     {

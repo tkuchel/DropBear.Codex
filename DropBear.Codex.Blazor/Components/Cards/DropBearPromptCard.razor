@@ -1,4 +1,5 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
 <div class="prompt-card-container">
     <div class="prompt-card-overlay">
         <div class="prompt-card @GetPromptClass() @(Subtle ? "subtle" : "")">
@@ -6,16 +7,18 @@
                 <i class="@Icon" aria-hidden="true"></i>
                 <h5 class="card-title">@Title</h5>
             </div>
+
             <div class="card-body">
-                <p class="card-text">
-                    @Description
-                </p>
+                <p class="card-text">@Description</p>
+
                 @if (Buttons != null && Buttons.Any())
                 {
                     <div class="button-group">
                         @foreach (var button in Buttons)
                         {
-                            <button type="button" class="@GetButtonClass(button.Color)" @onclick="@(() => HandleButtonClick(button))">
+                            <button type="button"
+                                    class="@GetButtonClass(button.Color)"
+                                    @onclick="@(() => HandleButtonClick(button))">
                                 @if (!string.IsNullOrEmpty(button.Icon))
                                 {
                                     <i class="@button.Icon"></i>
