@@ -17,30 +17,23 @@ public static class ArrayHelper
             throw new ArgumentNullException(nameof(bytes));
         }
 
-        const int BytesPerLine = 16;
+        const int bytesPerLine = 16;
         output ??= Console.Out;
 
-        for (var i = 0; i < bytes.Length; i += BytesPerLine)
+        for (var i = 0; i < bytes.Length; i += bytesPerLine)
         {
             output.Write($"{i:X8}: ");
 
             // Print hexadecimal values
-            for (var j = 0; j < BytesPerLine; j++)
+            for (var j = 0; j < bytesPerLine; j++)
             {
-                if (i + j < bytes.Length)
-                {
-                    output.Write($"{bytes[i + j]:X2} ");
-                }
-                else
-                {
-                    output.Write("   ");
-                }
+                output.Write(i + j < bytes.Length ? $"{bytes[i + j]:X2} " : "   ");
             }
 
             output.Write(" ");
 
             // Print ASCII characters
-            for (var j = 0; j < BytesPerLine; j++)
+            for (var j = 0; j < bytesPerLine; j++)
             {
                 if (i + j < bytes.Length)
                 {
@@ -85,12 +78,12 @@ public static class ArrayHelper
         }
 
         var diffCount = 0;
-        const int BytesPerLine = 16;
+        const int bytesPerLine = 16;
         var maxLength = Math.Max(array1.Length, array2.Length);
 
-        for (var i = 0; i < maxLength; i += BytesPerLine)
+        for (var i = 0; i < maxLength; i += bytesPerLine)
         {
-            var bytesToPrint = Math.Min(BytesPerLine, maxLength - i);
+            var bytesToPrint = Math.Min(bytesPerLine, maxLength - i);
 
             output.Write($"{i:X8}: ");
 
@@ -98,14 +91,7 @@ public static class ArrayHelper
             for (var j = 0; j < bytesToPrint; j++)
             {
                 var index = i + j;
-                if (index < array1.Length)
-                {
-                    output.Write($"{array1[index]:X2} ");
-                }
-                else
-                {
-                    output.Write("   ");
-                }
+                output.Write(index < array1.Length ? $"{array1[index]:X2} " : "   ");
             }
 
             output.Write(" ");

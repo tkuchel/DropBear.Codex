@@ -3,7 +3,7 @@
 /// <summary>
 /// Represents errors that occur during time-based code generation or validation.
 /// </summary>
-public class TimeBasedCodeException : Exception
+public sealed class TimeBasedCodeException : Exception
 {
     /// <summary>
     /// Initializes a new instance of the <see cref="TimeBasedCodeException"/> class.

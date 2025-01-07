@@ -80,7 +80,7 @@ public static partial class StringHelper
     /// <returns>Tuple containing month, day, and year; or null if parsing fails.</returns>
     public static (int Month, int Day, int Year)? ExtractDateParts(this string dateString)
     {
-        if (DateTime.TryParseExact(dateString, new[] { "MM/dd/yy", "M/d/yy", "dd/MM/yyyy" },
+        if (DateTime.TryParseExact(dateString, ["MM/dd/yy", "M/d/yy", "dd/MM/yyyy"],
                 CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsedDate))
         {
             return (parsedDate.Month, parsedDate.Day, parsedDate.Year);

@@ -79,14 +79,14 @@ public static class ReadOnlyExtensions
         var constructor = typeBuilder.DefineConstructor(
             MethodAttributes.Public,
             CallingConventions.HasThis,
-            new[] { type }
+            [type]
         );
 
-        var constructorIL = constructor.GetILGenerator();
-        constructorIL.Emit(OpCodes.Ldarg_0);
-        constructorIL.Emit(OpCodes.Ldarg_1);
-        constructorIL.Emit(OpCodes.Stfld, instanceField);
-        constructorIL.Emit(OpCodes.Ret);
+        var constructorIl = constructor.GetILGenerator();
+        constructorIl.Emit(OpCodes.Ldarg_0);
+        constructorIl.Emit(OpCodes.Ldarg_1);
+        constructorIl.Emit(OpCodes.Stfld, instanceField);
+        constructorIl.Emit(OpCodes.Ret);
 
         foreach (var property in type.GetProperties(BindingFlags.Public | BindingFlags.Instance))
         {
@@ -102,11 +102,11 @@ public static class ReadOnlyExtensions
                 MethodAttributes.Public | MethodAttributes.Virtual | MethodAttributes.HideBySig, property.PropertyType,
                 Type.EmptyTypes);
 
-            var getIL = getMethodBuilder.GetILGenerator();
-            getIL.Emit(OpCodes.Ldarg_0);
-            getIL.Emit(OpCodes.Ldfld, instanceField);
-            getIL.Emit(OpCodes.Call, getMethod);
-            getIL.Emit(OpCodes.Ret);
+            var getIl = getMethodBuilder.GetILGenerator();
+            getIl.Emit(OpCodes.Ldarg_0);
+            getIl.Emit(OpCodes.Ldfld, instanceField);
+            getIl.Emit(OpCodes.Call, getMethod);
+            getIl.Emit(OpCodes.Ret);
 
             readOnlyProperty.SetGetMethod(getMethodBuilder);
         }

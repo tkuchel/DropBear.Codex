@@ -13,7 +13,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// <summary>
 ///     Handles batching of progress updates to reduce message overhead
 /// </summary>
-public class BatchingProgressReporter : IAsyncDisposable
+public sealed class BatchingProgressReporter : IAsyncDisposable
 {
     private readonly TimeSpan _batchInterval;
     private readonly Guid _channelId;

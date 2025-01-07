@@ -182,18 +182,6 @@ public sealed class ExcelExporter<T> where T : class
                 cell.SetValue(Convert.ToDateTime(value, CultureInfo.InvariantCulture));
                 cell.Style.DateFormat.Format = "yyyy-mm-dd hh:mm:ss";
             }
-            else if (underlyingType == typeof(TimeSpan))
-            {
-                cell.SetValue(value.ToString());
-            }
-            else if (underlyingType == typeof(string))
-            {
-                cell.SetValue(value.ToString());
-            }
-            else if (underlyingType.IsEnum)
-            {
-                cell.SetValue(value.ToString());
-            }
             else
             {
                 // For other types, convert to string

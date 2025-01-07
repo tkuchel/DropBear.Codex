@@ -8,14 +8,24 @@ using DropBear.Codex.Utilities.Interfaces;
 
 namespace DropBear.Codex.Utilities.Comparers.ComparisonStrategies;
 
+/// <summary>
+///     A comparison strategy for custom object types that are not strings, not enumerations, and not IEnumerable.
+///     Compares property-by-property using <see cref="ObjectComparer.CompareValues" />.
+/// </summary>
 public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
 {
+    /// <inheritdoc />
     public bool CanCompare(Type type)
     {
-        return type is { IsPrimitive: false, IsEnum: false } && type != typeof(string) &&
+        // We exclude:
+        // 1) Primitive or enum types
+        // 2) Strings
+        // 3) Anything that implements IEnumerable
+        return !type.IsPrimitive && !type.IsEnum && type != typeof(string) &&
                !typeof(IEnumerable).IsAssignableFrom(type);
     }
 
+    /// <inheritdoc />
     public double Compare(object? value1, object? value2)
     {
         if (value1 == null || value2 == null || value1.GetType() != value2.GetType())
@@ -27,6 +37,7 @@ public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
         double totalScore = 0;
         var propertiesCompared = 0;
 
+        // Summation of property-level comparisons
         foreach (var prop in properties)
         {
             var propValue1 = prop.GetValue(value1);
@@ -36,6 +47,8 @@ public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
             propertiesCompared++;
         }
 
-        return propertiesCompared > 0 ? totalScore / propertiesCompared : 0;
+        return propertiesCompared > 0
+            ? totalScore / propertiesCompared
+            : 0;
     }
 }
