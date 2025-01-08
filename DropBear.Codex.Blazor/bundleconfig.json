@@ -1,0 +1,14 @@
+{
+  "bundles": [
+    {
+      "outputFileName": "wwwroot/DropBear.Codex.Blazor.bundle.scp.css",
+      "inputFiles": [
+        "**/*.razor.css"
+      ],
+      "minify": {
+        "enabled": true,
+        "renameLocals": true
+      }
+    }
+  ]
+}
