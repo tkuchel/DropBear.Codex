@@ -16,7 +16,7 @@ namespace DropBear.Codex.Blazor.Components.Grids;
 ///     templates, etc.
 /// </summary>
 /// <typeparam name="TItem">The type of the data item for the grid.</typeparam>
-public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBase
+public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBase where TItem : class
 {
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGridColumn<TItem>>();
 
