@@ -190,12 +190,16 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private Dictionary<string, string> PreComputeSearchableValues(TItem item)
     {
         var values = new Dictionary<string, string>();
+        Logger.Debug("Pre-computing searchable values for columns: {Columns}",
+            string.Join(", ", _columns.Select(c => c.PropertyName)));
+
         foreach (var column in _columns.Where(c => c.PropertySelector != null))
         {
             if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
             {
                 selector = column.PropertySelector!.Compile();
                 _compiledSelectors[column.PropertyName] = selector;
+                Logger.Debug("Compiled selector for column: {Column}", column.PropertyName);
             }
 
             var value = selector(item);
@@ -210,9 +214,16 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
                 }).ToLowerInvariant();
 
                 values[column.PropertyName] = stringValue;
+                Logger.Debug("Column {Column} value: {Value}", column.PropertyName, stringValue);
+            }
+            else
+            {
+                Logger.Debug("Column {Column} has null value", column.PropertyName);
             }
         }
 
+        Logger.Debug("Completed pre-computing values: {Values}",
+            string.Join(", ", values.Select(kv => $"{kv.Key}={kv.Value}")));
         return values;
     }
 
@@ -227,8 +238,13 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             _searchableValues.Add(item, values);
         }
 
+        // Debug logging to check values
+        Logger.Debug("Checking item with values: {Values}", string.Join(", ", values.Values));
+        Logger.Debug("Against search terms: {Terms}", string.Join(", ", searchTerms));
+
+        // Check if ALL search terms match ANY column value
         return searchTerms.All(term =>
-            values.Values.Any(value => value.Contains(term))
+            values.Values.Any(value => value.Contains(term, StringComparison.OrdinalIgnoreCase))
         );
     }
 
@@ -242,22 +258,34 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             return items;
         }
 
-        // Cache normalized search terms
-        if (!_searchTermCache.TryGetValue(searchTerm, out var searchTerms))
+        // Split search term and ensure we have valid terms
+        var searchTerms = searchTerm.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (!searchTerms.Any())
         {
-            searchTerms = searchTerm.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            _searchTermCache[searchTerm] = searchTerms;
+            return items;
         }
 
+        _searchTermCache[searchTerm] = searchTerms;
+
         var itemsList = items.ToList();
+        Logger.Debug("Starting search with {Count} items for terms: {Terms}",
+            itemsList.Count, string.Join(", ", searchTerms));
+
+        IEnumerable<TItem> results;
         if (itemsList.Count > _parallelThreshold)
         {
-            return itemsList.AsParallel()
+            results = itemsList.AsParallel()
                 .Where(item => ItemMatchesSearch(item, searchTerms))
                 .AsEnumerable();
         }
+        else
+        {
+            results = itemsList.Where(item => ItemMatchesSearch(item, searchTerms));
+        }
 
-        return itemsList.Where(item => ItemMatchesSearch(item, searchTerms));
+        var resultList = results.ToList();
+        Logger.Debug("Search completed. Found {Count} matching items", resultList.Count);
+        return resultList;
     }
 
     /// <summary>
