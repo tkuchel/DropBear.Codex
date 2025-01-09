@@ -171,9 +171,10 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private void OnSearchInput(ChangeEventArgs e)
     {
         SearchTerm = e.Value?.ToString() ?? string.Empty;
+        Logger.Debug("Search input changed to: {SearchTerm}", SearchTerm);
 
         _debounceTimer?.Dispose();
-        _debounceTimer = new Timer(async void (_) =>
+        _debounceTimer = new Timer(async _ =>
         {
             try
             {
@@ -246,11 +247,6 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     /// </summary>
     private bool ItemMatchesSearch(TItem item, string[] searchTerms)
     {
-        if (!searchTerms.Any())
-        {
-            return true;
-        }
-
         Dictionary<string, string> values;
         if (!_searchableValues.TryGetValue(item, out values))
         {
@@ -258,15 +254,39 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             _searchableValues.Add(item, values);
         }
 
-        // Concatenate all values into a single searchable string
-        var searchableText = string.Join(" ", values.Values);
+        // For each column, join its values for searching
+        var searchableStrings = values.Select(kvp => $"{kvp.Key}: {kvp.Value}").ToList();
+        var searchableText = string.Join(" ", values.Values).ToLowerInvariant();
 
-        Logger.Debug("Searching item values: {Values} for terms: {Terms}",
-            searchableText, string.Join(", ", searchTerms));
+        Logger.Debug("Checking values against search terms. Values: [{Values}]", string.Join(", ", searchableStrings));
 
-        // Check if all search terms are found in any value
-        return searchTerms.All(term =>
-            searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
+        // For each search term, check if it matches any of the values
+        foreach (var term in searchTerms)
+        {
+            var termLower = term.ToLowerInvariant();
+            var found = false;
+
+            // Check each individual value
+            foreach (var value in values)
+            {
+                if (value.Value.Contains(termLower))
+                {
+                    Logger.Debug("Found match for term '{Term}' in {Column}: {Value}",
+                        term, value.Key, value.Value);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                Logger.Debug("No match found for term: {Term}", term);
+                return false;
+            }
+        }
+
+        Logger.Debug("Item matches all search terms: {Terms}", string.Join(", ", searchTerms));
+        return true;
     }
 
     /// <summary>
@@ -279,21 +299,28 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             return items;
         }
 
-        var searchTerms = searchTerm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        // Split and normalize search terms
+        var searchTerms = searchTerm.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(term => term.Trim().ToLowerInvariant())
+            .Where(term => !string.IsNullOrWhiteSpace(term))
+            .ToArray();
+
+        Logger.Debug("Starting search with terms: [{Terms}]", string.Join(", ", searchTerms));
+
         if (!searchTerms.Any())
         {
             return items;
         }
 
-        Logger.Debug("Starting search with {Count} items for terms: {Terms}",
-            items?.Count() ?? 0, string.Join(", ", searchTerms));
-
         var itemsList = items?.ToList() ?? new List<TItem>();
         var results = itemsList.Where(item => ItemMatchesSearch(item, searchTerms)).ToList();
 
-        Logger.Debug("Search completed. Found {Count} matching items", results.Count);
+        Logger.Debug("Search completed. Found {Count} matching items from {Total} total items",
+            results.Count, itemsList.Count);
+
         return results;
     }
+
 
     /// <summary>
     ///     Performs the search logic after the debounce delay with performance optimization.
