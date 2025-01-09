@@ -192,21 +192,26 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private Dictionary<string, string> PreComputeSearchableValues(TItem item)
     {
         var values = new Dictionary<string, string>();
+        Logger.Debug("Computing searchable values for {Columns} columns", _columns.Count);
 
         foreach (var column in _columns.Where(c => c.PropertySelector != null))
         {
             try
             {
+                Logger.Debug("Processing column {PropertyName}", column.PropertyName);
+
                 if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
                 {
                     selector = column.PropertySelector!.Compile();
                     _compiledSelectors[column.PropertyName] = selector;
+                    Logger.Debug("Compiled new selector for {PropertyName}", column.PropertyName);
                 }
 
                 var rawValue = selector(item);
+                Logger.Debug("Raw value for {PropertyName}: {Value}", column.PropertyName, rawValue);
+
                 if (rawValue != null)
                 {
-                    // The key should be the PropertyName, not the Title
                     var stringValue = rawValue switch
                     {
                         DateTime date => date.ToString(column.Format),
@@ -218,6 +223,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
                     if (!string.IsNullOrEmpty(stringValue))
                     {
                         values[column.PropertyName] = stringValue.ToLowerInvariant();
+                        Logger.Debug("Added searchable value for {PropertyName}: {Value}",
+                            column.PropertyName, values[column.PropertyName]);
                     }
                 }
             }
@@ -227,11 +234,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             }
         }
 
-        Logger.Debug("Generated searchable values for {ColumnCount} columns.", values.Count);
-        foreach (var kvp in values)
-        {
-            Logger.Debug("Column {Column}: {Value}", kvp.Key, kvp.Value);
-        }
+        Logger.Debug("Generated searchable values for {Count} columns: {Values}",
+            values.Count,
+            string.Join(", ", values.Select(kvp => $"{kvp.Key}={kvp.Value}")));
 
         return values;
     }
@@ -525,6 +530,23 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
         _columns.Add(column);
         Logger.Debug("Column added successfully. Total columns: {Count}", _columns.Count);
+
+        // Clear existing searchable values cache since we have a new column
+        _searchableValues.Clear();
+
+        // If we have items, recompute the searchable values for all items
+        if (Items != null)
+        {
+            foreach (var item in Items)
+            {
+                if (!_searchableValues.TryGetValue(item, out _))
+                {
+                    var values = PreComputeSearchableValues(item);
+                    _searchableValues.Add(item, values);
+                }
+            }
+        }
+
         StateHasChanged();
     }
 
