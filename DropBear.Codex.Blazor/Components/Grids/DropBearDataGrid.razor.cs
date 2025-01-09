@@ -190,6 +190,17 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private Dictionary<string, string> PreComputeSearchableValues(TItem item)
     {
         var values = new Dictionary<string, string>();
+
+        // Debug column configuration
+        Logger.Debug("Available columns: {Columns}",
+            string.Join(", ", _columns.Select(c => $"{c.Title}({c.PropertyName})")));
+
+        foreach (var column in _columns)
+        {
+            Logger.Debug("Column details - Title: {Title}, PropertyName: {PropertyName}, HasSelector: {HasSelector}",
+                column.Title, column.PropertyName, column.PropertySelector != null);
+        }
+
         foreach (var column in _columns.Where(c => c.PropertySelector != null))
         {
             try
@@ -201,17 +212,20 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
                 {
                     selector = column.PropertySelector!.Compile();
                     _compiledSelectors[column.PropertyName] = selector;
+                    Logger.Debug("Compiled new selector for: {PropertyName}", column.PropertyName);
                 }
 
-                var value = selector(item);
-                if (value != null)
+                var rawValue = selector(item);
+                Logger.Debug("Raw value for {Column}: {Value}", column.PropertyName, rawValue);
+
+                if (rawValue != null)
                 {
-                    var stringValue = value switch
+                    var stringValue = rawValue switch
                     {
                         DateTime date => date.ToString(column.Format),
                         DateTimeOffset dtOffset => dtOffset.ToString(column.Format),
                         IFormattable formattable => formattable.ToString(column.Format, null),
-                        _ => value.ToString()
+                        _ => rawValue.ToString()
                     };
 
                     if (!string.IsNullOrEmpty(stringValue))
@@ -227,6 +241,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
                 Logger.Error(ex, "Error processing column {Column} for searchable values", column.PropertyName);
             }
         }
+
+        Logger.Debug("Final searchable values: {Values}",
+            string.Join(", ", values.Select(kv => $"{kv.Key}={kv.Value}")));
 
         return values;
     }
@@ -492,6 +509,10 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     /// </summary>
     public void AddColumn(DataGridColumn<TItem> column)
     {
+        Logger.Debug(
+            "Adding column - Title: {Title}, PropertyName: {PropertyName}, HasSelector: {HasSelector}, Format: {Format}",
+            column.Title, column.PropertyName, column.PropertySelector != null, column.Format);
+
         if (_columns.Any(c => c.PropertyName == column.PropertyName))
         {
             Logger.Warning("Column with property name {PropertyName} already exists, not added.", column.PropertyName);
@@ -501,10 +522,19 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         // Pre-compile the property selector if available
         if (column.PropertySelector != null && !_compiledSelectors.ContainsKey(column.PropertyName))
         {
-            _compiledSelectors[column.PropertyName] = column.PropertySelector.Compile();
+            try
+            {
+                _compiledSelectors[column.PropertyName] = column.PropertySelector.Compile();
+                Logger.Debug("Successfully compiled selector for column: {PropertyName}", column.PropertyName);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to compile selector for column: {PropertyName}", column.PropertyName);
+            }
         }
 
         _columns.Add(column);
+        Logger.Debug("Column added successfully. Total columns: {Count}", _columns.Count);
         StateHasChanged();
     }
 
