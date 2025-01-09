@@ -135,11 +135,13 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             // Pre-compute searchable values for all items
             if (Items != null)
             {
+                Logger.Debug("Pre-computing searchable values for {Count} items", Items.Count());
                 foreach (var item in Items)
                 {
+                    var values = PreComputeSearchableValues(item);
                     if (!_searchableValues.TryGetValue(item, out _))
                     {
-                        _searchableValues.Add(item, PreComputeSearchableValues(item));
+                        _searchableValues.Add(item, values);
                     }
                 }
             }
@@ -191,35 +193,20 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     {
         var values = new Dictionary<string, string>();
 
-        // Debug column configuration
-        Logger.Debug("Available columns: {Columns}",
-            string.Join(", ", _columns.Select(c => $"{c.Title}({c.PropertyName})")));
-
-        foreach (var column in _columns)
-        {
-            Logger.Debug("Column details - Title: {Title}, PropertyName: {PropertyName}, HasSelector: {HasSelector}",
-                column.Title, column.PropertyName, column.PropertySelector != null);
-        }
-
         foreach (var column in _columns.Where(c => c.PropertySelector != null))
         {
             try
             {
-                Logger.Debug("Processing column: {ColumnName}, PropertyName: {PropertyName}",
-                    column.Title, column.PropertyName);
-
                 if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
                 {
                     selector = column.PropertySelector!.Compile();
                     _compiledSelectors[column.PropertyName] = selector;
-                    Logger.Debug("Compiled new selector for: {PropertyName}", column.PropertyName);
                 }
 
                 var rawValue = selector(item);
-                Logger.Debug("Raw value for {Column}: {Value}", column.PropertyName, rawValue);
-
                 if (rawValue != null)
                 {
+                    // The key should be the PropertyName, not the Title
                     var stringValue = rawValue switch
                     {
                         DateTime date => date.ToString(column.Format),
@@ -231,8 +218,6 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
                     if (!string.IsNullOrEmpty(stringValue))
                     {
                         values[column.PropertyName] = stringValue.ToLowerInvariant();
-                        Logger.Debug("Added searchable value for column {Column}: {Value}",
-                            column.PropertyName, values[column.PropertyName]);
                     }
                 }
             }
@@ -242,8 +227,11 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             }
         }
 
-        Logger.Debug("Final searchable values: {Values}",
-            string.Join(", ", values.Select(kv => $"{kv.Key}={kv.Value}")));
+        Logger.Debug("Generated searchable values for {ColumnCount} columns.", values.Count);
+        foreach (var kvp in values)
+        {
+            Logger.Debug("Column {Column}: {Value}", kvp.Key, kvp.Value);
+        }
 
         return values;
     }
@@ -253,25 +241,27 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     /// </summary>
     private bool ItemMatchesSearch(TItem item, string[] searchTerms)
     {
-        if (!_searchableValues.TryGetValue(item, out var values))
+        if (!searchTerms.Any())
+        {
+            return true;
+        }
+
+        Dictionary<string, string> values;
+        if (!_searchableValues.TryGetValue(item, out values))
         {
             values = PreComputeSearchableValues(item);
             _searchableValues.Add(item, values);
         }
 
-        // If we have no values to search in, item doesn't match
-        if (!values.Any())
-        {
-            return false;
-        }
-
-        // Convert values to a single searchable string to avoid multiple iterations
+        // Concatenate all values into a single searchable string
         var searchableText = string.Join(" ", values.Values);
-        Logger.Debug("Checking values: {Values} against terms: {Terms}",
+
+        Logger.Debug("Searching item values: {Values} for terms: {Terms}",
             searchableText, string.Join(", ", searchTerms));
 
-        // Check if all search terms are found in any of the values
-        return searchTerms.All(term => searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
+        // Check if all search terms are found in any value
+        return searchTerms.All(term =>
+            searchableText.Contains(term, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -284,20 +274,20 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             return items;
         }
 
-        var searchTerms = searchTerm.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var searchTerms = searchTerm.Split(' ', StringSplitOptions.RemoveEmptyEntries);
         if (!searchTerms.Any())
         {
             return items;
         }
 
         Logger.Debug("Starting search with {Count} items for terms: {Terms}",
-            items.Count(), string.Join(", ", searchTerms));
+            items?.Count() ?? 0, string.Join(", ", searchTerms));
 
-        var results = items.Where(item => ItemMatchesSearch(item, searchTerms));
-        var resultList = results.ToList();
+        var itemsList = items?.ToList() ?? new List<TItem>();
+        var results = itemsList.Where(item => ItemMatchesSearch(item, searchTerms)).ToList();
 
-        Logger.Debug("Search completed. Found {Count} matching items", resultList.Count);
-        return resultList;
+        Logger.Debug("Search completed. Found {Count} matching items", results.Count);
+        return results;
     }
 
     /// <summary>
