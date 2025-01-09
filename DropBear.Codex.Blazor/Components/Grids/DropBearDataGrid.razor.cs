@@ -1,7 +1,8 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
-using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -20,13 +21,17 @@ namespace DropBear.Codex.Blazor.Components.Grids;
 ///     A Blazor component for rendering a data grid with sorting, searching, and pagination capabilities.
 /// </summary>
 /// <typeparam name="TItem">The type of the data items.</typeparam>
-public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposable
+public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposable where TItem : class
 {
     private const int DebounceDelay = 300; // ms
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>();
 
     private readonly List<DataGridColumn<TItem>> _columns = new();
+    private readonly Dictionary<string, Func<TItem, object>> _compiledSelectors = new();
     private readonly DataGridMetricsService _metricsService = new();
+    private readonly int _parallelThreshold = 500; // Number of items above which we use parallel processing
+    private readonly ConditionalWeakTable<TItem, Dictionary<string, string>> _searchableValues = new();
+    private readonly ConcurrentDictionary<string, string[]> _searchTermCache = new();
     private readonly List<TItem> _selectedItems = new();
 
     private DataGridColumn<TItem>? _currentSortColumn;
@@ -37,58 +42,33 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private IEnumerable<TItem>? _previousItems = [];
     private ElementReference _searchInput;
 
-    [Parameter] public bool EnableDebugMode { get; set; }
-
-    private bool ShowMetrics => EnableDebugMode && _metricsService.IsEnabled;
     [Parameter] public IEnumerable<TItem>? Items { get; set; } = [];
-
     [Parameter] public string Title { get; set; } = "Data Grid";
-
     [Parameter] public bool EnableSearch { get; set; } = true;
-
     [Parameter] public bool EnablePagination { get; set; } = true;
-
     [Parameter] public int ItemsPerPage { get; set; } = 10;
-
     [Parameter] public bool EnableMultiSelect { get; set; }
-
     [Parameter] public bool AllowAdd { get; set; } = true;
-
     [Parameter] public bool AllowEdit { get; set; } = true;
-
     [Parameter] public bool AllowDelete { get; set; } = true;
-
     [Parameter] public bool AllowExport { get; set; }
-
+    [Parameter] public bool EnableDebugMode { get; set; }
     [Parameter] public EventCallback OnExportData { get; set; }
-
     [Parameter] public EventCallback OnAddItem { get; set; }
-
     [Parameter] public EventCallback<TItem> OnEditItem { get; set; }
-
     [Parameter] public EventCallback<TItem> OnDeleteItem { get; set; }
-
     [Parameter] public EventCallback<List<TItem>> OnSelectionChanged { get; set; }
-
     [Parameter] public EventCallback<TItem> OnRowClicked { get; set; }
-
     [Parameter] public EventCallback<TItem> OnRowDoubleClicked { get; set; }
-
     [Parameter] public RenderFragment Columns { get; set; } = null!;
-
     [Parameter] public RenderFragment? LoadingTemplate { get; set; }
-
     [Parameter] public RenderFragment? NoDataTemplate { get; set; }
 
-    /// <summary>
-    ///     The current text value for searching/filtering the grid.
-    /// </summary>
     private string SearchTerm { get; set; } = string.Empty;
-
     private int CurrentPage { get; set; } = 1;
-
     private IEnumerable<TItem> FilteredItems { get; set; } = new List<TItem>();
     private IEnumerable<TItem> DisplayedItems { get; set; } = new List<TItem>();
+    private bool ShowMetrics => EnableDebugMode && _metricsService.IsEnabled;
 
     private IReadOnlyCollection<int> ItemsPerPageOptions { get; } =
         new ReadOnlyCollection<int>([10, 25, 50, 100]);
@@ -107,10 +87,15 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     /// </summary>
     public IReadOnlyList<DataGridColumn<TItem>> GetColumns => _columns.AsReadOnly();
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Handles cleanup of resources.
+    /// </summary>
     public void Dispose()
     {
         _debounceTimer?.Dispose();
+        _searchableValues.Clear();
+        _searchTermCache.Clear();
+        _compiledSelectors.Clear();
     }
 
     /// <inheritdoc />
@@ -129,7 +114,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     }
 
     /// <summary>
-    ///     Handles the data loading process (with optional delay).
+    ///     Handles the data loading process with performance optimizations.
     /// </summary>
     private async Task LoadDataAsync()
     {
@@ -141,9 +126,24 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
             StateHasChanged();
 
-            await Task.Delay(50); // Optional data loading delay
+            // Clear caches when loading new data
+            _searchableValues.Clear();
+            _searchTermCache.Clear();
 
             FilteredItems = Items?.ToList() ?? new List<TItem>();
+
+            // Pre-compute searchable values for all items
+            if (Items != null)
+            {
+                foreach (var item in Items)
+                {
+                    if (!_searchableValues.TryGetValue(item, out _))
+                    {
+                        _searchableValues.Add(item, PreComputeSearchableValues(item));
+                    }
+                }
+            }
+
             UpdateDisplayedItems();
 
             _metricsService.StopSearchTimer(
@@ -185,7 +185,83 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     }
 
     /// <summary>
-    ///     Performs the search logic after the debounce delay.
+    ///     Pre-computes searchable values for an item across all columns.
+    /// </summary>
+    private Dictionary<string, string> PreComputeSearchableValues(TItem item)
+    {
+        var values = new Dictionary<string, string>();
+        foreach (var column in _columns.Where(c => c.PropertySelector != null))
+        {
+            if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
+            {
+                selector = column.PropertySelector!.Compile();
+                _compiledSelectors[column.PropertyName] = selector;
+            }
+
+            var value = selector(item);
+            if (value != null)
+            {
+                var stringValue = (value switch
+                {
+                    DateTime date => date.ToString(column.Format),
+                    DateTimeOffset dtOffset => dtOffset.ToString(column.Format),
+                    IFormattable formattable => formattable.ToString(column.Format, null),
+                    _ => value.ToString() ?? string.Empty
+                }).ToLowerInvariant();
+
+                values[column.PropertyName] = stringValue;
+            }
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    ///     Optimized method to check if an item matches the search terms.
+    /// </summary>
+    private bool ItemMatchesSearch(TItem item, string[] searchTerms)
+    {
+        if (!_searchableValues.TryGetValue(item, out var values))
+        {
+            values = PreComputeSearchableValues(item);
+            _searchableValues.Add(item, values);
+        }
+
+        return searchTerms.All(term =>
+            values.Values.Any(value => value.Contains(term))
+        );
+    }
+
+    /// <summary>
+    ///     Performs the actual search operation with optimized performance.
+    /// </summary>
+    private IEnumerable<TItem> PerformSearch(IEnumerable<TItem> items, string searchTerm)
+    {
+        if (string.IsNullOrWhiteSpace(searchTerm))
+        {
+            return items;
+        }
+
+        // Cache normalized search terms
+        if (!_searchTermCache.TryGetValue(searchTerm, out var searchTerms))
+        {
+            searchTerms = searchTerm.ToLowerInvariant().Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            _searchTermCache[searchTerm] = searchTerms;
+        }
+
+        var itemsList = items.ToList();
+        if (itemsList.Count > _parallelThreshold)
+        {
+            return itemsList.AsParallel()
+                .Where(item => ItemMatchesSearch(item, searchTerms))
+                .AsEnumerable();
+        }
+
+        return itemsList.Where(item => ItemMatchesSearch(item, searchTerms));
+    }
+
+    /// <summary>
+    ///     Performs the search logic after the debounce delay with performance optimization.
     /// </summary>
     private async Task DebounceSearchAsync()
     {
@@ -197,21 +273,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             Logger.Debug("Performing search with term: {SearchTerm}", SearchTerm);
             _metricsService.StartSearchTimer();
 
-            await Task.Delay(50); // Simulate a short search delay
-
             var totalItems = Items?.Count() ?? 0;
 
-            if (string.IsNullOrWhiteSpace(SearchTerm))
-            {
-                FilteredItems = Items?.ToList() ?? new List<TItem>();
-            }
-            else if (Items is not null)
-            {
-                var lowerTerm = SearchTerm.ToLowerInvariant();
-                FilteredItems = Items.Where(item =>
-                    _columns.Any(column => MatchesSearchTerm(column.PropertySelector, item, lowerTerm, column.Format))
-                ).ToList();
-            }
+            FilteredItems = Items is not null ? PerformSearch(Items, SearchTerm).ToList() : new List<TItem>();
 
             CurrentPage = 1;
             UpdateDisplayedItems();
@@ -252,34 +316,6 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
         Logger.Debug("Displayed items updated. Page={CurrentPage}, ItemsPerPage={ItemsPerPage}", CurrentPage,
             ItemsPerPage);
-    }
-
-    private static bool MatchesSearchTerm(
-        Expression<Func<TItem, object>>? selector,
-        TItem item,
-        string searchTerm,
-        string format)
-    {
-        if (selector is null)
-        {
-            return false;
-        }
-
-        var compiledSelector = selector.Compile();
-        var value = compiledSelector(item);
-        if (value is null)
-        {
-            return false;
-        }
-
-        var valueString = value switch
-        {
-            DateTime date => date.ToString(format).ToLowerInvariant(),
-            DateTimeOffset dtOffset => dtOffset.ToString(format).ToLowerInvariant(),
-            _ => value.ToString()?.ToLowerInvariant() ?? string.Empty
-        };
-
-        return valueString.Contains(searchTerm);
     }
 
     private void SortBy(DataGridColumn<TItem> column)
@@ -428,6 +464,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         }
     }
 
+    /// <summary>
+    ///     Adds a column to the grid with optimized property selector compilation.
+    /// </summary>
     public void AddColumn(DataGridColumn<TItem> column)
     {
         if (_columns.Any(c => c.PropertyName == column.PropertyName))
@@ -436,24 +475,50 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             return;
         }
 
+        // Pre-compile the property selector if available
+        if (column.PropertySelector != null && !_compiledSelectors.ContainsKey(column.PropertyName))
+        {
+            _compiledSelectors[column.PropertyName] = column.PropertySelector.Compile();
+        }
+
         _columns.Add(column);
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Resets all columns and clears associated caches.
+    /// </summary>
     public void ResetColumns()
     {
         _columns.Clear();
-        Logger.Debug("Columns reset in DropBearDataGrid.");
+        _compiledSelectors.Clear();
+        _searchableValues.Clear();
+        _searchTermCache.Clear();
+        Logger.Debug("Columns and caches reset in DropBearDataGrid.");
         StateHasChanged();
     }
 
+    /// <summary>
+    ///     Gets the formatted value for a cell with optimized property access.
+    /// </summary>
     private string GetFormattedValue(TItem item, DataGridColumn<TItem> column)
     {
-        var value = column.PropertySelector?.Compile()(item);
+        if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
+        {
+            if (column.PropertySelector == null)
+            {
+                return string.Empty;
+            }
+
+            selector = column.PropertySelector.Compile();
+            _compiledSelectors[column.PropertyName] = selector;
+        }
+
+        var value = selector(item);
         return value switch
         {
             IFormattable formattable => formattable.ToString(column.Format, null),
-            _ => value?.ToString() ?? string.Empty
+            _ => value.ToString() ?? string.Empty
         };
     }
 
