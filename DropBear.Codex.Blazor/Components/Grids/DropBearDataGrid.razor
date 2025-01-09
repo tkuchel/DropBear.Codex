@@ -204,3 +204,38 @@ else
         </div>
     }
 }
+
+@if (ShowMetrics)
+{
+    <div class="datagrid-metrics">
+        <div class="metrics-header">
+            <h3>Performance Metrics</h3>
+        </div>
+        <div class="metrics-content">
+            <div class="metric-item">
+                <span class="metric-label">Last Search Time:</span>
+                <span class="metric-value">@($"{_metricsService.LastSearchTime:F2}ms")</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Average Search Time:</span>
+                <span class="metric-value">@($"{_metricsService.AverageSearchTime:F2}ms")</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Items/Second:</span>
+                <span class="metric-value">@($"{_metricsService.ItemsPerSecond:F0}")</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Total Items:</span>
+                <span class="metric-value">@_metricsService.TotalItemsProcessed</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Filtered Items:</span>
+                <span class="metric-value">@_metricsService.FilteredItemCount</span>
+            </div>
+            <div class="metric-item">
+                <span class="metric-label">Displayed Items:</span>
+                <span class="metric-value">@_metricsService.DisplayedItemCount</span>
+            </div>
+        </div>
+    </div>
+}

@@ -5,6 +5,7 @@ using System.Linq.Expressions;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Blazor.Services;
 using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -25,6 +26,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>();
 
     private readonly List<DataGridColumn<TItem>> _columns = new();
+    private readonly DataGridMetricsService _metricsService = new();
     private readonly List<TItem> _selectedItems = new();
 
     private DataGridColumn<TItem>? _currentSortColumn;
@@ -35,6 +37,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
     private IEnumerable<TItem>? _previousItems = [];
     private ElementReference _searchInput;
 
+    [Parameter] public bool EnableDebugMode { get; set; }
+
+    private bool ShowMetrics => EnableDebugMode && _metricsService.IsEnabled;
     [Parameter] public IEnumerable<TItem>? Items { get; set; } = [];
 
     [Parameter] public string Title { get; set; } = "Data Grid";
@@ -131,16 +136,25 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         try
         {
             IsLoading = true;
+            _metricsService.IsEnabled = EnableDebugMode;
+            _metricsService.StartSearchTimer();
+
             StateHasChanged();
 
             await Task.Delay(50); // Optional data loading delay
 
             FilteredItems = Items?.ToList() ?? new List<TItem>();
             UpdateDisplayedItems();
+
+            _metricsService.StopSearchTimer(
+                Items?.Count() ?? 0,
+                FilteredItems.Count(),
+                DisplayedItems.Count());
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error loading data in DropBearDataGrid.");
+            _metricsService.Reset();
         }
         finally
         {
@@ -181,7 +195,11 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             await InvokeAsync(StateHasChanged);
 
             Logger.Debug("Performing search with term: {SearchTerm}", SearchTerm);
+            _metricsService.StartSearchTimer();
+
             await Task.Delay(50); // Simulate a short search delay
+
+            var totalItems = Items?.Count() ?? 0;
 
             if (string.IsNullOrWhiteSpace(SearchTerm))
             {
@@ -197,10 +215,16 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
             CurrentPage = 1;
             UpdateDisplayedItems();
+
+            _metricsService.StopSearchTimer(
+                totalItems,
+                FilteredItems.Count(),
+                DisplayedItems.Count());
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error during search in DropBearDataGrid.");
+            _metricsService.Reset();
         }
         finally
         {
