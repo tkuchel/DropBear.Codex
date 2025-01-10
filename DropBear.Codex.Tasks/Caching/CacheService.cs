@@ -11,7 +11,7 @@ using Serilog;
 namespace DropBear.Codex.Tasks.Caching;
 
 /// <summary>
-///     Provides caching services with thread-safe operations and region-based cache management
+///     Provides thread-safe caching services with region-based cache management and background refresh capabilities
 /// </summary>
 public class CacheService : ICacheService
 {
@@ -19,6 +19,7 @@ public class CacheService : ICacheService
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks;
     private readonly ILogger _logger;
     private readonly ConcurrentDictionary<string, HashSet<string>> _regionKeys;
+    private CancellationTokenSource? _cleanupCancellationTokenSource;
 
     /// <summary>
     ///     Initializes a new instance of the CacheService
@@ -31,6 +32,12 @@ public class CacheService : ICacheService
         _logger = LoggerFactory.Logger.ForContext<CacheService>();
         _locks = new ConcurrentDictionary<string, SemaphoreSlim>(StringComparer.Ordinal);
         _regionKeys = new ConcurrentDictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        // Initialize cleanup token source
+        _cleanupCancellationTokenSource = new CancellationTokenSource();
+
+        // Start periodic cleanup
+        _ = StartPeriodicCleanupAsync(_cleanupCancellationTokenSource.Token);
     }
 
     /// <summary>
@@ -58,17 +65,27 @@ public class CacheService : ICacheService
                 metrics.LogCacheHit(key);
 
                 // Check if entry is expired but within stale window
-                if (IsStale(cachedEntry, options) && !cachedEntry.IsRefreshing)
+                if (cachedEntry != null && IsStale(cachedEntry, options) && !cachedEntry.IsRefreshing)
                 {
-                    // Trigger background refresh
-                    _ = RefreshCacheInBackgroundAsync(key, factory, options, cachedEntry);
+                    // Trigger background refresh with error handling
+                    _ = RefreshCacheInBackgroundAsync(key, factory, options, cachedEntry)
+                        .ContinueWith(t =>
+                        {
+                            if (t.IsFaulted)
+                            {
+                                _logger.Error(t.Exception, "Background refresh failed for key: {Key}", key);
+                            }
+                        }, TaskScheduler.Default);
                 }
 
-                return Result<T, CacheError>.Success(cachedEntry.Value);
+                if (cachedEntry != null)
+                {
+                    return Result<T, CacheError>.Success(cachedEntry.Value);
+                }
             }
 
             metrics.LogCacheMiss(key);
-            var lockObj = _locks.GetOrAdd(key, k => new SemaphoreSlim(1, 1));
+            var lockObj = GetOrCreateLock(key);
 
             await lockObj.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
@@ -77,7 +94,10 @@ public class CacheService : ICacheService
                 if (_cache.TryGetValue(key, out cachedEntry))
                 {
                     metrics.LogCacheHit(key);
-                    return Result<T, CacheError>.Success(cachedEntry.Value);
+                    if (cachedEntry != null)
+                    {
+                        return Result<T, CacheError>.Success(cachedEntry.Value);
+                    }
                 }
 
                 // Execute the factory method to get the value
@@ -90,10 +110,8 @@ public class CacheService : ICacheService
                     Value = value, CreatedAt = DateTime.UtcNow, LastRefreshed = DateTime.UtcNow
                 };
 
-                // Configure cache entry options
+                // Configure and set cache entry
                 var entryOptions = ConfigureCacheEntry(options);
-
-                // Store in cache
                 _cache.Set(key, entry, entryOptions);
 
                 // Track region if specified
@@ -119,7 +137,7 @@ public class CacheService : ICacheService
     /// <summary>
     ///     Removes an item from the cache by key
     /// </summary>
-    /// <param name="key">The key to remove</param>
+    /// <param name="key">The cache key</param>
     /// <returns>A result indicating success or failure</returns>
     public ValueTask<Result<Unit, CacheError>> RemoveAsync(string key)
     {
@@ -127,6 +145,7 @@ public class CacheService : ICacheService
         {
             _logger.Information("Invalidating cache key: {Key}", key);
             _cache.Remove(key);
+            CleanupLock(key);
             return ValueTask.FromResult(Result<Unit, CacheError>.Success(Unit.Value));
         }
         catch (Exception ex)
@@ -153,10 +172,18 @@ public class CacheService : ICacheService
                 return Result<Unit, CacheError>.Success(Unit.Value);
             }
 
-            foreach (var key in keys)
+            // Create a copy of keys to avoid modification during enumeration
+            var keysToRemove = keys.ToList();
+            foreach (var key in keysToRemove)
             {
                 _logger.Information("Invalidating key {Key} from region {Region}", key, region);
                 await RemoveAsync(key).ConfigureAwait(false);
+            }
+
+            // Try to remove the region itself if it's empty
+            if (_regionKeys.TryGetValue(region, out var remainingKeys) && remainingKeys.Count == 0)
+            {
+                _regionKeys.TryRemove(region, out _);
             }
 
             return Result<Unit, CacheError>.Success(Unit.Value);
@@ -178,11 +205,17 @@ public class CacheService : ICacheService
     {
         try
         {
+            _logger.Information("Starting cache clear operation");
             if (_cache is MemoryCache memoryCache)
             {
+                _logger.Debug("Performing cache compaction");
                 memoryCache.Compact(1.0);
             }
 
+            // Clean up all tracking collections
+            CleanupAllResources();
+
+            _logger.Information("Cache clear operation completed");
             return ValueTask.FromResult(Result<Unit, CacheError>.Success(Unit.Value));
         }
         catch (Exception ex)
@@ -195,18 +228,155 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Disposes the cache service and releases all locks
+    ///     Disposes the cache service and releases all resources
     /// </summary>
     public void Dispose()
     {
+        _logger.Information("Disposing CacheService");
+
+        // Cancel the cleanup process
+        if (_cleanupCancellationTokenSource != null)
+        {
+            _cleanupCancellationTokenSource.Cancel();
+            _cleanupCancellationTokenSource.Dispose();
+            _cleanupCancellationTokenSource = null;
+        }
+
+        CleanupAllResources();
+        GC.SuppressFinalize(this);
+        _logger.Information("CacheService disposed");
+    }
+
+    /// <summary>
+    ///     Starts the periodic cleanup process
+    /// </summary>
+    private async Task StartPeriodicCleanupAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(CacheDefaults.CleanupInterval, cancellationToken).ConfigureAwait(false);
+
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    await PerformPeriodicCleanupAsync().ConfigureAwait(false);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Periodic cleanup cancelled");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error during periodic cache cleanup");
+        }
+    }
+
+    /// <summary>
+    ///     Executes a single cleanup operation
+    /// </summary>
+    private Task PerformPeriodicCleanupAsync()
+    {
+        try
+        {
+            _logger.Debug("Starting periodic cache cleanup");
+
+            // Cleanup locks for non-existent cache entries
+            CleanupUnusedLocks();
+
+            // Cleanup empty regions
+            CleanupEmptyRegions();
+
+            // Perform memory cache compaction if possible
+            if (_cache is MemoryCache memoryCache)
+            {
+                memoryCache.Compact(0.25);
+            }
+
+            _logger.Debug("Periodic cache cleanup completed");
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error performing periodic cleanup: {Error}", ex.Message);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Cleans up all resources used by the cache
+    /// </summary>
+    private void CleanupAllResources()
+    {
+        // Clear all locks
         foreach (var lockObj in _locks.Values)
         {
             lockObj.Dispose();
         }
 
         _locks.Clear();
+
+        // Clear region tracking
         _regionKeys.Clear();
-        GC.SuppressFinalize(this);
+
+        _logger.Debug("All cache resources cleaned up");
+    }
+
+    /// <summary>
+    ///     Removes unused locks from the locks dictionary
+    /// </summary>
+    private void CleanupUnusedLocks()
+    {
+        foreach (var lockEntry in _locks.ToList())
+        {
+            if (!_cache.TryGetValue(lockEntry.Key, out _))
+            {
+                if (_locks.TryRemove(lockEntry.Key, out var lockObj))
+                {
+                    lockObj.Dispose();
+                    _logger.Debug("Removed unused lock for key: {Key}", lockEntry.Key);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Removes empty regions from the region tracking dictionary
+    /// </summary>
+    private void CleanupEmptyRegions()
+    {
+        foreach (var region in _regionKeys.ToList())
+        {
+            if (region.Value.Count == 0)
+            {
+                if (_regionKeys.TryRemove(region.Key, out _))
+                {
+                    _logger.Debug("Removed empty region: {Region}", region.Key);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Gets or creates a lock object for the specified key
+    /// </summary>
+    private SemaphoreSlim GetOrCreateLock(string key)
+    {
+        return _locks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
+    }
+
+    /// <summary>
+    ///     Removes and disposes of a lock for the specified key
+    /// </summary>
+    private void CleanupLock(string key)
+    {
+        if (_locks.TryRemove(key, out var lockObj))
+        {
+            lockObj.Dispose();
+            _logger.Debug("Removed lock for key: {Key}", key);
+        }
     }
 
     /// <summary>
@@ -239,15 +409,15 @@ public class CacheService : ICacheService
             // Mark as refreshing to prevent multiple refresh attempts
             existingEntry.IsRefreshing = true;
 
-            // Create a new cancellation token with a reasonable timeout
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            // Create a new cancellation token with configured timeout
+            using var cts = new CancellationTokenSource(CacheDefaults.RefreshTimeout);
 
             _logger.Information("Starting background refresh for cache key: {Key}", key);
 
             // Execute factory to get fresh value
             var freshValue = await factory(cts.Token).ConfigureAwait(false);
 
-            var lockObj = _locks.GetOrAdd(key, k => new SemaphoreSlim(1, 1));
+            var lockObj = GetOrCreateLock(key);
             await lockObj.WaitAsync(cts.Token).ConfigureAwait(false);
             try
             {
@@ -269,18 +439,32 @@ public class CacheService : ICacheService
                 lockObj.Release();
             }
         }
+        catch (OperationCanceledException)
+        {
+            _logger.Warning("Background refresh timed out for key: {Key}", key);
+            existingEntry.IsRefreshing = false;
+        }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error refreshing cache in background for key: {Key}", key);
             existingEntry.IsRefreshing = false;
+
+            // Consider removing the entry if refresh failed
+            try
+            {
+                await RemoveAsync(key).ConfigureAwait(false);
+                _logger.Information("Removed failed cache entry for key: {Key}", key);
+            }
+            catch (Exception removeEx)
+            {
+                _logger.Error(removeEx, "Failed to remove failed cache entry for key: {Key}", key);
+            }
         }
     }
 
     /// <summary>
     ///     Associates a cache key with a region for grouped operations
     /// </summary>
-    /// <param name="region">The region name</param>
-    /// <param name="key">The cache key to track</param>
     private void TrackKeyInRegion(string region, string key)
     {
         _regionKeys.AddOrUpdate(
@@ -294,48 +478,53 @@ public class CacheService : ICacheService
                     return keys;
                 }
             });
+
+        _logger.Debug("Added key {Key} to region {Region}", key, region);
     }
 
     /// <summary>
-    ///     Configures cache entry options based on provided settings
+    ///     Configures cache entry options based on provided settings with sensible defaults
     /// </summary>
-    /// <param name="options">The cache options to apply</param>
-    /// <returns>Configured MemoryCacheEntryOptions</returns>
-    private MemoryCacheEntryOptions ConfigureCacheEntry(CacheEntryOptions? options)
+    private static MemoryCacheEntryOptions ConfigureCacheEntry(CacheEntryOptions? options)
     {
-        var entryOptions = new MemoryCacheEntryOptions();
-
-        if (options?.SlidingExpiration != null)
+        var entryOptions = new MemoryCacheEntryOptions
         {
-            entryOptions.SlidingExpiration = options.SlidingExpiration;
-        }
-
-        if (options?.AbsoluteExpiration != null)
-        {
-            entryOptions.AbsoluteExpirationRelativeToNow = options.AbsoluteExpiration;
-        }
-
-        if (options?.Size != null)
-        {
-            entryOptions.Size = options.Size.Value;
-        }
-
-        entryOptions.RegisterPostEvictionCallback(OnPostEviction);
+            SlidingExpiration = options?.SlidingExpiration ?? CacheDefaults.SlidingExpiration,
+            AbsoluteExpirationRelativeToNow = options?.AbsoluteExpiration ?? CacheDefaults.AbsoluteExpiration,
+            Size = options?.Size ?? CacheDefaults.DefaultSize
+        };
 
         return entryOptions;
     }
 
     /// <summary>
-    ///     Handles cleanup when cache entries are evicted
+    ///     Default cache configuration settings
     /// </summary>
-    private void OnPostEviction(object key, object? value, EvictionReason reason, object? state)
+    private static class CacheDefaults
     {
-        if (key is string cacheKey)
-        {
-            foreach (var region in _regionKeys)
-            {
-                region.Value.Remove(cacheKey);
-            }
-        }
+        /// <summary>
+        ///     Default size for cache entries when not specified
+        /// </summary>
+        public const long DefaultSize = 1;
+
+        /// <summary>
+        ///     Default sliding expiration time for cache entries
+        /// </summary>
+        public static readonly TimeSpan SlidingExpiration = TimeSpan.FromMinutes(30);
+
+        /// <summary>
+        ///     Default absolute expiration time for cache entries
+        /// </summary>
+        public static readonly TimeSpan AbsoluteExpiration = TimeSpan.FromHours(24);
+
+        /// <summary>
+        ///     Default timeout for background refresh operations
+        /// </summary>
+        public static readonly TimeSpan RefreshTimeout = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        ///     Interval for automated cleanup operations
+        /// </summary>
+        public static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
     }
 }
