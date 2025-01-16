@@ -453,7 +453,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         }
     }
 
-    private void ToggleSelection(TItem item, bool isSelected)
+    private async void ToggleSelection(TItem item, bool isSelected)
     {
         if (isSelected)
         {
@@ -469,9 +469,18 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             Logger.Debug("Item deselected: {Item}", item);
         }
 
-        _ = OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+        try
+        {
+            await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to invoke OnSelectionChanged.");
+        }
+
         StateHasChanged();
     }
+
 
     private void ToggleSelectAll(bool selectAll)
     {
