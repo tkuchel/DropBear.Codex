@@ -471,7 +471,14 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
         try
         {
-            await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+            if (OnSelectionChanged.HasDelegate)
+            {
+                await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+            }
+            else
+            {
+                Logger.Warning("OnSelectionChanged delegate is not set.");
+            }
         }
         catch (Exception ex)
         {
