@@ -1,8 +1,10 @@
 ﻿#region
 
+using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Serilog;
@@ -13,17 +15,32 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 
 /// <summary>
 ///     A container that dynamically adjusts its width and can optionally center its content horizontally/vertically.
+///     Implements enhanced resource management, performance optimizations, and lifecycle handling.
 /// </summary>
 public sealed partial class DropBearSectionContainer : DropBearComponentBase
 {
+    // Default styles
+    private const string DefaultMaxWidth = "100%";
+    private const int MaxJsInitializationAttempts = 50;
+    private const int JsInitializationDelayMs = 100;
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSectionContainer>();
+    private readonly CancellationTokenSource _disposalTokenSource = new();
 
-    private readonly SemaphoreSlim _initializationLock = new(1, 1);
+    // Thread-safe initialization control
+    private readonly AsyncLock _initializationLock = new();
+    private WindowDimensions? _cachedDimensions;
+    private string? _containerClass;
+
+    // Component state management
     private DotNetObjectReference<DropBearSectionContainer>? _dotNetRef;
     private volatile bool _isDisposed;
-    private bool _isJsInitialized;
+    private volatile bool _isJsInitialized;
+    private string? _maxWidth;
 
-    private string MaxWidthStyle { get; set; } = "100%"; // Default fallback
+    /// <summary>
+    ///     Gets or sets the maximum width style with validation.
+    /// </summary>
+    private string MaxWidthStyle { get; set; } = DefaultMaxWidth;
 
     /// <summary>
     ///     The content rendered within the container.
@@ -36,7 +53,19 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     ///     The maximum width of the container, e.g., "800px" or "70%".
     /// </summary>
     [Parameter]
-    public string? MaxWidth { get; set; }
+    public string? MaxWidth
+    {
+        get => _maxWidth;
+        set
+        {
+            if (value != null && !value.EndsWith("%") && !value.EndsWith("px"))
+            {
+                throw new ArgumentException("MaxWidth must end with % or px", nameof(MaxWidth));
+            }
+
+            _maxWidth = value;
+        }
+    }
 
     /// <summary>
     ///     If true, horizontally center the container inside its parent.
@@ -51,13 +80,17 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     public bool IsVerticalCentered { get; set; }
 
     /// <summary>
-    ///     Dynamically builds the CSS class for the container.
+    ///     Event callback for when the container dimensions change.
     /// </summary>
-    private string ContainerClass => BuildContainerClass();
+    [Parameter]
+    public EventCallback<WindowDimensions> OnDimensionsChanged { get; set; }
 
     /// <summary>
-    ///     Disposes resources, including JS listeners, when the component is destroyed.
+    ///     Dynamically builds and caches the CSS class for the container.
     /// </summary>
+    private string ContainerClass => _containerClass ??= BuildContainerClass();
+
+    /// <inheritdoc />
     public override async ValueTask DisposeAsync()
     {
         if (_isDisposed)
@@ -65,76 +98,66 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
             return;
         }
 
-        await _initializationLock.WaitAsync();
-        try
+        using (await _initializationLock.LockAsync())
         {
             if (_isDisposed)
             {
                 return;
             }
 
-            _isDisposed = true;
-
-            if (_isJsInitialized)
+            try
             {
-                try
-                {
-                    var isConnected = await JsRuntime.InvokeAsync<bool>("eval", "typeof window !== 'undefined'");
-                    if (isConnected)
-                    {
-                        await JsRuntime.InvokeVoidAsync("DropBearResizeManager.dispose");
-                        Logger.Debug("Resize event listener disposed for DropBearSectionContainer.");
-                    }
-                }
-                catch (JSDisconnectedException ex)
-                {
-                    Logger.Warning(ex, "Resize event listener was already disposed (disconnected).");
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error during JS interop disposal in DropBearSectionContainer.");
-                }
-            }
+                _isDisposed = true;
+                await _disposalTokenSource.CancelAsync();
 
-            _dotNetRef?.Dispose();
-        }
-        finally
-        {
-            _initializationLock.Release();
-            _initializationLock.Dispose();
+                if (_isJsInitialized)
+                {
+                    await CleanupJsResourcesAsync();
+                }
+
+                _dotNetRef?.Dispose();
+                _disposalTokenSource.Dispose();
+                _initializationLock.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during component disposal");
+            }
         }
     }
 
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_isDisposed)
+        if (!firstRender || _isDisposed)
         {
-            await _initializationLock.WaitAsync();
+            return;
+        }
+
+        using (await _initializationLock.LockAsync(_disposalTokenSource.Token))
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
             try
             {
-                if (_isDisposed)
-                {
-                    return;
-                }
-
-                await WaitForJsInitializationAsync("DropBearResizeManager");
-                _dotNetRef = DotNetObjectReference.Create(this);
-                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", _dotNetRef);
-                _isJsInitialized = true;
-                Logger.Debug("Resize event listener registered for DropBearSectionContainer.");
-
-                await SetMaxWidthBasedOnWindowSize();
+                await InitializeJsInteropAsync();
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error during initialization in DropBearSectionContainer: {Message}", ex.Message);
-            }
-            finally
-            {
-                _initializationLock.Release();
+                Logger.Error(ex, "Error during initialization");
+                // Consider surfacing this error to the user interface
             }
         }
+    }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        _containerClass = null; // Invalidate cache
+        base.OnParametersSet();
     }
 
     /// <summary>
@@ -143,65 +166,186 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     [JSInvokable]
     public async Task SetMaxWidthBasedOnWindowSize()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         try
         {
-            var dimensions = await JsRuntime.InvokeAsync<WindowDimensions>("getWindowDimensions");
-            var windowWidth = dimensions.Width;
-
-            if (!string.IsNullOrEmpty(MaxWidth) && MaxWidth.EndsWith("%"))
+            var dimensions = await GetWindowDimensionsAsync();
+            if (dimensions is null)
             {
-                if (double.TryParse(MaxWidth.TrimEnd('%'), out var percentage))
-                {
-                    var calculatedWidth = windowWidth * (percentage / 100);
-                    MaxWidthStyle = $"{calculatedWidth}px";
-                    Logger.Debug("Calculated MaxWidth from percentage: {MaxWidthStyle}", MaxWidthStyle);
-                }
-                else
-                {
-                    Logger.Error("Failed to parse MaxWidth as a percentage: {MaxWidth}", MaxWidth);
-                    MaxWidthStyle = "100%";
-                }
-            }
-            else
-            {
-                // Non-percentage (e.g. "800px"), use directly
-                MaxWidthStyle = MaxWidth ?? "100%";
-                Logger.Debug("MaxWidth set directly: {MaxWidthStyle}", MaxWidthStyle);
+                return;
             }
 
-            await InvokeAsync(StateHasChanged);
+            var newMaxWidth = CalculateMaxWidth(dimensions.Width);
+            if (MaxWidthStyle != newMaxWidth)
+            {
+                MaxWidthStyle = newMaxWidth;
+                await InvokeAsync(StateHasChanged);
+                await NotifyDimensionsChangedAsync(dimensions);
+            }
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error while setting max width in DropBearSectionContainer.");
-            MaxWidthStyle = "100%";
+            Logger.Error(ex, "Error while setting max width");
+            MaxWidthStyle = DefaultMaxWidth;
         }
     }
 
+    /// <summary>
+    ///     Initializes JavaScript interop functionality.
+    /// </summary>
+    private async Task InitializeJsInteropAsync()
+    {
+        try
+        {
+            await WaitForJsInitializationAsync("DropBearResizeManager");
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await JsRuntime.InvokeVoidAsync("DropBearResizeManager.initialize", _dotNetRef);
+            _isJsInitialized = true;
+            Logger.Debug("Resize event listener registered");
+
+            await SetMaxWidthBasedOnWindowSize();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "JS initialization failed");
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Cleans up JavaScript resources safely.
+    /// </summary>
+    private async Task CleanupJsResourcesAsync()
+    {
+        try
+        {
+            var isConnected = await JsRuntime.InvokeAsync<bool>(
+                "eval",
+                "typeof window !== 'undefined'"
+            );
+
+            if (isConnected)
+            {
+                await JsRuntime.InvokeVoidAsync("DropBearResizeManager.dispose");
+                Logger.Debug("Resize event listener disposed");
+            }
+        }
+        catch (JSDisconnectedException ex)
+        {
+            Logger.Warning(ex, "JS resources already disposed (disconnected)");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during JS cleanup");
+        }
+    }
+
+    /// <summary>
+    ///     Builds the container CSS class efficiently using StringBuilder.
+    /// </summary>
     private string BuildContainerClass()
     {
-        var classes = "section-container";
+        var builder = new StringBuilder("section-container", 100);
+
         if (IsHorizontalCentered)
         {
-            classes += " horizontal-centered";
+            builder.Append(" horizontal-centered");
         }
 
         if (IsVerticalCentered)
         {
-            classes += " vertical-centered";
+            builder.Append(" vertical-centered");
         }
 
-        return classes;
+        return builder.ToString();
     }
 
-    private async Task WaitForJsInitializationAsync(string objectName, int maxAttempts = 50)
+    /// <summary>
+    ///     Calculates the max width based on window dimensions and MaxWidth parameter.
+    /// </summary>
+    private string CalculateMaxWidth(double windowWidth)
     {
-        for (var i = 0; i < maxAttempts; i++)
+        if (string.IsNullOrEmpty(MaxWidth))
+        {
+            return DefaultMaxWidth;
+        }
+
+        if (MaxWidth.EndsWith("%"))
+        {
+            if (double.TryParse(MaxWidth.TrimEnd('%'), out var percentage))
+            {
+                var calculatedWidth = windowWidth * (percentage / 100);
+                return $"{calculatedWidth}px";
+            }
+
+            Logger.Error("Failed to parse MaxWidth percentage: {MaxWidth}", MaxWidth);
+            return DefaultMaxWidth;
+        }
+
+        return MaxWidth; // Direct use for pixel values
+    }
+
+    /// <summary>
+    ///     Gets the window dimensions with caching for performance.
+    /// </summary>
+    private async Task<WindowDimensions?> GetWindowDimensionsAsync()
+    {
+        try
+        {
+            _cachedDimensions = await JsRuntime.InvokeAsync<WindowDimensions>(
+                "getWindowDimensions",
+                _disposalTokenSource.Token
+            );
+            return _cachedDimensions;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to get window dimensions");
+            return null;
+        }
+    }
+
+    /// <summary>
+    ///     Notifies listeners of dimension changes.
+    /// </summary>
+    private async Task NotifyDimensionsChangedAsync(WindowDimensions dimensions)
+    {
+        if (OnDimensionsChanged.HasDelegate)
+        {
+            try
+            {
+                await OnDimensionsChanged.InvokeAsync(dimensions);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error notifying dimension change");
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Waits for JavaScript initialization with timeout and cancellation support.
+    /// </summary>
+    private async Task WaitForJsInitializationAsync(string objectName)
+    {
+        using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            timeoutCts.Token,
+            _disposalTokenSource.Token
+        );
+
+        var attempts = 0;
+        while (attempts++ < MaxJsInitializationAttempts)
         {
             try
             {
                 var isLoaded = await JsRuntime.InvokeAsync<bool>(
                     "eval",
+                    linkedCts.Token,
                     $"typeof window.{objectName} !== 'undefined' && window.{objectName} !== null"
                 );
 
@@ -210,14 +354,30 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
                     return;
                 }
 
-                await Task.Delay(100);
+                await Task.Delay(JsInitializationDelayMs, linkedCts.Token);
+            }
+            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
+            {
+                throw new TimeoutException($"JavaScript object {objectName} initialization timed out");
+            }
+            catch when (_disposalTokenSource.Token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("Component disposal requested during initialization");
             }
             catch
             {
-                await Task.Delay(100);
+                if (attempts < MaxJsInitializationAttempts)
+                {
+                    await Task.Delay(JsInitializationDelayMs, linkedCts.Token);
+                }
+                else
+                {
+                    throw;
+                }
             }
         }
 
-        throw new JSException($"JavaScript object {objectName} failed to initialize after {maxAttempts} attempts");
+        throw new JSException(
+            $"JavaScript object {objectName} failed to initialize after {MaxJsInitializationAttempts} attempts");
     }
 }

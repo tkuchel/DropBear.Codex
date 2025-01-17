@@ -3,23 +3,43 @@
 /// <summary>
 ///     Custom async lock implementation for more granular locking
 /// </summary>
-public sealed class AsyncLock
+public sealed class AsyncLock : IDisposable
 {
     private readonly Task<IDisposable> _releaser;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
+    private volatile bool _isDisposed;
 
     public AsyncLock()
     {
-        _releaser = Task.FromResult((IDisposable)new Releaser(this));
+        _releaser = Task.FromResult<IDisposable>(new Releaser(this));
     }
 
-    public Task<IDisposable> LockAsync()
+    public void Dispose()
     {
-        var wait = _semaphore.WaitAsync();
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        _isDisposed = true;
+        _semaphore.Dispose();
+    }
+
+    public Task<IDisposable> LockAsync(CancellationToken cancellationToken = default)
+    {
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(AsyncLock));
+        }
+
+        var wait = _semaphore.WaitAsync(cancellationToken);
+
         return wait.IsCompleted
             ? _releaser
-            : wait.ContinueWith((_, state) => (IDisposable)new Releaser((AsyncLock)state!),
-                this, CancellationToken.None,
+            : wait.ContinueWith<IDisposable>(
+                (_, state) => new Releaser((AsyncLock)state!),
+                this,
+                cancellationToken,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
     }
@@ -27,6 +47,7 @@ public sealed class AsyncLock
     private sealed class Releaser : IDisposable
     {
         private readonly AsyncLock _toRelease;
+        private volatile bool _isDisposed;
 
         internal Releaser(AsyncLock toRelease)
         {
@@ -35,7 +56,16 @@ public sealed class AsyncLock
 
         public void Dispose()
         {
-            _toRelease._semaphore.Release();
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            _isDisposed = true;
+            if (!_toRelease._isDisposed)
+            {
+                _toRelease._semaphore.Release();
+            }
         }
     }
 }
