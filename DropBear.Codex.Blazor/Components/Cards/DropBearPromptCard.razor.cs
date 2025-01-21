@@ -12,30 +12,75 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 /// <summary>
 ///     A Blazor component for rendering a prompt card with various styles and options.
 /// </summary>
-public sealed partial class DropBearPromptCard : DropBearComponentBase
+public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposable
 {
-    private static readonly IReadOnlyDictionary<ButtonColor, string> ButtonClasses = new Dictionary<ButtonColor, string>
-    {
-        { ButtonColor.Primary, "prompt-btn-primary" },
-        { ButtonColor.Secondary, "prompt-btn-secondary" },
-        { ButtonColor.Success, "prompt-btn-success" },
-        { ButtonColor.Warning, "prompt-btn-warning" },
-        { ButtonColor.Error, "prompt-btn-danger" },
-        { ButtonColor.Default, "prompt-btn-default" }
-    };
+    // Mappings
+    private static readonly IReadOnlyDictionary<ButtonColor, string> ButtonClasses =
+        new Dictionary<ButtonColor, string>
+        {
+            { ButtonColor.Primary, "prompt-btn-primary" },
+            { ButtonColor.Secondary, "prompt-btn-secondary" },
+            { ButtonColor.Success, "prompt-btn-success" },
+            { ButtonColor.Warning, "prompt-btn-warning" },
+            { ButtonColor.Error, "prompt-btn-danger" },
+            { ButtonColor.Default, "prompt-btn-default" }
+        };
 
-    private static readonly IReadOnlyDictionary<PromptType, string> PromptClasses = new Dictionary<PromptType, string>
-    {
-        { PromptType.Success, "prompt-card-success" },
-        { PromptType.Warning, "prompt-card-warning" },
-        { PromptType.Error, "prompt-card-danger" },
-        { PromptType.Information, "prompt-card-information" }
-    };
+    private static readonly IReadOnlyDictionary<PromptType, string> PromptClasses =
+        new Dictionary<PromptType, string>
+        {
+            { PromptType.Success, "prompt-card-success" },
+            { PromptType.Warning, "prompt-card-warning" },
+            { PromptType.Error, "prompt-card-danger" },
+            { PromptType.Information, "prompt-card-information" }
+            // Potentially add a Subtle or default here if you like
+        };
 
     /// <summary>
-    ///     Gets the dynamic CSS classes for the prompt card.
+    ///     Dynamically built CSS classes for the prompt card.
     /// </summary>
-    private string CssClass => BuildCssClass();
+    private string CssClass => BuildPromptCssClass();
+
+    /// <summary>
+    ///     Disposes of the component, cleaning up any resources.
+    /// </summary>
+    public void Dispose()
+    {
+        // If there's no real resource to free, disposal might be optional.
+        try
+        {
+            // Example usage: Clear references to avoid potential memory leaks
+            Buttons = Array.Empty<ButtonConfig>();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error disposing prompt card.");
+        }
+    }
+
+    /// <summary>
+    ///     Builds the complete CSS class string for the prompt card.
+    /// </summary>
+    private string BuildPromptCssClass()
+    {
+        var cssClasses = new List<string>
+        {
+            "prompt-card", PromptClasses.GetValueOrDefault(PromptType, "prompt-card-default")
+        };
+
+        if (Subtle)
+        {
+            cssClasses.Add("prompt-card-subtle");
+        }
+
+        // If the consumer wants to hide the icon, they can set Icon=null or empty
+        if (!string.IsNullOrEmpty(Icon))
+        {
+            cssClasses.Add("prompt-card-with-icon");
+        }
+
+        return string.Join(" ", cssClasses);
+    }
 
     /// <summary>
     ///     Returns the appropriate CSS class for a button.
@@ -49,35 +94,12 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
 
         var cssClasses = new List<string> { "prompt-btn" };
 
-        var typeClass = ButtonClasses.GetValueOrDefault(button.Color, ButtonClasses[ButtonColor.Default]);
+        var typeClass = ButtonClasses.GetValueOrDefault(button.Color, "prompt-btn-default");
         cssClasses.Add(typeClass);
 
         if (!string.IsNullOrEmpty(button.Icon))
         {
             cssClasses.Add("prompt-btn-with-icon");
-        }
-
-        return string.Join(" ", cssClasses);
-    }
-
-    /// <summary>
-    ///     Builds the complete CSS class string for the prompt card.
-    /// </summary>
-    private string BuildCssClass()
-    {
-        var cssClasses = new List<string>
-        {
-            "prompt-card", PromptClasses.GetValueOrDefault(PromptType, "prompt-card-default")
-        };
-
-        if (Subtle)
-        {
-            cssClasses.Add("prompt-card-subtle");
-        }
-
-        if (!string.IsNullOrEmpty(Icon))
-        {
-            cssClasses.Add("prompt-card-with-icon");
         }
 
         return string.Join(" ", cssClasses);
@@ -90,7 +112,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     {
         if (IsDisposed)
         {
-            Logger.Warning("Button click ignored - component is disposed");
+            Logger.Warning("Button click ignored - component is disposed.");
             return;
         }
 
@@ -131,17 +153,18 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     {
         if (string.IsNullOrWhiteSpace(Title))
         {
-            Logger.Warning("Prompt card created without title");
+            Logger.Warning("Prompt card created without title.");
         }
 
         if (string.IsNullOrWhiteSpace(Message))
         {
-            Logger.Warning("Prompt card created without description");
+            Logger.Warning("Prompt card created without description.");
         }
 
         foreach (var button in Buttons)
         {
-            if (string.IsNullOrWhiteSpace(button.Id) || string.IsNullOrWhiteSpace(button.Text))
+            if (string.IsNullOrWhiteSpace(button.Id) ||
+                string.IsNullOrWhiteSpace(button.Text))
             {
                 Logger.Warning("Button configuration missing required properties: {ButtonId}",
                     button.Id ?? "null");
@@ -149,23 +172,13 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
         }
     }
 
-    /// <summary>
-    ///     Disposes of the component, cleaning up any resources.
-    ///     This method is called by the Blazor framework when the component is removed from the UI.
-    /// </summary>
-    public void Dispose()
-    {
-        try
-        {
-            Buttons = Array.Empty<ButtonConfig>();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error disposing prompt card");
-        }
-    }
-
     #region Parameters
+
+    /// <summary>
+    ///     A unique ID for ARIA binding or other needs.
+    /// </summary>
+    [Parameter]
+    public string Id { get; set; } = Guid.NewGuid().ToString();
 
     /// <summary>
     ///     An optional icon class for the prompt (e.g., "fas fa-question-circle").
@@ -180,10 +193,10 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     public string Title { get; set; } = "Title";
 
     /// <summary>
-    ///     The main descriptive text displayed in the body of the prompt.
+    ///     The main descriptive text / message displayed in the body of the prompt.
     /// </summary>
     [Parameter]
-    public string Message { get; set; } = "Description";
+    public string Message { get; set; } = "Message";
 
     /// <summary>
     ///     The collection of button configurations to display in the prompt's footer.

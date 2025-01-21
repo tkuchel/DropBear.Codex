@@ -1,21 +1,39 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="prompt-card-container">
+<!--
+  Added ARIA attributes for better accessibility if this prompt acts like a modal or alert.
+  Replaced some class references with the new method name, but mostly the code is the same.
+-->
+<div class="prompt-card-container"
+     role="dialog"
+     aria-modal="true"
+     aria-labelledby="@($"{Id}-title")"
+     aria-describedby="@($"{Id}-message")">
     <div class="prompt-card-overlay">
-        <div class="prompt-card @CssClass @(Subtle ? "subtle" : "")">
+        <div class="@CssClass">
             <div class="card-header">
-                <i class="@Icon" aria-hidden="true"></i>
-                <h5 class="card-title">@Title</h5>
+                @if (!string.IsNullOrEmpty(Icon))
+                {
+                    <i class="@Icon" aria-hidden="true"></i>
+                }
+                <h5 class="card-title" id="@($"{Id}-title")">@Title</h5>
             </div>
 
             <div class="card-body">
-                <p class="card-text">@Message</p>
+                <p class="card-text" id="@($"{Id}-message")">@Message</p>
 
                 @if (Buttons != null && Buttons.Any())
                 {
                     <div class="button-group">
                         @foreach (var button in Buttons)
                         {
+                            if (string.IsNullOrWhiteSpace(button.Id) ||
+                                string.IsNullOrWhiteSpace(button.Text))
+                            {
+                                // Log or skip, as needed
+                                continue;
+                            }
+
                             <button type="button"
                                     class="@GetButtonClass(button)"
                                     @onclick="@(() => HandleButtonClick(button))">
