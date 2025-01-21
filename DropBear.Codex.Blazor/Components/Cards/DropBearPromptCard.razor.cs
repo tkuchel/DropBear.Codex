@@ -3,9 +3,7 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
-using Serilog;
 
 #endregion
 
@@ -16,10 +14,7 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 /// </summary>
 public sealed partial class DropBearPromptCard : DropBearComponentBase
 {
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearPromptCard>();
-
-    // Button color -> CSS class mapping
-    private static readonly Dictionary<ButtonColor, string> ButtonClasses = new()
+    private static readonly IReadOnlyDictionary<ButtonColor, string> ButtonClasses = new Dictionary<ButtonColor, string>
     {
         { ButtonColor.Primary, "prompt-btn-primary" },
         { ButtonColor.Secondary, "prompt-btn-secondary" },
@@ -28,6 +23,149 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
         { ButtonColor.Error, "prompt-btn-danger" },
         { ButtonColor.Default, "prompt-btn-default" }
     };
+
+    private static readonly IReadOnlyDictionary<PromptType, string> PromptClasses = new Dictionary<PromptType, string>
+    {
+        { PromptType.Success, "prompt-card-success" },
+        { PromptType.Warning, "prompt-card-warning" },
+        { PromptType.Error, "prompt-card-danger" },
+        { PromptType.Information, "prompt-card-information" }
+    };
+
+    /// <summary>
+    ///     Gets the dynamic CSS classes for the prompt card.
+    /// </summary>
+    private string CssClass => BuildCssClass();
+
+    /// <summary>
+    ///     Returns the appropriate CSS class for a button.
+    /// </summary>
+    private string GetButtonClass(ButtonConfig button)
+    {
+        if (button is null)
+        {
+            return string.Empty;
+        }
+
+        var cssClasses = new List<string> { "prompt-btn" };
+
+        var typeClass = ButtonClasses.GetValueOrDefault(button.Color, ButtonClasses[ButtonColor.Default]);
+        cssClasses.Add(typeClass);
+
+        if (!string.IsNullOrEmpty(button.Icon))
+        {
+            cssClasses.Add("prompt-btn-with-icon");
+        }
+
+        return string.Join(" ", cssClasses);
+    }
+
+    /// <summary>
+    ///     Builds the complete CSS class string for the prompt card.
+    /// </summary>
+    private string BuildCssClass()
+    {
+        var cssClasses = new List<string>
+        {
+            "prompt-card", PromptClasses.GetValueOrDefault(PromptType, "prompt-card-default")
+        };
+
+        if (Subtle)
+        {
+            cssClasses.Add("prompt-card-subtle");
+        }
+
+        if (!string.IsNullOrEmpty(Icon))
+        {
+            cssClasses.Add("prompt-card-with-icon");
+        }
+
+        return string.Join(" ", cssClasses);
+    }
+
+    /// <summary>
+    ///     Handles the click event for a button in the prompt.
+    /// </summary>
+    private async Task HandleButtonClick(ButtonConfig button)
+    {
+        if (IsDisposed)
+        {
+            Logger.Warning("Button click ignored - component is disposed");
+            return;
+        }
+
+        if (!OnButtonClicked.HasDelegate)
+        {
+            Logger.Warning("No click handler provided for button: {ButtonId} {ButtonText}",
+                button.Id, button.Text);
+            return;
+        }
+
+        try
+        {
+            await InvokeStateHasChangedAsync(async () =>
+            {
+                Logger.Debug("Button clicked: {ButtonId} {ButtonText} {ButtonColor}",
+                    button.Id, button.Text, button.Color);
+                await OnButtonClicked.InvokeAsync(button);
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error handling button click: {ButtonId} {ButtonText}",
+                button.Id, button.Text);
+        }
+    }
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        ValidateParameters();
+    }
+
+    /// <summary>
+    ///     Validates the component parameters.
+    /// </summary>
+    private void ValidateParameters()
+    {
+        if (string.IsNullOrWhiteSpace(Title))
+        {
+            Logger.Warning("Prompt card created without title");
+        }
+
+        if (string.IsNullOrWhiteSpace(Description))
+        {
+            Logger.Warning("Prompt card created without description");
+        }
+
+        foreach (var button in Buttons)
+        {
+            if (string.IsNullOrWhiteSpace(button.Id) || string.IsNullOrWhiteSpace(button.Text))
+            {
+                Logger.Warning("Button configuration missing required properties: {ButtonId}",
+                    button.Id ?? "null");
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Disposes of the component, cleaning up any resources.
+    ///     This method is called by the Blazor framework when the component is removed from the UI.
+    /// </summary>
+    public void Dispose()
+    {
+        try
+        {
+            Buttons = Array.Empty<ButtonConfig>();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error disposing prompt card");
+        }
+    }
+
+    #region Parameters
 
     /// <summary>
     ///     An optional icon class for the prompt (e.g., "fas fa-question-circle").
@@ -66,60 +204,10 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     public PromptType PromptType { get; set; } = PromptType.Information;
 
     /// <summary>
-    ///     If true, applies a more subdued style to the prompt (e.g., minimal color).
+    ///     If true, applies a more subdued style to the prompt.
     /// </summary>
     [Parameter]
     public bool Subtle { get; set; }
 
-    /// <summary>
-    ///     Returns the appropriate CSS class for a <see cref="ButtonColor" />.
-    /// </summary>
-    /// <param name="type">The button color.</param>
-    /// <returns>A CSS class name.</returns>
-    private string GetButtonClass(ButtonColor type)
-    {
-        const string baseClass = "prompt-btn";
-        var typeClass = ButtonClasses.GetValueOrDefault(type, "prompt-btn-default");
-
-        // Combine the base class with the color class
-        return $"{baseClass} {typeClass}".Trim();
-    }
-
-    /// <summary>
-    ///     Returns the CSS class that corresponds to the current <see cref="PromptType" />.
-    /// </summary>
-    private string GetPromptClass()
-    {
-        return PromptType switch
-        {
-            PromptType.Success => "prompt-card-success",
-            PromptType.Warning => "prompt-card-warning",
-            PromptType.Error => "prompt-card-danger",
-            PromptType.Information => "prompt-card-information",
-            _ => "prompt-card-default"
-        };
-    }
-
-    /// <summary>
-    ///     Handles the click event for a button in the prompt.
-    /// </summary>
-    /// <param name="button">The <see cref="ButtonConfig" /> model representing the button.</param>
-    private async Task HandleButtonClick(ButtonConfig button)
-    {
-        if (!OnButtonClicked.HasDelegate)
-        {
-            Logger.Warning("No button click event handler provided for button: {ButtonText}", button.Text);
-            return;
-        }
-
-        try
-        {
-            Logger.Debug("Button clicked: {ButtonText}", button.Text);
-            await OnButtonClicked.InvokeAsync(button);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error occurred while handling button click for button: {ButtonText}", button.Text);
-        }
-    }
+    #endregion
 }

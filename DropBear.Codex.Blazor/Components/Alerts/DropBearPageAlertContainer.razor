@@ -15,6 +15,6 @@
             Type="@alert.Type"
             IsPermanent="@alert.IsPermanent"
             Duration="@alert.Duration"
-            OnClose="@(() => RemoveAlert(alert.Id))" />
+            OnClose="@(() => HideAlert(alert.Id))" />
     }
 </div>

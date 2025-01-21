@@ -1,7 +1,6 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
-using Serilog;
 
 #endregion
 
@@ -10,111 +9,187 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// <summary>
 ///     A container for displaying modals with customizable width, height, and transitions.
 /// </summary>
-public sealed partial class DropBearModalContainer : DropBearComponentBase, IDisposable
+public sealed partial class DropBearModalContainer : DropBearComponentBase
 {
-    private readonly string _modalTransitionClass = "enter"; // Controls enter/leave animations
-    private string _customHeight = "auto"; // Default height
-    private string _customWidth = "auto"; // Default width
+    private const string DEFAULT_TRANSITION_DURATION = "0.3s";
+    private const string DEFAULT_DIMENSION = "auto";
+    private const string ENTER_TRANSITION_CLASS = "enter";
+
+    private readonly string _modalTransitionClass = ENTER_TRANSITION_CLASS;
+    private string _customHeight = DEFAULT_DIMENSION;
+    private string _customWidth = DEFAULT_DIMENSION;
     private bool _isSubscribed;
-    private string _transitionDuration = "0.3s"; // Default animation duration
+    private string _transitionDuration = DEFAULT_TRANSITION_DURATION;
 
     /// <summary>
-    ///     Ensures we unsubscribe from the modal service event on disposal.
+    ///     CSS style string for the modal dimensions and transitions.
     /// </summary>
-    public void Dispose()
-    {
-        UnsubscribeFromModalService();
-        // GC.SuppressFinalize(this);
-    }
+    private string ModalStyle => BuildModalStyle();
 
     /// <inheritdoc />
     protected override void OnInitialized()
     {
-        base.OnInitialized();
-        SubscribeToModalService();
-    }
-
-    private void SubscribeToModalService()
-    {
-        if (!_isSubscribed)
+        try
         {
-            ModalService.OnChange += StateHasChanged;
-            _isSubscribed = true;
-            SetCustomParameters();
-
-            Log.Debug("Subscribed to ModalService OnChange event.");
+            base.OnInitialized();
+            SubscribeToModalService();
         }
-    }
-
-    private void UnsubscribeFromModalService()
-    {
-        if (_isSubscribed)
+        catch (Exception ex)
         {
-            ModalService.OnChange -= StateHasChanged;
-            _isSubscribed = false;
-            Log.Debug("Unsubscribed from ModalService OnChange event.");
+            Logger.Error(ex, "Error initializing modal container");
+            throw;
         }
     }
 
     /// <summary>
-    ///     Reads and applies custom parameters (width, height, transition duration) from <see cref="ModalService" />.
+    ///     Subscribes to the modal service events and initializes custom parameters.
     /// </summary>
-    private void SetCustomParameters()
+    private void SubscribeToModalService()
     {
-        if (ModalService.CurrentParameters != null)
+        if (_isSubscribed || IsDisposed)
         {
-            if (ModalService.CurrentParameters.TryGetValue("CustomWidth", out var width))
-            {
-                _customWidth = width.ToString() ?? "auto";
-            }
-
-            if (ModalService.CurrentParameters.TryGetValue("CustomHeight", out var height))
-            {
-                _customHeight = height.ToString() ?? "auto";
-            }
-
-            if (ModalService.CurrentParameters.TryGetValue("TransitionDuration", out var duration))
-            {
-                _transitionDuration = duration.ToString() ?? "0.3s";
-            }
+            return;
         }
 
-        Log.Debug(
-            "Modal container initialized with custom dimensions: Width={Width}, Height={Height}, Duration={Duration}",
+        try
+        {
+            ModalService.OnChange += HandleModalServiceChange;
+            _isSubscribed = true;
+            UpdateCustomParameters();
+            Logger.Debug("Subscribed to ModalService events");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to subscribe to modal service");
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Handles changes from the modal service.
+    /// </summary>
+    private async void HandleModalServiceChange()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            UpdateCustomParameters();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error handling modal service change");
+        }
+    }
+
+    /// <summary>
+    ///     Updates modal parameters from the service configuration.
+    /// </summary>
+    private void UpdateCustomParameters()
+    {
+        if (ModalService.CurrentParameters is null)
+        {
+            ResetToDefaults();
+            return;
+        }
+
+        _customWidth = GetParameterValue("CustomWidth", DEFAULT_DIMENSION);
+        _customHeight = GetParameterValue("CustomHeight", DEFAULT_DIMENSION);
+        _transitionDuration = GetParameterValue("TransitionDuration", DEFAULT_TRANSITION_DURATION);
+
+        Logger.Debug("Modal parameters updated: Width={Width}, Height={Height}, Duration={Duration}",
             _customWidth, _customHeight, _transitionDuration);
     }
 
     /// <summary>
-    ///     Handles a click outside the modal content to close the modal if allowed.
+    ///     Gets a parameter value from the modal service, with fallback.
     /// </summary>
-    private async Task HandleOutsideClick()
+    private string GetParameterValue(string key, string defaultValue)
     {
-        try
-        {
-            ModalService.Close();
-            Log.Debug("Modal closed via outside click.");
-        }
-        catch (Exception ex)
-        {
-            Log.Error(ex, "Error handling outside click to close modal.");
-        }
-
-        await Task.CompletedTask;
+        return ModalService.CurrentParameters?.TryGetValue(key, out var value) == true
+            ? value?.ToString() ?? defaultValue
+            : defaultValue;
     }
 
     /// <summary>
-    ///     Allows manual triggering of modal closure from external code.
+    ///     Resets modal parameters to their default values.
     /// </summary>
-    public void TriggerClose()
+    private void ResetToDefaults()
+    {
+        _customWidth = DEFAULT_DIMENSION;
+        _customHeight = DEFAULT_DIMENSION;
+        _transitionDuration = DEFAULT_TRANSITION_DURATION;
+    }
+
+    /// <summary>
+    ///     Builds the CSS style string for the modal.
+    /// </summary>
+    private string BuildModalStyle()
+    {
+        return $"width: {_customWidth}; height: {_customHeight}; transition-duration: {_transitionDuration};";
+    }
+
+    /// <summary>
+    ///     Handles clicks outside the modal content.
+    /// </summary>
+    private Task HandleOutsideClick()
     {
         try
         {
             ModalService.Close();
-            Log.Debug("Modal manually closed.");
+            Logger.Debug("Modal closed via outside click");
         }
         catch (Exception ex)
         {
-            Log.Error(ex, "Error triggering modal close.");
+            Logger.Error(ex, "Error handling modal outside click");
         }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Allows programmatic modal closure.
+    /// </summary>
+    public void Close()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            ModalService.Close();
+            Logger.Debug("Modal closed programmatically");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error closing modal programmatically");
+        }
+    }
+
+    /// <summary>
+    ///     Disposes of the component, cleaning up any resources.
+    ///     This method is called by the Blazor framework when the component is removed from the UI.
+    /// </summary>
+    private void Dispose(bool disposing)
+    {
+        if (disposing && !IsDisposed)
+        {
+            if (_isSubscribed)
+            {
+                ModalService.OnChange -= HandleModalServiceChange;
+                _isSubscribed = false;
+                Logger.Debug("Unsubscribed from modal service events");
+            }
+
+            ResetToDefaults();
+        }
+
+        _ = base.DisposeAsync(disposing);
     }
 }

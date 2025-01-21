@@ -2,7 +2,7 @@
 
 <div class="prompt-card-container">
     <div class="prompt-card-overlay">
-        <div class="prompt-card @GetPromptClass() @(Subtle ? "subtle" : "")">
+        <div class="prompt-card @CssClass @(Subtle ? "subtle" : "")">
             <div class="card-header">
                 <i class="@Icon" aria-hidden="true"></i>
                 <h5 class="card-title">@Title</h5>
@@ -17,7 +17,7 @@
                         @foreach (var button in Buttons)
                         {
                             <button type="button"
-                                    class="@GetButtonClass(button.Color)"
+                                    class="@GetButtonClass(button)"
                                     @onclick="@(() => HandleButtonClick(button))">
                                 @if (!string.IsNullOrEmpty(button.Icon))
                                 {

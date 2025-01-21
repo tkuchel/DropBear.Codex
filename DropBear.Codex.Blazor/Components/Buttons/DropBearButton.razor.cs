@@ -2,10 +2,8 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
-using Serilog;
 
 #endregion
 
@@ -16,7 +14,89 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 /// </summary>
 public sealed partial class DropBearButton : DropBearComponentBase
 {
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearButton>();
+    /// <summary>
+    ///     Constructs a dynamic CSS class based on button parameters.
+    /// </summary>
+    private string CssClass => BuildCssClass();
+
+    /// <summary>
+    ///     Builds the CSS class for the button based on its configuration.
+    /// </summary>
+    private string BuildCssClass()
+    {
+        var cssClasses = new List<string>
+        {
+            "dropbear-btn",
+            $"dropbear-btn-{ButtonStyle.ToString().ToLowerInvariant()}",
+            $"dropbear-btn-{Color.ToString().ToLowerInvariant()}",
+            $"dropbear-btn-{Size.ToString().ToLowerInvariant()}"
+        };
+
+        if (IsBlock)
+        {
+            cssClasses.Add("dropbear-btn-block");
+        }
+
+        if (IsDisabled)
+        {
+            cssClasses.Add("dropbear-btn-disabled");
+        }
+
+        if (!string.IsNullOrEmpty(Icon) && ChildContent is null)
+        {
+            cssClasses.Add("dropbear-btn-icon-only");
+        }
+
+        return string.Join(" ", cssClasses);
+    }
+
+    /// <summary>
+    ///     Handles the button click event, respecting the disabled state.
+    /// </summary>
+    private async Task OnClickHandler(MouseEventArgs args)
+    {
+        if (IsDisposed)
+        {
+            Logger.Warning("Click ignored - button component is disposed.");
+            return;
+        }
+
+        if (IsDisabled)
+        {
+            Logger.Debug("Click ignored - button is disabled.");
+            return;
+        }
+
+        if (!OnClick.HasDelegate)
+        {
+            return;
+        }
+
+        try
+        {
+            await InvokeStateHasChangedAsync(async () =>
+            {
+                Logger.Debug("Button clicked: {Color} {ButtonStyle} {Size}", Color, ButtonStyle, Size);
+                await OnClick.InvokeAsync(args);
+            });
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error handling button click: {Color} {ButtonStyle}", Color, ButtonStyle);
+        }
+    }
+
+    /// <summary>
+    ///     Disposes of the component, cleaning up any resources.
+    ///     This method is called by the Blazor framework when the component is removed from the UI.
+    /// </summary>
+    public void Dispose()
+    {
+        // Clean up any event handlers or resources if needed
+        AdditionalAttributes.Clear();
+    }
+
+    #region Parameters
 
     /// <summary>
     ///     Determines the overall style of the button (e.g., Solid, Outline).
@@ -73,70 +153,10 @@ public sealed partial class DropBearButton : DropBearComponentBase
     public RenderFragment? ChildContent { get; set; }
 
     /// <summary>
-    ///     Additional attributes (e.g., data-*, aria-*) to be splatted onto the underlying &lt;button&gt;.
+    ///     Additional attributes (e.g., data-*, aria-*) to be splatted onto the underlying button.
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>
-    ///     Builds and returns the appropriate CSS class for the button based on its parameters.
-    /// </summary>
-    private string CssClass => BuildCssClass();
-
-    /// <summary>
-    ///     Builds the CSS class for the button based on its style, color, size, and other parameters.
-    /// </summary>
-    /// <returns>A string representing the final CSS class name(s).</returns>
-    private string BuildCssClass()
-    {
-        var cssClass = "dropbear-btn";
-
-        cssClass += $" dropbear-btn-{ButtonStyle.ToString().ToLowerInvariant()}";
-        cssClass += $" dropbear-btn-{Color.ToString().ToLowerInvariant()}";
-        cssClass += $" dropbear-btn-{Size.ToString().ToLowerInvariant()}";
-
-        if (IsBlock)
-        {
-            cssClass += " dropbear-btn-block";
-        }
-
-        if (IsDisabled)
-        {
-            cssClass += " dropbear-btn-disabled";
-        }
-
-        if (!string.IsNullOrEmpty(Icon) && ChildContent == null)
-        {
-            // If there's an icon, but no text/child content, apply a special icon-only style.
-            cssClass += " dropbear-btn-icon-only";
-        }
-
-        return cssClass.Trim();
-    }
-
-    /// <summary>
-    ///     Handles the click event. If the button is disabled, it ignores the event. Otherwise, calls <see cref="OnClick" />.
-    /// </summary>
-    /// <param name="args">The mouse event arguments from the Blazor framework.</param>
-    private async Task OnClickHandler(MouseEventArgs args)
-    {
-        if (IsDisabled)
-        {
-            Logger.Debug("Button click ignored because the button is disabled.");
-            return;
-        }
-
-        if (OnClick.HasDelegate)
-        {
-            try
-            {
-                Logger.Debug("Button clicked.");
-                await OnClick.InvokeAsync(args);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error during button click handling.");
-            }
-        }
-    }
+    #endregion
 }

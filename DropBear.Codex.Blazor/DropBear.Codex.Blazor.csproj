@@ -81,4 +81,8 @@
     <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj"/>
   </ItemGroup>
 
+  <ItemGroup>
+    <TypeScriptCompile Include="wwwroot\scripts\base.d.ts" />
+  </ItemGroup>
+
 </Project>

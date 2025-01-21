@@ -1,6 +1,8 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Extensions;
+using DropBear.Codex.Blazor.Interfaces;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Serilog;
@@ -19,6 +21,10 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     ///     Global circuit cancellation token, cancelled if the circuit is disconnected or disposed.
     /// </summary>
     private readonly CancellationTokenSource _circuitCts = new();
+
+    private readonly Dictionary<string, bool> _initializedModules = new();
+
+    private readonly AsyncLock _jsInitLock = new();
 
     private int _isDisposed; // Tracks disposal state (0 = not disposed, 1 = disposed)
 
@@ -47,6 +53,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     [Inject] protected IJSRuntime JsRuntime { get; set; } = null!;
 
     [Inject] protected internal ILogger Logger { get; set; } = null!;
+    [Inject] protected IJsInitializationService JsInitializationService { get; set; } = null!;
 
     /// <inheritdoc />
     public virtual async ValueTask DisposeAsync()
@@ -183,6 +190,34 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             throw;
         }
     }
+
+    protected async Task EnsureJsModuleInitializedAsync(string moduleName)
+    {
+        if (_initializedModules.TryGetValue(moduleName, out var initialized) && initialized)
+        {
+            return;
+        }
+
+        using (await _jsInitLock.LockAsync(CircuitToken))
+        {
+            if (_initializedModules.TryGetValue(moduleName, out initialized) && initialized)
+            {
+                return;
+            }
+
+            try
+            {
+                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName);
+                _initializedModules[moduleName] = true;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to initialize JS module {ModuleName}", moduleName);
+                throw;
+            }
+        }
+    }
+
 
     /// <summary>
     ///     Override this in a derived class to clean up any JavaScript resources (listeners, etc.).

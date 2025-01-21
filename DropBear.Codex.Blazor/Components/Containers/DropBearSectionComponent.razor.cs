@@ -2,9 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
-using Serilog;
 
 #endregion
 
@@ -16,54 +14,18 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// </summary>
 public sealed partial class DropBearSectionComponent : DropBearComponentBase
 {
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSectionComponent>();
-    private volatile bool _isDisposing;
-
-    // Performance optimization: Use volatile for thread-safe state management
+    private const string PREDICATE_CONFLICT_MESSAGE = "Cannot specify both AsyncPredicate and Predicate.";
+    private const string MISSING_CONTENT_MESSAGE = "ChildContent must be provided and cannot be null.";
     private volatile bool _isInitialized;
 
-    // Cache validation state to avoid unnecessary re-evaluations
     private bool _isPredicateValid;
     private volatile bool _shouldRenderContent;
     private bool _wasAsyncPredicate;
 
     /// <summary>
-    ///     Determines if the content should be rendered based on initialization and predicate state.
+    ///     Determines if the content should be rendered.
     /// </summary>
-    private bool ShouldRenderContent => _isInitialized && _shouldRenderContent && !_isDisposing;
-
-    /// <summary>
-    ///     A synchronous predicate function determining if the section should be rendered.
-    ///     If null or returns true, the section is rendered.
-    /// </summary>
-    [Parameter]
-    public Func<bool>? Predicate { get; set; }
-
-    /// <summary>
-    ///     An asynchronous predicate function determining if the section should be rendered.
-    ///     If null or returns true, the section is rendered after evaluation.
-    /// </summary>
-    [Parameter]
-    public Func<Task<bool>>? AsyncPredicate { get; set; }
-
-    /// <summary>
-    ///     The content to be displayed if the predicates succeed.
-    /// </summary>
-    [Parameter]
-    [EditorRequired]
-    public RenderFragment? ChildContent { get; set; }
-
-    /// <summary>
-    ///     Event callback triggered when the render state changes.
-    /// </summary>
-    [Parameter]
-    public EventCallback<bool> OnRenderStateChanged { get; set; }
-
-    /// <summary>
-    ///     Event callback triggered when an error occurs during predicate evaluation.
-    /// </summary>
-    [Parameter]
-    public EventCallback<Exception> OnError { get; set; }
+    private bool ShouldRenderContent => _isInitialized && _shouldRenderContent && !IsDisposed;
 
     /// <inheritdoc />
     protected override async Task OnInitializedAsync()
@@ -86,7 +48,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
-        if (_isDisposing)
+        if (IsDisposed)
         {
             return;
         }
@@ -96,10 +58,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
             var wasValid = _isPredicateValid;
             ValidateParameters();
 
-            // Re-evaluate if:
-            // 1. Parameters were previously invalid but are now valid
-            // 2. Using sync predicate (async predicates are handled in OnInitializedAsync)
-            if ((!wasValid && _isPredicateValid) || (AsyncPredicate is null && Predicate is not null))
+            if (ShouldRevaluatePredicates(wasValid))
             {
                 await EvaluatePredicatesAsync();
             }
@@ -113,32 +72,14 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         await base.OnParametersSetAsync();
     }
 
-    /// <inheritdoc />
-    public override async ValueTask DisposeAsync()
+    private bool ShouldRevaluatePredicates(bool wasValid)
     {
-        if (_isDisposing)
-        {
-            return;
-        }
-
-        _isDisposing = true;
-        try
-        {
-            // Cleanup any resources if needed
-            _shouldRenderContent = false;
-            _isInitialized = false;
-
-            await base.DisposeAsync();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during component disposal");
-        }
+        return (!wasValid && _isPredicateValid) ||
+               (AsyncPredicate is null && Predicate is not null);
     }
 
     /// <summary>
-    ///     Evaluates both synchronous and asynchronous predicates.
-    ///     Uses ValueTask for better performance with sync predicates.
+    ///     Evaluates predicates using ValueTask for better performance.
     /// </summary>
     private async ValueTask<bool> EvaluatePredicateAsync()
     {
@@ -180,7 +121,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Validates component parameters and throws if invalid.
+    ///     Validates component parameters.
     /// </summary>
     private void ValidateParameters()
     {
@@ -188,19 +129,17 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         {
             if (ChildContent is null)
             {
-                throw new InvalidOperationException($"{nameof(ChildContent)} must be provided and cannot be null.");
+                throw new InvalidOperationException(MISSING_CONTENT_MESSAGE);
             }
 
             if (AsyncPredicate is not null && Predicate is not null)
             {
-                throw new InvalidOperationException("Cannot specify both AsyncPredicate and Predicate.");
+                throw new InvalidOperationException(PREDICATE_CONFLICT_MESSAGE);
             }
 
-            // Track if predicate type has changed
             var isCurrentlyAsyncPredicate = AsyncPredicate is not null;
             if (_isPredicateValid && _wasAsyncPredicate != isCurrentlyAsyncPredicate)
             {
-                // Force re-evaluation if switching between sync and async predicates
                 _isPredicateValid = false;
                 Logger.Debug("Predicate type changed, forcing re-evaluation");
             }
@@ -216,22 +155,24 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Handles exceptions uniformly across the component.
+    ///     Handles exceptions uniformly.
     /// </summary>
     private async Task HandleExceptionAsync(Exception ex, string context)
     {
         Logger.Error(ex, "{Context}: {Message}", context, ex.Message);
 
-        if (OnError.HasDelegate)
+        if (!OnError.HasDelegate)
         {
-            try
-            {
-                await OnError.InvokeAsync(ex);
-            }
-            catch (Exception callbackEx)
-            {
-                Logger.Error(callbackEx, "Error callback failed");
-            }
+            return;
+        }
+
+        try
+        {
+            await OnError.InvokeAsync(ex);
+        }
+        catch (Exception callbackEx)
+        {
+            Logger.Error(callbackEx, "Error callback failed");
         }
     }
 
@@ -240,16 +181,54 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     /// </summary>
     private async Task NotifyStateChangeAsync(bool newState)
     {
-        if (OnRenderStateChanged.HasDelegate)
+        if (!OnRenderStateChanged.HasDelegate)
         {
-            try
-            {
-                await OnRenderStateChanged.InvokeAsync(newState);
-            }
-            catch (Exception ex)
-            {
-                await HandleExceptionAsync(ex, "State change notification failed");
-            }
+            return;
+        }
+
+        try
+        {
+            await InvokeStateHasChangedAsync(async () =>
+                await OnRenderStateChanged.InvokeAsync(newState));
+        }
+        catch (Exception ex)
+        {
+            await HandleExceptionAsync(ex, "State change notification failed");
         }
     }
+
+    #region Parameters
+
+    /// <summary>
+    ///     A synchronous predicate function determining if the section should be rendered.
+    /// </summary>
+    [Parameter]
+    public Func<bool>? Predicate { get; set; }
+
+    /// <summary>
+    ///     An asynchronous predicate function determining if the section should be rendered.
+    /// </summary>
+    [Parameter]
+    public Func<Task<bool>>? AsyncPredicate { get; set; }
+
+    /// <summary>
+    ///     The content to be displayed if the predicates succeed.
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    ///     Event callback triggered when the render state changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnRenderStateChanged { get; set; }
+
+    /// <summary>
+    ///     Event callback triggered when an error occurs during predicate evaluation.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Exception> OnError { get; set; }
+
+    #endregion
 }
