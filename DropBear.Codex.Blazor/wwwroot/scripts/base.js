@@ -359,6 +359,7 @@
     /** @implements {ISnackbarManager} */
     class SnackbarManager {
       constructor(id) {
+        // Validate we have a proper string
         DropBearUtils.validateArgs([id], ['string'], 'SnackbarManager');
 
         this.id = id;
@@ -377,10 +378,12 @@
           .find(attr => attr.name.startsWith('b-'))?.name;
 
         this._setupEventListeners();
-        // EventEmitter.emit(this.element, 'created', {id});
-        EventEmitter.emit(this.element, 'created', createDropBearEvent(this.id, 'created', {
-          timestamp: Date.now()
-        }));
+        // Fire a "created" event for hooking into your event system if needed
+        EventEmitter.emit(
+          this.element,
+          'created',
+          createDropBearEvent(this.id, 'created', {timestamp: Date.now()})
+        );
       }
 
       _setupEventListeners() {
@@ -436,7 +439,9 @@
         if (this.isDisposed || !this.progressBar) return;
 
         const computedStyle = window.getComputedStyle(this.progressBar);
-        const duration = parseFloat(this.element.style.getPropertyValue('--duration')) || 5000;
+        const duration = parseFloat(
+          this.element.style.getPropertyValue('--duration')
+        ) || 5000;
         const currentScale = this._getCurrentScale(computedStyle.transform);
         const remainingTime = duration * currentScale;
 
@@ -483,61 +488,81 @@
           }
         });
 
-        // EventEmitter.emit(this.element, 'disposed', {id: this.id});
-        EventEmitter.emit(this.element, 'disposed', createDropBearEvent(this.id, 'disposed', {
-          timestamp: Date.now()
-        }));
+        EventEmitter.emit(
+          this.element,
+          'disposed',
+          createDropBearEvent(this.id, 'disposed', {timestamp: Date.now()})
+        );
       }
     }
 
-    ModuleManager.register('DropBearSnackbar', {
-      snackbars: new Map(),
+    // Register with the ModuleManager
+    ModuleManager.register(
+      'DropBearSnackbar',
+      {
+        // A map of { [snackbarId]: SnackbarManager }
+        snackbars: new Map(),
 
-      async initialize(snackbarId) {
-        return circuitBreaker.execute(async () => {
-          try {
-            if (this.snackbars.has(snackbarId)) {
-              logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
-              await this.dispose(snackbarId);
+        /**
+         * Global no-argument initialization called automatically by `initializeDropBear()`.
+         * We do not need an ID here, so this method does nothing but log that we’ve loaded.
+         */
+        async initialize() {
+          return circuitBreaker.execute(async () => logger.debug('DropBearSnackbar global module init completed (no ID required).'));
+        },
+
+        /**
+         * Create a new SnackbarManager instance for a specific ID.
+         * This replaces the old `initialize(snackbarId)` which
+         * led to "Expected string, got undefined" if called with no argument.
+         */
+        async createSnackbar(snackbarId) {
+          return circuitBreaker.execute(async () => {
+            try {
+              if (this.snackbars.has(snackbarId)) {
+                logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
+                await this.dispose(snackbarId);
+              }
+
+              const manager = new SnackbarManager(snackbarId);
+              this.snackbars.set(snackbarId, manager);
+              logger.debug(`Snackbar created for ID: ${snackbarId}`);
+            } catch (error) {
+              logger.error('Snackbar creation error:', error);
+              throw error;
             }
+          });
+        },
 
-            const manager = new SnackbarManager(snackbarId);
-            this.snackbars.set(snackbarId, manager);
-            logger.debug(`Snackbar initialized: ${snackbarId}`);
-          } catch (error) {
-            logger.error('Snackbar initialization error:', error);
-            throw error;
+        show(snackbarId) {
+          const manager = this.snackbars.get(snackbarId);
+          return manager ? manager.show() : Promise.resolve(false);
+        },
+
+        startProgress(snackbarId, duration) {
+          const manager = this.snackbars.get(snackbarId);
+          if (manager) {
+            manager.startProgress(duration);
+            return true;
           }
-        });
-      },
+          return false;
+        },
 
-      show(snackbarId) {
-        const manager = this.snackbars.get(snackbarId);
-        return manager ? manager.show() : Promise.resolve(false);
-      },
+        hide(snackbarId) {
+          const manager = this.snackbars.get(snackbarId);
+          return manager ? manager.hide() : Promise.resolve(false);
+        },
 
-      startProgress(snackbarId, duration) {
-        const manager = this.snackbars.get(snackbarId);
-        if (manager) {
-          manager.startProgress(duration);
-          return true;
+        dispose(snackbarId) {
+          const manager = this.snackbars.get(snackbarId);
+          if (manager) {
+            manager.dispose();
+            this.snackbars.delete(snackbarId);
+          }
         }
-        return false;
       },
-
-      hide(snackbarId) {
-        const manager = this.snackbars.get(snackbarId);
-        return manager ? manager.hide() : Promise.resolve(false);
-      },
-
-      dispose(snackbarId) {
-        const manager = this.snackbars.get(snackbarId);
-        if (manager) {
-          manager.dispose();
-          this.snackbars.delete(snackbarId);
-        }
-      }
-    }, ['DropBearCore']);
+      ['DropBearCore']
+    );
 
     return ModuleManager.get('DropBearSnackbar');
   })();
@@ -557,7 +582,7 @@
         this.isDisposed = false;
 
         this._initializeResizeObserver();
-        EventEmitter.emit(this, 'created',{timestamp: Date.now()});
+        EventEmitter.emit(this, 'created', {timestamp: Date.now()});
 
       }
 
@@ -586,7 +611,7 @@
         this.resizeObserver?.disconnect();
         this.dotNetReference = null;
 
-        EventEmitter.emit(this, 'disposed' ,{timestamp: Date.now()});
+        EventEmitter.emit(this, 'disposed', {timestamp: Date.now()});
       }
     }
 
@@ -631,7 +656,7 @@
         this.intersectionObserver = null;
         this._setupScrollObserver();
 
-        EventEmitter.emit(this, 'initialized' ,{timestamp: Date.now()});
+        EventEmitter.emit(this, 'initialized', {timestamp: Date.now()});
       }
 
       _setupScrollObserver() {
@@ -674,13 +699,13 @@
             behavior: 'smooth'
           }));
 
-        EventEmitter.emit(this, 'scrolled-to-top' ,{timestamp: Date.now()});
+        EventEmitter.emit(this, 'scrolled-to-top', {timestamp: Date.now()});
       }
 
       goBack() {
         if (this.isDisposed) return;
         window.history.back();
-        EventEmitter.emit(this, 'went-back' ,{timestamp: Date.now()});
+        EventEmitter.emit(this, 'went-back', {timestamp: Date.now()});
       }
 
       dispose() {
@@ -690,7 +715,7 @@
         this.intersectionObserver?.disconnect();
         this.dotNetRef = null;
 
-        EventEmitter.emit(this, 'disposed' ,{timestamp: Date.now()});
+        EventEmitter.emit(this, 'disposed', {timestamp: Date.now()});
       }
     }
 
@@ -1083,7 +1108,7 @@
 
   const DropBearPageAlert = (() => {
     const logger = DropBearUtils.createLogger('DropBearPageAlert');
-    const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
+    const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
     const ANIMATION_DURATION = 300;
 
     /**
@@ -1108,7 +1133,7 @@
         this._setupEventListeners();
 
         // Fire an event indicating the alert was created
-        EventEmitter.emit(this.element, 'created', { id });
+        EventEmitter.emit(this.element, 'created', {id});
       }
 
       _cacheElements() {
@@ -1129,7 +1154,7 @@
       show() {
         if (this.isDisposed) return Promise.resolve(true);
 
-        return circuitBreaker.execute(() => new Promise(resolve => {
+        return circuitBreaker.execute(() => new Promise(resolve =>
           DOMOperationQueue.add(() => {
             cancelAnimationFrame(this.animationFrame);
             this.element.classList.remove('hide');
@@ -1145,8 +1170,7 @@
               // Fallback: resolve after an animation duration
               setTimeout(() => resolve(true), ANIMATION_DURATION + 50);
             });
-          });
-        }));
+          })));
       }
 
       // Start the progress bar to auto-hide after `duration`
@@ -1249,7 +1273,7 @@
           }
         });
 
-        EventEmitter.emit(this.element, 'disposed', { id: this.id });
+        EventEmitter.emit(this.element, 'disposed', {id: this.id});
         this.element = null;
         this.progressBar = null;
       }
@@ -1578,7 +1602,7 @@
       ModuleManager.register('DropBearCore', {
         async initialize() {
           Object.defineProperties(window, {
-            DropBearUtils: { value: DropBearUtils, writable: false, configurable: false },
+            DropBearUtils: {value: DropBearUtils, writable: false, configurable: false},
             getWindowDimensions: {
               value: DropBearUtilities.getWindowDimensions,
               writable: false,
@@ -1613,7 +1637,7 @@
         'DropBear initialization failed',
         'INIT_ERROR',
         'DropBearCore',
-        { originalError: error }
+        {originalError: error}
       );
     }
   };

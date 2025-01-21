@@ -135,7 +135,11 @@ export interface IProgressBarManager extends IDisposable {
 }
 
 export interface IDownloadManager extends IDisposable {
-  downloadFileFromStream(fileName: string, content: Blob | ArrayBuffer | Uint8Array, contentType: string): Promise<void>;
+  downloadFileFromStream(
+    fileName: string,
+    content: Blob | ArrayBuffer | Uint8Array,
+    contentType: string
+  ): Promise<void>;
 }
 
 export interface IPageAlertManager extends IDisposable {
@@ -162,9 +166,35 @@ declare global {
     DropBearUtils: IDropBearUtils;
 
     DropBearSnackbar: {
-      initialize(snackbarId: string): Promise<void>;
+      /**
+       * Global no-argument initialization called automatically by `ModuleManager.initialize("DropBearSnackbar")`.
+       * Does not require a snackbarId, so it returns a Promise<void>.
+       */
+      initialize(): Promise<void>;
+
+      /**
+       * Creates a new SnackbarManager for the given ID.
+       */
+      createSnackbar(snackbarId: string): Promise<void>;
+
+      /**
+       * Shows an existing snackbar by its ID.
+       */
       show(snackbarId: string): Promise<boolean>;
+
+      /**
+       * Starts the auto-dismiss progress for an existing snackbar by its ID, with the given duration in ms.
+       */
       startProgress(snackbarId: string, duration: number): boolean;
+
+      /**
+       * Hides an existing snackbar by its ID.
+       */
+      hide(snackbarId: string): Promise<boolean>;
+
+      /**
+       * Disposes an existing snackbar instance (removes event listeners, DOM element, etc.).
+       */
       dispose(snackbarId: string): void;
     };
 
@@ -195,7 +225,11 @@ declare global {
     };
 
     DropBearFileDownloader: {
-      downloadFileFromStream(fileName: string, content: Blob | ArrayBuffer | Uint8Array, contentType: string): Promise<void>;
+      downloadFileFromStream(
+        fileName: string,
+        content: Blob | ArrayBuffer | Uint8Array,
+        contentType: string
+      ): Promise<void>;
     };
 
     DropBearPageAlert: {
