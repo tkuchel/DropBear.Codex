@@ -134,7 +134,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
             Logger.Warning("Prompt card created without title");
         }
 
-        if (string.IsNullOrWhiteSpace(Description))
+        if (string.IsNullOrWhiteSpace(Message))
         {
             Logger.Warning("Prompt card created without description");
         }
@@ -183,7 +183,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase
     ///     The main descriptive text displayed in the body of the prompt.
     /// </summary>
     [Parameter]
-    public string Description { get; set; } = "Description";
+    public string Message { get; set; } = "Description";
 
     /// <summary>
     ///     The collection of button configurations to display in the prompt's footer.
