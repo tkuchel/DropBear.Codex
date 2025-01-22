@@ -269,8 +269,8 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 
         if (firstRender)
         {
-            // Global no-arg init for the DropBearSnackbar module
-            await SafeJsVoidInteropAsync("DropBearSnackbar.initialize");
+            // Global no-arg init for the DropBearSnackbar module - No longer needed as the module will get initialized on DOMContentLoaded
+            // await SafeJsVoidInteropAsync("DropBearSnackbar.initialize");
         }
     }
 
