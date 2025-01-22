@@ -41,6 +41,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
             return;
         }
 
+        // Use your existing async lock to prevent multiple concurrent initializations
         using (await _initializationLock.LockAsync(_disposalTokenSource.Token))
         {
             if (IsDisposed)
@@ -53,13 +54,19 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
                 // Create DotNetObjectReference only if not already created
                 _dotNetRef ??= DotNetObjectReference.Create(this);
 
-                // Try initialize with retry logic since base.js maintains singleton state
+                // 1) Ensure the 'DropBearResizeManager' module is fully registered in JS
+                //    This will wait until 'window.DropBearResizeManager' is guaranteed to exist.
+                await EnsureJsModuleInitializedAsync("DropBearResizeManager");
+
+                // 2) Now attempt to create the manager with retry logic
                 var retryCount = 0;
                 while (retryCount < MAX_RETRIES)
                 {
                     try
                     {
                         await SafeJsVoidInteropAsync("DropBearResizeManager.createResizeManager", _dotNetRef);
+
+                        // Optionally call a method after creation
                         await SetMaxWidthBasedOnWindowSize();
                         break;
                     }
@@ -74,10 +81,11 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error during container initialization");
-                // Consider surfacing this error to the UI
+                // Optionally surface this error to the UI or handle as needed
             }
         }
     }
+
 
     /// <inheritdoc />
     protected override void OnParametersSet()

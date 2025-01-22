@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 using Serilog;
@@ -17,6 +18,10 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearNavigationButtons>();
+    private readonly CancellationTokenSource _disposalTokenSource = new();
+    private static readonly int MAX_RETRIES = 3;
+    private static readonly int RETRY_DELAY_MS = 500;
+    private readonly AsyncLock _initializationLock = new();
     private bool _isVisible;
     private DotNetObjectReference<DropBearNavigationButtons>? _objRef;
 
@@ -40,13 +45,50 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !IsDisposed)
+        // Call the base implementation
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (!firstRender || IsDisposed)
         {
+            return;
+        }
+
+        // Use an async lock so we don't run initialization concurrently
+        using (await _initializationLock.LockAsync(_disposalTokenSource.Token))
+        {
+            // Check again after acquiring the lock
+            if (IsDisposed)
+            {
+                return;
+            }
+
             try
             {
-                _objRef = DotNetObjectReference.Create(this);
-                await SafeJsVoidInteropAsync("DropBearNavigationButtons.createNavigationManager", _objRef);
-                Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
+                // Create DotNetObjectReference only if not already created
+                _objRef ??= DotNetObjectReference.Create(this);
+
+                // Perform up to MAX_RETRIES attempts
+                var retryCount = 0;
+                while (retryCount < MAX_RETRIES)
+                {
+                    try
+                    {
+                        // 1) Ensure the JS module is fully registered
+                        await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
+
+                        // 2) Now that the module is loaded, create the navigation manager
+                        await SafeJsVoidInteropAsync("DropBearNavigationButtons.createNavigationManager", _objRef);
+
+                        Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
+                        break; // success
+                    }
+                    catch (Exception ex) when (retryCount < MAX_RETRIES - 1)
+                    {
+                        Logger.Warning(ex, "Retry {Count} initializing DropBearNavigationButtons", retryCount + 1);
+                        await Task.Delay(RETRY_DELAY_MS);
+                        retryCount++;
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -54,9 +96,8 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
                 throw;
             }
         }
-
-        await base.OnAfterRenderAsync(firstRender);
     }
+
 
     /// <summary>
     ///     Navigates back one step in the browser history via JS interop.
@@ -65,6 +106,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
             await SafeJsVoidInteropAsync("DropBearNavigationButtons.goBack");
             Logger.Debug("Navigated back via DropBearNavigationButtons.");
         }
@@ -97,6 +139,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
             await SafeJsVoidInteropAsync("DropBearNavigationButtons.scrollToTop");
             Logger.Debug("Page scrolled to top via DropBearNavigationButtons.");
         }
@@ -122,6 +165,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
             await SafeJsVoidInteropAsync("DropBearNavigationButtons.dispose");
             Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
         }
@@ -132,9 +176,21 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         finally
         {
             _objRef?.Dispose();
+            _objRef = null;
             Logger.Debug("DotNetObjectReference for DropBearNavigationButtons disposed.");
         }
     }
+
+    protected override async ValueTask DisposeAsync(bool disposing)
+    {
+        if (disposing)
+        {
+            await CleanupJavaScriptResourcesAsync();
+        }
+
+        await base.DisposeAsync(disposing);
+    }
+
 
     #region Parameters
 

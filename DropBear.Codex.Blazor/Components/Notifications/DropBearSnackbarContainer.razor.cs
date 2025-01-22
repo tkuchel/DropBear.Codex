@@ -190,8 +190,8 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 
             try
             {
-                // Short delay so Blazor renders the DOM element first
-                await Task.Delay(50);
+                //  Ensure the JS module is initialized
+                await EnsureJsModuleInitializedAsync("DropBearSnackbar");
 
                 // 1) Create the snackbar manager in JS for this ID
                 await SafeJsVoidInteropAsync("DropBearSnackbar.createSnackbar", snackbar.Id);
@@ -238,6 +238,8 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
             {
                 try
                 {
+                    await EnsureJsModuleInitializedAsync("DropBearSnackbar");
+
                     // Hide in JS
                     await SafeJsVoidInteropAsync("DropBearSnackbar.hide", id);
 
@@ -270,6 +272,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         if (firstRender)
         {
             // Global no-arg init for the DropBearSnackbar module - No longer needed as the module will get initialized on DOMContentLoaded
+            // await EnsureJsModuleInitializedAsync("DropBearSnackbar");
             // await SafeJsVoidInteropAsync("DropBearSnackbar.initialize");
         }
     }
@@ -289,6 +292,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
                 {
                     try
                     {
+                        await EnsureJsModuleInitializedAsync("DropBearSnackbar");
                         await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", snackbar.Id);
                         await Task.Delay(50); // small delay
                     }

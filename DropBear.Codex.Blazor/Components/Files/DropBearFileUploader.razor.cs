@@ -185,6 +185,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearFileDownloader");
             await SafeJsVoidInteropAsync("clickElementById", FILE_INPUT_ID);
         }
         catch (Exception ex)

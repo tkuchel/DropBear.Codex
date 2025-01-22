@@ -121,6 +121,8 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearValidationErrors");
+
             // Initialize the container first
             await SafeJsVoidInteropAsync(
                 "DropBearValidationErrors.createValidationContainer",
@@ -143,6 +145,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearValidationErrors");
             await SafeJsVoidInteropAsync("DropBearValidationErrors.dispose", _componentId);
         }
         catch (Exception ex)
