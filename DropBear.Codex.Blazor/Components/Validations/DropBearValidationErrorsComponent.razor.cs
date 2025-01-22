@@ -123,7 +123,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
         {
             // Initialize the container first
             await SafeJsVoidInteropAsync(
-                "DropBearValidationErrors.initialize",
+                "DropBearValidationErrors.createValidationContainer",
                 _componentId);
 
             // Then update the ARIA attributes

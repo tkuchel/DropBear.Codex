@@ -45,7 +45,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             try
             {
                 _objRef = DotNetObjectReference.Create(this);
-                await SafeJsVoidInteropAsync("DropBearNavigationButtons.initialize", _objRef);
+                await SafeJsVoidInteropAsync("DropBearNavigationButtons.createNavigationManager", _objRef);
                 Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
             }
             catch (Exception ex)

@@ -59,7 +59,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
                 {
                     try
                     {
-                        await SafeJsVoidInteropAsync("DropBearResizeManager.initialize", _dotNetRef);
+                        await SafeJsVoidInteropAsync("DropBearResizeManager.createResizeManager", _dotNetRef);
                         await SetMaxWidthBasedOnWindowSize();
                         break;
                     }

@@ -97,7 +97,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
     {
         try
         {
-            await JsRuntime.InvokeVoidAsync("DropBearContextMenu.initialize", _contextMenuId, _objectReference);
+            await JsRuntime.InvokeVoidAsync("DropBearContextMenu.createContextMenu", _contextMenuId, _objectReference);
             _jsInitialized = true;
             Logger.Debug("ContextMenu initialized with ID: {Id}", _contextMenuId);
         }
