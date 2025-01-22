@@ -564,8 +564,12 @@
       ['DropBearCore']
     );
 
+    // Assign the module to the window object
+    window.DropBearSnackbar = ModuleManager.get('DropBearSnackbar');
+
     return ModuleManager.get('DropBearSnackbar');
   })();
+
   const DropBearResizeManager = (() => {
     const logger = DropBearUtils.createLogger('DropBearResizeManager');
     const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
@@ -655,6 +659,9 @@
       },
       ['DropBearCore']
     );
+
+    // Assign the module to the window object
+    window.DropBearResizeManager = ModuleManager.get('DropBearResizeManager');
 
     return ModuleManager.get('DropBearResizeManager');
   })();
@@ -785,6 +792,9 @@
       },
       ['DropBearCore']
     );
+
+    // Assign the module to the window object
+    window.DropBearNavigationButtons = ModuleManager.get('DropBearNavigationButtons');
 
     return ModuleManager.get('DropBearNavigationButtons');
   })();
@@ -938,6 +948,9 @@
       ['DropBearCore']
     );
 
+    // Assign the module to the window object
+    window.DropBearContextMenu = ModuleManager.get('DropBearContextMenu');
+
     return ModuleManager.get('DropBearContextMenu');
   })();
 
@@ -1083,6 +1096,9 @@
       ['DropBearCore']
     );
 
+    // Assign the module to the window object
+    window.DropBearValidationErrors = ModuleManager.get('DropBearValidationErrors');
+
     return ModuleManager.get('DropBearValidationErrors');
   })();
 
@@ -1188,6 +1204,9 @@
       ['DropBearCore']
     );
 
+    // Assign the module to the window object
+    window.DropBearFileDownloader = ModuleManager.get('DropBearFileDownloader');
+
     return ModuleManager.get('DropBearFileDownloader');
   })();
 
@@ -1255,6 +1274,9 @@
       },
       ['DropBearCore']
     );
+
+    // Assign the module to the window object
+    window.DropBearPageAlert = ModuleManager.get('DropBearPageAlert');
 
     return ModuleManager.get('DropBearPageAlert');
   })();
@@ -1420,7 +1442,6 @@
       }
     }
 
-    // Refactored to Option A
     ModuleManager.register(
       'DropBearProgressBar',
       {
@@ -1480,6 +1501,9 @@
       },
       ['DropBearCore']
     );
+
+    // Assign the module to the window object
+    window.DropBearProgressBar = ModuleManager.get('DropBearProgressBar');
 
     return ModuleManager.get('DropBearProgressBar');
   })();
