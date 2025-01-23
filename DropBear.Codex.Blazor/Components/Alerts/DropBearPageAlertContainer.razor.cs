@@ -138,6 +138,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         {
             try
             {
+                await EnsureJsModuleInitializedAsync("DropBearPageAlert");
                 var result = await SafeJsInteropAsync<bool>(
                     "DropBearPageAlert.create",
                     alert.Id,
@@ -189,6 +190,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearPageAlert");
             var result = await SafeJsInteropAsync<bool>("DropBearPageAlert.hide", alertId);
             if (!result)
             {
@@ -209,6 +211,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearPageAlert");
             await SafeJsInteropAsync<bool[]>("DropBearPageAlert.hideAll");
         }
         catch (Exception ex)

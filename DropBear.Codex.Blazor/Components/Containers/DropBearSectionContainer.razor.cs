@@ -137,6 +137,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearResizeManager");
             var dimensions = await SafeJsInteropAsync<WindowDimensions>("getWindowDimensions");
             _cachedDimensions = dimensions;
             return dimensions;
@@ -218,6 +219,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     {
         try
         {
+            await EnsureJsModuleInitializedAsync("DropBearResizeManager");
             await SafeJsVoidInteropAsync("DropBearResizeManager.dispose");
             Logger.Debug("Resize manager disposed");
         }
