@@ -992,26 +992,38 @@ public sealed class ExecutionEngine : IAsyncDisposable, IDisposable
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-
             context.IncrementCompletedTaskCount();
-            var progressMessage = MessagePools.ProgressMessagePool.Get();
+
+            var completedMessage = MessagePools.CompletedMessagePool.Get();
             try
             {
-                progressMessage.Initialize(
-                    task.Name,
-                    100,
-                    context.CompletedTaskCount,
-                    context.TotalTaskCount,
-                    TaskStatus.Completed,
-                    $"Task '{task.Name}' completed.");
-
-                await Task.Run(() => _messagePublisher.QueueMessage(_channelId, progressMessage),
+                completedMessage.Initialize(task.Name);
+                await Task.Run(() => _messagePublisher.QueueMessage(_channelId, completedMessage),
                     cancellationToken).ConfigureAwait(false);
             }
             finally
             {
-                MessagePools.ProgressMessagePool.Return(progressMessage);
+                MessagePools.CompletedMessagePool.Return(completedMessage);
             }
+
+            // var progressMessage = MessagePools.ProgressMessagePool.Get();
+            // try
+            // {
+            //     progressMessage.Initialize(
+            //         task.Name,
+            //         100,
+            //         context.CompletedTaskCount,
+            //         context.TotalTaskCount,
+            //         TaskStatus.Completed,
+            //         $"Task '{task.Name}' completed.");
+            //
+            //     await Task.Run(() => _messagePublisher.QueueMessage(_channelId, progressMessage),
+            //         cancellationToken).ConfigureAwait(false);
+            // }
+            // finally
+            // {
+            //     MessagePools.ProgressMessagePool.Return(progressMessage);
+            // }
         }
         catch (Exception ex)
         {

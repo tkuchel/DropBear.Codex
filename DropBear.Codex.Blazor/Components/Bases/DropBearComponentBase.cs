@@ -256,7 +256,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         try
         {
             await action().ConfigureAwait(false);
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
