@@ -4,6 +4,7 @@ using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.Logging;
+using Microsoft.JSInterop;
 
 #endregion
 
@@ -15,10 +16,16 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     private const int RetryDelayMs = 500;
     private readonly TaskCompletionSource _animationComplete = new();
     private readonly CancellationTokenSource _disposalTokenSource = new();
+    private readonly DotNetObjectReference<DropBearSnackbar>? _dotNetRef;
     private readonly SemaphoreSlim _jsLock = new(1, 1);
     private bool _isClosing;
     private bool _isDisposed;
     private bool _isInitialized;
+
+    public DropBearSnackbar()
+    {
+        _dotNetRef = DotNetObjectReference.Create(this);
+    }
 
     [Inject] private new ILogger<DropBearSnackbar> Logger { get; set; } = null!;
 
@@ -31,6 +38,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     private string CssClasses => $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
 
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
@@ -42,12 +50,38 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
         try
         {
+            Logger.LogInformation("Initializing snackbar {Id}", SnackbarInstance.Id);
             await InitializeSnackbarAsync();
+
+            if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
+            {
+                Logger.LogInformation("Setting up auto-close timer for snackbar {Id} with duration {Duration}ms",
+                    SnackbarInstance.Id, SnackbarInstance.Duration);
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await Task.Delay(SnackbarInstance.Duration, _disposalTokenSource.Token);
+                        Logger.LogInformation("Auto-close timer completed for snackbar {Id}", SnackbarInstance.Id);
+                        await InvokeAsync(Close);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        Logger.LogInformation("Auto-close timer cancelled for snackbar {Id}", SnackbarInstance.Id);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogError(ex, "Error in auto-close timer for snackbar {Id}", SnackbarInstance.Id);
+                    }
+                });
+            }
+
             _isInitialized = true;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Failed to initialize snackbar {SnackbarId}", SnackbarInstance.Id);
+            Logger.LogError(ex, "Failed to initialize snackbar {Id}", SnackbarInstance.Id);
         }
     }
 
@@ -64,10 +98,13 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
                 // Create and show the snackbar
                 await SafeJsVoidInteropAsync("DropBearSnackbar.createSnackbar", SnackbarInstance.Id);
+
+                // Set the .NET reference
+                await SafeJsVoidInteropAsync("DropBearSnackbar.setDotNetReference", SnackbarInstance.Id, _dotNetRef);
+
                 await SafeJsVoidInteropAsync("DropBearSnackbar.show", SnackbarInstance.Id);
 
-                // If auto-dismiss is enabled, start the progress
-                if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
+                if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
                 {
                     await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
                         SnackbarInstance.Id, SnackbarInstance.Duration);
@@ -116,10 +153,26 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         }
     }
 
+    [JSInvokable]
+    public async Task OnProgressComplete()
+    {
+        try
+        {
+            Logger.LogInformation("Progress complete for snackbar {Id}", SnackbarInstance.Id);
+            await Close();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error handling progress complete for snackbar {Id}", SnackbarInstance.Id);
+        }
+    }
+
     private async Task Close()
     {
         if (_isDisposed || _isClosing)
         {
+            Logger.LogWarning("Close called but snackbar {Id} is disposed: {Disposed} or closing: {Closing}",
+                SnackbarInstance.Id, _isDisposed, _isClosing);
             return;
         }
 
@@ -137,7 +190,15 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             await Task.Delay(300, _disposalTokenSource.Token);
 
             // Notify parent and wait for it to complete
-            await OnClose.InvokeAsync();
+            if (OnClose.HasDelegate)
+            {
+                await OnClose.InvokeAsync();
+                Logger.LogInformation("OnClose completed for snackbar {Id}", SnackbarInstance.Id);
+            }
+            else
+            {
+                Logger.LogWarning("OnClose has no delegates for snackbar {Id}", SnackbarInstance.Id);
+            }
 
             Logger.LogDebug("Close sequence completed for snackbar {SnackbarId}", SnackbarInstance.Id);
             _animationComplete.TrySetResult();
@@ -156,39 +217,15 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     public override async ValueTask DisposeAsync()
     {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        _isDisposed = true;
-
         try
         {
-            // If we're disposing while closing, wait for the animation
-            if (_isClosing)
-            {
-                await Task.WhenAny(_animationComplete.Task, Task.Delay(500));
-            }
+            _dotNetRef?.Dispose();
 
-            await _jsLock.WaitAsync();
-            await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", SnackbarInstance.Id);
-            await _disposalTokenSource.CancelAsync();
-
-            _disposalTokenSource.Dispose();
-            _jsLock.Dispose();
-
-            Logger.LogDebug("Snackbar {SnackbarId} disposed", SnackbarInstance.Id);
+            await base.DisposeAsync();
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Error disposing snackbar {SnackbarId}", SnackbarInstance.Id);
+            Logger.LogError(ex, "Error disposing snackbar {Id}", SnackbarInstance.Id);
         }
-        finally
-        {
-            _jsLock.Release();
-        }
-
-        await base.DisposeAsync();
     }
 }

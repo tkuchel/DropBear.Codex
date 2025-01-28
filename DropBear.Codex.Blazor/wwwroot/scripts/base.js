@@ -367,6 +367,7 @@
         this.isDisposed = false;
         this.progressTimeout = null;
         this.animationFrame = null;
+        this.dotNetRef = null;
 
         if (!DropBearUtils.isElement(this.element)) {
           throw new TypeError('Invalid element provided to SnackbarManager');
@@ -378,12 +379,21 @@
           .find(attr => attr.name.startsWith('b-'))?.name;
 
         this._setupEventListeners();
-        // Fire a "created" event for hooking into your event system if needed
         EventEmitter.emit(
           this.element,
           'created',
           createDropBearEvent(this.id, 'created', {timestamp: Date.now()})
         );
+      }
+
+      async setDotNetReference(dotNetRef) {
+        try {
+          logger.debug(`Setting .NET reference for snackbar ${this.id}`);
+          this.dotNetRef = dotNetRef;
+        } catch (error) {
+          logger.error(`Error setting .NET reference for snackbar ${this.id}:`, error);
+          throw error;
+        }
       }
 
       _setupEventListeners() {
@@ -398,6 +408,7 @@
         if (this.isDisposed) return Promise.resolve(false);
 
         return circuitBreaker.execute(async () => {
+          logger.debug(`Showing snackbar ${this.id}`);
           DOMOperationQueue.add(() => {
             this.element.classList.remove('hide');
             requestAnimationFrame(() => this.element.classList.add('show'));
@@ -407,7 +418,12 @@
       }
 
       startProgress(duration) {
-        if (this.isDisposed || !duration || !this.progressBar) return;
+        if (this.isDisposed || !duration || !this.progressBar) {
+          logger.debug(`Cannot start progress for snackbar ${this.id} - invalid state`);
+          return;
+        }
+
+        logger.debug(`Starting progress for snackbar ${this.id} with duration ${duration}ms`);
 
         DOMOperationQueue.add(() => {
           clearTimeout(this.progressTimeout);
@@ -418,7 +434,20 @@
             this.element.style.setProperty('--duration', `${duration}ms`);
             this.progressBar.style.transition = `transform ${duration}ms linear`;
             this.progressBar.style.transform = 'scaleX(0)';
-            this.progressTimeout = setTimeout(() => this.hide(), duration);
+
+            // Set timeout to notify C# when progress completes
+            this.progressTimeout = setTimeout(async () => {
+              try {
+                logger.debug(`Progress complete for snackbar ${this.id}`);
+                if (this.dotNetRef) {
+                  await this.dotNetRef.invokeMethodAsync('OnProgressComplete');
+                } else {
+                  logger.warn(`No .NET reference available for snackbar ${this.id}`);
+                }
+              } catch (error) {
+                logger.error(`Error notifying progress completion for snackbar ${this.id}:`, error);
+              }
+            }, duration);
           });
         });
       }
@@ -426,6 +455,7 @@
       _pauseProgress() {
         if (this.isDisposed || !this.progressBar) return;
 
+        logger.debug(`Pausing progress for snackbar ${this.id}`);
         clearTimeout(this.progressTimeout);
         const computedStyle = window.getComputedStyle(this.progressBar);
 
@@ -445,10 +475,22 @@
         const currentScale = this._getCurrentScale(computedStyle.transform);
         const remainingTime = duration * currentScale;
 
+        logger.debug(`Resuming progress for snackbar ${this.id} with ${remainingTime}ms remaining`);
+
         DOMOperationQueue.add(() => {
           this.progressBar.style.transition = `transform ${remainingTime}ms linear`;
           this.progressBar.style.transform = 'scaleX(0)';
-          this.progressTimeout = setTimeout(() => this.hide(), remainingTime);
+
+          // Update timeout with remaining time
+          this.progressTimeout = setTimeout(async () => {
+            try {
+              if (this.dotNetRef) {
+                await this.dotNetRef.invokeMethodAsync('OnProgressComplete');
+              }
+            } catch (error) {
+              logger.error(`Error notifying progress completion for snackbar ${this.id}:`, error);
+            }
+          }, remainingTime);
         });
       }
 
@@ -462,6 +504,7 @@
         if (this.isDisposed) return Promise.resolve(false);
 
         return circuitBreaker.execute(async () => {
+          logger.debug(`Hiding snackbar ${this.id}`);
           DOMOperationQueue.add(() => {
             clearTimeout(this.progressTimeout);
             cancelAnimationFrame(this.animationFrame);
@@ -475,6 +518,7 @@
       dispose() {
         if (this.isDisposed) return;
 
+        logger.debug(`Disposing snackbar ${this.id}`);
         this.isDisposed = true;
         clearTimeout(this.progressTimeout);
         cancelAnimationFrame(this.animationFrame);
@@ -488,6 +532,8 @@
           }
         });
 
+        this.dotNetRef = null;
+
         EventEmitter.emit(
           this.element,
           'disposed',
@@ -500,22 +546,15 @@
     ModuleManager.register(
       'DropBearSnackbar',
       {
-        // A map of { [snackbarId]: SnackbarManager }
         snackbars: new Map(),
 
-        /**
-         * Global no-argument initialization called automatically by `initializeDropBear()`.
-         * We do not need an ID here, so this method does nothing but log that we’ve loaded.
-         */
         async initialize() {
-          return circuitBreaker.execute(async () => logger.debug('DropBearSnackbar global module init completed (no ID required).'));
+          return circuitBreaker.execute(async () => {
+            logger.debug('DropBearSnackbar global module initialized');
+            return true;
+          });
         },
 
-        /**
-         * Create a new SnackbarManager instance for a specific ID.
-         * This replaces the old `initialize(snackbarId)` which
-         * led to "Expected string, got undefined" if called with no argument.
-         */
         async createSnackbar(snackbarId) {
           return circuitBreaker.execute(async () => {
             try {
@@ -532,6 +571,16 @@
               throw error;
             }
           });
+        },
+
+        async setDotNetReference(snackbarId, dotNetRef) {
+          const manager = this.snackbars.get(snackbarId);
+          if (manager) {
+            await manager.setDotNetReference(dotNetRef);
+            return true;
+          }
+          logger.warn(`Cannot set .NET reference - no manager found for ${snackbarId}`);
+          return false;
         },
 
         show(snackbarId) {
