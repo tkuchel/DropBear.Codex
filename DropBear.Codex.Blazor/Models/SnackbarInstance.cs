@@ -56,4 +56,11 @@ public sealed class SnackbarInstance
     ///     Gets or sets a list of actions (buttons) displayed on the snackbar.
     /// </summary>
     public List<SnackbarAction> Actions { get; init; } = [];
+
+
+    /// <summary>
+    ///     Gets or sets the time at which the snackbar was created.
+    ///     Used to calculate the time remaining before the snackbar is automatically dismissed.
+    /// </summary>
+    public DateTime CreatedAt { get; init; }
 }

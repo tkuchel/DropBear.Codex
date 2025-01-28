@@ -223,6 +223,10 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
             await SafeJsVoidInteropAsync("DropBearResizeManager.dispose");
             Logger.Debug("Resize manager disposed");
         }
+        catch (ObjectDisposedException objectDisposedException)
+        {
+            Logger.Warning(objectDisposedException, "Error disposing JS resources, object already disposed");
+        }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error cleaning up JS resources");

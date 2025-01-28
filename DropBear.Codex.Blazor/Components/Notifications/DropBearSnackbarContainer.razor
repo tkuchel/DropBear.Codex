@@ -1,19 +1,13 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Notifications
-@using DropBear.Codex.Blazor.Interfaces
-@using DropBear.Codex.Notifications.Models
-@using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
-@inject ISnackbarService SnackbarService
-@inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 
-<div class="dropbear-snackbar-container @GetPositionClass()"
-     id="@ComponentId"
+<div class="dropbear-snackbar-container @PositionClass"
      role="alert"
      aria-live="polite">
-    @foreach (var snackbar in _activeSnackbars)
+    @foreach (var snackbar in SnackbarService.GetActiveSnackbars().OrderByDescending(s => s.CreatedAt))
     {
         <DropBearSnackbar @key="snackbar.Id"
                           SnackbarInstance="snackbar"
-                          OnClose="@(() => RemoveSnackbar(snackbar.Id))" />
+                          OnClose="async () => await SnackbarService.RemoveSnackbar(snackbar.Id)"/>
     }
 </div>

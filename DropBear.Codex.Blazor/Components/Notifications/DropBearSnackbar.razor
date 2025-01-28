@@ -1,27 +1,32 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Components.Icons
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div id="@SnackbarInstance.Id"
-     class="@GetCssClasses()"
+     class="@CssClasses"
      style="--duration: @(SnackbarInstance.Duration)ms"
-     @attributes="@AdditionalAttributes"
-     @ref="_snackbarRef">
+     @attributes="AdditionalAttributes">
+
     <div class="dropbear-snackbar-icon">
-        @((MarkupString)GetIcon())
+        <SvgIcon Type="SnackbarInstance.Type"/>
     </div>
 
     <div class="dropbear-snackbar-content">
-        <div class="dropbear-snackbar-title">@SnackbarInstance.Title</div>
-        <div class="dropbear-snackbar-message">@((MarkupString)SnackbarInstance.Message)</div>
+        <div class="dropbear-snackbar-title" role="heading" aria-level="2">
+            @SnackbarInstance.Title
+        </div>
+        <div class="dropbear-snackbar-message">
+            @((MarkupString)SnackbarInstance.Message)
+        </div>
 
-        @if (SnackbarInstance.Actions.Any())
+        @if (SnackbarInstance.Actions?.Any() == true)
         {
             <div class="dropbear-snackbar-actions">
                 @foreach (var action in SnackbarInstance.Actions)
                 {
                     <button type="button"
                             class="dropbear-snackbar-action"
-                            @onclick="async () => await HandleActionClick(action)">
+                            @onclick="() => HandleActionClick(action)">
                         @action.Label
                     </button>
                 }
@@ -33,10 +38,8 @@
             class="dropbear-snackbar-close"
             aria-label="Close notification"
             @onclick="Close">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-            <path d="M18 6L6 18M6 6l12 12"/>
-        </svg>
+        <CloseIcon/>
     </button>
 
-    <div class="progress-bar"></div>
+    <div class="progress-bar" role="progressbar" aria-hidden="true"></div>
 </div>

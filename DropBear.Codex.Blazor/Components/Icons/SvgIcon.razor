@@ -1,0 +1,21 @@
+﻿@using DropBear.Codex.Blazor.Enums
+@using DropBear.Codex.Blazor.Helpers
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="dropbear-snackbar-icon">
+    @(new MarkupString(GetSvgIcon(Type)))
+</div>
+
+
+@code {
+    [Parameter]
+    public SnackbarType Type { get; set; }
+
+    private string GetSvgIcon(SnackbarType type) => type switch
+    {
+        SnackbarType.Success => SvgIcons.Success,
+        SnackbarType.Error => SvgIcons.Error,
+        SnackbarType.Warning => SvgIcons.Warning,
+        _ => SvgIcons.Information
+    };
+}

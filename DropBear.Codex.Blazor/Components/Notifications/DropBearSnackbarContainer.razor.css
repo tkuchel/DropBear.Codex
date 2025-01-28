@@ -1,4 +1,6 @@
-﻿.dropbear-snackbar-container {
+﻿/* Scoped to DropBearSnackbarContainer component */
+
+.dropbear-snackbar-container {
   position: fixed;
   z-index: 9999;
   display: flex;
@@ -9,14 +11,8 @@
   padding: 20px;
 }
 
-/* Position classes */
-.dropbear-snackbar-container.bottom-right {
-  bottom: 20px;
-  right: 20px;
-}
-
-.dropbear-snackbar-container.bottom-left {
-  bottom: 20px;
+.dropbear-snackbar-container.top-left {
+  top: 20px;
   left: 20px;
 }
 
@@ -25,9 +21,14 @@
   right: 20px;
 }
 
-.dropbear-snackbar-container.top-left {
-  top: 20px;
+.dropbear-snackbar-container.bottom-left {
+  bottom: 20px;
   left: 20px;
+}
+
+.dropbear-snackbar-container.bottom-right {
+  bottom: 20px;
+  right: 20px;
 }
 
 /* Mobile styles */

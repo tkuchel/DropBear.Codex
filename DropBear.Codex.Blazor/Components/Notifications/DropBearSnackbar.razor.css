@@ -1,12 +1,12 @@
-﻿/* Root variables for colors */
-* {
+﻿/* Scoped to DropBearSnackbar component */
+
+:host {
   --snackbar-success: #7cd651;
   --snackbar-error: #ff5757;
   --snackbar-warning: #ffd14d;
   --snackbar-info: #4ebafd;
 }
 
-/* Base snackbar styles */
 .dropbear-snackbar {
   background: #2d2e31;
   color: #e3e3e3;
@@ -31,12 +31,93 @@
   cursor: default;
 }
 
-.dropbear-snackbar:hover {
-  background: #343639;
+.dropbear-snackbar.show {
+  transform: translateX(0) scale(1);
+  opacity: 1;
 }
 
-/* Progress bar styles */
-.dropbear-snackbar .progress-bar {
+.dropbear-snackbar.hide {
+  transform: translateX(120%) scale(0.95);
+  opacity: 0;
+}
+
+.dropbear-snackbar-icon {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.dropbear-snackbar-content {
+  flex-grow: 1;
+  margin-right: 12px;
+}
+
+.dropbear-snackbar-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #e3e3e3;
+  font-size: 16px;
+}
+
+.dropbear-snackbar-message {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #a1a1a1;
+  margin: 0;
+}
+
+.dropbear-snackbar-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.dropbear-snackbar-action {
+  font-size: 14px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e3e3e3;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  font-weight: 500;
+}
+
+.dropbear-snackbar-action:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.dropbear-snackbar-close {
+  background: transparent;
+  border: none;
+  color: #a1a1a1;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  opacity: 0.7;
+  margin: -4px -4px -4px 0;
+}
+
+.dropbear-snackbar-close:hover {
+  opacity: 1;
+  color: #e3e3e3;
+}
+
+.dropbear-snackbar-close svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.5;
+}
+
+.progress-bar {
   position: absolute;
   bottom: 0;
   left: 0;
@@ -48,12 +129,6 @@
   border-bottom-right-radius: 4px;
 }
 
-/* Show state */
-.dropbear-snackbar.show {
-  transform: translateX(0) scale(1);
-  opacity: 1;
-}
-
 .dropbear-snackbar.show .progress-bar {
   animation: progress-bar-shrink var(--duration, 5000ms) linear forwards;
 }
@@ -62,13 +137,6 @@
   animation-play-state: paused;
 }
 
-/* Hide state */
-.dropbear-snackbar.hide {
-  transform: translateX(120%) scale(0.95);
-  opacity: 0;
-}
-
-/* Progress bar animation */
 @keyframes progress-bar-shrink {
   from {
     transform: scaleX(1);
@@ -125,98 +193,6 @@
 
 .dropbear-snackbar.information .dropbear-snackbar-icon {
   color: var(--snackbar-info);
-}
-
-/* Icon styles */
-.dropbear-snackbar-icon {
-  flex-shrink: 0;
-  width: 20px;
-  height: 20px;
-}
-
-/* Content styles */
-.dropbear-snackbar-content {
-  flex-grow: 1;
-  margin-right: 12px;
-}
-
-.dropbear-snackbar-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-  color: #e3e3e3;
-  font-size: 16px;
-}
-
-.dropbear-snackbar-message {
-  font-size: 14px;
-  line-height: 1.5;
-  color: #a1a1a1;
-  margin: 0;
-}
-
-/* Action buttons */
-.dropbear-snackbar-actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.dropbear-snackbar-action {
-  font-size: 14px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(255, 255, 255, 0.05);
-  color: #e3e3e3;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  font-weight: 500;
-}
-
-.dropbear-snackbar-action:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.2);
-}
-
-/* Close button */
-.dropbear-snackbar-close {
-  background: transparent;
-  border: none;
-  color: #a1a1a1;
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 4px;
-  transition: all 0.15s ease;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  opacity: 0.7;
-  margin: -4px -4px -4px 0;
-}
-
-.dropbear-snackbar-close:hover {
-  opacity: 1;
-  color: #e3e3e3;
-}
-
-.dropbear-snackbar-close svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 1.5;
-}
-
-/* Link styles */
-.dropbear-snackbar-message a {
-  color: var(--snackbar-info);
-  text-decoration: none;
-  transition: all 0.15s ease;
-  font-weight: 500;
-}
-
-.dropbear-snackbar-message a:hover {
-  text-decoration: underline;
 }
 
 /* Screen reader only */

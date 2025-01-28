@@ -1,207 +1,170 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using Microsoft.AspNetCore.Components;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
-/// <summary>
-///     Represents a single snackbar notification with optional actions and auto-dismiss behavior.
-/// </summary>
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearSnackbar>();
-    private static readonly int MAX_RETRIES = 3;
-    private static readonly int RETRY_DELAY_MS = 500;
+    private const int MaxRetries = 3;
+    private const int RetryDelayMs = 500;
     private readonly CancellationTokenSource _disposalTokenSource = new();
-    private readonly AsyncLock _initializationLock = new();
+    private readonly SemaphoreSlim _jsLock = new(1, 1);
     private bool _isDisposed;
-    private ElementReference _snackbarRef;
+    private bool _isInitialized;
 
-    /// <summary>
-    ///     Holds information about the snackbar instance: title, message, duration, actions, etc.
-    /// </summary>
-    [Parameter]
-    public SnackbarInstance SnackbarInstance { get; set; } = null!;
+    [Inject] private new ILogger<DropBearSnackbar> Logger { get; set; } = null!;
 
-    /// <summary>
-    ///     An optional callback invoked when the snackbar is closed.
-    /// </summary>
-    [Parameter]
-    public EventCallback OnClose { get; set; }
+    [Parameter] [EditorRequired] public SnackbarInstance SnackbarInstance { get; init; } = null!;
 
-    /// <summary>
-    ///     Additional HTML attributes for the root container.
-    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
 
-    /// <inheritdoc />
+    private string CssClasses => $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        // Call the base class's OnAfterRenderAsync
         await base.OnAfterRenderAsync(firstRender);
 
-        if (!firstRender || IsDisposed)
+        if (!firstRender || _isDisposed || _isInitialized)
         {
             return;
         }
 
-        // Use the async lock to avoid concurrent calls
-        using (await _initializationLock.LockAsync(_disposalTokenSource.Token))
+        try
         {
-            if (IsDisposed)
-            {
-                return;
-            }
+            await InitializeSnackbarAsync();
+            _isInitialized = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize snackbar {SnackbarId}", SnackbarInstance.Id);
+        }
+    }
 
+    private async Task InitializeSnackbarAsync()
+    {
+        for (var attempt = 1; attempt <= MaxRetries; attempt++)
+        {
             try
             {
-                // 1) Ensure the DropBearSnackbar module is fully registered
+                await _jsLock.WaitAsync();
+
+                // Ensure JS module is initialized
                 await EnsureJsModuleInitializedAsync("DropBearSnackbar");
 
-                // 2) Retry logic if you want to handle transient errors
-                var retryCount = 0;
-                while (retryCount < MAX_RETRIES)
+                // Create and show the snackbar
+                await SafeJsVoidInteropAsync("DropBearSnackbar.createSnackbar", SnackbarInstance.Id);
+                await SafeJsVoidInteropAsync("DropBearSnackbar.show", SnackbarInstance.Id);
+
+                // If auto-dismiss is enabled, start the progress
+                if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
                 {
-                    try
-                    {
-                        // 3) Create a snackbar manager for this ID
-                        await SafeJsVoidInteropAsync("DropBearSnackbar.createSnackbar", SnackbarInstance.Id);
-
-                        // 4) Show the snackbar
-                        await SafeJsVoidInteropAsync("DropBearSnackbar.show", SnackbarInstance.Id);
-
-                        // 5) If auto-dismiss, start progress
-                        if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
-                        {
-                            await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
-                                SnackbarInstance.Id, SnackbarInstance.Duration);
-                        }
-
-                        Logger.Debug("JS interop for DropBearSnackbar is initialized and shown.");
-                        break; // success
-                    }
-                    catch (Exception ex) when (retryCount < MAX_RETRIES - 1)
-                    {
-                        Logger.Warning(ex, "Retry {Count} for snackbar {SnackbarId}", retryCount + 1,
-                            SnackbarInstance.Id);
-                        await Task.Delay(RETRY_DELAY_MS);
-                        retryCount++;
-                    }
+                    await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
+                        SnackbarInstance.Id, SnackbarInstance.Duration);
                 }
+
+                Logger.LogDebug("Snackbar {SnackbarId} initialized and shown", SnackbarInstance.Id);
+                break;
+            }
+            catch (Exception ex) when (attempt < MaxRetries)
+            {
+                Logger.LogWarning(ex,
+                    "Attempt {Attempt} failed to initialize snackbar {SnackbarId}. Retrying in {Delay}ms",
+                    attempt, SnackbarInstance.Id, RetryDelayMs);
+                await Task.Delay(RetryDelayMs, _disposalTokenSource.Token);
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error initializing Blazor JS interop for DropBearSnackbar: {SnackbarId}",
-                    SnackbarInstance.Id);
-                // optionally re-throw or handle
+                Logger.LogError(ex, "Failed to initialize snackbar {SnackbarId} after {MaxRetries} attempts",
+                    SnackbarInstance.Id, MaxRetries);
+                throw;
+            }
+            finally
+            {
+                _jsLock.Release();
             }
         }
     }
 
-    /// <summary>
-    ///     Builds the CSS class string for the snackbar based on its type.
-    /// </summary>
-    private string GetCssClasses()
-    {
-        // e.g., "dropbear-snackbar success"
-        var cssClass = $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
-        return cssClass;
-    }
-
-    /// <summary>
-    ///     Returns an SVG icon as a string, matching the snackbar's type.
-    /// </summary>
-    private string GetIcon()
-    {
-        return SnackbarInstance.Type switch
-        {
-            SnackbarType.Success => @"
-                <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>
-                    <path d='M20 6L9 17l-5-5'/>
-                </svg>",
-            SnackbarType.Error => @"
-                <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>
-                    <circle cx='12' cy='12' r='10'/>
-                    <path d='M12 8v4m0 4h.01'/>
-                </svg>",
-            SnackbarType.Warning => @"
-                <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>
-                    <path d='M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0zM12 9v4m0 4h.01'/>
-                </svg>",
-            _ => @"
-                <svg width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'>
-                    <circle cx='12' cy='12' r='10'/>
-                    <path d='M12 16v-4m0-4h.01'/>
-                </svg>"
-        };
-    }
-
-    /// <summary>
-    ///     Handles a click on any action button and closes the snackbar afterward.
-    /// </summary>
     private async Task HandleActionClick(SnackbarAction action)
     {
+        if (action.OnClick == null)
+        {
+            await Close();
+            return;
+        }
+
         try
         {
-            if (action.OnClick is not null)
-            {
-                await action.OnClick.Invoke();
-            }
-
+            await action.OnClick.Invoke();
             await Close();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling action click");
+            Logger.LogError(ex, "Error executing action '{ActionLabel}' for snackbar {SnackbarId}",
+                action.Label, SnackbarInstance.Id);
         }
     }
 
-    /// <summary>
-    ///     Closes the snackbar (hides it in JS) and then invokes OnClose callback.
-    /// </summary>
     private async Task Close()
     {
+        if (_isDisposed)
+        {
+            return;
+        }
+
         try
         {
+            await _jsLock.WaitAsync();
             await SafeJsVoidInteropAsync("DropBearSnackbar.hide", SnackbarInstance.Id);
-            await Task.Delay(300); // Match JS animation duration
+            await Task.Delay(300, _disposalTokenSource.Token); // Animation duration
             await OnClose.InvokeAsync();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error closing snackbar");
+            Logger.LogError(ex, "Error closing snackbar {SnackbarId}", SnackbarInstance.Id);
+        }
+        finally
+        {
+            _jsLock.Release();
         }
     }
 
-    /// <inheritdoc />
-    protected override async ValueTask DisposeAsync(bool disposing)
+    public override async ValueTask DisposeAsync()
     {
-        if (!_isDisposed)
+        if (_isDisposed)
         {
-            if (disposing)
-            {
-                try
-                {
-                    // Tell JS to dispose resources for this snackbar (listeners, etc.)
-                    await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", SnackbarInstance.Id);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error disposing snackbar in JS");
-                }
-            }
-
-            _isDisposed = true;
-            await base.DisposeAsync(disposing);
+            return;
         }
+
+        _isDisposed = true;
+
+        try
+        {
+            await _jsLock.WaitAsync();
+            await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", SnackbarInstance.Id);
+            await _disposalTokenSource.CancelAsync();
+            _disposalTokenSource.Dispose();
+            _jsLock.Dispose();
+            Logger.LogDebug("Snackbar {SnackbarId} disposed", SnackbarInstance.Id);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error disposing snackbar {SnackbarId}", SnackbarInstance.Id);
+        }
+        finally
+        {
+            _jsLock.Release();
+        }
+
+        await base.DisposeAsync();
     }
 }
