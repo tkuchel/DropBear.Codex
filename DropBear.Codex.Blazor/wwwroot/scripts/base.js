@@ -548,6 +548,9 @@
       {
         snackbars: new Map(),
 
+        /**
+         * Global no-argument initialization
+         */
         async initialize() {
           return circuitBreaker.execute(async () => {
             logger.debug('DropBearSnackbar global module initialized');
@@ -555,6 +558,9 @@
           });
         },
 
+        /**
+         * Creates a new snackbar instance for the given ID.
+         */
         async createSnackbar(snackbarId) {
           return circuitBreaker.execute(async () => {
             try {
@@ -573,6 +579,9 @@
           });
         },
 
+        /**
+         * Sets the .NET reference for a specific snackbar.
+         */
         async setDotNetReference(snackbarId, dotNetRef) {
           const manager = this.snackbars.get(snackbarId);
           if (manager) {
@@ -613,10 +622,21 @@
       ['DropBearCore']
     );
 
-    // Assign the module to the window object
-    window.DropBearSnackbar = ModuleManager.get('DropBearSnackbar');
+    // Get the module instance
+    const module = ModuleManager.get('DropBearSnackbar');
 
-    return ModuleManager.get('DropBearSnackbar');
+    // Assign the module methods to the window object
+    window.DropBearSnackbar = {
+      initialize: () => module.initialize(),
+      createSnackbar: (snackbarId) => module.createSnackbar(snackbarId),
+      setDotNetReference: (snackbarId, dotNetRef) => module.setDotNetReference(snackbarId, dotNetRef),
+      show: (snackbarId) => module.show(snackbarId),
+      startProgress: (snackbarId, duration) => module.startProgress(snackbarId, duration),
+      hide: (snackbarId) => module.hide(snackbarId),
+      dispose: (snackbarId) => module.dispose(snackbarId)
+    };
+
+    return module;
   })();
 
   const DropBearResizeManager = (() => {

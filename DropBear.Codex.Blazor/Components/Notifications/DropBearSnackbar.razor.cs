@@ -53,7 +53,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             Logger.LogInformation("Initializing snackbar {Id}", SnackbarInstance.Id);
             await InitializeSnackbarAsync();
 
-            if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
+            if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
             {
                 Logger.LogInformation("Setting up auto-close timer for snackbar {Id} with duration {Duration}ms",
                     SnackbarInstance.Id, SnackbarInstance.Duration);
@@ -96,21 +96,30 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
                 // Ensure JS module is initialized
                 await EnsureJsModuleInitializedAsync("DropBearSnackbar");
 
+                Logger.LogDebug("Creating snackbar {Id}", SnackbarInstance.Id);
+
                 // Create and show the snackbar
                 await SafeJsVoidInteropAsync("DropBearSnackbar.createSnackbar", SnackbarInstance.Id);
 
-                // Set the .NET reference
-                await SafeJsVoidInteropAsync("DropBearSnackbar.setDotNetReference", SnackbarInstance.Id, _dotNetRef);
+                Logger.LogDebug("Setting .NET reference for snackbar {Id}", SnackbarInstance.Id);
 
+                // Set the .NET reference
+                await SafeJsVoidInteropAsync("DropBearSnackbar.setDotNetReference",
+                    SnackbarInstance.Id,
+                    DotNetObjectReference.Create(this));
+
+                Logger.LogDebug("Showing snackbar {Id}", SnackbarInstance.Id);
                 await SafeJsVoidInteropAsync("DropBearSnackbar.show", SnackbarInstance.Id);
 
-                if (!SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0)
+                if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
                 {
+                    Logger.LogDebug("Starting progress for snackbar {Id} with duration {Duration}",
+                        SnackbarInstance.Id, SnackbarInstance.Duration);
                     await SafeJsVoidInteropAsync("DropBearSnackbar.startProgress",
                         SnackbarInstance.Id, SnackbarInstance.Duration);
                 }
 
-                Logger.LogDebug("Snackbar {SnackbarId} initialized and shown", SnackbarInstance.Id);
+                Logger.LogDebug("Snackbar {Id} initialized and shown", SnackbarInstance.Id);
                 break;
             }
             catch (Exception ex) when (attempt < MaxRetries)
