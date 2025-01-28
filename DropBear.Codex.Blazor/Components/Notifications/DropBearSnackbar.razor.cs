@@ -13,8 +13,10 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
     private const int MaxRetries = 3;
     private const int RetryDelayMs = 500;
+    private readonly TaskCompletionSource _animationComplete = new();
     private readonly CancellationTokenSource _disposalTokenSource = new();
     private readonly SemaphoreSlim _jsLock = new(1, 1);
+    private bool _isClosing;
     private bool _isDisposed;
     private bool _isInitialized;
 
@@ -116,27 +118,41 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     private async Task Close()
     {
-        if (_isDisposed)
+        if (_isDisposed || _isClosing)
         {
             return;
         }
 
         try
         {
+            _isClosing = true;
             await _jsLock.WaitAsync();
+
+            Logger.LogDebug("Starting close sequence for snackbar {SnackbarId}", SnackbarInstance.Id);
+
+            // Hide in JS
             await SafeJsVoidInteropAsync("DropBearSnackbar.hide", SnackbarInstance.Id);
-            await Task.Delay(300, _disposalTokenSource.Token); // Animation duration
+
+            // Wait for animation
+            await Task.Delay(300, _disposalTokenSource.Token);
+
+            // Notify parent and wait for it to complete
             await OnClose.InvokeAsync();
+
+            Logger.LogDebug("Close sequence completed for snackbar {SnackbarId}", SnackbarInstance.Id);
+            _animationComplete.TrySetResult();
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error closing snackbar {SnackbarId}", SnackbarInstance.Id);
+            _animationComplete.TrySetException(ex);
         }
         finally
         {
             _jsLock.Release();
         }
     }
+
 
     public override async ValueTask DisposeAsync()
     {
@@ -149,11 +165,19 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
         try
         {
+            // If we're disposing while closing, wait for the animation
+            if (_isClosing)
+            {
+                await Task.WhenAny(_animationComplete.Task, Task.Delay(500));
+            }
+
             await _jsLock.WaitAsync();
             await SafeJsVoidInteropAsync("DropBearSnackbar.dispose", SnackbarInstance.Id);
             await _disposalTokenSource.CancelAsync();
+
             _disposalTokenSource.Dispose();
             _jsLock.Dispose();
+
             Logger.LogDebug("Snackbar {SnackbarId} disposed", SnackbarInstance.Id);
         }
         catch (Exception ex)

@@ -32,15 +32,12 @@ public class SnackbarService : ISnackbarService
             return Result<Unit, SnackbarError>.Failure(new SnackbarError("Service is disposed."));
         }
 
-        if (snackbar == null)
-        {
-            _logger.LogWarning("Attempted to show a null snackbar instance.");
-            return Result<Unit, SnackbarError>.Failure(new SnackbarError("Snackbar instance cannot be null."));
-        }
-
         try
         {
             await _semaphore.WaitAsync();
+
+            _logger.LogDebug("Attempting to show snackbar {SnackbarId}. Current count: {Count}",
+                snackbar.Id, _activeSnackbars.Count);
 
             if (_activeSnackbars.Count >= MaxSnackbars)
             {
@@ -52,18 +49,31 @@ public class SnackbarService : ISnackbarService
 
                 if (oldestNonError != null)
                 {
+                    _logger.LogDebug("Removing oldest non-error snackbar {SnackbarId} to make room",
+                        oldestNonError.Id);
                     await RemoveSnackbar(oldestNonError.Id);
                 }
                 else if (snackbar.Type != SnackbarType.Error)
                 {
+                    _logger.LogWarning("Cannot show new snackbar - maximum error snackbars reached");
                     return Result<Unit, SnackbarError>.Failure(
                         new SnackbarError("Maximum number of error snackbars reached."));
                 }
             }
 
+            // Ensure the snackbar isn't already in the collection
+            if (_activeSnackbars.ContainsKey(snackbar.Id))
+            {
+                _logger.LogWarning("Snackbar {SnackbarId} already exists, removing old instance first",
+                    snackbar.Id);
+                await RemoveSnackbar(snackbar.Id);
+            }
+
             if (_activeSnackbars.TryAdd(snackbar.Id, snackbar))
             {
-                _logger.LogDebug("Showing snackbar {SnackbarId}", snackbar.Id);
+                _logger.LogDebug("Successfully added snackbar {SnackbarId}. New count: {Count}",
+                    snackbar.Id, _activeSnackbars.Count);
+
                 if (OnShow != null)
                 {
                     await OnShow.Invoke(snackbar);
@@ -97,9 +107,14 @@ public class SnackbarService : ISnackbarService
         {
             await _semaphore.WaitAsync();
 
-            if (_activeSnackbars.TryRemove(id, out _))
+            _logger.LogDebug("Attempting to remove snackbar {SnackbarId}. Current count: {Count}",
+                id, _activeSnackbars.Count);
+
+            if (_activeSnackbars.TryRemove(id, out var removed))
             {
-                _logger.LogDebug("Removed snackbar {SnackbarId}", id);
+                _logger.LogDebug("Successfully removed snackbar {SnackbarId}. New count: {Count}",
+                    id, _activeSnackbars.Count);
+
                 if (OnRemove != null)
                 {
                     await OnRemove.Invoke(id);
@@ -108,6 +123,7 @@ public class SnackbarService : ISnackbarService
                 return Result<Unit, SnackbarError>.Success(Unit.Value);
             }
 
+            _logger.LogWarning("Failed to remove snackbar {SnackbarId} - not found in active snackbars", id);
             return Result<Unit, SnackbarError>.Failure(new SnackbarError($"Snackbar {id} not found."));
         }
         catch (Exception ex)
