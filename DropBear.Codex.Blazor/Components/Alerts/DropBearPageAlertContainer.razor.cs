@@ -8,6 +8,7 @@ using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
 using Microsoft.AspNetCore.Components;
+using Microsoft.JSInterop;
 
 #endregion
 
@@ -214,6 +215,10 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             await EnsureJsModuleInitializedAsync("DropBearPageAlert");
             await SafeJsInteropAsync<bool[]>("DropBearPageAlert.hideAll");
         }
+        catch (JSDisconnectedException jsDisconnectedException)
+        {
+            Logger.Warning(jsDisconnectedException, "Error hiding all alerts during cleanup, JS Disconnected");
+        }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error hiding all alerts during cleanup");
@@ -238,6 +243,10 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
                 _activeAlerts.Clear();
                 _alertsToInitialize.Clear();
+            }
+            catch (ObjectDisposedException objectDisposedException)
+            {
+                Logger.Warning(objectDisposedException, "Error during page alert container disposal, already disposed");
             }
             catch (Exception ex)
             {

@@ -103,6 +103,14 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                         .ConfigureAwait(false);
                 }
             }
+            catch (JSDisconnectedException jsDisconnectedException)
+            {
+                Logger.Warning(jsDisconnectedException, "Error during {ComponentName} disposal, JS Disconnected", GetType().Name);
+            }
+            catch (ObjectDisposedException objectDisposedException)
+            {
+                Logger.Warning(objectDisposedException, "Error during {ComponentName} disposal, already disposed", GetType().Name);
+            }
             catch (OperationCanceledException)
             {
                 Logger.Debug("Circuit disconnected; skipping JS cleanup in {ComponentName}", GetType().Name);
@@ -143,7 +151,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException or TimeoutException)
+        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException or TimeoutException or ObjectDisposedException)
         {
             IsConnected = false;
             Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}", GetType().Name, ex.Message);
@@ -178,7 +186,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 .WaitAsync(TimeSpan.FromSeconds(5), CircuitToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException or TimeoutException)
+        catch (Exception ex) when (ex is JSDisconnectedException or OperationCanceledException or TimeoutException or ObjectDisposedException)
         {
             IsConnected = false;
             Logger.Warning("JS interop unavailable in {ComponentName}: {Reason}", GetType().Name, ex.Message);
@@ -209,6 +217,16 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             {
                 await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName);
                 _initializedModules[moduleName] = true;
+            }
+            catch (JSDisconnectedException jsDisconnectedException)
+            {
+                Logger.Warning(jsDisconnectedException,
+                    "Failed to initialize JS module {ModuleName}, JS Disconnected");
+            }
+            catch (ObjectDisposedException objectDisposedException)
+            {
+                Logger.Warning(objectDisposedException,
+                    "Failed to initialize JS module {ModuleName}, already disposed");
             }
             catch (Exception ex)
             {
