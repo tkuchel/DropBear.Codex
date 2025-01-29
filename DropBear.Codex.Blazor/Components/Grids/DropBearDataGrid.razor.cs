@@ -1,7 +1,6 @@
 ﻿#region
 
 using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
@@ -11,7 +10,6 @@ using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Serilog;
-using Timer = System.Threading.Timer;
 
 #endregion
 
@@ -21,28 +19,37 @@ namespace DropBear.Codex.Blazor.Components.Grids;
 ///     A Blazor component for rendering a data grid with sorting, searching, and pagination capabilities.
 /// </summary>
 /// <typeparam name="TItem">The type of the data items.</typeparam>
-public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDisposable where TItem : class
+public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase where TItem : class
 {
-    private const int DebounceDelay = 300; // ms
+    private const int DebounceDelay = 300;
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>();
 
-    private readonly List<DataGridColumn<TItem>> _columns = new();
-    private readonly Dictionary<string, Func<TItem, object>> _compiledSelectors = new();
+    // Use array instead of ReadOnlyCollection for better performance
+    private static readonly int[] ItemsPerPageOptions = [10, 25, 50, 100];
+
+    // Use readonly collections for thread safety
+    private readonly List<DataGridColumn<TItem>> _columns = new(50); // Preallocate capacity
+    private readonly Dictionary<string, Func<TItem, object>> _compiledSelectors = new(50);
     private readonly DataGridMetricsService _metricsService = new();
-    private readonly int _parallelThreshold = 500; // Number of items above which we use parallel processing
+    private const int ParallelThreshold = 500;
     private readonly ConditionalWeakTable<TItem, Dictionary<string, string>> _searchableValues = new();
     private readonly ConcurrentDictionary<string, string[]> _searchTermCache = new();
-    private readonly List<TItem> _selectedItems = new();
+    private readonly HashSet<TItem> _selectedItems = []; // HashSet for O(1) lookups
+    private List<TItem>? _cachedFilteredItems;
+
+    // Cache frequently accessed values
+    private List<TItem>? _cachedItems;
 
     private DataGridColumn<TItem>? _currentSortColumn;
     private SortDirection _currentSortDirection = SortDirection.Ascending;
-    private Timer? _debounceTimer;
+    private CancellationTokenSource? _debounceTokenSource;
     private bool _isInitialized;
     private bool _isSearching;
-    private IEnumerable<TItem>? _previousItems = [];
+    private IEnumerable<TItem>? _previousItems;
+    private string _previousSearchTerm = string.Empty;
     private ElementReference _searchInput;
 
-    [Parameter] public IEnumerable<TItem>? Items { get; set; } = [];
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
     [Parameter] public string Title { get; set; } = "Data Grid";
     [Parameter] public bool EnableSearch { get; set; } = true;
     [Parameter] public bool EnablePagination { get; set; } = true;
@@ -66,56 +73,47 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
     private string SearchTerm { get; set; } = string.Empty;
     private int CurrentPage { get; set; } = 1;
-    private IEnumerable<TItem> FilteredItems { get; set; } = new List<TItem>();
-    private IEnumerable<TItem> DisplayedItems { get; set; } = new List<TItem>();
+    private IEnumerable<TItem> FilteredItems => _cachedFilteredItems ?? Enumerable.Empty<TItem>();
+    private IEnumerable<TItem> DisplayedItems { get; set; } = Array.Empty<TItem>();
     private bool ShowMetrics => EnableDebugMode && _metricsService.IsEnabled;
-
-    private IReadOnlyCollection<int> ItemsPerPageOptions { get; } =
-        new ReadOnlyCollection<int>([10, 25, 50, 100]);
-
     private bool IsLoading { get; set; } = true;
     private bool HasData => FilteredItems.Any();
+    private int TotalPages => _cachedFilteredItems?.Count > 0
+        ? (int)Math.Ceiling(_cachedFilteredItems.Count / (double)ItemsPerPage)
+        : 0;
 
-    private int TotalPages =>
-        (int)Math.Ceiling(FilteredItems.Count() / (double)ItemsPerPage);
-
-    private int TotalColumnCount =>
-        _columns.Count + (EnableMultiSelect ? 1 : 0) + (AllowEdit || AllowDelete ? 1 : 0);
-
-    /// <summary>
-    ///     Returns a read-only list of the columns configured for this data grid.
-    /// </summary>
+    private int TotalColumnCount => _columns.Count + (EnableMultiSelect ? 1 : 0) + (AllowEdit || AllowDelete ? 1 : 0);
     public IReadOnlyList<DataGridColumn<TItem>> GetColumns => _columns.AsReadOnly();
-
-    /// <summary>
-    ///     Handles cleanup of resources.
-    /// </summary>
-    public void Dispose()
+    public override async ValueTask DisposeAsync()
     {
-        _debounceTimer?.Dispose();
+        await DisposeAsyncCore();
+        GC.SuppressFinalize(this);
+    }
+    private async ValueTask DisposeAsyncCore()
+    {
+        if (_debounceTokenSource != null)
+        {
+            await _debounceTokenSource.CancelAsync();
+            _debounceTokenSource.Dispose();
+        }
+
         _searchableValues.Clear();
         _searchTermCache.Clear();
         _compiledSelectors.Clear();
     }
-
-    /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
-        // Reload data if the Items reference has changed
         if (!ReferenceEquals(_previousItems, Items))
         {
             _previousItems = Items;
+            _cachedItems = Items?.ToList();
             await LoadDataAsync();
         }
 
         _isInitialized = true;
     }
-
-    /// <summary>
-    ///     Handles the data loading process with performance optimizations.
-    /// </summary>
     private async Task LoadDataAsync()
     {
         try
@@ -126,31 +124,24 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
             StateHasChanged();
 
-            // Clear caches when loading new data
             _searchableValues.Clear();
             _searchTermCache.Clear();
 
-            FilteredItems = Items?.ToList() ?? new List<TItem>();
-
-            // Pre-compute searchable values for all items
-            if (Items != null)
+            if (_cachedItems?.Count > ParallelThreshold)
             {
-                Logger.Debug("Pre-computing searchable values for {Count} items", Items.Count());
-                foreach (var item in Items)
-                {
-                    var values = PreComputeSearchableValues(item);
-                    if (!_searchableValues.TryGetValue(item, out _))
-                    {
-                        _searchableValues.Add(item, values);
-                    }
-                }
+                await PreComputeSearchableValuesParallel();
+            }
+            else
+            {
+                PreComputeSearchableValuesSequential();
             }
 
+            _cachedFilteredItems = _cachedItems;
             UpdateDisplayedItems();
 
             _metricsService.StopSearchTimer(
-                Items?.Count() ?? 0,
-                FilteredItems.Count(),
+                _cachedItems?.Count ?? 0,
+                _cachedFilteredItems?.Count ?? 0,
                 DisplayedItems.Count());
         }
         catch (Exception ex)
@@ -164,115 +155,121 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             StateHasChanged();
         }
     }
-
-    /// <summary>
-    ///     Called whenever the user types in the search box. Debounces the search call.
-    /// </summary>
-    private void OnSearchInput(ChangeEventArgs e)
+    private async void OnSearchInput(ChangeEventArgs e)
     {
         SearchTerm = e.Value?.ToString() ?? string.Empty;
-        Logger.Debug("Search input changed to: {SearchTerm}", SearchTerm);
 
-        _debounceTimer?.Dispose();
-        _debounceTimer = new Timer(async _ =>
+        // Cancel previous debounce if any
+        if (_debounceTokenSource != null)
         {
-            try
+            await _debounceTokenSource.CancelAsync();
+            _debounceTokenSource.Dispose();
+        }
+
+        _debounceTokenSource = new CancellationTokenSource();
+        var token = _debounceTokenSource.Token;
+
+        try
+        {
+            await Task.Delay(DebounceDelay, token);
+            if (!token.IsCancellationRequested)
             {
                 await DebounceSearchAsync();
             }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error during search debounce in DropBearDataGrid.");
-            }
-        }, null, DebounceDelay, Timeout.Infinite);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation
+        }
     }
-
-    /// <summary>
-    ///     Pre-computes searchable values for an item across all columns.
-    /// </summary>
     private Dictionary<string, string> PreComputeSearchableValues(TItem item)
     {
-        var values = new Dictionary<string, string>();
-        Logger.Debug("Computing searchable values for {Columns} columns", _columns.Count);
+        var values = new Dictionary<string, string>(_columns.Count);
 
         foreach (var column in _columns.Where(c => c.PropertySelector != null))
         {
             try
             {
-                Logger.Debug("Processing column {PropertyName}", column.PropertyName);
-
                 if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
                 {
                     selector = column.PropertySelector!.Compile();
                     _compiledSelectors[column.PropertyName] = selector;
-                    Logger.Debug("Compiled new selector for {PropertyName}", column.PropertyName);
                 }
 
                 var rawValue = selector(item);
-                Logger.Debug("Raw value for {PropertyName}: {Value}", column.PropertyName, rawValue);
-
                 if (rawValue != null)
                 {
-                    var stringValue = rawValue switch
-                    {
-                        DateTime date => date.ToString(column.Format),
-                        DateTimeOffset dtOffset => dtOffset.ToString(column.Format),
-                        IFormattable formattable => formattable.ToString(column.Format, null),
-                        _ => rawValue.ToString()
-                    };
-
-                    if (!string.IsNullOrEmpty(stringValue))
-                    {
-                        values[column.PropertyName] = stringValue.ToLowerInvariant();
-                        Logger.Debug("Added searchable value for {PropertyName}: {Value}",
-                            column.PropertyName, values[column.PropertyName]);
-                    }
+                    values[column.PropertyName] = FormatValue(rawValue, column.Format).ToLowerInvariant();
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error processing column {Column} for searchable values", column.PropertyName);
+                Logger.Error(ex, "Error processing column {Column}", column.PropertyName);
             }
         }
 
-        Logger.Debug("Generated searchable values for {Count} columns: {Values}",
-            values.Count,
-            string.Join(", ", values.Select(kvp => $"{kvp.Key}={kvp.Value}")));
-
         return values;
     }
+    private static string FormatValue(object value, string? format)
+    {
+        return value switch
+        {
+            DateTime date => date.ToString(format),
+            DateTimeOffset dtOffset => dtOffset.ToString(format),
+            IFormattable formattable => formattable.ToString(format, null),
+            _ => value.ToString() ?? string.Empty
+        };
+    }
+    private void PreComputeSearchableValuesSequential()
+    {
+        if (_cachedItems == null)
+        {
+            return;
+        }
 
-    /// <summary>
-    ///     Optimized method to check if an item matches the search terms.
-    /// </summary>
+        foreach (var item in _cachedItems)
+        {
+            if (!_searchableValues.TryGetValue(item, out _))
+            {
+                _searchableValues.Add(item, PreComputeSearchableValues(item));
+            }
+        }
+    }
+    private Task PreComputeSearchableValuesParallel()
+    {
+        if (_cachedItems == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(() =>
+        {
+            Parallel.ForEach(_cachedItems, item =>
+            {
+                if (!_searchableValues.TryGetValue(item, out _))
+                {
+                    _searchableValues.Add(item, PreComputeSearchableValues(item));
+                }
+            });
+        });
+    }
     private bool ItemMatchesSearch(TItem item, string[] searchTerms)
     {
-        Dictionary<string, string> values;
-        if (!_searchableValues.TryGetValue(item, out values))
+        if (!_searchableValues.TryGetValue(item, out var values))
         {
             values = PreComputeSearchableValues(item);
             _searchableValues.Add(item, values);
         }
 
-        // For each column, join its values for searching
-        var searchableStrings = values.Select(kvp => $"{kvp.Key}: {kvp.Value}").ToList();
-        var searchableText = string.Join(" ", values.Values).ToLowerInvariant();
-
-        Logger.Debug("Checking values against search terms. Values: [{Values}]", string.Join(", ", searchableStrings));
-
-        // For each search term, check if it matches any of the values
-        foreach (var term in searchTerms)
+        // Use span for better performance with string operations
+        ReadOnlySpan<string> terms = searchTerms;
+        foreach (var term in terms)
         {
-            var termLower = term.ToLowerInvariant();
             var found = false;
-
-            // Check each individual value
-            foreach (var value in values)
+            foreach (var value in values.Values)
             {
-                if (value.Value.Contains(termLower))
+                if (value.Contains(term, StringComparison.OrdinalIgnoreCase))
                 {
-                    Logger.Debug("Found match for term '{Term}' in {Column}: {Value}",
-                        term, value.Key, value.Value);
                     found = true;
                     break;
                 }
@@ -280,18 +277,12 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
             if (!found)
             {
-                Logger.Debug("No match found for term: {Term}", term);
                 return false;
             }
         }
 
-        Logger.Debug("Item matches all search terms: {Terms}", string.Join(", ", searchTerms));
         return true;
     }
-
-    /// <summary>
-    ///     Performs the actual search operation with optimized performance.
-    /// </summary>
     private IEnumerable<TItem> PerformSearch(IEnumerable<TItem> items, string searchTerm)
     {
         if (string.IsNullOrWhiteSpace(searchTerm))
@@ -299,52 +290,65 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             return items;
         }
 
-        // Split and normalize search terms
-        var searchTerms = searchTerm.Split(new[] { ' ', ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(term => term.Trim().ToLowerInvariant())
-            .Where(term => !string.IsNullOrWhiteSpace(term))
-            .ToArray();
+        // Cache search terms to avoid repeated string operations
+        if (!_searchTermCache.TryGetValue(searchTerm, out var searchTerms))
+        {
+            searchTerms = searchTerm.Split([' ', ',', ';'],
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(term => term.ToLowerInvariant())
+                .Where(term => !string.IsNullOrWhiteSpace(term))
+                .ToArray();
 
-        Logger.Debug("Starting search with terms: [{Terms}]", string.Join(", ", searchTerms));
+            _searchTermCache.TryAdd(searchTerm, searchTerms);
+        }
 
-        if (!searchTerms.Any())
+        if (searchTerms.Length == 0)
         {
             return items;
         }
 
-        var itemsList = items?.ToList() ?? new List<TItem>();
-        var results = itemsList.Where(item => ItemMatchesSearch(item, searchTerms)).ToList();
+        var itemsList = items as IList<TItem> ?? items?.ToList();
+        if (itemsList == null)
+        {
+            return [];
+        }
 
-        Logger.Debug("Search completed. Found {Count} matching items from {Total} total items",
-            results.Count, itemsList.Count);
+        if (itemsList.Count > ParallelThreshold)
+        {
+            return itemsList.AsParallel()
+                .Where(item => ItemMatchesSearch(item, searchTerms))
+                .ToList();
+        }
 
-        return results;
+        return itemsList.Where(item => ItemMatchesSearch(item, searchTerms)).ToList();
     }
-
-
-    /// <summary>
-    ///     Performs the search logic after the debounce delay with performance optimization.
-    /// </summary>
     private async Task DebounceSearchAsync()
     {
+        if (_previousSearchTerm == SearchTerm)
+        {
+            return;
+        }
+
         try
         {
             _isSearching = true;
             await InvokeAsync(StateHasChanged);
 
-            Logger.Debug("Performing search with term: {SearchTerm}", SearchTerm);
             _metricsService.StartSearchTimer();
 
-            var totalItems = Items?.Count() ?? 0;
+            var totalItems = _cachedItems?.Count ?? 0;
+            _previousSearchTerm = SearchTerm;
 
-            FilteredItems = Items is not null ? PerformSearch(Items, SearchTerm).ToList() : new List<TItem>();
+            _cachedFilteredItems = _cachedItems != null
+                ? PerformSearch(_cachedItems, SearchTerm).ToList()
+                : new List<TItem>();
 
             CurrentPage = 1;
             UpdateDisplayedItems();
 
             _metricsService.StopSearchTimer(
                 totalItems,
-                FilteredItems.Count(),
+                _cachedFilteredItems.Count,
                 DisplayedItems.Count());
         }
         catch (Exception ex)
@@ -358,66 +362,163 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             await InvokeAsync(StateHasChanged);
         }
     }
-
     private void UpdateDisplayedItems()
     {
-        var items = FilteredItems;
+        if (_cachedFilteredItems == null)
+        {
+            DisplayedItems = Array.Empty<TItem>();
+            return;
+        }
+
+        IEnumerable<TItem> items = _cachedFilteredItems;
 
         if (_currentSortColumn?.PropertySelector != null)
         {
-            var selector = _currentSortColumn.PropertySelector.Compile();
+            if (!_compiledSelectors.TryGetValue(_currentSortColumn.PropertyName, out var selector))
+            {
+                selector = _currentSortColumn.PropertySelector.Compile();
+                _compiledSelectors[_currentSortColumn.PropertyName] = selector;
+            }
+
             items = _currentSortDirection == SortDirection.Ascending
-                ? items.OrderBy(selector)
-                : items.OrderByDescending(selector);
+                ? _cachedFilteredItems.OrderBy(selector)
+                : _cachedFilteredItems.OrderByDescending(selector);
         }
 
         DisplayedItems = items
             .Skip((CurrentPage - 1) * ItemsPerPage)
             .Take(ItemsPerPage)
             .ToList();
-
-        Logger.Debug("Displayed items updated. Page={CurrentPage}, ItemsPerPage={ItemsPerPage}", CurrentPage,
-            ItemsPerPage);
     }
-
-    private void SortBy(DataGridColumn<TItem> column)
+    public void AddColumn(DataGridColumn<TItem> column)
     {
-        if (!column.Sortable)
+        if (column == null)
         {
+            throw new ArgumentNullException(nameof(column));
+        }
+
+        if (_columns.Any(c => c.PropertyName == column.PropertyName))
+        {
+            Logger.Warning("Column with property name {PropertyName} already exists.", column.PropertyName);
             return;
         }
 
-        if (_currentSortColumn == column)
+        if (column.PropertySelector != null)
         {
-            _currentSortDirection = _currentSortDirection == SortDirection.Ascending
-                ? SortDirection.Descending
-                : SortDirection.Ascending;
+            _compiledSelectors.TryAdd(
+                column.PropertyName,
+                column.PropertySelector.Compile());
+        }
+
+        _columns.Add(column);
+        _searchableValues.Clear();
+
+        if (_cachedItems != null)
+        {
+            if (_cachedItems.Count > ParallelThreshold)
+            {
+                _ = PreComputeSearchableValuesParallel();
+            }
+            else
+            {
+                PreComputeSearchableValuesSequential();
+            }
+        }
+
+        StateHasChanged();
+    }
+    public void ResetColumns()
+    {
+        _columns.Clear();
+        _compiledSelectors.Clear();
+        _searchableValues.Clear();
+        _searchTermCache.Clear();
+        StateHasChanged();
+    }
+    private string GetFormattedValue(TItem item, DataGridColumn<TItem> column)
+    {
+        if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
+        {
+            if (column.PropertySelector == null)
+            {
+                return string.Empty;
+            }
+
+            selector = column.PropertySelector.Compile();
+            _compiledSelectors[column.PropertyName] = selector;
+        }
+
+        var value = selector(item);
+        return FormatValue(value, column.Format);
+    }
+    private async Task HandleSelectionChangeAsync(TItem item, bool isSelected)
+    {
+        if (isSelected)
+        {
+            _selectedItems.Add(item);
         }
         else
         {
-            _currentSortColumn = column;
-            _currentSortDirection = SortDirection.Ascending;
+            _selectedItems.Remove(item);
         }
 
-        Logger.Debug("Sorting by column: {Column}, Direction: {Direction}", column.Title, _currentSortDirection);
-        UpdateDisplayedItems();
-    }
-
-    private SortDirection? GetSortDirection(DataGridColumn<TItem> column)
-    {
-        return _currentSortColumn == column ? _currentSortDirection : null;
-    }
-
-    private static string GetSortIconClass(SortDirection? sortDirection)
-    {
-        return sortDirection switch
+        if (OnSelectionChanged.HasDelegate)
         {
-            SortDirection.Ascending => "fa-sort-up",
-            SortDirection.Descending => "fa-sort-down",
-            _ => "fa-sort"
-        };
+            await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+        }
+
+        StateHasChanged();
+    }
+    private async Task HandleSelectAllAsync(bool selectAll)
+    {
+        _selectedItems.Clear();
+        if (selectAll && _cachedFilteredItems?.Count > 0)
+        {
+            foreach (var item in _cachedFilteredItems)
+            {
+                _selectedItems.Add(item);
+            }
+        }
+
+        if (OnSelectionChanged.HasDelegate)
+        {
+            await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+        }
+
+        StateHasChanged();
     }
 
+    // Event handlers with minimal allocations
+    private async Task ExportDataAsync()
+    {
+        await OnExportData.InvokeAsync();
+    }
+    private async Task AddItemAsync()
+    {
+        await OnAddItem.InvokeAsync();
+    }
+    private async Task EditItemAsync(TItem item)
+    {
+        await OnEditItem.InvokeAsync(item);
+    }
+    private async Task DeleteItemAsync(TItem item)
+    {
+        await OnDeleteItem.InvokeAsync(item);
+    }
+    private async Task HandleRowClickAsync(TItem item)
+    {
+        await OnRowClicked.InvokeAsync(item);
+    }
+    private async Task HandleRowDoubleClickAsync(TItem item)
+    {
+        await OnRowDoubleClicked.InvokeAsync(item);
+    }
+    private Task HandleRowContextMenuAsync(MouseEventArgs e, TItem item)
+    {
+        return HandleRowClickAsync(item);
+    }
+
+    // Navigation methods with bounds checking
     private void PreviousPage()
     {
         if (CurrentPage <= 1)
@@ -426,10 +527,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         }
 
         CurrentPage--;
-        Logger.Debug("Moved to previous page: {CurrentPage}", CurrentPage);
         UpdateDisplayedItems();
     }
-
     private void NextPage()
     {
         if (CurrentPage >= TotalPages)
@@ -438,28 +537,57 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
         }
 
         CurrentPage++;
-        Logger.Debug("Moved to next page: {CurrentPage}", CurrentPage);
         UpdateDisplayedItems();
     }
-
     private void ItemsPerPageChanged(ChangeEventArgs e)
     {
-        if (int.TryParse(e.Value?.ToString(), out var itemsPerPage))
+        if (int.TryParse(e.Value?.ToString(), out var newItemsPerPage) &&
+            ItemsPerPageOptions.Contains(newItemsPerPage))
         {
-            ItemsPerPage = itemsPerPage;
+            ItemsPerPage = newItemsPerPage;
             CurrentPage = 1;
             UpdateDisplayedItems();
-            Logger.Debug("ItemsPerPage changed to: {ItemsPerPage}", ItemsPerPage);
         }
     }
+    private void SortBy(DataGridColumn<TItem> column)
+    {
+        if (!column.Sortable)
+        {
+            return;
+        }
 
+        _currentSortDirection = _currentSortColumn == column
+            ? _currentSortDirection == SortDirection.Ascending
+                ? SortDirection.Descending
+                : SortDirection.Ascending
+            : SortDirection.Ascending;
+
+        _currentSortColumn = column;
+        UpdateDisplayedItems();
+    }
+    private SortDirection? GetSortDirection(DataGridColumn<TItem> column)
+    {
+        return _currentSortColumn == column ? _currentSortDirection : null;
+    }
+    private static string GetSortIconClass(SortDirection? direction)
+    {
+        return direction switch
+        {
+            SortDirection.Ascending => "fa-sort-up",
+            SortDirection.Descending => "fa-sort-down",
+            _ => "fa-sort"
+        };
+    }
+    private bool IsItemSelected(TItem item)
+    {
+        return _selectedItems.Contains(item);
+    }
     private async void ToggleSelection(TItem item, bool isSelected)
     {
         if (isSelected)
         {
-            if (!_selectedItems.Contains(item))
+            if (_selectedItems.Add(item))
             {
-                _selectedItems.Add(item);
                 Logger.Debug("Item selected: {Item}", item);
             }
         }
@@ -487,14 +615,15 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
 
         StateHasChanged();
     }
-
-
-    private void ToggleSelectAll(bool selectAll)
+    private async Task ToggleSelectAll(bool selectAll)
     {
         _selectedItems.Clear();
         if (selectAll && FilteredItems.Any())
         {
-            _selectedItems.AddRange(FilteredItems);
+            foreach (var item in FilteredItems)
+            {
+                _selectedItems.Add(item);
+            }
             Logger.Debug("All items selected.");
         }
         else
@@ -502,160 +631,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase, IDi
             Logger.Debug("All items deselected.");
         }
 
-        _ = OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+        await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
         StateHasChanged();
-    }
-
-    private async Task ExportDataAsync()
-    {
-        Logger.Debug("Export triggered.");
-        if (OnExportData.HasDelegate)
-        {
-            await OnExportData.InvokeAsync();
-        }
-    }
-
-    private async Task AddItemAsync()
-    {
-        Logger.Debug("Add item triggered.");
-        if (OnAddItem.HasDelegate)
-        {
-            await OnAddItem.InvokeAsync();
-        }
-    }
-
-    private async Task EditItemAsync(TItem item)
-    {
-        Logger.Debug("Edit item triggered for: {Item}", item);
-        if (OnEditItem.HasDelegate)
-        {
-            await OnEditItem.InvokeAsync(item);
-        }
-    }
-
-    private async Task DeleteItemAsync(TItem item)
-    {
-        Logger.Debug("Delete item triggered for: {Item}", item);
-        if (OnDeleteItem.HasDelegate)
-        {
-            await OnDeleteItem.InvokeAsync(item);
-        }
-    }
-
-    /// <summary>
-    ///     Adds a column to the grid with optimized property selector compilation.
-    /// </summary>
-    public void AddColumn(DataGridColumn<TItem> column)
-    {
-        Logger.Debug(
-            "Adding column - Title: {Title}, PropertyName: {PropertyName}, HasSelector: {HasSelector}, Format: {Format}",
-            column.Title, column.PropertyName, column.PropertySelector != null, column.Format);
-
-        if (_columns.Any(c => c.PropertyName == column.PropertyName))
-        {
-            Logger.Warning("Column with property name {PropertyName} already exists, not added.", column.PropertyName);
-            return;
-        }
-
-        // Pre-compile the property selector if available
-        if (column.PropertySelector != null && !_compiledSelectors.ContainsKey(column.PropertyName))
-        {
-            try
-            {
-                _compiledSelectors[column.PropertyName] = column.PropertySelector.Compile();
-                Logger.Debug("Successfully compiled selector for column: {PropertyName}", column.PropertyName);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Failed to compile selector for column: {PropertyName}", column.PropertyName);
-            }
-        }
-
-        _columns.Add(column);
-        Logger.Debug("Column added successfully. Total columns: {Count}", _columns.Count);
-
-        // Clear existing searchable values cache since we have a new column
-        _searchableValues.Clear();
-
-        // If we have items, recompute the searchable values for all items
-        if (Items != null)
-        {
-            foreach (var item in Items)
-            {
-                if (!_searchableValues.TryGetValue(item, out _))
-                {
-                    var values = PreComputeSearchableValues(item);
-                    _searchableValues.Add(item, values);
-                }
-            }
-        }
-
-        StateHasChanged();
-    }
-
-    /// <summary>
-    ///     Resets all columns and clears associated caches.
-    /// </summary>
-    public void ResetColumns()
-    {
-        _columns.Clear();
-        _compiledSelectors.Clear();
-        _searchableValues.Clear();
-        _searchTermCache.Clear();
-        Logger.Debug("Columns and caches reset in DropBearDataGrid.");
-        StateHasChanged();
-    }
-
-    /// <summary>
-    ///     Gets the formatted value for a cell with optimized property access.
-    /// </summary>
-    private string GetFormattedValue(TItem item, DataGridColumn<TItem> column)
-    {
-        if (!_compiledSelectors.TryGetValue(column.PropertyName, out var selector))
-        {
-            if (column.PropertySelector == null)
-            {
-                return string.Empty;
-            }
-
-            selector = column.PropertySelector.Compile();
-            _compiledSelectors[column.PropertyName] = selector;
-        }
-
-        var value = selector(item);
-        return value switch
-        {
-            IFormattable formattable => formattable.ToString(column.Format, null),
-            _ => value.ToString() ?? string.Empty
-        };
-    }
-
-    private bool IsItemSelected(TItem item)
-    {
-        return _selectedItems.Contains(item);
-    }
-
-    private async Task HandleRowClickAsync(TItem item)
-    {
-        Logger.Debug("Row clicked for item: {Item}", item);
-        if (OnRowClicked.HasDelegate)
-        {
-            await OnRowClicked.InvokeAsync(item);
-        }
-    }
-
-    private async Task HandleRowDoubleClickAsync(TItem item)
-    {
-        Logger.Debug("Row double-clicked for item: {Item}", item);
-        if (OnRowDoubleClicked.HasDelegate)
-        {
-            await OnRowDoubleClicked.InvokeAsync(item);
-        }
-    }
-
-    private async Task HandleRowContextMenuAsync(MouseEventArgs e, TItem item)
-    {
-        await HandleRowClickAsync(item);
-        // Context menu is handled by the DropBearContextMenu component if present
     }
 }
