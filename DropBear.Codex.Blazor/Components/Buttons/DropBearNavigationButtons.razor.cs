@@ -17,7 +17,7 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 /// </summary>
 public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearNavigationButtons>();
+    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearNavigationButtons>();
     private readonly CancellationTokenSource _disposalTokenSource = new();
     private static readonly int MAX_RETRIES = 3;
     private static readonly int RETRY_DELAY_MS = 500;

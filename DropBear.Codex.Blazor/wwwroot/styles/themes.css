@@ -22,6 +22,13 @@
   --clr-border-active: var(--clr-cadet-gray);
   --clr-border-disabled: var(--clr-anti-flash-white);
 
+  /* Alpha variations of main colors */
+  --clr-primary-alpha: rgba(var(--clr-primary), 0.15);
+  --clr-error-alpha: rgba(var(--clr-error), 0.15);
+
+  /* Disabled text color */
+  --clr-text-disabled: rgba(var(--clr-text-primary), 0.38);
+
   --header-gradient: linear-gradient(
     var(--deg-90),
     var(--clr-grey-200),
@@ -74,6 +81,13 @@
     --clr-information: var(--clr-information-dark);
     --clr-information-light: var(--clr-information);
     --clr-information-dark: #2f77aa; /* Even darker for emphasis */
+
+    /* Alpha variations of main colors */
+    --clr-primary-alpha: rgba(var(--clr-primary), 0.15);
+    --clr-error-alpha: rgba(var(--clr-error), 0.15);
+
+    /* Disabled text color */
+    --clr-text-disabled: rgba(var(--clr-text-primary), 0.38);
 
     --header-gradient: linear-gradient(
       var(--deg-90),

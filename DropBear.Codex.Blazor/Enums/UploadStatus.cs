@@ -1,32 +1,37 @@
 ﻿namespace DropBear.Codex.Blazor.Enums;
 
 /// <summary>
-///     Defines the statuses that can be used for uploads.
+/// Represents the current status of a file upload.
 /// </summary>
 public enum UploadStatus
 {
     /// <summary>
-    ///     Ready to be uploaded.
+    /// File is pending upload
     /// </summary>
-    Ready,
+    Pending,
 
     /// <summary>
-    ///     Currently uploading.
+    /// File is currently being uploaded
     /// </summary>
     Uploading,
 
     /// <summary>
-    ///     Successfully uploaded.
+    /// File was uploaded successfully
     /// </summary>
     Success,
 
     /// <summary>
-    ///     Failed to upload.
+    /// File upload failed
     /// </summary>
     Failure,
 
     /// <summary>
-    ///     Warning status for upload.
+    /// File upload completed with warnings
     /// </summary>
-    Warning
+    Warning,
+
+    /// <summary>
+    /// File upload was cancelled
+    /// </summary>
+    Cancelled
 }

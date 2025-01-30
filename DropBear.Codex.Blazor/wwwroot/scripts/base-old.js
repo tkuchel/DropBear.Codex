@@ -2,22 +2,22 @@
 // @ts-check
 
 /**
- * @typedef {import('./base').ILogger} ILogger
- * @typedef {import('./base').IDisposable} IDisposable
- * @typedef {import('./base').IEventEmitter} IEventEmitter
- * @typedef {import('./base').IDOMOperationQueue} IDOMOperationQueue
- * @typedef {import('./base').IResourcePool} IResourcePool
- * @typedef {import('./base').IModuleManager} IModuleManager
- * @typedef {import('./base').ICircuitBreaker} ICircuitBreaker
- * @typedef {import('./base').ISnackbarManager} ISnackbarManager
- * @typedef {import('./base').IResizeManager} IResizeManager
- * @typedef {import('./base').INavigationManager} INavigationManager
- * @typedef {import('./base').IContextMenuManager} IContextMenuManager
- * @typedef {import('./base').IValidationErrorsManager} IValidationErrorsManager
- * @typedef {import('./base').IProgressBarManager} IProgressBarManager
- * @typedef {import('./base').IDotNetReference} IDotNetReference
- * @typedef {import('./base').IDropBearError} IDropBearError
- * @typedef {import('./base').IDropBearEvent} IDropBearEvent
+ * @typedef {import('./base-old').ILogger} ILogger
+ * @typedef {import('./base-old').IDisposable} IDisposable
+ * @typedef {import('./base-old').IEventEmitter} IEventEmitter
+ * @typedef {import('./base-old').IDOMOperationQueue} IDOMOperationQueue
+ * @typedef {import('./base-old').IResourcePool} IResourcePool
+ * @typedef {import('./base-old').IModuleManager} IModuleManager
+ * @typedef {import('./base-old').ICircuitBreaker} ICircuitBreaker
+ * @typedef {import('./base-old').ISnackbarManager} ISnackbarManager
+ * @typedef {import('./base-old').IResizeManager} IResizeManager
+ * @typedef {import('./base-old').INavigationManager} INavigationManager
+ * @typedef {import('./base-old').IContextMenuManager} IContextMenuManager
+ * @typedef {import('./base-old').IValidationErrorsManager} IValidationErrorsManager
+ * @typedef {import('./base-old').IProgressBarManager} IProgressBarManager
+ * @typedef {import('./base-old').IDotNetReference} IDotNetReference
+ * @typedef {import('./base-old').IDropBearError} IDropBearError
+ * @typedef {import('./base-old').IDropBearEvent} IDropBearEvent
  */
 
 (() => {
@@ -1279,13 +1279,229 @@
     return ModuleManager.get('DropBearFileDownloader');
   })();
 
+  const DropBearFileUploader = (() => {
+    const logger = DropBearUtils.createLogger('DropBearFileUploader');
+
+    const handleDragOver = (elementId) => {
+      const element = document.getElementById(elementId);
+      if (!element) return;
+
+      const handler = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        element.classList.add('dragover');
+      };
+
+      element.addEventListener('dragover', handler);
+      return () => element.removeEventListener('dragover', handler);
+    };
+
+    const fileReaderHelpers = {
+      readFileChunk: async (fileRef, start, length) => {
+        const slice = fileRef.slice(start, start + length);
+        return await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(new Uint8Array(reader.result));
+          reader.onerror = reject;
+          reader.readAsArrayBuffer(slice);
+        });
+      },
+      getFileInfo: (fileRef) => ({
+        name: fileRef.name,
+        size: fileRef.size,
+        type: fileRef.type,
+        lastModified: fileRef.lastModified
+      })
+    };
+
+    ModuleManager.register('DropBearFileUploader', {
+      async initialize() {
+        logger.debug('DropBearFileUploader module initialized');
+      },
+      handleDragOver
+    });
+
+    ModuleManager.register('FileReaderHelpers', {
+      ...fileReaderHelpers
+    });
+
+    window.DropBearFileUploader = ModuleManager.get('DropBearFileUploader');
+    return ModuleManager.get('DropBearFileUploader');
+  })();
+
 
   const DropBearPageAlert = (() => {
     const logger = DropBearUtils.createLogger('DropBearPageAlert');
     const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
     const ANIMATION_DURATION = 300;
 
-    class PageAlertManager { /* same as before, no changes needed */ }
+    /**
+     * A PageAlertManager that manages show/hide lifecycle for a page alert element.
+     * @implements {IPageAlertManager}
+     */
+    class PageAlertManager {
+      constructor(id, isPermanent) {
+        this.id = id;
+        this.isPermanent = isPermanent;
+        this.isDisposed = false;
+        this.element = document.getElementById(id);
+        this.progressDuration = 0;
+        this.progressTimeout = null;
+        this.animationFrame = null;
+
+        if (!this.element) {
+          throw new Error(`Element with id ${id} not found`);
+        }
+
+        this._cacheElements();
+        this._setupEventListeners();
+
+        // Fire an event indicating the alert was created
+        EventEmitter.emit(this.element, 'created', {id});
+      }
+
+      _cacheElements() {
+        this.progressBar = this.element.querySelector('.page-alert-progress-bar');
+      }
+
+      _setupEventListeners() {
+        if (this.isPermanent) return;
+
+        this.handleMouseEnter = () => this._pauseProgress();
+        this.handleMouseLeave = () => this._resumeProgress();
+
+        this.element.addEventListener('mouseenter', this.handleMouseEnter);
+        this.element.addEventListener('mouseleave', this.handleMouseLeave);
+      }
+
+      // Show the alert element (fade in, etc.)
+      show() {
+        if (this.isDisposed) return Promise.resolve(true);
+
+        return circuitBreaker.execute(() => new Promise(resolve =>
+          DOMOperationQueue.add(() => {
+            cancelAnimationFrame(this.animationFrame);
+            this.element.classList.remove('hide');
+
+            requestAnimationFrame(() => {
+              this.element.classList.add('show');
+              const transitionEndHandler = () => {
+                this.element.removeEventListener('transitionend', transitionEndHandler);
+                resolve(true);
+              };
+              this.element.addEventListener('transitionend', transitionEndHandler);
+
+              // Fallback: resolve after an animation duration
+              setTimeout(() => resolve(true), ANIMATION_DURATION + 50);
+            });
+          })));
+      }
+
+      // Start the progress bar to auto-hide after `duration`
+      startProgress(duration) {
+        if (this.isDisposed || this.isPermanent || !this.progressBar) return;
+        if (typeof duration !== 'number' || duration <= 0) return;
+
+        this.progressDuration = duration;
+
+        DOMOperationQueue.add(() => {
+          clearTimeout(this.progressTimeout);
+          this.progressBar.style.transition = 'none';
+          this.progressBar.style.transform = 'scaleX(1)';
+
+          requestAnimationFrame(() => {
+            this.progressBar.style.transition = `transform ${duration}ms linear`;
+            this.progressBar.style.transform = 'scaleX(0)';
+            this.progressTimeout = setTimeout(() => this.hide(), duration);
+          });
+        });
+      }
+
+      _pauseProgress() {
+        if (this.isDisposed || this.isPermanent || !this.progressBar) return;
+
+        clearTimeout(this.progressTimeout);
+        const computedStyle = window.getComputedStyle(this.progressBar);
+
+        DOMOperationQueue.add(() => {
+          this.progressBar.style.transition = 'none';
+          this.progressBar.style.transform = computedStyle.transform;
+        });
+      }
+
+      _resumeProgress() {
+        if (this.isDisposed || this.isPermanent || !this.progressBar) return;
+
+        const computedStyle = window.getComputedStyle(this.progressBar);
+        const currentScale = this._getCurrentScale(computedStyle.transform);
+        const remainingTime = this.progressDuration * currentScale;
+
+        DOMOperationQueue.add(() => {
+          this.progressBar.style.transition = `transform ${remainingTime}ms linear`;
+          this.progressBar.style.transform = 'scaleX(0)';
+          this.progressTimeout = setTimeout(() => this.hide(), remainingTime);
+        });
+      }
+
+      _getCurrentScale(transform) {
+        if (transform === 'none') return 1;
+        const values = transform.match(/matrix\(([^)]+)\)/);
+        return values ? parseFloat(values[1].split(', ')[0]) : 1;
+      }
+
+      // Hide the alert element (fade out, dispose, etc.)
+      hide() {
+        if (this.isDisposed) return Promise.resolve(true);
+
+        return circuitBreaker.execute(() => new Promise(resolve => {
+          clearTimeout(this.progressTimeout);
+          cancelAnimationFrame(this.animationFrame);
+
+          DOMOperationQueue.add(() => {
+            this.element.classList.remove('show');
+            this.element.classList.add('hide');
+
+            const transitionEndHandler = () => {
+              this.element.removeEventListener('transitionend', transitionEndHandler);
+              this.dispose();
+              resolve(true);
+            };
+
+            this.element.addEventListener('transitionend', transitionEndHandler);
+
+            // Fallback: after animation, dispose
+            setTimeout(() => {
+              this.dispose();
+              resolve(true);
+            }, ANIMATION_DURATION + 50);
+          });
+        }));
+      }
+
+      // Fully remove the alert from DOM and mark disposed
+      dispose() {
+        if (this.isDisposed) return;
+
+        this.isDisposed = true;
+        clearTimeout(this.progressTimeout);
+        cancelAnimationFrame(this.animationFrame);
+
+        if (!this.isPermanent) {
+          this.element.removeEventListener('mouseenter', this.handleMouseEnter);
+          this.element.removeEventListener('mouseleave', this.handleMouseLeave);
+        }
+
+        DOMOperationQueue.add(() => {
+          if (this.element?.parentNode) {
+            this.element.parentNode.removeChild(this.element);
+          }
+        });
+
+        EventEmitter.emit(this.element, 'disposed', {id: this.id});
+        this.element = null;
+        this.progressBar = null;
+      }
+    }
 
     ModuleManager.register(
       'DropBearPageAlert',

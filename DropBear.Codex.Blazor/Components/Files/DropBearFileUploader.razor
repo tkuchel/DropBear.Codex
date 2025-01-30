@@ -1,52 +1,85 @@
-﻿@using Microsoft.AspNetCore.Components.Forms
+﻿@using DropBear.Codex.Blazor.Enums
+@using Microsoft.AspNetCore.Components.Forms
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-
-<div class="file-upload-container">
+<div class="file-upload-container @ComponentId">
     <div class="file-upload-component">
         <!-- Drop Zone -->
-        <div class="file-upload-dropzone">
+        <div class="file-upload-dropzone @(_isDragOver ? "dragover" : "")"
+             id="@($"{ComponentId}-dropzone")"
+             role="button"
+             aria-label="File upload drop zone"
+             tabindex="0"
+             @ondragenter="HandleDragEnter"
+             @ondragleave="HandleDragLeave"
+             @ondragover:preventDefault
+             @ondrop="HandleDrop">
+
             <i class="fas fa-cloud-upload-alt fa-2x file-upload-icon"></i>
-            <p>Drag & Drop files here or</p>
+            <p class="file-upload-text">@(_isDragOver ? "Release to upload" : "Drag & Drop files here or")</p>
 
             <InputFile OnChange="HandleFileSelectionAsync"
                        multiple
-                       id="fileInput"
-                       style="opacity: 0; width: 0; height: 0; position: absolute;"/>
+                       id="@($"{ComponentId}-file-input")"
+                       class="file-upload-input"/>
 
             <button type="button"
                     @onclick="OpenFileDialog"
-                    class="file-upload-label">
+                    class="file-upload-button"
+                    disabled="@(IsUploading || IsDisposed)">
                 Choose Files
             </button>
         </div>
 
         <!-- Selected Files List -->
-        @foreach (var file in SelectedFiles)
+        @if (SelectedFiles.Any())
         {
-            <div class="file-upload-item">
-                <div class="file-upload-info">
-                    <div class="file-upload-name">@file.Name</div>
-                    <div class="file-upload-meta">
-                        @FormatFileSize(file.Size) | @(file.ContentType ?? "Unknown type")
+            <div class="file-upload-list">
+                @foreach (var file in SelectedFiles)
+                {
+                    <div class="file-upload-item" key="@file.Name">
+                        <div class="file-upload-info">
+                            <div class="file-upload-name" title="@file.Name">@file.Name</div>
+                            <div class="file-upload-meta">
+                                @FormatFileSize(file.Size) | @(file.ContentType ?? "Unknown type")
+                            </div>
+                            <div class="file-upload-status">
+                                @if (file.UploadStatus == UploadStatus.Uploading)
+                                {
+                                    <div class="file-upload-progress-small">
+                                        <div class="file-upload-progress-bar"
+                                             style="width: @(file.UploadProgress)%">
+                                        </div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span class="@GetStatusClass(file.UploadStatus)">
+                                        @file.UploadStatus.ToString()
+                                    </span>
+                                }
+                            </div>
+                        </div>
+                        <button type="button"
+                                class="file-upload-remove-btn"
+                                @onclick="() => RemoveFile(file)"
+                                disabled="@(IsUploading || IsDisposed)">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
-                    <div class="file-upload-status">@file.UploadStatus</div>
-                </div>
-                <button class="file-upload-remove-btn"
-                        @onclick="() => RemoveFile(file)">
-                    <i class="fas fa-times"></i>
-                </button>
+                }
             </div>
         }
 
-        <!-- Upload Button and Progress Bar -->
-        <div class="file-upload-footer">
-            <button class="file-upload-btn"
+        <!-- Upload Controls -->
+        <div class="file-upload-controls">
+            <button type="button"
+                    class="file-upload-submit"
                     @onclick="UploadFilesAsync"
-                    disabled="@(SelectedFiles.Count == 0 || IsUploading)">
+                    disabled="@(!CanUpload)">
                 @if (IsUploading)
                 {
-                    <i class="fas fa-spinner fa-spin file-upload-spinner"></i>
+                    <i class="fas fa-spinner fa-spin"></i>
                     <span>Uploading...</span>
                 }
                 else
@@ -54,28 +87,34 @@
                     <span>Upload Files</span>
                 }
             </button>
-            <div class="file-upload-progress">
-                <div class="file-upload-progress-bar"
-                     style="width: @(UploadProgress)%">
+
+            @if (IsUploading)
+            {
+                <div class="file-upload-progress">
+                    <div class="file-upload-progress-bar"
+                         style="width: @(UploadProgress)%">
+                    </div>
+                    <span class="file-upload-progress-text">@UploadProgress%</span>
+                </div>
+            }
+        </div>
+
+        <!-- Upload Results -->
+        @if (UploadedFiles.Any())
+        {
+            <div class="file-upload-results">
+                <h4>Uploaded Files</h4>
+                <div class="file-upload-completed">
+                    @foreach (var file in UploadedFiles)
+                    {
+                        <div class="file-upload-completed-item">
+                            <i class="@GetStatusIconClass(file.UploadStatus)"></i>
+                            <span class="file-upload-completed-name">@file.Name</span>
+                            <span class="file-upload-completed-size">(@FormatFileSize(file.Size))</span>
+                        </div>
+                    }
                 </div>
             </div>
-        </div>
+        }
     </div>
-
-    <!-- Uploaded Files List -->
-    @if (UploadedFiles.Any())
-    {
-        <div class="file-upload-completed-list">
-            <h4>Uploaded Files:</h4>
-            <ul>
-                @foreach (var file in UploadedFiles)
-                {
-                    <li>
-                        <span class="file-status-icon @GetFileStatusIconClass(file.UploadStatus)"></span>
-                        @file.Name (@FormatFileSize(file.Size))
-                    </li>
-                }
-            </ul>
-        </div>
-    }
 </div>
