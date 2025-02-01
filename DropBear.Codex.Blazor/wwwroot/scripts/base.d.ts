@@ -4,6 +4,12 @@ export {};  // Makes this file a module
 // Common Types
 export type EventCallback = (data: any) => void;
 export type EventUnsubscribe = () => void;
+export type DotNetStreamReference = {
+  arrayBuffer: () => Promise<ArrayBuffer>;
+};
+
+export type DownloadContent = Blob | ArrayBuffer | Uint8Array | DotNetStreamReference;
+
 
 export interface IDotNetReference {
   invokeMethodAsync<T>(methodName: string, ...args: any[]): Promise<T>;
@@ -135,11 +141,13 @@ export interface IProgressBarManager extends IDisposable {
 }
 
 export interface IDownloadManager extends IDisposable {
+  initialize(): Promise<void>;
   downloadFileFromStream(
     fileName: string,
-    content: Blob | ArrayBuffer | Uint8Array,
+    content: DownloadContent,
     contentType: string
   ): Promise<void>;
+  dispose(): void;
 }
 
 export interface IPageAlertManager extends IDisposable {

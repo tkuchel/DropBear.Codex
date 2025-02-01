@@ -2,31 +2,36 @@
 
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Menus;
 
 /// <summary>
-///     A Blazor component for displaying a dynamic context menu.
+///     A Blazor component for displaying a dynamic context menu with JavaScript interop.
+///     Refactored to use DropBearComponentBase for JS lifecycle and disposal.
 /// </summary>
 public sealed partial class DropBearContextMenu : DropBearComponentBase
 {
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearContextMenu>();
+    private const string MODULE_NAME = "context-menu"; // The registered name in your JS "import"
+
+    // Unique ID for the menu element in the DOM
     private readonly string _contextMenuId = $"context-menu-{Guid.NewGuid()}";
+
     private bool _isVisible;
-    private bool _jsInitialized;
+
+    private IJSObjectReference? _jsModule;
     private double _left;
     private DotNetObjectReference<DropBearContextMenu>? _objectReference;
     private double _top;
 
+    // If you want a reference to the trigger element
     private ElementReference _triggerElement;
 
+    #region Parameters
 
     /// <summary>
     ///     The menu items to display in the context menu.
@@ -35,8 +40,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
     public IReadOnlyCollection<ContextMenuItem> MenuItems { get; set; } = Array.Empty<ContextMenuItem>();
 
     /// <summary>
-    ///     Triggered when a menu item is clicked.
-    ///     The parameter is a tuple: (ContextMenuItem, contextObject).
+    ///     Triggered when a menu item is clicked. Passes (ContextMenuItem, contextObject).
     /// </summary>
     [Parameter]
     public EventCallback<(ContextMenuItem, object?)> OnItemClicked { get; set; }
@@ -48,65 +52,81 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
     public Func<object?>? GetContext { get; set; }
 
     /// <summary>
-    ///     Custom content to be rendered inside the trigger element (and optionally within the context menu).
+    ///     Custom content to be rendered inside the trigger element (and optionally in the menu).
     /// </summary>
     [Parameter]
     public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>
-    ///     Disposes JavaScript resources and DotNetObjectReference.
-    /// </summary>
-    public override async ValueTask DisposeAsync()
-    {
-        if (_jsInitialized)
-        {
-            try
-            {
-                await JsRuntime.InvokeVoidAsync("DropBearContextMenu.dispose", _contextMenuId);
-                Logger.Debug("Context menu JS resources disposed for {Id}", _contextMenuId);
-            }
-            catch (JSDisconnectedException ex)
-            {
-                Logger.Warning(ex, "Failed to dispose context menu JS resources: disconnected circuit.");
-            }
-            catch (JSException ex)
-            {
-                Logger.Error(ex, "Failed to dispose context menu JS resources.");
-            }
-        }
+    #endregion
 
-        _objectReference?.Dispose();
-    }
+    #region Lifecycle
 
     /// <inheritdoc />
+    /// <remarks>
+    ///     Loads and initializes the JS module on first render.
+    /// </remarks>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
 
-        if (firstRender)
+        if (!firstRender || IsDisposed)
+        {
+            return;
+        }
+
+        try
         {
             _objectReference = DotNetObjectReference.Create(this);
-            await InitializeJavaScriptAsync();
+
+            // Ensure the JS module is registered/loaded
+            await EnsureJsModuleInitializedAsync(MODULE_NAME).ConfigureAwait(false);
+
+            // Retrieve the module reference from the base class's cache
+            _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
+
+            // Now call the "createContextMenu" method within that module
+            await SafeJsVoidInteropAsync("DropBearContextMenu.createContextMenu", _contextMenuId, _objectReference)
+                .ConfigureAwait(false);
+
+            LogDebug("Context menu JS initialized with ID: {MenuId}", _contextMenuId);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to initialize ContextMenu JS", ex);
         }
     }
 
-    /// <summary>
-    ///     Initializes the JavaScript interop for this context menu.
-    /// </summary>
-    private async Task InitializeJavaScriptAsync()
+    /// <inheritdoc />
+    /// <remarks>
+    ///     Called during disposal to handle final JS cleanups. The base class calls this from DisposeCoreAsync().
+    /// </remarks>
+    protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
-            await JsRuntime.InvokeVoidAsync("DropBearContextMenu.createContextMenu", _contextMenuId, _objectReference);
-            _jsInitialized = true;
-            Logger.Debug("ContextMenu initialized with ID: {Id}", _contextMenuId);
+            // If the JS was successfully initialized, call the module's dispose function
+            if (_jsModule is not null)
+            {
+                await SafeJsVoidInteropAsync("DropBearContextMenu.dispose", _contextMenuId).ConfigureAwait(false);
+                LogDebug("Context menu JS resources disposed for {MenuId}", _contextMenuId);
+            }
         }
-        catch (JSException ex)
+        catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to initialize JavaScript for ContextMenu.");
-            _jsInitialized = false;
+            LogWarning("Failed to dispose context menu JS resources for {MenuId}, reason: {Message}", ex,
+                _contextMenuId, ex.Message);
+        }
+        finally
+        {
+            _objectReference?.Dispose();
+            _objectReference = null;
+            _jsModule = null;
         }
     }
+
+    #endregion
+
+    #region JSInvokable Methods
 
     /// <summary>
     ///     Shows the context menu at the specified (left, top) coordinates.
@@ -118,57 +138,75 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
         _left = left;
         _top = top;
         _isVisible = true;
-        Logger.Debug("ContextMenu shown at [Left={Left}, Top={Top}]", left, top);
+
+        LogDebug("Context menu shown at [Left={Left}, Top={Top}]", left, top);
         StateHasChanged();
     }
 
     /// <summary>
-    ///     Hides the context menu.
-    ///     Invoked from JavaScript via DotNet.
+    ///     Hides the context menu. Invoked from JS via DotNet.
     /// </summary>
     [JSInvokable]
     public void Hide()
     {
         _isVisible = false;
-        Logger.Debug("ContextMenu hidden.");
+        LogDebug("Context menu hidden: {MenuId}", _contextMenuId);
         StateHasChanged();
     }
+
+    #endregion
+
+    #region Event Handlers
 
     /// <summary>
     ///     Called when user right-clicks on the trigger element to show the context menu.
     /// </summary>
     private async Task ShowContextMenuAsync(MouseEventArgs e)
     {
-        if (!_jsInitialized)
+        // If the JS module hasn't been initialized or the component is disposed, skip
+        if (IsDisposed || _jsModule is null)
         {
-            Logger.Warning("Attempted to show context menu, but JS is not initialized.");
+            LogWarning("Attempted to show context menu, but JS is not ready or component is disposed.");
             return;
         }
 
+        // Show the context menu via the JS module
         try
         {
-            await JsRuntime.InvokeVoidAsync("DropBearContextMenu.show", _contextMenuId, e.ClientX, e.ClientY);
+            await SafeJsVoidInteropAsync("DropBearContextMenu.show", _contextMenuId, e.ClientX, e.ClientY)
+                .ConfigureAwait(false);
         }
-        catch (JSException ex)
+        catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to show context menu via JS.");
+            LogError("Error showing context menu via JS", ex);
         }
     }
 
     /// <summary>
-    ///     Called when a menu item (or sub-item) is clicked.
-    ///     Hides the menu and invokes the OnItemClicked callback with the current context.
+    ///     Called when a menu item is clicked.
+    ///     Hides the menu and invokes OnItemClicked with the current context.
     /// </summary>
     private async Task OnItemClickAsync(ContextMenuItem item)
     {
-        var context = GetContext?.Invoke();
-        Logger.Information("Menu item clicked: {Text}, with context: {Context}", item.Text, context);
-
-        if (OnItemClicked.HasDelegate)
+        try
         {
-            await OnItemClicked.InvokeAsync((item, context));
-        }
+            var context = GetContext?.Invoke();
+            LogDebug("Menu item clicked: {Text}, with context: {Context}", item.Text, context);
 
-        Hide();
+            if (OnItemClicked.HasDelegate)
+            {
+                await OnItemClicked.InvokeAsync((item, context)).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError("Error in OnItemClickAsync", ex);
+        }
+        finally
+        {
+            Hide();
+        }
     }
+
+    #endregion
 }

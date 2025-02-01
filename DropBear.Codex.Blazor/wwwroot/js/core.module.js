@@ -4,10 +4,10 @@
  */
 
 /**
- * Queue for batching DOM operations to reduce reflows and improve performance
+ * Queue for batching DOM operations to reduce reflows and improve performance.
  * @implements {IDOMOperationQueue}
  */
-export const DOMOperationQueue = {
+const DOMOperationQueue = {
   /** @type {Set<Function>} Set of queued operations */
   queue: new Set(),
 
@@ -24,6 +24,8 @@ export const DOMOperationQueue = {
     }
 
     this.queue.add(operation);
+
+    // Schedule the flush if not already scheduled
     if (!this.scheduled) {
       this.scheduled = true;
       requestAnimationFrame(() => this.flush());
@@ -41,16 +43,17 @@ export const DOMOperationQueue = {
         console.error('Error in queued operation:', error);
       }
     });
+
     this.queue.clear();
     this.scheduled = false;
   }
 };
 
 /**
- * Enhanced event emitter using WeakMap for automatic cleanup
+ * Enhanced event emitter using WeakMap for automatic cleanup.
  * @implements {IEventEmitter}
  */
-export const EventEmitter = {
+const EventEmitter = {
   /** @type {WeakMap<object, Map<string, Set<Function>>>} */
   events: new WeakMap(),
 
@@ -81,6 +84,7 @@ export const EventEmitter = {
     }
     targetEvents.get(event).add(callback);
 
+    // Return a cleanup function
     return () => this.off(target, event, callback);
   },
 
@@ -121,7 +125,7 @@ export const EventEmitter = {
  * Circuit breaker for handling failures in operations
  * @implements {ICircuitBreaker}
  */
-export class CircuitBreaker {
+class CircuitBreaker {
   /**
    * @param {Object} options - Circuit breaker options
    * @param {number} [options.failureThreshold=5] - Number of failures before opening
@@ -153,8 +157,10 @@ export class CircuitBreaker {
       throw new TypeError('Operation must be a function');
     }
 
+    // If circuit is open, check if we can half-open it
     if (this.state === 'open') {
-      if (Date.now() - this.lastFailureTime >= this.resetTimeout) {
+      const timeSinceFailure = Date.now() - this.lastFailureTime;
+      if (timeSinceFailure >= this.resetTimeout) {
         this.state = 'half-open';
       } else {
         throw new Error('Circuit breaker is open');
@@ -201,3 +207,12 @@ export class CircuitBreaker {
     return this.state;
   }
 }
+
+/**
+ * Export all items at the top level so they are valid ES module exports.
+ */
+export {
+  DOMOperationQueue,
+  EventEmitter,
+  CircuitBreaker
+};

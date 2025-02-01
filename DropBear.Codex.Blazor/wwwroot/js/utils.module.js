@@ -27,11 +27,11 @@
  */
 
 /**
- * Core utility functions for DropBear
+ * Core utility functions for DropBear.
  */
-export const DropBearUtils = {
+const DropBearUtils = {
   /**
-   * Create a namespaced logger
+   * Create a namespaced logger.
    * @param {string} namespace - Logger namespace
    * @returns {ILogger} Logger instance
    */
@@ -53,12 +53,12 @@ export const DropBearUtils = {
       },
       error: (message, ...args) => {
         console.error(`${prefix} ${message}`, ...args);
-      }
+      },
     };
   },
 
   /**
-   * Validate function arguments against expected types
+   * Validate function arguments against expected types.
    * @param {Array<*>} args - Arguments to validate
    * @param {Array<string>} types - Expected types
    * @param {string} functionName - Name of function for error messages
@@ -84,7 +84,7 @@ export const DropBearUtils = {
   },
 
   /**
-   * Debounce a function
+   * Debounce a function.
    * @param {Function} func - Function to debounce
    * @param {number} wait - Wait time in milliseconds
    * @returns {Function} Debounced function
@@ -109,7 +109,7 @@ export const DropBearUtils = {
   },
 
   /**
-   * Throttle a function
+   * Throttle a function.
    * @param {Function} func - Function to throttle
    * @param {number} limit - Time limit in milliseconds
    * @returns {Function} Throttled function
@@ -144,7 +144,7 @@ export const DropBearUtils = {
   },
 
   /**
-   * Check if value is a DOM element
+   * Check if a value is a DOM element.
    * @param {*} element - Value to check
    * @returns {boolean} True if value is an Element or HTMLDocument
    */
@@ -153,7 +153,7 @@ export const DropBearUtils = {
   },
 
   /**
-   * Create a DropBear error
+   * Create a DropBear error object.
    * @param {string} message - Error message
    * @param {string} code - Error code
    * @param {string} [component] - Component name
@@ -176,7 +176,7 @@ export const DropBearUtils = {
   },
 
   /**
-   * Create a DropBear event
+   * Create a DropBear event object.
    * @param {string} id - Event identifier
    * @param {string} type - Event type
    * @param {*} [data] - Event data
@@ -191,22 +191,22 @@ export const DropBearUtils = {
     }
 
     return { id, type, data };
-  }
+  },
 };
 
 /**
- * Window-related utility functions
+ * Additional window-related utility functions.
  */
-export const DropBearUtilities = {
+const DropBearUtilities = {
   /**
-   * Get current window dimensions
+   * Get current window dimensions.
    * @returns {{width: number, height: number}} Window dimensions
    */
   getWindowDimensions() {
     try {
       return {
         width: window.innerWidth,
-        height: window.innerHeight
+        height: window.innerHeight,
       };
     } catch (error) {
       console.error('Error getting window dimensions:', error);
@@ -215,7 +215,7 @@ export const DropBearUtilities = {
   },
 
   /**
-   * Safely execute a function with window context
+   * Safely execute a function with the window context.
    * @param {Function} func - Function to execute
    * @param {*} defaultValue - Default value if execution fails
    * @returns {*} Function result or default value
@@ -230,12 +230,12 @@ export const DropBearUtilities = {
   },
 
   /**
-   * Check if an element is visible in viewport
+   * Check if an element is visible in the viewport.
    * @param {Element} element - DOM element to check
    * @returns {boolean} True if element is visible
    */
   isElementInViewport(element) {
-    if (!this.isElement(element)) {
+    if (!DropBearUtils.isElement(element)) {
       throw new TypeError('Parameter must be a DOM element');
     }
 
@@ -251,5 +251,10 @@ export const DropBearUtilities = {
       console.error('Error checking element visibility:', error);
       return false;
     }
-  }
+  },
 };
+
+/**
+ * Export them together at the top level so they are valid ES module exports.
+ */
+export { DropBearUtils, DropBearUtilities };

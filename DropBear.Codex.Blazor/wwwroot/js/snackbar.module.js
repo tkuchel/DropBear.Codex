@@ -7,7 +7,14 @@ import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js'
 import {DropBearUtils} from './utils.module.js';
 import {ModuleManager} from './module-manager.module.js';
 
+/**
+ * Create a logger instance for this module
+ */
 const logger = DropBearUtils.createLogger('DropBearSnackbar');
+
+/**
+ * Circuit breaker to handle repeated failures
+ */
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 
 /**
@@ -19,25 +26,42 @@ class SnackbarManager {
    * @param {string} id - Unique identifier for the snackbar
    */
   constructor(id) {
+    // Validate constructor arguments
     DropBearUtils.validateArgs([id], ['string'], 'SnackbarManager');
 
+    /** @type {string} */
     this.id = id;
+
+    /** @type {HTMLElement|null} */
     this.element = document.getElementById(id);
+
+    /** @type {boolean} */
     this.isDisposed = false;
+
+    /** @type {number|null} */
     this.progressTimeout = null;
+
+    /** @type {number|null} */
     this.animationFrame = null;
+
+    /** @type {Object|null} */
     this.dotNetRef = null;
 
     if (!DropBearUtils.isElement(this.element)) {
       throw new TypeError('Invalid element provided to SnackbarManager');
     }
 
+    // Locate the progress bar element
     this.progressBar = this.element.querySelector('.progress-bar');
+
+    // Attempt to find a Blazor-specific scoped attribute
     this.scopedAttribute = Object.keys(this.element.attributes)
       .map(key => this.element.attributes[key])
       .find(attr => attr.name.startsWith('b-'))?.name;
 
     this._setupEventListeners();
+
+    // Emit event to notify creation
     EventEmitter.emit(
       this.element,
       'created',
@@ -48,6 +72,7 @@ class SnackbarManager {
   /**
    * Set .NET reference for Blazor interop
    * @param {Object} dotNetRef - .NET reference object
+   * @returns {Promise<void>}
    */
   async setDotNetReference(dotNetRef) {
     try {
@@ -80,10 +105,12 @@ class SnackbarManager {
 
     return circuitBreaker.execute(async () => {
       logger.debug(`Showing snackbar ${this.id}`);
+
       DOMOperationQueue.add(() => {
         this.element.classList.remove('hide');
         requestAnimationFrame(() => this.element.classList.add('show'));
       });
+
       return true;
     });
   }
@@ -133,6 +160,7 @@ class SnackbarManager {
 
     logger.debug(`Pausing progress for snackbar ${this.id}`);
     clearTimeout(this.progressTimeout);
+
     const computedStyle = window.getComputedStyle(this.progressBar);
 
     DOMOperationQueue.add(() => {
@@ -149,7 +177,8 @@ class SnackbarManager {
     if (this.isDisposed || !this.progressBar) return;
 
     const computedStyle = window.getComputedStyle(this.progressBar);
-    const duration = parseFloat(this.element.style.getPropertyValue('--duration')) || 5000;
+    const duration =
+      parseFloat(this.element.style.getPropertyValue('--duration')) || 5000;
     const currentScale = this._getCurrentScale(computedStyle.transform);
     const remainingTime = duration * currentScale;
 
@@ -192,12 +221,14 @@ class SnackbarManager {
 
     return circuitBreaker.execute(async () => {
       logger.debug(`Hiding snackbar ${this.id}`);
+
       DOMOperationQueue.add(() => {
         clearTimeout(this.progressTimeout);
         cancelAnimationFrame(this.animationFrame);
         this.element.classList.remove('show');
         this.element.classList.add('hide');
       });
+
       return true;
     });
   }
@@ -210,6 +241,7 @@ class SnackbarManager {
 
     logger.debug(`Disposing snackbar ${this.id}`);
     this.isDisposed = true;
+
     clearTimeout(this.progressTimeout);
     cancelAnimationFrame(this.animationFrame);
 
@@ -232,120 +264,132 @@ class SnackbarManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register('DropBearSnackbar', {
-  /** @type {Map<string, SnackbarManager>} */
-  snackbars: new Map(),
+// Register the module with ModuleManager
+ModuleManager.register(
+  'DropBearSnackbar',
+  {
+    /** @type {Map<string, SnackbarManager>} */
+    snackbars: new Map(),
 
-  /**
-   * Initialize the snackbar module
-   * @returns {Promise<boolean>} Success status
-   */
-  async initialize() {
-    return circuitBreaker.execute(async () => {
-      logger.debug('DropBearSnackbar global module initialized');
-      return true;
-    });
-  },
+    /**
+     * Initialize the snackbar module
+     * @returns {Promise<boolean>} Success status
+     */
+    async initialize() {
+      return circuitBreaker.execute(async () => {
+        logger.debug('DropBearSnackbar global module initialized');
+        return true;
+      });
+    },
 
-  /**
-   * Create a new snackbar instance
-   * @param {string} snackbarId - Unique identifier
-   * @returns {Promise<void>}
-   */
-  async createSnackbar(snackbarId) {
-    return circuitBreaker.execute(async () => {
-      try {
-        if (this.snackbars.has(snackbarId)) {
-          logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
-          await this.dispose(snackbarId);
+    /**
+     * Create a new snackbar instance
+     * @param {string} snackbarId - Unique identifier
+     * @returns {Promise<void>}
+     */
+    async createSnackbar(snackbarId) {
+      return circuitBreaker.execute(async () => {
+        try {
+          if (this.snackbars.has(snackbarId)) {
+            logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
+            await this.dispose(snackbarId);
+          }
+
+          const manager = new SnackbarManager(snackbarId);
+          this.snackbars.set(snackbarId, manager);
+          logger.debug(`Snackbar created for ID: ${snackbarId}`);
+        } catch (error) {
+          logger.error('Snackbar creation error:', error);
+          throw error;
         }
+      });
+    },
 
-        const manager = new SnackbarManager(snackbarId);
-        this.snackbars.set(snackbarId, manager);
-        logger.debug(`Snackbar created for ID: ${snackbarId}`);
-      } catch (error) {
-        logger.error('Snackbar creation error:', error);
-        throw error;
+    /**
+     * Set .NET reference for a snackbar
+     * @param {string} snackbarId - Snackbar identifier
+     * @param {Object} dotNetRef - .NET reference
+     * @returns {Promise<boolean>} Success status
+     */
+    async setDotNetReference(snackbarId, dotNetRef) {
+      const manager = this.snackbars.get(snackbarId);
+      if (manager) {
+        await manager.setDotNetReference(dotNetRef);
+        return true;
       }
-    });
+      logger.warn(`Cannot set .NET reference - no manager found for ${snackbarId}`);
+      return false;
+    },
+
+    /**
+     * Show a snackbar
+     * @param {string} snackbarId - Snackbar identifier
+     * @returns {Promise<boolean>} Success status
+     */
+    show(snackbarId) {
+      const manager = this.snackbars.get(snackbarId);
+      return manager ? manager.show() : Promise.resolve(false);
+    },
+
+    /**
+     * Start progress bar for a snackbar
+     * @param {string} snackbarId - Snackbar identifier
+     * @param {number} duration - Duration in milliseconds
+     * @returns {boolean} Success status
+     */
+    startProgress(snackbarId, duration) {
+      const manager = this.snackbars.get(snackbarId);
+      if (manager) {
+        manager.startProgress(duration);
+        return true;
+      }
+      return false;
+    },
+
+    /**
+     * Hide a snackbar
+     * @param {string} snackbarId - Snackbar identifier
+     * @returns {Promise<boolean>} Success status
+     */
+    hide(snackbarId) {
+      const manager = this.snackbars.get(snackbarId);
+      return manager ? manager.hide() : Promise.resolve(false);
+    },
+
+    /**
+     * Dispose of a snackbar
+     * @param {string} snackbarId - Snackbar identifier
+     */
+    dispose(snackbarId) {
+      const manager = this.snackbars.get(snackbarId);
+      if (manager) {
+        manager.dispose();
+        this.snackbars.delete(snackbarId);
+      }
+    },
   },
+  ['DropBearCore']
+);
 
-  /**
-   * Set .NET reference for a snackbar
-   * @param {string} snackbarId - Snackbar identifier
-   * @param {Object} dotNetRef - .NET reference
-   * @returns {Promise<boolean>} Success status
-   */
-  async setDotNetReference(snackbarId, dotNetRef) {
-    const manager = this.snackbars.get(snackbarId);
-    if (manager) {
-      await manager.setDotNetReference(dotNetRef);
-      return true;
-    }
-    logger.warn(`Cannot set .NET reference - no manager found for ${snackbarId}`);
-    return false;
-  },
+/**
+ * Retrieve the registered Snackbar module
+ */
+const snackbarModule = ModuleManager.get('DropBearSnackbar');
 
-  /**
-   * Show a snackbar
-   * @param {string} snackbarId - Snackbar identifier
-   * @returns {Promise<boolean>} Success status
-   */
-  show(snackbarId) {
-    const manager = this.snackbars.get(snackbarId);
-    return manager ? manager.show() : Promise.resolve(false);
-  },
-
-  /**
-   * Start progress bar for a snackbar
-   * @param {string} snackbarId - Snackbar identifier
-   * @param {number} duration - Duration in milliseconds
-   * @returns {boolean} Success status
-   */
-  startProgress(snackbarId, duration) {
-    const manager = this.snackbars.get(snackbarId);
-    if (manager) {
-      manager.startProgress(duration);
-      return true;
-    }
-    return false;
-  },
-
-  /**
-   * Hide a snackbar
-   * @param {string} snackbarId - Snackbar identifier
-   * @returns {Promise<boolean>} Success status
-   */
-  hide(snackbarId) {
-    const manager = this.snackbars.get(snackbarId);
-    return manager ? manager.hide() : Promise.resolve(false);
-  },
-
-  /**
-   * Dispose of a snackbar
-   * @param {string} snackbarId - Snackbar identifier
-   */
-  dispose(snackbarId) {
-    const manager = this.snackbars.get(snackbarId);
-    if (manager) {
-      manager.dispose();
-      this.snackbars.delete(snackbarId);
-    }
-  }
-}, ['DropBearCore']);
-
-// Export for window object
-const module = ModuleManager.get('DropBearSnackbar');
-
+/**
+ * Attach a reference to the global window object if desired
+ */
 window.DropBearSnackbar = {
-  initialize: () => module.initialize(),
-  createSnackbar: snackbarId => module.createSnackbar(snackbarId),
-  setDotNetReference: (snackbarId, dotNetRef) => module.setDotNetReference(snackbarId, dotNetRef),
-  show: snackbarId => module.show(snackbarId),
-  startProgress: (snackbarId, duration) => module.startProgress(snackbarId, duration),
-  hide: snackbarId => module.hide(snackbarId),
-  dispose: snackbarId => module.dispose(snackbarId)
+  initialize: () => snackbarModule.initialize(),
+  createSnackbar: snackbarId => snackbarModule.createSnackbar(snackbarId),
+  setDotNetReference: (snackbarId, dotNetRef) => snackbarModule.setDotNetReference(snackbarId, dotNetRef),
+  show: snackbarId => snackbarModule.show(snackbarId),
+  startProgress: (snackbarId, duration) => snackbarModule.startProgress(snackbarId, duration),
+  hide: snackbarId => snackbarModule.hide(snackbarId),
+  dispose: snackbarId => snackbarModule.dispose(snackbarId),
 };
 
+/**
+ * Export the SnackbarManager at the top level
+ */
 export {SnackbarManager};

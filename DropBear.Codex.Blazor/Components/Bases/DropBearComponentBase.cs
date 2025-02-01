@@ -332,17 +332,17 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         return false;
     }
 
-    private void LogError(string message, Exception ex, params object[] args)
+    protected void LogError(string message, Exception ex, params object[] args)
     {
         Logger.Error(ex, $"{GetType().Name}: {message}", args);
     }
 
-    private void LogWarning(string message, params object[] args)
+    protected void LogWarning(string message, params object[] args)
     {
         Logger.Warning($"{GetType().Name}: {message}", args);
     }
 
-    private void LogDebug(string message, params object[] args)
+    protected void LogDebug(string message, params object[] args)
     {
         Logger.Debug($"{GetType().Name}: {message}", args);
     }

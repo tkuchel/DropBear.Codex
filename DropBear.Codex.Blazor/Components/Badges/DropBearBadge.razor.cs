@@ -5,6 +5,7 @@ using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 
 #endregion
 
@@ -15,101 +16,50 @@ namespace DropBear.Codex.Blazor.Components.Badges;
 /// </summary>
 public sealed partial class DropBearBadge : DropBearComponentBase
 {
+    // For positioning the tooltip near the mouse
     private const int TOOLTIP_MARGIN = 10;
     private const int TOOLTIP_MAX_WIDTH = 200;
-    private bool _showTooltip;
 
+    // Cached module reference for "dropbear-utils" or whichever JS file
+    private IJSObjectReference? _jsModule;
+
+    // Private fields for tooltip visibility and style
+    private bool _showTooltip;
     private string _tooltipStyle = string.Empty;
 
-    /// <summary>
-    ///     Indicates whether the tooltip is currently visible.
-    /// </summary>
-    private bool ShowTooltip
-    {
-        get => _showTooltip;
-        set
-        {
-            if (_showTooltip != value)
-            {
-                _showTooltip = value;
-                StateHasChanged();
-            }
-        }
-    }
+    #region Lifecycle
 
-    /// <summary>
-    ///     Inline style to position the tooltip
-    /// </summary>
-    private string TooltipStyle
+    /// <inheritdoc />
+    /// <remarks>
+    ///     On first render, load the module for "dropbear-utils" so we can call getWindowDimensions
+    ///     whenever the user hovers over the badge.
+    /// </remarks>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        get => _tooltipStyle;
-        set
-        {
-            if (_tooltipStyle != value)
-            {
-                _tooltipStyle = value;
-                StateHasChanged();
-            }
-        }
-    }
+        await base.OnAfterRenderAsync(firstRender);
 
-    /// <summary>
-    ///     Constructs a dynamic CSS class based on badge color, shape, etc.
-    /// </summary>
-    private string CssClass => BuildCssClass();
-
-    /// <summary>
-    ///     Shows the tooltip near the mouse cursor if a Tooltip is defined.
-    /// </summary>
-    private async Task OnTooltipShow(MouseEventArgs args)
-    {
-        if (string.IsNullOrEmpty(Tooltip) || IsDisposed)
+        if (!firstRender || IsDisposed)
         {
             return;
         }
 
         try
         {
-            var dimensions = await SafeJsInteropAsync<WindowDimensions>("getWindowDimensions");
-            CalculateTooltipPosition(args, dimensions);
-            ShowTooltip = true;
+            // 1) Retrieve the JS module reference once (similar to FileUploader approach).
+            //    "dropbear-utils" must match the name in your "import" statement in the .js file path.
+            _jsModule = await GetJsModuleAsync("dropbear-utils").ConfigureAwait(false);
 
-            Logger.Debug("Tooltip shown at position: X={ClientX}, Y={ClientY}", args.ClientX, args.ClientY);
+            LogDebug("DropBearBadge JS module loaded successfully for tooltips.");
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error showing tooltip for badge");
-            ShowTooltip = false;
-            TooltipStyle = string.Empty;
+            LogError("Failed to load dropbear-utils module for DropBearBadge.", ex);
         }
     }
 
-    /// <summary>
-    ///     Calculates the optimal position for the tooltip based on window dimensions
-    /// </summary>
-    private void CalculateTooltipPosition(MouseEventArgs args, WindowDimensions windowDimensions)
-    {
-        // Calculate offsets to prevent viewport overflow
-        var offsetX = args.ClientX + TOOLTIP_MAX_WIDTH > windowDimensions.Width
-            ? -TOOLTIP_MAX_WIDTH
-            : TOOLTIP_MARGIN;
+    #endregion
 
-        var offsetY = args.ClientY + 50 > windowDimensions.Height
-            ? -50
-            : TOOLTIP_MARGIN;
-
-        TooltipStyle = $"left: {args.ClientX + offsetX}px; top: {args.ClientY + offsetY}px;";
-    }
-
-    /// <summary>
-    ///     Hides the tooltip when the mouse pointer leaves the badge.
-    /// </summary>
-    private void OnTooltipHide()
-    {
-        ShowTooltip = false;
-        TooltipStyle = string.Empty;
-        Logger.Debug("Tooltip hidden");
-    }
+    #region Helpers
 
     /// <summary>
     ///     Builds the base CSS class string for the badge.
@@ -132,13 +82,77 @@ public sealed partial class DropBearBadge : DropBearComponentBase
         return string.Join(" ", cssClass);
     }
 
+    #endregion
+
+    #region Disposal
+
     /// <inheritdoc />
+    /// <remarks>
+    ///     We override CleanupJavaScriptResourcesAsync if we need to do any final JS disposal,
+    ///     but for a simple "getWindowDimensions" call, there's nothing special to cleanup.
+    ///     We'll just reset the tooltip state.
+    /// </remarks>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
+        // Hide tooltip
         ShowTooltip = false;
         TooltipStyle = string.Empty;
+
+        // If you had something to do with the JS module (like unsubscribing from an event),
+        // you could do it here. For now, just log.
+        LogDebug("DropBearBadge cleaning up JS resources (if any).");
+
+        // Let the base handle final disposal (which calls DisposeJsModulesAsync).
         await base.CleanupJavaScriptResourcesAsync();
     }
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    ///     Indicates whether the tooltip is currently visible.
+    ///     Changing this value triggers a re-render.
+    /// </summary>
+    protected bool ShowTooltip
+    {
+        get => _showTooltip;
+        set
+        {
+            if (_showTooltip == value)
+            {
+                return;
+            }
+
+            _showTooltip = value;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    ///     Inline style to position the tooltip (e.g. "left:123px; top:45px;")
+    /// </summary>
+    protected string TooltipStyle
+    {
+        get => _tooltipStyle;
+        set
+        {
+            if (_tooltipStyle == value)
+            {
+                return;
+            }
+
+            _tooltipStyle = value;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    ///     Constructs a dynamic CSS class based on badge color, shape, etc.
+    /// </summary>
+    protected string CssClass => BuildCssClass();
+
+    #endregion
 
     #region Parameters
 
@@ -171,6 +185,71 @@ public sealed partial class DropBearBadge : DropBearComponentBase
     /// </summary>
     [Parameter]
     public string Tooltip { get; set; } = string.Empty;
+
+    #endregion
+
+    #region Tooltip Handlers
+
+    /// <summary>
+    ///     Shows the tooltip near the mouse cursor if a Tooltip is defined.
+    /// </summary>
+    protected async Task OnTooltipShow(MouseEventArgs args)
+    {
+        if (string.IsNullOrEmpty(Tooltip) || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            // If we haven't loaded or lost the reference, reacquire it
+            _jsModule ??= await GetJsModuleAsync("dropbear-utils").ConfigureAwait(false);
+
+            // 2) Call "DropBearUtilities.getWindowDimensions" inside that module
+            var dimensions = await _jsModule.InvokeAsync<WindowDimensions>(
+                "DropBearUtilities.getWindowDimensions"
+            ).ConfigureAwait(false);
+
+            CalculateTooltipPosition(args, dimensions);
+            ShowTooltip = true;
+
+            LogDebug("Tooltip shown at position: X={ClientX}, Y={ClientY}", args.ClientX, args.ClientY);
+        }
+        catch (Exception ex)
+        {
+            LogError("Error showing tooltip for badge", ex);
+            ShowTooltip = false;
+            TooltipStyle = string.Empty;
+        }
+    }
+
+    /// <summary>
+    ///     Calculates the optimal position for the tooltip based on window dimensions.
+    /// </summary>
+    private void CalculateTooltipPosition(MouseEventArgs args, WindowDimensions windowDimensions)
+    {
+        // Avoid viewport overflow on the X-axis
+        var offsetX = args.ClientX + TOOLTIP_MAX_WIDTH > windowDimensions.Width
+            ? -TOOLTIP_MAX_WIDTH
+            : TOOLTIP_MARGIN;
+
+        // Avoid overflow on Y-axis. 50 is an estimate for tooltip height
+        var offsetY = args.ClientY + 50 > windowDimensions.Height
+            ? -50
+            : TOOLTIP_MARGIN;
+
+        TooltipStyle = $"left: {args.ClientX + offsetX}px; top: {args.ClientY + offsetY}px;";
+    }
+
+    /// <summary>
+    ///     Hides the tooltip when the mouse pointer leaves the badge.
+    /// </summary>
+    protected void OnTooltipHide()
+    {
+        ShowTooltip = false;
+        TooltipStyle = string.Empty;
+        LogDebug("Tooltip hidden.");
+    }
 
     #endregion
 }

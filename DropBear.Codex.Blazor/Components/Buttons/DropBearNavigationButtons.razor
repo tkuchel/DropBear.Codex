@@ -1,8 +1,7 @@
-﻿@using Microsoft.JSInterop
-@inject NavigationManager NavigationManager
+﻿@inject NavigationManager NavigationManager
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="navigation-buttons">
+<div id="@ComponentId" class="navigation-buttons">
     <button class="nav-button back-button"
             @onclick="GoBack"
             aria-label="Go back"

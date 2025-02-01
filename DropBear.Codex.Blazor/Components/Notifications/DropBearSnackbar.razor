@@ -19,7 +19,7 @@
             @((MarkupString)SnackbarInstance.Message)
         </div>
 
-        @if (SnackbarInstance.Actions?.Any() == true)
+        @if (SnackbarInstance.Actions.Any())
         {
             <div class="dropbear-snackbar-actions">
                 @foreach (var action in SnackbarInstance.Actions)
@@ -37,7 +37,7 @@
     <button type="button"
             class="dropbear-snackbar-close"
             aria-label="Close notification"
-            @onclick="Close">
+            @onclick="CloseAsync">
         <CloseIcon/>
     </button>
 

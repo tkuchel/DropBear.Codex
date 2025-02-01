@@ -13,7 +13,7 @@
  * Module manager for handling module registration, dependencies, and initialization
  * @implements {IModuleManager}
  */
-export const ModuleManager = {
+const ModuleManager = {
   /** @type {Map<string, Module>} Map of registered modules */
   modules: new Map(),
 
@@ -24,7 +24,7 @@ export const ModuleManager = {
   initialized: new Set(),
 
   /**
-   * Register a new module with optional dependencies
+   * Register a new module with optional dependencies.
    * @param {string} name - Module name
    * @param {Module} module - Module implementation
    * @param {string[]} [dependencies=[]] - Array of dependency module names
@@ -41,11 +41,11 @@ export const ModuleManager = {
       throw new TypeError('Dependencies must be an array');
     }
     if (this.modules.has(name)) {
-      throw new Error(`Module ${name} is already registered`);
+      throw new Error(`Module "${name}" is already registered`);
     }
 
-    // Validate dependencies exist
-    dependencies.forEach(dep => {
+    // Validate each dependency
+    dependencies.forEach((dep) => {
       if (typeof dep !== 'string' || !dep.trim()) {
         throw new TypeError('Dependency names must be non-empty strings');
       }
@@ -56,7 +56,7 @@ export const ModuleManager = {
   },
 
   /**
-   * Initialize a module and its dependencies
+   * Initialize a module and its dependencies.
    * @param {string} moduleName - Name of module to initialize
    * @returns {Promise<void>}
    * @throws {Error} If module not found or initialization fails
@@ -66,20 +66,20 @@ export const ModuleManager = {
       throw new TypeError('Module name must be a non-empty string');
     }
 
-    // Already initialized
+    // If already initialized, do nothing
     if (this.initialized.has(moduleName)) {
       return;
     }
 
-    // Check module exists
+    // Check that the module exists
     if (!this.modules.has(moduleName)) {
-      throw new Error(`Module ${moduleName} not found`);
+      throw new Error(`Module "${moduleName}" not found`);
     }
 
     try {
       // Initialize dependencies first
       const deps = this.dependencies.get(moduleName) || [];
-      await Promise.all(deps.map(dep => this.initialize(dep)));
+      await Promise.all(deps.map((dep) => this.initialize(dep)));
 
       // Initialize the module if it has an initialize method
       const module = this.modules.get(moduleName);
@@ -89,14 +89,14 @@ export const ModuleManager = {
 
       this.initialized.add(moduleName);
     } catch (error) {
-      throw new Error(`Failed to initialize module ${moduleName}: ${error.message}`);
+      throw new Error(`Failed to initialize module "${moduleName}": ${error.message}`);
     }
   },
 
   /**
-   * Get a registered module by name
-   * @param {string} moduleName - Name of module to retrieve
-   * @returns {Module|undefined} The module if found
+   * Retrieve a registered module by name.
+   * @param {string} moduleName - Name of module
+   * @returns {Module|undefined} - The module if found
    */
   get(moduleName) {
     if (typeof moduleName !== 'string' || !moduleName.trim()) {
@@ -106,9 +106,9 @@ export const ModuleManager = {
   },
 
   /**
-   * Check if a module is initialized
-   * @param {string} moduleName - Name of module to check
-   * @returns {boolean} True if module is initialized
+   * Check if a module is initialized.
+   * @param {string} moduleName - Name of module
+   * @returns {boolean} True if the module is initialized
    */
   isInitialized(moduleName) {
     if (typeof moduleName !== 'string' || !moduleName.trim()) {
@@ -118,9 +118,9 @@ export const ModuleManager = {
   },
 
   /**
-   * Dispose of a module
-   * @param {string} moduleName - Name of module to dispose
-   * @returns {boolean} True if module was disposed
+   * Dispose of a module.
+   * @param {string} moduleName - Name of module
+   * @returns {boolean} True if the module was disposed
    */
   dispose(moduleName) {
     if (typeof moduleName !== 'string' || !moduleName.trim()) {
@@ -141,22 +141,27 @@ export const ModuleManager = {
       this.initialized.delete(moduleName);
       return true;
     } catch (error) {
-      console.error(`Error disposing module ${moduleName}:`, error);
+      console.error(`Error disposing module "${moduleName}":`, error);
       return false;
     }
   },
 
   /**
-   * Clear all modules and reset state
+   * Clear all modules and reset state.
    */
   clear() {
-    // Dispose modules in reverse dependency order
+    // Dispose modules in reverse registration order (or reverse dependency order if you prefer).
     Array.from(this.modules.keys())
       .reverse()
-      .forEach(name => this.dispose(name));
+      .forEach((name) => this.dispose(name));
 
     this.modules.clear();
     this.dependencies.clear();
     this.initialized.clear();
-  }
+  },
 };
+
+/**
+ * Export the ModuleManager at the top level so it’s recognized as an ES module.
+ */
+export { ModuleManager };

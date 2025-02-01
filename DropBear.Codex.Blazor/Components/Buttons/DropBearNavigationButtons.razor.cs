@@ -1,206 +1,30 @@
-﻿#region
-
-using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
+﻿using DropBear.Codex.Blazor.Components.Bases;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
-using Serilog;
-
-#endregion
 
 namespace DropBear.Codex.Blazor.Components.Buttons;
 
 /// <summary>
-///     A component that renders navigational buttons for going back, going home, and scrolling to top.
-///     Manages JavaScript interop for dynamic visibility and disposal.
+/// A component that renders navigational buttons for going back, going home, and scrolling to top.
 /// </summary>
 public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 {
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearNavigationButtons>();
-    private readonly CancellationTokenSource _disposalTokenSource = new();
-    private static readonly int MAX_RETRIES = 3;
-    private static readonly int RETRY_DELAY_MS = 500;
-    private readonly AsyncLock _initializationLock = new();
-    private bool _isVisible;
-    private DotNetObjectReference<DropBearNavigationButtons>? _objRef;
+    // -- Private fields --
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<DropBearNavigationButtons>? _dotNetRef;
 
-    /// <summary>
-    ///     Tracks whether the scroll-to-top button is currently visible.
-    ///     Updated by JS interop via <see cref="UpdateVisibility" />.
-    /// </summary>
+    // Use this property for controlling the 'Scroll to Top' button's visibility
+    private bool _isVisible;
     private bool IsVisible
     {
         get => _isVisible;
         set
         {
-            if (_isVisible != value)
-            {
-                _isVisible = value;
-                StateHasChanged();
-            }
+            if (_isVisible == value) return;
+            _isVisible = value;
+            StateHasChanged();
         }
     }
-
-    /// <inheritdoc />
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        // Call the base implementation
-        await base.OnAfterRenderAsync(firstRender);
-
-        if (!firstRender || IsDisposed)
-        {
-            return;
-        }
-
-        // Use an async lock so we don't run initialization concurrently
-        using (await _initializationLock.LockAsync(_disposalTokenSource.Token))
-        {
-            // Check again after acquiring the lock
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            try
-            {
-                // Create DotNetObjectReference only if not already created
-                _objRef ??= DotNetObjectReference.Create(this);
-
-                // Perform up to MAX_RETRIES attempts
-                var retryCount = 0;
-                while (retryCount < MAX_RETRIES)
-                {
-                    try
-                    {
-                        // 1) Ensure the JS module is fully registered
-                        await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
-
-                        // 2) Now that the module is loaded, create the navigation manager
-                        await SafeJsVoidInteropAsync("DropBearNavigationButtons.createNavigationManager", _objRef);
-
-                        Logger.Debug("JS interop for DropBearNavigationButtons initialized.");
-                        break; // success
-                    }
-                    catch (Exception ex) when (retryCount < MAX_RETRIES - 1)
-                    {
-                        Logger.Warning(ex, "Retry {Count} initializing DropBearNavigationButtons", retryCount + 1);
-                        await Task.Delay(RETRY_DELAY_MS);
-                        retryCount++;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error initializing JS interop for DropBearNavigationButtons.");
-                throw;
-            }
-        }
-    }
-
-
-    /// <summary>
-    ///     Navigates back one step in the browser history via JS interop.
-    /// </summary>
-    private async Task GoBack()
-    {
-        try
-        {
-            await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
-            await SafeJsVoidInteropAsync("DropBearNavigationButtons.goBack");
-            Logger.Debug("Navigated back via DropBearNavigationButtons.");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error navigating back.");
-        }
-    }
-
-    /// <summary>
-    ///     Navigates to the home page ('/') using the Blazor NavigationManager.
-    /// </summary>
-    private void GoHome()
-    {
-        try
-        {
-            NavigationManager.NavigateTo("/");
-            Logger.Debug("Navigated to home via DropBearNavigationButtons.");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error navigating to home.");
-        }
-    }
-
-    /// <summary>
-    ///     Scrolls the page to the top via JS interop.
-    /// </summary>
-    private async Task ScrollToTop()
-    {
-        try
-        {
-            await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
-            await SafeJsVoidInteropAsync("DropBearNavigationButtons.scrollToTop");
-            Logger.Debug("Page scrolled to top via DropBearNavigationButtons.");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error scrolling to top.");
-        }
-    }
-
-    /// <summary>
-    ///     JS-invokable method called by the JavaScript code to update the button's visibility.
-    /// </summary>
-    /// <param name="isVisible">True if the button should be visible; otherwise, false.</param>
-    [JSInvokable]
-    public void UpdateVisibility(bool isVisible)
-    {
-        IsVisible = isVisible;
-        Logger.Debug("Scroll-to-top button visibility updated to: {IsVisible}", isVisible);
-    }
-
-    /// <inheritdoc />
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        try
-        {
-            await EnsureJsModuleInitializedAsync("DropBearNavigationButtons");
-            await SafeJsVoidInteropAsync("DropBearNavigationButtons.dispose");
-            Logger.Debug("JS interop for DropBearNavigationButtons disposed.");
-        }
-        catch (JSDisconnectedException jsDisconnectedException)
-        {
-            Logger.Warning(jsDisconnectedException,
-                "Error disposing JS interop for DropBearNavigationButtons, JS Disconnected.");
-        }
-        catch (ObjectDisposedException objectDisposedException)
-        {
-            Logger.Warning(objectDisposedException,
-                "Error disposing JS interop for DropBearNavigationButtons, already disposed.");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during JS interop disposal for DropBearNavigationButtons.");
-        }
-        finally
-        {
-            _objRef?.Dispose();
-            _objRef = null;
-            Logger.Debug("DotNetObjectReference for DropBearNavigationButtons disposed.");
-        }
-    }
-
-    protected override async ValueTask DisposeAsync(bool disposing)
-    {
-        if (disposing)
-        {
-            await CleanupJavaScriptResourcesAsync();
-        }
-
-        await base.DisposeAsync(disposing);
-    }
-
 
     #region Parameters
 
@@ -212,4 +36,133 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     [Parameter] public string ScrollTopButtonRight { get; set; } = "20px";
 
     #endregion
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (!firstRender || IsDisposed)
+            return;
+
+        try
+        {
+            // Get (and cache) the module once
+            _module = await GetJsModuleAsync("navigation-buttons").ConfigureAwait(false);
+
+            // Initialize the global navigation-buttons module
+            // "DropBearNavigationButtons.initialize()" sets up the JS environment
+            await _module.InvokeVoidAsync(
+                "DropBearNavigationButtons.initialize"
+            ).ConfigureAwait(false);
+
+            // Create the NavigationManager instance passing this .NET reference
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync(
+                "DropBearNavigationButtons.createNavigationManager",
+                _dotNetRef
+            ).ConfigureAwait(false);
+
+            LogDebug("DropBearNavigationButtons JS interop initialized.");
+        }
+        catch (Exception ex)
+        {
+            LogError("Error initializing DropBearNavigationButtons JS interop.", ex);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Navigate back one step in the browser history.
+    /// </summary>
+    private async Task GoBack()
+    {
+        if (IsDisposed) return;
+
+        try
+        {
+            // Reuse the cached module
+            _module ??= await GetJsModuleAsync("navigation-buttons").ConfigureAwait(false);
+            await _module.InvokeVoidAsync("DropBearNavigationButtons.goBack").ConfigureAwait(false);
+            LogDebug("Navigated back via DropBearNavigationButtons.");
+        }
+        catch (Exception ex)
+        {
+            LogError("Error navigating back", ex);
+        }
+    }
+
+    /// <summary>
+    /// Navigate to the home page ("/") using Blazor NavigationManager.
+    /// </summary>
+    private void GoHome()
+    {
+        try
+        {
+            NavigationManager.NavigateTo("/");
+            LogDebug("Navigated to home via DropBearNavigationButtons.");
+        }
+        catch (Exception ex)
+        {
+            LogError("Error navigating to home", ex);
+        }
+    }
+
+    /// <summary>
+    /// Scroll the page to the top.
+    /// </summary>
+    private async Task ScrollToTop()
+    {
+        if (IsDisposed) return;
+
+        try
+        {
+            _module ??= await GetJsModuleAsync("navigation-buttons").ConfigureAwait(false);
+            await _module.InvokeVoidAsync("DropBearNavigationButtons.scrollToTop").ConfigureAwait(false);
+            LogDebug("Page scrolled to top via DropBearNavigationButtons.");
+        }
+        catch (Exception ex)
+        {
+            LogError("Error scrolling to top", ex);
+        }
+    }
+
+    /// <summary>
+    /// JS-invokable method called by the JavaScript code to update the scroll-to-top button's visibility.
+    /// </summary>
+    /// <param name="isVisible">True if the button should be visible; otherwise false.</param>
+    [JSInvokable]
+    public void UpdateVisibility(bool isVisible)
+    {
+        IsVisible = isVisible;
+        LogDebug("Scroll-to-top button visibility updated: {IsVisible}", isVisible);
+    }
+
+    /// <summary>
+    /// Called by the base class during disposal to allow custom JS cleanup
+    /// </summary>
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync("DropBearNavigationButtons.dispose").ConfigureAwait(false);
+                LogDebug("DropBearNavigationButtons disposed via JS interop.");
+            }
+        }
+        catch (JSDisconnectedException jsEx)
+        {
+            LogWarning("JS disconnected while disposing DropBearNavigationButtons. {Message}", jsEx.Message);
+        }
+        catch (Exception ex)
+        {
+            LogError("Error disposing DropBearNavigationButtons via JS interop.", ex);
+        }
+        finally
+        {
+            _dotNetRef?.Dispose();
+            _dotNetRef = null;
+        }
+    }
 }

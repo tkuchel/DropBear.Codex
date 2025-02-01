@@ -7,7 +7,14 @@ import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js'
 import {DropBearUtils} from './utils.module.js';
 import {ModuleManager} from './module-manager.module.js';
 
+/**
+ * Create a logger instance for this module
+ */
 const logger = DropBearUtils.createLogger('DropBearNavigationButtons');
+
+/**
+ * Create a circuit breaker to handle repeated failures
+ */
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 
 /**
@@ -23,46 +30,63 @@ class NavigationManager {
       throw new Error('dotNetRef is required');
     }
 
+    /** @type {Object|null} */
     this.dotNetRef = dotNetRef;
+
+    /** @type {boolean} */
     this.isDisposed = false;
+
+    /** @type {IntersectionObserver|null} */
     this.intersectionObserver = null;
+
+    /** @type {number|null} */
     this.scrollThrottleTimeout = null;
+
+    /** @type {number} */
     this.scrollThrottleDelay = 250; // ms between scroll checks
 
+    // Set up the intersection observer on creation
     this._setupScrollObserver();
-    EventEmitter.emit(this, 'initialized', DropBearUtils.createEvent(
-      crypto.randomUUID(),
+
+    // Emit an event indicating the navigation manager was initialized
+    EventEmitter.emit(
+      this,
       'initialized',
-      {timestamp: Date.now()}
-    ));
+      DropBearUtils.createEvent(crypto.randomUUID(), 'initialized', {
+        timestamp: Date.now(),
+      })
+    );
   }
 
   /**
-   * Set up the intersection observer for scroll position monitoring
+   * Set up the intersection observer for scroll position monitoring.
    * @private
    */
   _setupScrollObserver() {
     const options = {
       threshold: [0, 0.5, 1],
-      rootMargin: '300px'
+      rootMargin: '300px',
     };
 
     try {
       this.intersectionObserver = new IntersectionObserver(
         DropBearUtils.throttle(entries => {
           if (this.isDisposed) return;
+
+          // Determine if any observed element is in view
           const isVisible = entries.some(entry => entry.intersectionRatio > 0);
           this._updateVisibility(!isVisible);
         }, this.scrollThrottleDelay),
         options
       );
 
-      // Create and observe sentinel element
+      // Create a sentinel element for the observer
       const sentinel = document.createElement('div');
       sentinel.style.cssText = 'height: 1px; pointer-events: none; opacity: 0;';
       document.body.prepend(sentinel);
-      this.intersectionObserver.observe(sentinel);
 
+      // Begin observing
+      this.intersectionObserver.observe(sentinel);
       logger.debug('Scroll observer initialized');
     } catch (error) {
       logger.error('Failed to initialize scroll observer:', error);
@@ -71,22 +95,27 @@ class NavigationManager {
   }
 
   /**
-   * Update navigation buttons visibility state
+   * Update navigation buttons' visibility state
    * @private
    * @param {boolean} isVisible - Whether navigation should be visible
    * @returns {Promise<void>}
    */
   async _updateVisibility(isVisible) {
     try {
+      // Use circuit breaker to protect asynchronous call to Blazor .NET code
       await circuitBreaker.execute(() =>
         this.dotNetRef.invokeMethodAsync('UpdateVisibility', isVisible)
       );
 
-      EventEmitter.emit(this, 'visibility-changed', DropBearUtils.createEvent(
-        crypto.randomUUID(),
+      // Emit an event indicating the visibility changed
+      EventEmitter.emit(
+        this,
         'visibility-changed',
-        {isVisible, timestamp: Date.now()}
-      ));
+        DropBearUtils.createEvent(crypto.randomUUID(), 'visibility-changed', {
+          isVisible,
+          timestamp: Date.now(),
+        })
+      );
     } catch (error) {
       logger.error('Failed to update visibility:', error);
       throw error;
@@ -94,7 +123,7 @@ class NavigationManager {
   }
 
   /**
-   * Scroll to top of page
+   * Scroll to the top of the page
    */
   scrollToTop() {
     if (this.isDisposed) {
@@ -106,14 +135,16 @@ class NavigationManager {
       try {
         window.scrollTo({
           top: 0,
-          behavior: 'smooth'
+          behavior: 'smooth',
         });
 
-        EventEmitter.emit(this, 'scrolled-to-top', DropBearUtils.createEvent(
-          crypto.randomUUID(),
+        EventEmitter.emit(
+          this,
           'scrolled-to-top',
-          {timestamp: Date.now()}
-        ));
+          DropBearUtils.createEvent(crypto.randomUUID(), 'scrolled-to-top', {
+            timestamp: Date.now(),
+          })
+        );
       } catch (error) {
         logger.error('Error scrolling to top:', error);
         // Fallback to instant scroll
@@ -123,7 +154,7 @@ class NavigationManager {
   }
 
   /**
-   * Navigate back in history
+   * Navigate back in the browser history
    */
   goBack() {
     if (this.isDisposed) {
@@ -133,11 +164,13 @@ class NavigationManager {
 
     try {
       window.history.back();
-      EventEmitter.emit(this, 'went-back', DropBearUtils.createEvent(
-        crypto.randomUUID(),
+      EventEmitter.emit(
+        this,
         'went-back',
-        {timestamp: Date.now()}
-      ));
+        DropBearUtils.createEvent(crypto.randomUUID(), 'went-back', {
+          timestamp: Date.now(),
+        })
+      );
     } catch (error) {
       logger.error('Error navigating back:', error);
       throw error;
@@ -145,13 +178,13 @@ class NavigationManager {
   }
 
   /**
-   * Force visibility update
+   * Force a visibility update
    * @param {boolean} isVisible - Desired visibility state
    * @returns {Promise<void>}
    */
   async forceVisibilityUpdate(isVisible) {
     if (this.isDisposed) {
-      throw new Error('Cannot update visibility on disposed manager');
+      throw new Error('Cannot update visibility on a disposed manager');
     }
     await this._updateVisibility(isVisible);
   }
@@ -174,103 +207,117 @@ class NavigationManager {
     this.scrollThrottleTimeout = null;
     this.dotNetRef = null;
 
-    EventEmitter.emit(this, 'disposed', DropBearUtils.createEvent(
-      crypto.randomUUID(),
+    EventEmitter.emit(
+      this,
       'disposed',
-      {timestamp: Date.now()}
-    ));
+      DropBearUtils.createEvent(crypto.randomUUID(), 'disposed', {
+        timestamp: Date.now(),
+      })
+    );
   }
 }
 
 // Register with ModuleManager
-ModuleManager.register('DropBearNavigationButtons', {
-  /** @type {NavigationManager|null} */
-  instance: null,
+ModuleManager.register(
+  'DropBearNavigationButtons',
+  {
+    /** @type {NavigationManager|null} */
+    instance: null,
 
-  /**
-   * Initialize the navigation module
-   * @returns {Promise<void>}
-   */
-  async initialize() {
-    logger.debug('DropBearNavigationButtons module initialized');
+    /**
+     * Initialize the navigation module
+     * @returns {Promise<void>}
+     */
+    async initialize() {
+      logger.debug('DropBearNavigationButtons module initialized');
+    },
+
+    /**
+     * Create a new NavigationManager instance
+     * @param {Object} dotNetRef - .NET reference
+     */
+    createNavigationManager(dotNetRef) {
+      if (!dotNetRef) {
+        throw new Error('dotNetRef is required');
+      }
+
+      if (this.instance) {
+        logger.debug('Disposing existing NavigationManager instance');
+        this.dispose();
+      }
+
+      try {
+        this.instance = new NavigationManager(dotNetRef);
+        logger.debug('New NavigationManager instance created');
+      } catch (error) {
+        logger.error('Failed to create NavigationManager:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Scroll to the top of the page
+     */
+    scrollToTop() {
+      if (!this.instance) {
+        throw new Error('No NavigationManager instance exists');
+      }
+      this.instance.scrollToTop();
+    },
+
+    /**
+     * Navigate back in the browser history
+     */
+    goBack() {
+      if (!this.instance) {
+        throw new Error('No NavigationManager instance exists');
+      }
+      this.instance.goBack();
+    },
+
+    /**
+     * Force visibility update
+     * @param {boolean} isVisible - Desired visibility state
+     * @returns {Promise<void>}
+     */
+    async forceVisibilityUpdate(isVisible) {
+      if (!this.instance) {
+        throw new Error('No NavigationManager instance exists');
+      }
+      await this.instance.forceVisibilityUpdate(isVisible);
+    },
+
+    /**
+     * Dispose of the current NavigationManager instance
+     */
+    dispose() {
+      if (this.instance) {
+        this.instance.dispose();
+        this.instance = null;
+      }
+    },
   },
+  ['DropBearCore']
+);
 
-  /**
-   * Create a new navigation manager instance
-   * @param {Object} dotNetRef - .NET reference
-   */
-  createNavigationManager(dotNetRef) {
-    if (!dotNetRef) {
-      throw new Error('dotNetRef is required');
-    }
+/**
+ * Retrieve the registered module from the ModuleManager
+ */
+const navigationButtonsModule = ModuleManager.get('DropBearNavigationButtons');
 
-    if (this.instance) {
-      logger.debug('Disposing existing NavigationManager instance');
-      this.dispose();
-    }
-
-    try {
-      this.instance = new NavigationManager(dotNetRef);
-      logger.debug('New NavigationManager instance created');
-    } catch (error) {
-      logger.error('Failed to create NavigationManager:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Scroll to top of page
-   */
-  scrollToTop() {
-    if (!this.instance) {
-      throw new Error('No NavigationManager instance exists');
-    }
-    this.instance.scrollToTop();
-  },
-
-  /**
-   * Navigate back in history
-   */
-  goBack() {
-    if (!this.instance) {
-      throw new Error('No NavigationManager instance exists');
-    }
-    this.instance.goBack();
-  },
-
-  /**
-   * Force visibility update
-   * @param {boolean} isVisible - Desired visibility state
-   * @returns {Promise<void>}
-   */
-  async forceVisibilityUpdate(isVisible) {
-    if (!this.instance) {
-      throw new Error('No NavigationManager instance exists');
-    }
-    await this.instance.forceVisibilityUpdate(isVisible);
-  },
-
-  /**
-   * Dispose of the current instance
-   */
-  dispose() {
-    if (this.instance) {
-      this.instance.dispose();
-      this.instance = null;
-    }
-  }
-}, ['DropBearCore']);
-
-// Export for window object
-const module = ModuleManager.get('DropBearNavigationButtons');
-
+/**
+ * Attach a global reference for usage in window scope
+ */
 window.DropBearNavigationButtons = {
-  initialize: () => module.initialize(),
-  createNavigationManager: dotNetRef => module.createNavigationManager(dotNetRef),
-  scrollToTop: () => module.scrollToTop(),
-  goBack: () => module.goBack(),
-  forceVisibilityUpdate: isVisible => module.forceVisibilityUpdate(isVisible),
-  dispose: () => module.dispose()
+  initialize: () => navigationButtonsModule.initialize(),
+  createNavigationManager: dotNetRef => navigationButtonsModule.createNavigationManager(dotNetRef),
+  scrollToTop: () => navigationButtonsModule.scrollToTop(),
+  goBack: () => navigationButtonsModule.goBack(),
+  forceVisibilityUpdate: isVisible => navigationButtonsModule.forceVisibilityUpdate(isVisible),
+  dispose: () => navigationButtonsModule.dispose(),
 };
 
+/**
+ * Export the NavigationManager at the top level for direct module imports.
+ */
 export {NavigationManager};

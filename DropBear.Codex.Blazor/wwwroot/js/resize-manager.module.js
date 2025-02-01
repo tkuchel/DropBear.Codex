@@ -3,12 +3,19 @@
  * @module resize-manager
  */
 
-import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './core.module.js';
-import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
+import {CircuitBreaker, EventEmitter} from './core.module.js';
+import {DropBearUtils} from './utils.module.js';
+import {ModuleManager} from './module-manager.module.js';
 
+/**
+ * Create a logger for the resize manager
+ */
 const logger = DropBearUtils.createLogger('DropBearResizeManager');
-const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
+
+/**
+ * Circuit breaker for handling repeated failures
+ */
+const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 
 /**
  * Manager for handling window resize events and related UI updates
@@ -23,18 +30,31 @@ class ResizeManager {
       throw new Error('dotNetRef is required');
     }
 
+    /** @type {Object|null} */
     this.dotNetReference = dotNetReference;
+
+    /** @type {ResizeObserver|null} */
     this.resizeObserver = null;
+
+    /** @type {boolean} */
     this.isDisposed = false;
+
+    /** @type {{width: number, height: number, scale: number}|null} */
     this.lastDimensions = null;
-    this.minResizeInterval = 100; // Minimum time between resize events
+
+    /** @type {number} */
+    this.minResizeInterval = 100; // Minimum time between resize events (ms)
 
     this._initializeResizeObserver();
-    EventEmitter.emit(this, 'created', DropBearUtils.createEvent(
-      crypto.randomUUID(),
+
+    // Emit an event when this manager is created
+    EventEmitter.emit(
+      this,
       'created',
-      { timestamp: Date.now() }
-    ));
+      DropBearUtils.createEvent(crypto.randomUUID(), 'created', {
+        timestamp: Date.now(),
+      })
+    );
   }
 
   /**
@@ -43,15 +63,17 @@ class ResizeManager {
    */
   _initializeResizeObserver() {
     try {
+      // Use debounce to limit the frequency of resize callbacks
       this.resizeObserver = new ResizeObserver(
         DropBearUtils.debounce(async () => {
           if (this.isDisposed) return;
-
           await this._handleResize();
         }, this.minResizeInterval)
       );
 
+      // Observe changes to the document body
       this.resizeObserver.observe(document.body);
+
       logger.debug('ResizeObserver initialized');
     } catch (error) {
       logger.error('Failed to initialize ResizeObserver:', error);
@@ -76,14 +98,20 @@ class ResizeManager {
       this.lastDimensions = dimensions;
 
       await circuitBreaker.execute(() =>
-        this.dotNetReference.invokeMethodAsync('SetMaxWidthBasedOnWindowSize', dimensions)
+        this.dotNetReference.invokeMethodAsync(
+          'SetMaxWidthBasedOnWindowSize',
+          dimensions
+        )
       );
 
-      EventEmitter.emit(this, 'resized', DropBearUtils.createEvent(
-        crypto.randomUUID(),
+      EventEmitter.emit(
+        this,
         'resized',
-        { dimensions, timestamp: Date.now() }
-      ));
+        DropBearUtils.createEvent(crypto.randomUUID(), 'resized', {
+          dimensions,
+          timestamp: Date.now(),
+        })
+      );
     } catch (error) {
       logger.error('Error handling resize:', error);
       throw error;
@@ -91,15 +119,15 @@ class ResizeManager {
   }
 
   /**
-   * Get current window dimensions
+   * Get the current window dimensions
    * @private
-   * @returns {{width: number, height: number, scale: number}}
+   * @returns {{ width: number, height: number, scale: number }}
    */
   _getCurrentDimensions() {
     return {
       width: window.innerWidth,
       height: window.innerHeight,
-      scale: window.devicePixelRatio || 1
+      scale: window.devicePixelRatio || 1,
     };
   }
 
@@ -108,12 +136,12 @@ class ResizeManager {
    * @private
    * @param {Object} dim1 - First dimensions object
    * @param {Object} dim2 - Second dimensions object
-   * @returns {boolean} True if dimensions are effectively equal
+   * @returns {boolean} True if dimensions are effectively the same
    */
   _dimensionsEqual(dim1, dim2) {
     if (!dim1 || !dim2) return false;
 
-    const threshold = 5; // Pixel threshold for considering dimensions different
+    const threshold = 5; // Pixel threshold
     return Math.abs(dim1.width - dim2.width) < threshold &&
       Math.abs(dim1.height - dim2.height) < threshold &&
       dim1.scale === dim2.scale;
@@ -127,7 +155,6 @@ class ResizeManager {
     if (this.isDisposed) {
       throw new Error('Cannot force resize on disposed manager');
     }
-
     await this._handleResize();
   }
 
@@ -148,94 +175,107 @@ class ResizeManager {
     this.lastDimensions = null;
     this.dotNetReference = null;
 
-    EventEmitter.emit(this, 'disposed', DropBearUtils.createEvent(
-      crypto.randomUUID(),
+    EventEmitter.emit(
+      this,
       'disposed',
-      { timestamp: Date.now() }
-    ));
+      DropBearUtils.createEvent(crypto.randomUUID(), 'disposed', {
+        timestamp: Date.now(),
+      })
+    );
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register('DropBearResizeManager', {
-  /** @type {ResizeManager|null} */
-  instance: null,
+// Register the module with the ModuleManager
+ModuleManager.register(
+  'DropBearResizeManager',
+  {
+    /** @type {ResizeManager|null} */
+    instance: null,
 
-  /**
-   * Initialize the resize manager module
-   * @returns {Promise<void>}
-   */
-  async initialize() {
-    logger.debug('DropBearResizeManager module initialized');
+    /**
+     * Initialize the resize manager module
+     * @returns {Promise<void>}
+     */
+    async initialize() {
+      logger.debug('DropBearResizeManager module initialized');
+    },
+
+    /**
+     * Create a new resize manager instance
+     * @param {Object} dotNetRef - .NET reference for Blazor interop
+     */
+    createResizeManager(dotNetRef) {
+      if (!dotNetRef) {
+        throw new Error('dotNetRef is required');
+      }
+
+      if (this.instance) {
+        logger.debug('Disposing existing ResizeManager instance');
+        this.dispose();
+      }
+
+      try {
+        this.instance = new ResizeManager(dotNetRef);
+        logger.debug('New ResizeManager instance created');
+      } catch (error) {
+        logger.error('Failed to create ResizeManager:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Force a resize event on the current instance
+     * @returns {Promise<void>}
+     */
+    async forceResize() {
+      if (!this.instance) {
+        throw new Error('No ResizeManager instance exists');
+      }
+      await this.instance.forceResize();
+    },
+
+    /**
+     * Get the current window dimensions from the manager
+     * @returns {{width: number, height: number, scale: number}}
+     */
+    getDimensions() {
+      return this.instance?._getCurrentDimensions() ?? {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scale: window.devicePixelRatio || 1,
+      };
+    },
+
+    /**
+     * Dispose of the current manager instance
+     */
+    dispose() {
+      if (this.instance) {
+        this.instance.dispose();
+        this.instance = null;
+      }
+    },
   },
+  ['DropBearCore']
+);
 
-  /**
-   * Create a new resize manager instance
-   * @param {Object} dotNetRef - .NET reference
-   * @throws {Error} If dotNetRef is missing or invalid
-   */
-  createResizeManager(dotNetRef) {
-    if (!dotNetRef) {
-      throw new Error('dotNetRef is required');
-    }
+/**
+ * Retrieve the registered module from the ModuleManager
+ */
+const resizeManagerModule = ModuleManager.get('DropBearResizeManager');
 
-    if (this.instance) {
-      logger.debug('Disposing existing ResizeManager instance');
-      this.dispose();
-    }
-
-    try {
-      this.instance = new ResizeManager(dotNetRef);
-      logger.debug('New ResizeManager instance created');
-    } catch (error) {
-      logger.error('Failed to create ResizeManager:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Force a resize event on the current instance
-   * @returns {Promise<void>}
-   */
-  async forceResize() {
-    if (!this.instance) {
-      throw new Error('No ResizeManager instance exists');
-    }
-    await this.instance.forceResize();
-  },
-
-  /**
-   * Get current window dimensions
-   * @returns {{width: number, height: number, scale: number}}
-   */
-  getDimensions() {
-    return this.instance?._getCurrentDimensions() ?? {
-      width: window.innerWidth,
-      height: window.innerHeight,
-      scale: window.devicePixelRatio || 1
-    };
-  },
-
-  /**
-   * Dispose of the current instance
-   */
-  dispose() {
-    if (this.instance) {
-      this.instance.dispose();
-      this.instance = null;
-    }
-  }
-}, ['DropBearCore']);
-
-// Export for window object
-const module = ModuleManager.get('DropBearResizeManager');
-
+/**
+ * Attach a global interface to window if desired
+ */
 window.DropBearResizeManager = {
-  initialize: () => module.initialize(),
-  createResizeManager: (dotNetRef) => module.createResizeManager(dotNetRef),
-  forceResize: () => module.forceResize(),
-  getDimensions: () => module.getDimensions(),
-  dispose: () => module.dispose()
+  initialize: () => resizeManagerModule.initialize(),
+  createResizeManager: dotNetRef => resizeManagerModule.createResizeManager(dotNetRef),
+  forceResize: () => resizeManagerModule.forceResize(),
+  getDimensions: () => resizeManagerModule.getDimensions(),
+  dispose: () => resizeManagerModule.dispose(),
 };
 
-export { ResizeManager };
+/**
+ * Export the ResizeManager for direct importing if needed
+ */
+export {ResizeManager};
