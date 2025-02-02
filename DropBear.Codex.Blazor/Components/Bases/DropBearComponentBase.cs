@@ -143,17 +143,22 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
             try
             {
-                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName)
-                    .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
-                    .ConfigureAwait(false);
-
+                // First, load the module
                 var module = await JsRuntime.InvokeAsync<IJSObjectReference>(
                         "import",
                         ComponentToken,
                         string.Format(modulePath, moduleName))
+                    .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
                     .ConfigureAwait(false);
 
-                return _jsModuleCache[moduleName] = module;
+                _jsModuleCache[moduleName] = module;
+
+                // Then, ensure initialization
+                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName)
+                    .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
+                    .ConfigureAwait(false);
+
+                return module;
             }
             catch (OperationCanceledException)
             {

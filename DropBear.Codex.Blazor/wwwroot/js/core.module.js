@@ -1,17 +1,23 @@
 ﻿/**
- * @fileoverview Core module containing fundamental utilities and classes for the DropBear framework.
+ * @fileoverview Core module containing fundamental utilities and classes for the DropBear framework
  * @module core
  */
 
+import { ModuleManager } from './module-manager.module.js';
+import { DropBearUtils } from './utils.module.js';
+
+const logger = DropBearUtils.createLogger('DropBearCore');
+let isInitialized = false;
+
 /**
- * Queue for batching DOM operations to reduce reflows and improve performance.
+ * Queue for batching DOM operations to reduce reflows and improve performance
  * @implements {IDOMOperationQueue}
  */
 const DOMOperationQueue = {
-  /** @type {Set<Function>} Set of queued operations */
+  /** @type {Set<Function>} */
   queue: new Set(),
 
-  /** @type {boolean} Flag indicating if a flush is scheduled */
+  /** @type {boolean} */
   scheduled: false,
 
   /**
@@ -25,7 +31,6 @@ const DOMOperationQueue = {
 
     this.queue.add(operation);
 
-    // Schedule the flush if not already scheduled
     if (!this.scheduled) {
       this.scheduled = true;
       requestAnimationFrame(() => this.flush());
@@ -40,7 +45,7 @@ const DOMOperationQueue = {
       try {
         operation();
       } catch (error) {
-        console.error('Error in queued operation:', error);
+        logger.error('Error in queued operation:', error);
       }
     });
 
@@ -50,7 +55,7 @@ const DOMOperationQueue = {
 };
 
 /**
- * Enhanced event emitter using WeakMap for automatic cleanup.
+ * Enhanced event emitter using WeakMap for automatic cleanup
  * @implements {IEventEmitter}
  */
 const EventEmitter = {
@@ -68,7 +73,7 @@ const EventEmitter = {
     if (!target || typeof target !== 'object') {
       throw new TypeError('Target must be an object');
     }
-    if (typeof event !== 'string') {
+    if (typeof event !== 'string' || !event.trim()) {
       throw new TypeError('Event name must be a string');
     }
     if (typeof callback !== 'function') {
@@ -84,7 +89,6 @@ const EventEmitter = {
     }
     targetEvents.get(event).add(callback);
 
-    // Return a cleanup function
     return () => this.off(target, event, callback);
   },
 
@@ -114,7 +118,7 @@ const EventEmitter = {
         try {
           callback(data);
         } catch (error) {
-          console.error(`Error in event handler for ${event}:`, error);
+          logger.error(`Error in event handler for ${event}:`, error);
         }
       });
     }
@@ -157,7 +161,6 @@ class CircuitBreaker {
       throw new TypeError('Operation must be a function');
     }
 
-    // If circuit is open, check if we can half-open it
     if (this.state === 'open') {
       const timeSinceFailure = Date.now() - this.lastFailureTime;
       if (timeSinceFailure >= this.resetTimeout) {
@@ -208,11 +211,91 @@ class CircuitBreaker {
   }
 }
 
-/**
- * Export all items at the top level so they are valid ES module exports.
- */
-export {
+// Register with ModuleManager
+ModuleManager.register(
+  'DropBearCore',
+  {
+    /**
+     * Initialize the core module
+     * @returns {Promise<void>}
+     */
+    async initialize() {
+      if (isInitialized) {
+        return;
+      }
+
+      try {
+        logger.debug('Core module initializing');
+
+        // Ensure utils are initialized first
+        await ModuleManager.initialize('DropBearUtils');
+
+        isInitialized = true;
+        window.DropBearCore.__initialized = true;
+
+        logger.debug('Core module initialized');
+      } catch (error) {
+        logger.error('Core initialization failed:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Check if the module is initialized
+     * @returns {boolean}
+     */
+    isInitialized() {
+      return isInitialized;
+    },
+
+    /**
+     * Get the DOM operation queue
+     * @returns {Object}
+     */
+    getDOMOperationQueue() {
+      return DOMOperationQueue;
+    },
+
+    /**
+     * Get the event emitter
+     * @returns {Object}
+     */
+    getEventEmitter() {
+      return EventEmitter;
+    },
+
+    /**
+     * Create a new circuit breaker
+     * @param {Object} options - Circuit breaker options
+     * @returns {CircuitBreaker}
+     */
+    createCircuitBreaker(options) {
+      return new CircuitBreaker(options);
+    },
+
+    /**
+     * Dispose core module
+     */
+    dispose() {
+      isInitialized = false;
+      window.DropBearCore.__initialized = false;
+    }
+  },
+  ['DropBearUtils']
+);
+
+// Retrieve the registered module
+const coreModule = ModuleManager.get('DropBearCore');
+
+// Attach to window
+window.DropBearCore = {
+  __initialized: false,
+  initialize: () => coreModule.initialize(),
   DOMOperationQueue,
   EventEmitter,
-  CircuitBreaker
+  CircuitBreaker,
+  dispose: () => coreModule.dispose()
 };
+
+// Export everything
+export { DOMOperationQueue, EventEmitter, CircuitBreaker };

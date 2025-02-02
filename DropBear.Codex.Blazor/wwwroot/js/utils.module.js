@@ -3,28 +3,9 @@
  * @module utils
  */
 
-/**
- * @typedef {Object} ILogger
- * @property {Function} debug - Debug level logging
- * @property {Function} info - Info level logging
- * @property {Function} warn - Warning level logging
- * @property {Function} error - Error level logging
- */
+import { ModuleManager } from './module-manager.module.js';
 
-/**
- * @typedef {Object} IDropBearError
- * @property {string} message - Error message
- * @property {string} code - Error code
- * @property {string} [component] - Component name
- * @property {*} [details] - Additional error details
- */
-
-/**
- * @typedef {Object} IDropBearEvent
- * @property {string} id - Event identifier
- * @property {string} type - Event type
- * @property {*} [data] - Event data
- */
+let isInitialized = false;
 
 /**
  * Core utility functions for DropBear.
@@ -254,7 +235,79 @@ const DropBearUtilities = {
   },
 };
 
-/**
- * Export them together at the top level so they are valid ES module exports.
- */
+// Register with ModuleManager
+ModuleManager.register(
+  'DropBearUtils',
+  {
+    /**
+     * Initialize the utils module
+     * @returns {Promise<void>}
+     */
+    async initialize() {
+      if (isInitialized) {
+        return;
+      }
+
+      try {
+        const logger = DropBearUtils.createLogger('DropBearUtils');
+        logger.debug('Utils module initializing');
+
+        isInitialized = true;
+        window.DropBearUtils.__initialized = true;
+
+        logger.debug('Utils module initialized');
+      } catch (error) {
+        console.error('Utils initialization failed:', error);
+        throw error;
+      }
+    },
+
+    /**
+     * Check if the module is initialized
+     * @returns {boolean}
+     */
+    isInitialized() {
+      return isInitialized;
+    },
+
+    /**
+     * Get core utilities
+     * @returns {Object}
+     */
+    getUtils() {
+      return DropBearUtils;
+    },
+
+    /**
+     * Get window utilities
+     * @returns {Object}
+     */
+    getWindowUtils() {
+      return DropBearUtilities;
+    },
+
+    /**
+     * Dispose utilities module
+     */
+    dispose() {
+      isInitialized = false;
+      window.DropBearUtils.__initialized = false;
+    }
+  },
+  [] // No dependencies
+);
+
+// Retrieve the registered module
+const utilsModule = ModuleManager.get('DropBearUtils');
+
+// Attach to window
+window.DropBearUtils = {
+  __initialized: false,
+  initialize: () => utilsModule.initialize(),
+  ...DropBearUtils,
+  ...DropBearUtilities,
+  dispose: () => utilsModule.dispose()
+};
+
+// Export modules
 export { DropBearUtils, DropBearUtilities };

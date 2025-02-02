@@ -7,15 +7,18 @@ import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js'
 import {DropBearUtils} from './utils.module.js';
 import {ModuleManager} from './module-manager.module.js';
 
-/**
- * Create a logger instance for this module
- */
 const logger = DropBearUtils.createLogger('DropBearSnackbar');
-
-/**
- * Circuit breaker to handle repeated failures
- */
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
+let isInitialized = false;
+
+/** @type {Object} Snackbar configuration constants */
+const SNACKBAR_CONFIG = {
+  ANIMATION_DURATION: 300, // Base animation duration in ms
+  MIN_DURATION: 2000, // Minimum display duration
+  MAX_DURATION: 10000, // Maximum display duration
+  DEFAULT_DURATION: 5000, // Default display duration
+  PROGRESS_UPDATE_INTERVAL: 16 // ~60fps for progress updates
+};
 
 /**
  * Manager for individual snackbar instances
@@ -24,9 +27,9 @@ const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30
 class SnackbarManager {
   /**
    * @param {string} id - Unique identifier for the snackbar
+   * @param {Object} [options={}] - Configuration options
    */
-  constructor(id) {
-    // Validate constructor arguments
+  constructor(id, options = {}) {
     DropBearUtils.validateArgs([id], ['string'], 'SnackbarManager');
 
     /** @type {string} */
@@ -47,26 +50,69 @@ class SnackbarManager {
     /** @type {Object|null} */
     this.dotNetRef = null;
 
+    /** @type {Object} */
+    this.options = {
+      animationDuration: SNACKBAR_CONFIG.ANIMATION_DURATION,
+      ...options
+    };
+
     if (!DropBearUtils.isElement(this.element)) {
       throw new TypeError('Invalid element provided to SnackbarManager');
     }
 
-    // Locate the progress bar element
-    this.progressBar = this.element.querySelector('.progress-bar');
-
-    // Attempt to find a Blazor-specific scoped attribute
-    this.scopedAttribute = Object.keys(this.element.attributes)
-      .map(key => this.element.attributes[key])
-      .find(attr => attr.name.startsWith('b-'))?.name;
-
+    this._cacheElements();
     this._setupEventListeners();
 
-    // Emit event to notify creation
     EventEmitter.emit(
       this.element,
       'created',
-      DropBearUtils.createEvent(this.id, 'created', {timestamp: Date.now()})
+      DropBearUtils.createEvent(this.id, 'created', {
+        timestamp: Date.now(),
+        options: this.options
+      })
     );
+
+    logger.debug('SnackbarManager created:', {id});
+  }
+
+  /**
+   * Cache required DOM elements
+   * @private
+   */
+  _cacheElements() {
+    this.progressBar = this.element.querySelector('.progress-bar');
+    this.content = this.element.querySelector('.snackbar-content');
+    this.actionButton = this.element.querySelector('.snackbar-action');
+    this.closeButton = this.element.querySelector('.snackbar-close');
+
+    // Find Blazor-specific scoped attribute if it exists
+    this.scopedAttribute = Object.keys(this.element.attributes)
+      .map(key => this.element.attributes[key])
+      .find(attr => attr.name.startsWith('b-'))?.name;
+  }
+
+  /**
+   * Set up event listeners
+   * @private
+   */
+  _setupEventListeners() {
+    this.handleMouseEnter = () => this._pauseProgress();
+    this.handleMouseLeave = () => this._resumeProgress();
+
+    this.element.addEventListener('mouseenter', this.handleMouseEnter);
+    this.element.addEventListener('mouseleave', this.handleMouseLeave);
+
+    if (this.actionButton) {
+      this.handleAction = () => this.hide();
+      this.actionButton.addEventListener('click', this.handleAction);
+    }
+
+    if (this.closeButton) {
+      this.handleClose = () => this.hide();
+      this.closeButton.addEventListener('click', this.handleClose);
+    }
+
+    logger.debug('Event listeners initialized');
   }
 
   /**
@@ -85,34 +131,56 @@ class SnackbarManager {
   }
 
   /**
-   * Set up mouse event listeners for progress bar
-   * @private
-   */
-  _setupEventListeners() {
-    this.handleMouseEnter = () => this._pauseProgress();
-    this.handleMouseLeave = () => this._resumeProgress();
-
-    this.element.addEventListener('mouseenter', this.handleMouseEnter);
-    this.element.addEventListener('mouseleave', this.handleMouseLeave);
-  }
-
-  /**
    * Show the snackbar
+   * @param {number} [duration=SNACKBAR_CONFIG.DEFAULT_DURATION] - Display duration
    * @returns {Promise<boolean>} Success status
    */
-  show() {
-    if (this.isDisposed) return Promise.resolve(false);
+  async show(duration = SNACKBAR_CONFIG.DEFAULT_DURATION) {
+    if (this.isDisposed) return false;
 
-    return circuitBreaker.execute(async () => {
-      logger.debug(`Showing snackbar ${this.id}`);
+    try {
+      duration = Math.max(
+        SNACKBAR_CONFIG.MIN_DURATION,
+        Math.min(duration, SNACKBAR_CONFIG.MAX_DURATION)
+      );
 
-      DOMOperationQueue.add(() => {
-        this.element.classList.remove('hide');
-        requestAnimationFrame(() => this.element.classList.add('show'));
-      });
+      await new Promise(resolve =>
+        DOMOperationQueue.add(() => {
+          this.element.classList.remove('hide');
+          requestAnimationFrame(() => {
+            this.element.classList.add('show');
 
+            const transitionEndHandler = () => {
+              this.element.removeEventListener('transitionend', transitionEndHandler);
+              resolve();
+            };
+
+            this.element.addEventListener('transitionend', transitionEndHandler);
+
+            // Fallback
+            setTimeout(resolve, this.options.animationDuration + 50);
+          });
+        }));
+
+      if (duration > 0) {
+        this.startProgress(duration);
+      }
+
+      EventEmitter.emit(
+        this.element,
+        'shown',
+        DropBearUtils.createEvent(this.id, 'shown', {
+          duration,
+          timestamp: Date.now()
+        })
+      );
+
+      logger.debug('Snackbar shown:', {id: this.id, duration});
       return true;
-    });
+    } catch (error) {
+      logger.error('Error showing snackbar:', error);
+      return false;
+    }
   }
 
   /**
@@ -120,12 +188,7 @@ class SnackbarManager {
    * @param {number} duration - Duration in milliseconds
    */
   startProgress(duration) {
-    if (this.isDisposed || !duration || !this.progressBar) {
-      logger.debug(`Cannot start progress for snackbar ${this.id} - invalid state`);
-      return;
-    }
-
-    logger.debug(`Starting progress for snackbar ${this.id} with duration ${duration}ms`);
+    if (this.isDisposed || !this.progressBar) return;
 
     DOMOperationQueue.add(() => {
       clearTimeout(this.progressTimeout);
@@ -139,16 +202,18 @@ class SnackbarManager {
 
         this.progressTimeout = setTimeout(async () => {
           try {
-            logger.debug(`Progress complete for snackbar ${this.id}`);
             if (this.dotNetRef) {
               await this.dotNetRef.invokeMethodAsync('OnProgressComplete');
             }
+            await this.hide();
           } catch (error) {
-            logger.error(`Error notifying progress completion for snackbar ${this.id}:`, error);
+            logger.error('Error handling progress completion:', error);
           }
         }, duration);
       });
     });
+
+    logger.debug('Progress started:', {duration});
   }
 
   /**
@@ -158,7 +223,6 @@ class SnackbarManager {
   _pauseProgress() {
     if (this.isDisposed || !this.progressBar) return;
 
-    logger.debug(`Pausing progress for snackbar ${this.id}`);
     clearTimeout(this.progressTimeout);
 
     const computedStyle = window.getComputedStyle(this.progressBar);
@@ -167,6 +231,8 @@ class SnackbarManager {
       this.progressBar.style.transition = 'none';
       this.progressBar.style.transform = computedStyle.transform;
     });
+
+    logger.debug('Progress paused');
   }
 
   /**
@@ -177,12 +243,10 @@ class SnackbarManager {
     if (this.isDisposed || !this.progressBar) return;
 
     const computedStyle = window.getComputedStyle(this.progressBar);
-    const duration =
-      parseFloat(this.element.style.getPropertyValue('--duration')) || 5000;
+    const duration = parseFloat(this.element.style.getPropertyValue('--duration')) ||
+      SNACKBAR_CONFIG.DEFAULT_DURATION;
     const currentScale = this._getCurrentScale(computedStyle.transform);
     const remainingTime = duration * currentScale;
-
-    logger.debug(`Resuming progress for snackbar ${this.id} with ${remainingTime}ms remaining`);
 
     DOMOperationQueue.add(() => {
       this.progressBar.style.transition = `transform ${remainingTime}ms linear`;
@@ -193,15 +257,18 @@ class SnackbarManager {
           if (this.dotNetRef) {
             await this.dotNetRef.invokeMethodAsync('OnProgressComplete');
           }
+          await this.hide();
         } catch (error) {
-          logger.error(`Error notifying progress completion for snackbar ${this.id}:`, error);
+          logger.error('Error handling progress completion:', error);
         }
       }, remainingTime);
     });
+
+    logger.debug('Progress resumed:', {remainingTime});
   }
 
   /**
-   * Get current scale value from transform matrix
+   * Parse scale value from transform matrix
    * @private
    * @param {string} transform - CSS transform value
    * @returns {number} Scale value
@@ -216,12 +283,10 @@ class SnackbarManager {
    * Hide the snackbar
    * @returns {Promise<boolean>} Success status
    */
-  hide() {
-    if (this.isDisposed) return Promise.resolve(false);
+  async hide() {
+    if (this.isDisposed) return false;
 
-    return circuitBreaker.execute(async () => {
-      logger.debug(`Hiding snackbar ${this.id}`);
-
+    try {
       DOMOperationQueue.add(() => {
         clearTimeout(this.progressTimeout);
         cancelAnimationFrame(this.animationFrame);
@@ -229,12 +294,71 @@ class SnackbarManager {
         this.element.classList.add('hide');
       });
 
+      await new Promise(resolve => {
+        const transitionEndHandler = () => {
+          this.element.removeEventListener('transitionend', transitionEndHandler);
+          this.dispose();
+          resolve();
+        };
+
+        this.element.addEventListener('transitionend', transitionEndHandler);
+
+        // Fallback
+        setTimeout(() => {
+          this.dispose();
+          resolve();
+        }, this.options.animationDuration + 50);
+      });
+
+      EventEmitter.emit(
+        this.element,
+        'hidden',
+        DropBearUtils.createEvent(this.id, 'hidden', {
+          timestamp: Date.now()
+        })
+      );
+
+      logger.debug('Snackbar hidden');
       return true;
-    });
+    } catch (error) {
+      logger.error('Error hiding snackbar:', error);
+      return false;
+    }
   }
 
   /**
-   * Dispose of the snackbar
+   * Update snackbar content
+   * @param {string} content - New content HTML
+   * @returns {Promise<boolean>} Success status
+   */
+  async updateContent(content) {
+    if (this.isDisposed || !this.content) return false;
+
+    try {
+      await new Promise(resolve =>
+        DOMOperationQueue.add(() => {
+          this.content.innerHTML = content;
+          resolve();
+        }));
+
+      EventEmitter.emit(
+        this.element,
+        'content-updated',
+        DropBearUtils.createEvent(this.id, 'content-updated', {
+          timestamp: Date.now()
+        })
+      );
+
+      logger.debug('Content updated');
+      return true;
+    } catch (error) {
+      logger.error('Error updating content:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Dispose the snackbar manager
    */
   dispose() {
     if (this.isDisposed) return;
@@ -248,6 +372,14 @@ class SnackbarManager {
     this.element.removeEventListener('mouseenter', this.handleMouseEnter);
     this.element.removeEventListener('mouseleave', this.handleMouseLeave);
 
+    if (this.actionButton && this.handleAction) {
+      this.actionButton.removeEventListener('click', this.handleAction);
+    }
+
+    if (this.closeButton && this.handleClose) {
+      this.closeButton.removeEventListener('click', this.handleClose);
+    }
+
     DOMOperationQueue.add(() => {
       if (this.element?.parentNode) {
         this.element.parentNode.removeChild(this.element);
@@ -259,12 +391,14 @@ class SnackbarManager {
     EventEmitter.emit(
       this.element,
       'disposed',
-      DropBearUtils.createEvent(this.id, 'disposed', {timestamp: Date.now()})
+      DropBearUtils.createEvent(this.id, 'disposed', {
+        timestamp: Date.now()
+      })
     );
   }
 }
 
-// Register the module with ModuleManager
+// Register with ModuleManager
 ModuleManager.register(
   'DropBearSnackbar',
   {
@@ -273,36 +407,53 @@ ModuleManager.register(
 
     /**
      * Initialize the snackbar module
-     * @returns {Promise<boolean>} Success status
+     * @returns {Promise<void>}
      */
     async initialize() {
-      return circuitBreaker.execute(async () => {
-        logger.debug('DropBearSnackbar global module initialized');
-        return true;
-      });
+      if (isInitialized) {
+        return;
+      }
+
+      try {
+        logger.debug('Snackbar module initializing');
+
+        // Initialize dependencies
+        await ModuleManager.waitForDependencies(['DropBearCore']);
+
+        isInitialized = true;
+        window.DropBearSnackbar.__initialized = true;
+
+        logger.debug('Snackbar module initialized');
+      } catch (error) {
+        logger.error('Snackbar initialization failed:', error);
+        throw error;
+      }
     },
 
     /**
      * Create a new snackbar instance
      * @param {string} snackbarId - Unique identifier
+     * @param {Object} [options={}] - Configuration options
      * @returns {Promise<void>}
      */
-    async createSnackbar(snackbarId) {
-      return circuitBreaker.execute(async () => {
-        try {
-          if (this.snackbars.has(snackbarId)) {
-            logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
-            await this.dispose(snackbarId);
-          }
-
-          const manager = new SnackbarManager(snackbarId);
-          this.snackbars.set(snackbarId, manager);
-          logger.debug(`Snackbar created for ID: ${snackbarId}`);
-        } catch (error) {
-          logger.error('Snackbar creation error:', error);
-          throw error;
+    async createSnackbar(snackbarId, options = {}) {
+      try {
+        if (!isInitialized) {
+          throw new Error('Module not initialized');
         }
-      });
+
+        if (this.snackbars.has(snackbarId)) {
+          logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
+          await this.dispose(snackbarId);
+        }
+
+        const manager = new SnackbarManager(snackbarId, options);
+        this.snackbars.set(snackbarId, manager);
+        logger.debug(`Snackbar created for ID: ${snackbarId}`);
+      } catch (error) {
+        logger.error('Snackbar creation error:', error);
+        throw error;
+      }
     },
 
     /**
@@ -324,15 +475,27 @@ ModuleManager.register(
     /**
      * Show a snackbar
      * @param {string} snackbarId - Snackbar identifier
+     * @param {number} [duration] - Display duration in ms
      * @returns {Promise<boolean>} Success status
      */
-    show(snackbarId) {
+    show(snackbarId, duration) {
       const manager = this.snackbars.get(snackbarId);
-      return manager ? manager.show() : Promise.resolve(false);
+      return manager ? manager.show(duration) : Promise.resolve(false);
     },
 
     /**
-     * Start progress bar for a snackbar
+     * Update snackbar content
+     * @param {string} snackbarId - Snackbar identifier
+     * @param {string} content - New content
+     * @returns {Promise<boolean>} Success status
+     */
+    async updateContent(snackbarId, content) {
+      const manager = this.snackbars.get(snackbarId);
+      return manager ? manager.updateContent(content) : false;
+    },
+
+    /**
+     * Start progress for a snackbar
      * @param {string} snackbarId - Snackbar identifier
      * @param {number} duration - Duration in milliseconds
      * @returns {boolean} Success status
@@ -357,6 +520,14 @@ ModuleManager.register(
     },
 
     /**
+     * Check if module is initialized
+     * @returns {boolean}
+     */
+    isInitialized() {
+      return isInitialized;
+    },
+
+    /**
      * Dispose of a snackbar
      * @param {string} snackbarId - Snackbar identifier
      */
@@ -365,31 +536,40 @@ ModuleManager.register(
       if (manager) {
         manager.dispose();
         this.snackbars.delete(snackbarId);
+        logger.debug(`Snackbar disposed for ID: ${snackbarId}`);
       }
     },
+
+    /**
+     * Dispose all snackbars and reset module
+     */
+    disposeAll() {
+      Array.from(this.snackbars.keys()).forEach(id => this.dispose(id));
+      this.snackbars.clear();
+      isInitialized = false;
+      window.DropBearSnackbar.__initialized = false;
+      logger.debug('All snackbars disposed');
+    }
   },
   ['DropBearCore']
 );
 
-/**
- * Retrieve the registered Snackbar module
- */
+// Get module reference
 const snackbarModule = ModuleManager.get('DropBearSnackbar');
 
-/**
- * Attach a reference to the global window object if desired
- */
+// Attach to window
 window.DropBearSnackbar = {
+  __initialized: false,
   initialize: () => snackbarModule.initialize(),
-  createSnackbar: snackbarId => snackbarModule.createSnackbar(snackbarId),
+  createSnackbar: (snackbarId, options) => snackbarModule.createSnackbar(snackbarId, options),
   setDotNetReference: (snackbarId, dotNetRef) => snackbarModule.setDotNetReference(snackbarId, dotNetRef),
-  show: snackbarId => snackbarModule.show(snackbarId),
+  show: (snackbarId, duration) => snackbarModule.show(snackbarId, duration),
+  updateContent: (snackbarId, content) => snackbarModule.updateContent(snackbarId, content),
   startProgress: (snackbarId, duration) => snackbarModule.startProgress(snackbarId, duration),
   hide: snackbarId => snackbarModule.hide(snackbarId),
   dispose: snackbarId => snackbarModule.dispose(snackbarId),
+  disposeAll: () => snackbarModule.disposeAll()
 };
 
-/**
- * Export the SnackbarManager at the top level
- */
+// Export SnackbarManager class
 export {SnackbarManager};

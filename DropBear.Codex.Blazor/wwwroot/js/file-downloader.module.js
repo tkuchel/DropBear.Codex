@@ -3,55 +3,81 @@
  * @module file-downloader
  */
 
+import { CircuitBreaker, DOMOperationQueue, EventEmitter } from './core.module.js';
+import { DropBearUtils } from './utils.module.js';
+import { ModuleManager } from './module-manager.module.js';
 
-import {DropBearUtils} from './utils.module.js';
-import {CircuitBreaker, DOMOperationQueue} from './core.module.js';
-import {ModuleManager} from './module-manager.module.js';
-
-/**
- * Create a logger for this module
- */
 const logger = DropBearUtils.createLogger('DropBearFileDownloader');
+const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
+let isInitialized = false;
 
 /**
- * Circuit breaker to handle repeated failures
- */
-const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
-
-/**
- * DownloadManager: Provides a method to download files from various content types.
- * This class aligns with an IDownloadManager interface in TypeScript.
+ * Download manager for handling file downloads
+ * @implements {IDownloadManager}
  */
 class DownloadManager {
   constructor() {
-    /**
-     * Track active downloads by a unique ID.
-     * @type {Set<string>}
-     */
+    /** @type {Set<string>} - Track active downloads by ID */
     this.activeDownloads = new Set();
+
+    /** @type {boolean} */
+    this.isDisposed = false;
+
+    EventEmitter.emit(
+      this,
+      'created',
+      DropBearUtils.createEvent(crypto.randomUUID(), 'created', {
+        timestamp: Date.now()
+      })
+    );
+
+    logger.debug('DownloadManager instance created');
   }
 
   /**
-   * Download a file from a stream or byte array.
-   *
+   * Download a file from a stream or byte array
    * @param {string} fileName - The file name for the download
    * @param {Blob | ArrayBuffer | Uint8Array} content - The file content
-   * @param {string} [contentType] - The MIME type for the file (optional)
+   * @param {string} [contentType] - The MIME type for the file
    * @returns {Promise<void>}
    */
   async downloadFileFromStream(fileName, content, contentType) {
+    if (this.isDisposed) {
+      throw new Error('Cannot download from disposed manager');
+    }
+
     const downloadId = crypto.randomUUID();
 
     try {
       this.activeDownloads.add(downloadId);
-      logger.debug('Starting download:', {fileName, contentType, downloadId});
+      logger.debug('Starting download:', { fileName, contentType, downloadId });
 
       const blob = await this._createBlob(content, contentType);
       await this._initiateDownload(blob, fileName);
 
-      logger.debug('Download completed:', {fileName, downloadId});
+      EventEmitter.emit(
+        this,
+        'download-complete',
+        DropBearUtils.createEvent(downloadId, 'download-complete', {
+          fileName,
+          timestamp: Date.now()
+        })
+      );
+
+      logger.debug('Download completed:', { fileName, downloadId });
     } catch (error) {
-      logger.error('Download failed:', {fileName, error, downloadId});
+      logger.error('Download failed:', { fileName, error, downloadId });
+
+      EventEmitter.emit(
+        this,
+        'download-failed',
+        DropBearUtils.createEvent(downloadId, 'download-failed', {
+          fileName,
+          error: error.message,
+          timestamp: Date.now()
+        })
+      );
+
       throw error;
     } finally {
       this.activeDownloads.delete(downloadId);
@@ -59,11 +85,9 @@ class DownloadManager {
   }
 
   /**
-   * Create a Blob from the provided content. This only handles Blob, ArrayBuffer,
-   * and Uint8Array to match the IDownloadManager interface exactly.
-   *
+   * Create a Blob from the provided content
    * @private
-   * @param {DownloadContent} content - The file content
+   * @param {Blob | ArrayBuffer | Uint8Array} content - The file content
    * @param {string} [contentType] - MIME type
    * @returns {Promise<Blob>}
    */
@@ -71,35 +95,39 @@ class DownloadManager {
     return circuitBreaker.execute(async () => {
       let blob;
 
-      if (content instanceof Blob) {
-        logger.debug('Content is a Blob');
-        blob = content;
-      } else if (content instanceof Uint8Array) {
-        logger.debug('Content is a Uint8Array');
-        blob = new Blob([content], {type: contentType});
-      } else if (content instanceof ArrayBuffer) {
-        logger.debug('Content is an ArrayBuffer');
-        blob = new Blob([content], {type: contentType});
-      } else if (typeof content.arrayBuffer === 'function') {
-        // .NET StreamRef case
-        const arrayBuffer = await content.arrayBuffer();
-        blob = new Blob([arrayBuffer], {type: contentType});
-      } else {
-        // Because we've typed the content strictly, TypeScript won't let us get here.
-        // But if we do at runtime, we throw an error.
-        throw new Error('Unsupported content type. Must be Blob, ArrayBuffer, or Uint8Array or DotNetStreamReference.');
-      }
+      try {
+        if (content instanceof Blob) {
+          logger.debug('Content is a Blob');
+          blob = content;
+        } else if (content instanceof Uint8Array) {
+          logger.debug('Content is a Uint8Array');
+          blob = new Blob([content], { type: contentType });
+        } else if (content instanceof ArrayBuffer) {
+          logger.debug('Content is an ArrayBuffer');
+          blob = new Blob([content], { type: contentType });
+        } else if (typeof content.arrayBuffer === 'function') {
+          // .NET StreamRef case
+          logger.debug('Content is a StreamRef');
+          const arrayBuffer = await content.arrayBuffer();
+          blob = new Blob([arrayBuffer], { type: contentType });
+        } else {
+          throw new Error('Unsupported content type. Must be Blob, ArrayBuffer, Uint8Array or DotNetStreamReference.');
+        }
 
-      logger.debug('Blob created, size:', blob.size);
-      return blob;
+        logger.debug('Blob created, size:', blob.size);
+        return blob;
+      } catch (error) {
+        logger.error('Error creating blob:', error);
+        throw error;
+      }
     });
   }
 
   /**
-   * Initiate the file download by creating a temporary link in the DOM and clicking it.
+   * Initiate the file download
    * @private
    * @param {Blob} blob - The file content as a Blob
-   * @param {string} [fileName='download'] - Desired filename for the downloaded file
+   * @param {string} [fileName='download'] - Desired filename
    */
   async _initiateDownload(blob, fileName = 'download') {
     const url = URL.createObjectURL(blob);
@@ -107,91 +135,163 @@ class DownloadManager {
     link.href = url;
     link.download = fileName;
 
-    // Use DOMOperationQueue to schedule DOM work
-    DOMOperationQueue.add(() => {
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    });
+    try {
+      // Use DOMOperationQueue to schedule DOM work
+      await new Promise(resolve => {
+        DOMOperationQueue.add(() => {
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          resolve();
+        });
+      });
 
-    // Clean up the object URL after a short delay
-    setTimeout(() => URL.revokeObjectURL(url), 100);
+      logger.debug('Download link clicked:', fileName);
+    } catch (error) {
+      logger.error('Error initiating download:', error);
+      throw error;
+    } finally {
+      // Clean up the object URL after a short delay
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        logger.debug('Object URL revoked:', fileName);
+      }, 100);
+    }
   }
 
   /**
-   * Dispose any internal references. Clears active downloads, if needed.
+   * Check if there are any active downloads
+   * @returns {boolean}
+   */
+  hasActiveDownloads() {
+    return this.activeDownloads.size > 0;
+  }
+
+  /**
+   * Get the count of active downloads
+   * @returns {number}
+   */
+  getActiveDownloadCount() {
+    return this.activeDownloads.size;
+  }
+
+  /**
+   * Dispose the download manager
    */
   dispose() {
+    if (this.isDisposed) return;
+
+    logger.debug('Disposing DownloadManager');
+    this.isDisposed = true;
     this.activeDownloads.clear();
+
+    EventEmitter.emit(
+      this,
+      'disposed',
+      DropBearUtils.createEvent(crypto.randomUUID(), 'disposed', {
+        timestamp: Date.now()
+      })
+    );
   }
 }
 
-/**
- * Register the module with the DropBear ModuleManager.
- * The object we pass here can have additional methods (initialize, dispose)
- * beyond the IDownloadManager interface, so it does not conflict with strict type checking
- * as long as your TypeScript definitions treat it as a custom module interface.
- */
+// Register with ModuleManager
 ModuleManager.register(
   'DropBearFileDownloader',
   {
-    /**
-     * A single download manager instance
-     * @type {DownloadManager}
-     */
-    downloadManager: new DownloadManager(),
+    /** @type {DownloadManager|null} */
+    downloadManager: null,
 
     /**
-     * Global initialization method (no-arg).
-     * This is optional if we want to match a typical "IModule" pattern that
-     * the ModuleManager might expect (some modules have an initialize method).
-     */
-    async initialize() {
-      logger.debug('DropBearFileDownloader module init done (no-arg).');
-    },
-
-    /**
-     * Download a file from a stream or byte array.
-     *
-     * @param {string} fileName
-     * @param {Blob | ArrayBuffer | Uint8Array} content
-     * @param {string} [contentType]
+     * Initialize the file downloader module
      * @returns {Promise<void>}
      */
-    downloadFileFromStream: async (fileName, content, contentType) => {
-      const moduleRef = ModuleManager.get('DropBearFileDownloader');
-      return moduleRef.downloadManager.downloadFileFromStream(fileName, content, contentType);
+    async initialize() {
+      if (isInitialized) {
+        return;
+      }
+
+      try {
+        logger.debug('File downloader module initializing');
+
+        // Initialize dependencies
+        await ModuleManager.waitForDependencies(['DropBearCore']);
+
+        this.downloadManager = new DownloadManager();
+
+        isInitialized = true;
+        window.DropBearFileDownloader.__initialized = true;
+
+        logger.debug('File downloader module initialized');
+      } catch (error) {
+        logger.error('File downloader initialization failed:', error);
+        throw error;
+      }
     },
 
     /**
-     * Dispose the module, clearing any active downloads.
+     * Download a file
+     * @param {string} fileName - File name
+     * @param {Blob | ArrayBuffer | Uint8Array} content - File content
+     * @param {string} [contentType] - Content type
+     * @returns {Promise<void>}
+     */
+    async downloadFileFromStream(fileName, content, contentType) {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (!this.downloadManager) {
+        throw new Error('DownloadManager not created');
+      }
+
+      return this.downloadManager.downloadFileFromStream(fileName, content, contentType);
+    },
+
+    /**
+     * Check if the module is initialized
+     * @returns {boolean}
+     */
+    isInitialized() {
+      return isInitialized;
+    },
+
+    /**
+     * Get active download count
+     * @returns {number}
+     */
+    getActiveDownloadCount() {
+      return this.downloadManager?.getActiveDownloadCount() ?? 0;
+    },
+
+    /**
+     * Dispose the module
      */
     dispose() {
-      this.downloadManager.dispose();
-      this.downloadManager = null;
-    },
+      if (this.downloadManager) {
+        this.downloadManager.dispose();
+        this.downloadManager = null;
+      }
+      isInitialized = false;
+      window.DropBearFileDownloader.__initialized = false;
+      logger.debug('File downloader module disposed');
+    }
   },
-  // Dependencies:
   ['DropBearCore']
 );
 
-/**
- * Grab the registered downloader module so we can attach it to window or use directly.
- */
-const dropBearFileDownloaderModule = ModuleManager.get('DropBearFileDownloader');
+// Get module reference
+const fileDownloaderModule = ModuleManager.get('DropBearFileDownloader');
 
-/**
- * Attach to the global window, if desired, for easy consumption
- * without imports in your HTML.
- */
+// Attach to window
 window.DropBearFileDownloader = {
-  initialize: () => dropBearFileDownloaderModule.initialize(),
+  __initialized: false,
+  initialize: () => fileDownloaderModule.initialize(),
   downloadFileFromStream: (fileName, content, contentType) =>
-    dropBearFileDownloaderModule.downloadFileFromStream(fileName, content, contentType),
-  dispose: () => dropBearFileDownloaderModule.dispose(),
+    fileDownloaderModule.downloadFileFromStream(fileName, content, contentType),
+  getActiveDownloadCount: () => fileDownloaderModule.getActiveDownloadCount(),
+  dispose: () => fileDownloaderModule.dispose()
 };
 
-/**
- * Export the DownloadManager class so it can be imported directly if needed.
- */
-export {DownloadManager};
+// Export DownloadManager class
+export { DownloadManager };
