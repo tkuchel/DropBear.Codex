@@ -294,7 +294,7 @@ window["resize-manager"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearResizeManager',
+  'resize-manager',
   {
     initialize: () => window["resize-manager"].initialize(),
     isInitialized: () => window["resize-manager"].isInitialized(),

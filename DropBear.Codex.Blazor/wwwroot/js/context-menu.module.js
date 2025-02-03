@@ -363,7 +363,7 @@ window["context-menu"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearContextMenu',
+  'context-menu',
   {
     initialize: () => window["context-menu"].initialize(),
     isInitialized: () => window["context-menu"].isInitialized(),

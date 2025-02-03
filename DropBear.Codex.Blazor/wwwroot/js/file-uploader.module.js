@@ -586,7 +586,7 @@ window["file-uploader"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearFileUploader',
+  'file-uploader',
   {
     initialize: () => window["file-uploader"].initialize(),
     isInitialized: () => window["file-uploader"].isInitialized(),

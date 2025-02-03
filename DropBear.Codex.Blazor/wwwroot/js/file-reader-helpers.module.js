@@ -157,7 +157,7 @@ window["file-reader-helpers"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearFileReaderHelpers',
+  'file-reader-helpers',
   {
     initialize: () => window["file-reader-helpers"].initialize(),
     isInitialized: () => window["file-reader-helpers"].isInitialized(),

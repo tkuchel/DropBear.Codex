@@ -503,7 +503,7 @@ window["snackbar"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearSnackbar',
+  'snackbar',
   {
     initialize: () => window["snackbar"].initialize(),
     isInitialized: () => window["snackbar"].isInitialized(),

@@ -257,7 +257,7 @@ window["file-downloader"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearFileDownloader',
+  'file-downloader',
   {
     initialize: () => window["file-downloader"].initialize(),
     isInitialized: () => window["file-downloader"].isInitialized(),

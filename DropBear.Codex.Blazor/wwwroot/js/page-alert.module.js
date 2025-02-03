@@ -480,7 +480,7 @@ window["page-alert"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearPageAlert',
+  'page-alert',
   {
     initialize: () => window["page-alert"].initialize(),
     isInitialized: () => window["page-alert"].isInitialized(),

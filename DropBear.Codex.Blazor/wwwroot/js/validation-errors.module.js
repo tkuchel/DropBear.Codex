@@ -480,7 +480,7 @@ window["validation-errors"] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'DropBearValidationErrors',
+  'validation-errors',
   {
     initialize: () => window["validation-errors"].initialize(),
     isInitialized: () => window["validation-errors"].isInitialized(),
