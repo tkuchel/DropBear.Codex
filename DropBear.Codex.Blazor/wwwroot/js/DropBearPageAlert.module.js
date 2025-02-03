@@ -490,5 +490,75 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export the API functions under a unique namespace for the page alert module.
+export const DropBearPageAlertAPI = {
+  /**
+   * Initializes the page alert module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Creates a new page alert.
+   * @param {string} id - The ID of the alert element.
+   * @param {number} [duration=ALERT_CONFIG.DEFAULT_DURATION] - The duration (in ms) for non-permanent alerts.
+   * @param {boolean} [isPermanent=false] - Whether the alert is permanent (i.e. does not auto-hide).
+   * @param {Object} [options={}] - Additional configuration options.
+   * @returns {boolean} True if the alert was created successfully.
+   */
+  create: (id, duration = ALERT_CONFIG.DEFAULT_DURATION, isPermanent = false, options = {}) =>
+    window[moduleName].create(id, duration, isPermanent, options),
+
+  /**
+   * Updates the content of an existing alert.
+   * @param {string} id - The ID of the alert element.
+   * @param {string} content - New content (HTML) for the alert.
+   * @returns {Promise<boolean>} True if the content was updated successfully.
+   */
+  updateContent: async (id, content) => window[moduleName].updateContent(id, content),
+
+  /**
+   * Shows an alert.
+   * @param {string} id - The ID of the alert element.
+   * @returns {Promise<boolean>} True if the alert was shown successfully.
+   */
+  show: async (id) => window[moduleName].show(id),
+
+  /**
+   * Hides an alert.
+   * @param {string} id - The ID of the alert element.
+   * @returns {Promise<boolean>} True if the alert was hidden successfully.
+   */
+  hide: async (id) => window[moduleName].hide(id),
+
+  /**
+   * Hides all alerts.
+   * @returns {Promise<Array<boolean>>} A promise that resolves when all alerts are hidden.
+   */
+  hideAll: async () => window[moduleName].hideAll(),
+
+  /**
+   * Checks whether the page alert module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes a specific alert.
+   * @param {string} id - The ID of the alert element.
+   */
+  dispose: (id) => window[moduleName].dispose(id),
+
+  /**
+   * Disposes all alerts and resets the module.
+   * @returns {Promise<void>}
+   */
+  disposeAll: async () => window[moduleName].disposeAll()
+};
+
+// Also export the PageAlertManager class if you need direct access.
+export { PageAlertManager };
+
+
 // Export PageAlertManager class
 export {PageAlertManager};

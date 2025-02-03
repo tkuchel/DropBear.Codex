@@ -311,5 +311,51 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export the API functions under a unique namespace for the navigation buttons module.
+export const DropBearNavigationButtonsAPI = {
+  /**
+   * Initializes the navigation buttons module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Creates a new NavigationManager instance.
+   * @param {Object} dotNetRef - The .NET reference for Blazor interop.
+   * @returns {Promise<void>}
+   */
+  createNavigationManager: async (dotNetRef) => window[moduleName].createNavigationManager(dotNetRef),
+
+  /**
+   * Scrolls the page to the top.
+   * @returns {Promise<void>}
+   */
+  scrollToTop: async () => window[moduleName].scrollToTop(),
+
+  /**
+   * Navigates back in the browser history.
+   * @returns {Promise<void>}
+   */
+  goBack: async () => window[moduleName].goBack(),
+
+  /**
+   * Forces an update of the navigation buttons' visibility.
+   * @param {boolean} isVisible - Desired visibility state.
+   * @returns {Promise<void>}
+   */
+  forceVisibilityUpdate: async (isVisible) => window[moduleName].forceVisibilityUpdate(isVisible),
+
+  /**
+   * Disposes the navigation buttons module.
+   * @returns {Promise<void>}
+   */
+  dispose: async () => window[moduleName].dispose()
+};
+
+// Also export the NavigationManager class for direct access if needed.
+export { NavigationManager };
+
+
+
 // Export NavigationManager class
 export {NavigationManager};

@@ -513,5 +513,87 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export the API functions under a unique namespace for the snackbar module.
+export const DropBearSnackbarAPI = {
+  /**
+   * Initializes the snackbar module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Creates a new snackbar instance.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   * @param {Object} [options={}] - Configuration options.
+   * @returns {Promise<void>}
+   */
+  createSnackbar: async (snackbarId, options = {}) =>
+    window[moduleName].createSnackbar(snackbarId, options),
+
+  /**
+   * Sets the .NET reference for a snackbar.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   * @param {Object} dotNetRef - The .NET reference for Blazor interop.
+   * @returns {Promise<boolean>} True if the reference was set successfully.
+   */
+  setDotNetReference: async (snackbarId, dotNetRef) =>
+    window[moduleName].setDotNetReference(snackbarId, dotNetRef),
+
+  /**
+   * Shows a snackbar.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   * @param {number} [duration] - The display duration.
+   * @returns {Promise<boolean>} True if the snackbar was shown successfully.
+   */
+  show: async (snackbarId, duration) => window[moduleName].show(snackbarId, duration),
+
+  /**
+   * Updates the content of a snackbar.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   * @param {string} content - The new HTML content.
+   * @returns {Promise<boolean>} True if the content was updated successfully.
+   */
+  updateContent: async (snackbarId, content) =>
+    window[moduleName].updateContent(snackbarId, content),
+
+  /**
+   * Starts the progress bar animation for a snackbar.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   * @param {number} duration - Duration for the progress animation.
+   * @returns {boolean} True if the progress was started.
+   */
+  startProgress: (snackbarId, duration) =>
+    window[moduleName].startProgress(snackbarId, duration),
+
+  /**
+   * Hides a snackbar.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   * @returns {Promise<boolean>} True if the snackbar was hidden successfully.
+   */
+  hide: async (snackbarId) => window[moduleName].hide(snackbarId),
+
+  /**
+   * Checks whether the snackbar module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes a specific snackbar instance.
+   * @param {string} snackbarId - The ID of the snackbar element.
+   */
+  dispose: (snackbarId) => window[moduleName].dispose(snackbarId),
+
+  /**
+   * Disposes all snackbar instances.
+   * @returns {Promise<void>}
+   */
+  disposeAll: async () => window[moduleName].disposeAll()
+};
+
+// Also export the SnackbarManager class for direct access if needed.
+export { SnackbarManager };
+
+
 // Export SnackbarManager class
 export {SnackbarManager};

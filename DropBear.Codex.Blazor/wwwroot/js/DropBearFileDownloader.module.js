@@ -266,5 +266,46 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export API functions under a unique namespace for the file downloader module.
+export const DropBearFileDownloaderAPI = {
+  /**
+   * Initializes the file downloader module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Downloads a file from a stream or byte array.
+   * @param {string} fileName - The desired file name.
+   * @param {Blob | ArrayBuffer | Uint8Array} content - The file content.
+   * @param {string} [contentType] - The MIME type of the file.
+   * @returns {Promise<void>}
+   */
+  downloadFileFromStream: async (fileName, content, contentType) =>
+    window[moduleName].downloadFileFromStream(fileName, content, contentType),
+
+  /**
+   * Returns the count of active downloads.
+   * @returns {number}
+   */
+  getActiveDownloadCount: () => window[moduleName].getActiveDownloadCount(),
+
+  /**
+   * Checks if the file downloader module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes the file downloader module.
+   * @returns {Promise<void>}
+   */
+  dispose: async () => window[moduleName].dispose()
+};
+
+// Also export the DownloadManager class if you need direct access to it.
+export { DownloadManager };
+
+
 // Export DownloadManager class
 export { DownloadManager };

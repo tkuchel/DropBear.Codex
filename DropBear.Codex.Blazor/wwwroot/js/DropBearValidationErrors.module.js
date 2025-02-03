@@ -490,5 +490,90 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export the API functions under a unique namespace for the validation errors module.
+export const DropBearValidationErrorsAPI = {
+  /**
+   * Initializes the validation errors module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Creates a new validation container (manager) for the specified container ID.
+   * @param {string} containerId - The ID of the container element.
+   * @param {Object} [options={}] - Additional configuration options.
+   */
+  createValidationContainer: (containerId, options = {}) =>
+    window[moduleName].createValidationContainer(containerId, options),
+
+  /**
+   * Updates the error messages in a validation container.
+   * @param {string} containerId - The ID of the container element.
+   * @param {string[]} errors - An array of error messages.
+   * @returns {Promise<void>}
+   */
+  updateErrors: async (containerId, errors) =>
+    window[moduleName].updateErrors(containerId, errors),
+
+  /**
+   * Updates the ARIA attributes of a validation container.
+   * @param {string} containerId - The ID of the container element.
+   * @param {boolean} isCollapsed - Whether the container is collapsed.
+   * @returns {Promise<void>}
+   */
+  updateAriaAttributes: async (containerId, isCollapsed) =>
+    window[moduleName].updateAriaAttributes(containerId, isCollapsed),
+
+  /**
+   * Shows the validation errors for a given container.
+   * @param {string} containerId - The ID of the container element.
+   * @returns {Promise<void>}
+   */
+  show: async (containerId) => window[moduleName].show(containerId),
+
+  /**
+   * Hides the validation errors for a given container.
+   * @param {string} containerId - The ID of the container element.
+   * @returns {Promise<void>}
+   */
+  hide: async (containerId) => window[moduleName].hide(containerId),
+
+  /**
+   * Clears all error messages in a validation container.
+   * @param {string} containerId - The ID of the container element.
+   * @returns {Promise<void>}
+   */
+  clearErrors: async (containerId) => window[moduleName].clearErrors(containerId),
+
+  /**
+   * Returns the number of errors in a validation container.
+   * @param {string} containerId - The ID of the container element.
+   * @returns {number}
+   */
+  getErrorCount: (containerId) => window[moduleName].getErrorCount(containerId),
+
+  /**
+   * Checks whether the validation errors module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes a specific validation container.
+   * @param {string} containerId - The ID of the container element.
+   */
+  dispose: (containerId) => window[moduleName].dispose(containerId),
+
+  /**
+   * Disposes all validation containers and resets the module.
+   * @returns {Promise<void>}
+   */
+  disposeAll: async () => window[moduleName].disposeAll()
+};
+
+// Also export the ValidationErrorsManager class for direct access if needed.
+export { ValidationErrorsManager };
+
+
 // Export ValidationErrorsManager class
 export {ValidationErrorsManager};

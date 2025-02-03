@@ -596,5 +596,70 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export API functions under a unique namespace for the file uploader module.
+export const DropBearFileUploaderAPI = {
+  /**
+   * Initializes the file uploader module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Creates a new uploader instance for the specified element.
+   * @param {string} elementId - The ID of the upload container element.
+   * @param {Object} dotNetRef - The .NET reference for Blazor interop.
+   * @returns {Promise<void>}
+   */
+  createUploader: async (elementId, dotNetRef) =>
+    window[moduleName].createUploader(elementId, dotNetRef),
+
+  /**
+   * Uploads files using the uploader instance identified by the element ID.
+   * @param {string} elementId - The ID of the upload container element.
+   * @param {File[]} files - An array of File objects to upload.
+   * @returns {Promise<void>}
+   */
+  uploadFiles: async (elementId, files) =>
+    window[moduleName].uploadFiles(elementId, files),
+
+  /**
+   * Cancels a specific upload.
+   * @param {string} elementId - The ID of the uploader.
+   * @param {string} uploadId - The unique identifier of the upload.
+   */
+  cancelUpload: async (elementId, uploadId) =>
+    window[moduleName].cancelUpload(elementId, uploadId),
+
+  /**
+   * Gets the current upload status of the uploader identified by elementId.
+   * @param {string} elementId - The ID of the uploader.
+   * @returns {object|null} The current upload status.
+   */
+  getUploadStatus: (elementId) => window[moduleName].getUploadStatus(elementId),
+
+  /**
+   * Checks whether the file uploader module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes of a specific uploader instance.
+   * @param {string} elementId - The ID of the uploader.
+   * @returns {Promise<void>}
+   */
+  dispose: async (elementId) => window[moduleName].dispose(elementId),
+
+  /**
+   * Disposes all uploader instances.
+   * @returns {Promise<void>}
+   */
+  disposeAll: async () => window[moduleName].disposeAll()
+};
+
+// Also export the FileUploadManager and ChunkUploader classes if direct access is needed.
+export { FileUploadManager, ChunkUploader };
+
+
 // Export FileUploadManager and ChunkUploader classes
 export {FileUploadManager, ChunkUploader};

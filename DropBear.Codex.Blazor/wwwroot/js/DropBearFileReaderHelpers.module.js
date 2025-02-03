@@ -167,5 +167,51 @@ window.DropBearModuleManager.register(
   ['DropBearUtils']
 );
 
+// Export the helper functions under a unique namespace for dynamic import.
+// This prevents conflicts with similar function names from other modules.
+export const DropBearFileReaderHelpersAPI = {
+  /**
+   * Initializes the File Reader Helpers module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Retrieves file information from a File object.
+   * @param {File} file - The file to inspect.
+   * @returns {{name: string, size: number, type: string, lastModified: number}}
+   */
+  getFileInfo: (...args) => window[moduleName].getFileInfo(...args),
+
+  /**
+   * Reads a chunk from a File object.
+   * @param {File} file - The file to read from.
+   * @param {number} offset - The starting byte index.
+   * @param {number} count - The number of bytes to read.
+   * @returns {Promise<Uint8Array>}
+   */
+  readFileChunk: async (...args) => window[moduleName].readFileChunk(...args),
+
+  /**
+   * Retrieves files from a DataTransfer object.
+   * @param {DataTransfer} dataTransfer - The drop event's DataTransfer object.
+   * @returns {File[]}
+   */
+  getDroppedFiles: (...args) => window[moduleName].getDroppedFiles(...args),
+
+  /**
+   * Checks whether the module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes the File Reader Helpers module.
+   * @returns {Promise<void>}
+   */
+  dispose: async () => window[moduleName].dispose()
+};
+
+
 // Export helper functions
 export const {getFileInfo, readFileChunk, getDroppedFiles} = FileReaderHelpers;

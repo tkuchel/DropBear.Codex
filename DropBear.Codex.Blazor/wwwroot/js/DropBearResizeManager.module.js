@@ -304,5 +304,51 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export the API functions under a unique namespace for the resize manager module.
+export const DropBearResizeManagerAPI = {
+  /**
+   * Initializes the resize manager module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Creates a new ResizeManager instance.
+   * @param {Object} dotNetRef - The .NET reference for Blazor interop.
+   * @param {Object} [options={}] - Optional configuration options.
+   * @returns {Promise<void>}
+   */
+  createResizeManager: async (dotNetRef, options = {}) =>
+    window[moduleName].createResizeManager(dotNetRef, options),
+
+  /**
+   * Forces a resize event.
+   * @returns {Promise<void>}
+   */
+  forceResize: async () => window[moduleName].forceResize(),
+
+  /**
+   * Gets the current dimensions of the window.
+   * @returns {{ width: number, height: number, scale: number }}
+   */
+  getDimensions: () => window[moduleName].getDimensions(),
+
+  /**
+   * Checks whether the resize manager module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Disposes of the resize manager module.
+   * @returns {Promise<void>}
+   */
+  dispose: async () => window[moduleName].dispose()
+};
+
+// Also export the ResizeManager class for direct access if needed.
+export { ResizeManager };
+
+
 // Export ResizeManager class
 export { ResizeManager };

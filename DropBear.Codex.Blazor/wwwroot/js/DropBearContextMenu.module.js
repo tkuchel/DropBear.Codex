@@ -373,5 +373,79 @@ window.DropBearModuleManager.register(
   ['DropBearUtils', 'DropBearCore']
 );
 
+// Export the API functions under a unique namespace
+export const DropBearContextMenuAPI = {
+  /**
+   * Initialize the context menu module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window[moduleName].initialize(),
+
+  /**
+   * Create a new context menu instance.
+   * @param {string} menuId - The ID of the menu element.
+   * @param {Object} dotNetRef - The .NET reference for Blazor interop.
+   * @returns {Promise<void>}
+   */
+  createContextMenu: async (menuId, dotNetRef) =>
+    window[moduleName].createContextMenu(menuId, dotNetRef),
+
+  /**
+   * Show the context menu at the specified coordinates.
+   * @param {string} menuId - The ID of the menu element.
+   * @param {number} x - The X coordinate.
+   * @param {number} y - The Y coordinate.
+   * @returns {Promise<void>}
+   */
+  show: async (menuId, x, y) => window[moduleName].show(menuId, x, y),
+
+  /**
+   * Hide the context menu.
+   * @param {string} menuId - The ID of the menu element.
+   * @returns {Promise<void>}
+   */
+  hide: async (menuId) => window[moduleName].hide(menuId),
+
+  /**
+   * Update the menu items.
+   * @param {string} menuId - The ID of the menu element.
+   * @param {Array} items - An array of new menu items.
+   * @returns {Promise<void>}
+   */
+  updateItems: async (menuId, items) => window[moduleName].updateItems(menuId, items),
+
+  /**
+   * Get the current state of the context menu.
+   * @param {string} menuId - The ID of the menu element.
+   * @returns {object|null} The current state or null if not available.
+   */
+  getState: menuId => window[moduleName].getState(menuId),
+
+  /**
+   * Check if the module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window[moduleName].isInitialized(),
+
+  /**
+   * Dispose a specific context menu instance.
+   * @param {string} menuId - The ID of the menu element.
+   * @returns {Promise<void>}
+   */
+  dispose: async (menuId) => window[moduleName].dispose(menuId),
+
+  /**
+   * Dispose all context menu instances.
+   * @returns {Promise<void>}
+   */
+  disposeAll: async () => window[moduleName].disposeAll()
+};
+
+// Also export the ContextMenuManager class if needed
+export { ContextMenuManager };
+
+
+
+
 // Export ContextMenuManager class
 export {ContextMenuManager};
