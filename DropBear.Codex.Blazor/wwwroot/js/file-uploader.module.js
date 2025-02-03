@@ -3,12 +3,11 @@
  * @module file-uploader
  */
 
-import { CircuitBreaker, DOMOperationQueue, EventEmitter } from './core.module.js';
-import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
+import {DropBearUtils} from './utils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearFileUploader');
-const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
+const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
 
 /** @type {Object} Upload configuration constants */
@@ -176,7 +175,7 @@ class FileUploadManager {
       DropBearUtils.createEvent(this.id, 'created', null)
     );
 
-    logger.debug('FileUploadManager created:', { id });
+    logger.debug('FileUploadManager created:', {id});
   }
 
   /**
@@ -191,9 +190,7 @@ class FileUploadManager {
       drop: e => this._handleDrop(e)
     };
 
-    Object.entries(handlers).forEach(([event, handler]) => {
-      this.element.addEventListener(event, handler.bind(this));
-    });
+    Object.entries(handlers).forEach(([event, handler]) => this.element.addEventListener(event, handler.bind(this)));
 
     // Store references for cleanup
     this.handlers = handlers;
@@ -211,9 +208,7 @@ class FileUploadManager {
     this.dragCounter++;
 
     if (this.dragCounter === 1) {
-      DOMOperationQueue.add(() => {
-        this.element.classList.add('dragover');
-      });
+      DOMOperationQueue.add(() => this.element.classList.add('dragover'));
 
       EventEmitter.emit(
         this.element,
@@ -244,9 +239,7 @@ class FileUploadManager {
     this.dragCounter--;
 
     if (this.dragCounter === 0) {
-      DOMOperationQueue.add(() => {
-        this.element.classList.remove('dragover');
-      });
+      DOMOperationQueue.add(() => this.element.classList.remove('dragover'));
 
       EventEmitter.emit(
         this.element,
@@ -266,16 +259,14 @@ class FileUploadManager {
     e.stopPropagation();
     this.dragCounter = 0;
 
-    DOMOperationQueue.add(() => {
-      this.element.classList.remove('dragover');
-    });
+    DOMOperationQueue.add(() => this.element.classList.remove('dragover'));
 
     const files = Array.from(e.dataTransfer.files);
 
     EventEmitter.emit(
       this.element,
       'drop',
-      DropBearUtils.createEvent(this.id, 'drop', { fileCount: files.length })
+      DropBearUtils.createEvent(this.id, 'drop', {fileCount: files.length})
     );
 
     await this.uploadFiles(files);
@@ -290,7 +281,7 @@ class FileUploadManager {
     if (this.isDisposed) return;
 
     try {
-      logger.debug('Starting upload of multiple files:', { count: files.length });
+      logger.debug('Starting upload of multiple files:', {count: files.length});
       const uploadPromises = files.map(file => this.uploadFile(file));
       await Promise.all(uploadPromises);
       logger.debug('All files uploaded successfully');
@@ -346,7 +337,7 @@ class FileUploadManager {
         })
       );
 
-      logger.debug('File upload completed:', { uploadId, fileName: file.name });
+      logger.debug('File upload completed:', {uploadId, fileName: file.name});
     } catch (error) {
       logger.error(`Error uploading file ${file.name}:`, error);
 
@@ -444,10 +435,10 @@ class FileUploadManager {
       EventEmitter.emit(
         this.element,
         'upload-cancelled',
-        DropBearUtils.createEvent(this.id, 'upload-cancelled', { uploadId })
+        DropBearUtils.createEvent(this.id, 'upload-cancelled', {uploadId})
       );
 
-      logger.debug('Upload cancelled:', { uploadId });
+      logger.debug('Upload cancelled:', {uploadId});
     }
   }
 
@@ -473,7 +464,7 @@ class FileUploadManager {
       totalProgress = progressSum / activeUploads;
     }
 
-    return { activeUploads, totalProgress };
+    return {activeUploads, totalProgress};
   }
 
   /**
@@ -489,9 +480,7 @@ class FileUploadManager {
     this.cancelAllUploads();
 
     // Remove event listeners
-    Object.entries(this.handlers).forEach(([event, handler]) => {
-      this.element.removeEventListener(event, handler);
-    });
+    Object.entries(this.handlers).forEach(([event, handler]) => this.element.removeEventListener(event, handler));
 
     this.dotNetRef = null;
 
@@ -503,150 +492,108 @@ class FileUploadManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearFileUploader',
-  {
-    /** @type {Map<string, FileUploadManager>} */
-    uploaders: new Map(),
-
-    /**
-     * Initialize the file uploader module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('File uploader module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearFileUploader.__initialized = true;
-
-        logger.debug('File uploader module initialized');
-      } catch (error) {
-        logger.error('File uploader initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new file upload manager
-     * @param {string} elementId - Upload container element ID
-     * @param {Object} dotNetRef - .NET reference
-     */
-    createUploader(elementId, dotNetRef) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        if (this.uploaders.has(elementId)) {
-          logger.warn(`Uploader already exists for ${elementId}, disposing old instance`);
-          this.dispose(elementId);
-        }
-
-        const manager = new FileUploadManager(elementId, dotNetRef);
-        this.uploaders.set(elementId, manager);
-        logger.debug(`File uploader created for ID: ${elementId}`);
-      } catch (error) {
-        logger.error('File uploader creation error:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Upload files to a specific uploader
-     * @param {string} elementId - Uploader ID
-     * @param {File[]} files - Files to upload
-     * @returns {Promise<void>}
-     */
-    async uploadFiles(elementId, files) {
-      const manager = this.uploaders.get(elementId);
-      if (!manager) {
-        const error = new Error(`Uploader not found for ID: ${elementId}`);
-        logger.error(error);
-        throw error;
-      }
-      return manager.uploadFiles(files);
-    },
-
-    /**
-     * Cancel an upload
-     * @param {string} elementId - Uploader ID
-     * @param {string} uploadId - Upload identifier
-     */
-    cancelUpload(elementId, uploadId) {
-      const manager = this.uploaders.get(elementId);
-      if (manager) {
-        manager.cancelUpload(uploadId);
-      }
-    },
-
-    /**
-     * Get upload status for a specific uploader
-     * @param {string} elementId - Uploader ID
-     * @returns {Object|null} Upload status information
-     */
-    getUploadStatus(elementId) {
-      const manager = this.uploaders.get(elementId);
-      return manager ? manager.getUploadStatus() : null;
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose of an uploader
-     * @param {string} elementId - Uploader ID
-     */
-    dispose(elementId) {
-      const manager = this.uploaders.get(elementId);
-      if (manager) {
-        manager.dispose();
-        this.uploaders.delete(elementId);
-        logger.debug(`Uploader disposed for ID: ${elementId}`);
-      }
-    },
-
-    /**
-     * Dispose of all uploaders
-     */
-    disposeAll() {
-      Array.from(this.uploaders.keys()).forEach(id => this.dispose(id));
-      this.uploaders.clear();
-      isInitialized = false;
-      window.DropBearFileUploader.__initialized = false;
-      logger.debug('All uploaders disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const fileUploaderModule = ModuleManager.get('DropBearFileUploader');
-
-// Attach to window
+// Attach to window first
 window.DropBearFileUploader = {
   __initialized: false,
-  initialize: () => fileUploaderModule.initialize(),
-  createUploader: (elementId, dotNetRef) => fileUploaderModule.createUploader(elementId, dotNetRef),
-  uploadFiles: (elementId, files) => fileUploaderModule.uploadFiles(elementId, files),
-  cancelUpload: (elementId, uploadId) => fileUploaderModule.cancelUpload(elementId, uploadId),
-  getUploadStatus: (elementId) => fileUploaderModule.getUploadStatus(elementId),
-  dispose: elementId => fileUploaderModule.dispose(elementId),
-  disposeAll: () => fileUploaderModule.disposeAll()
+  uploaders: new Map(),
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('File uploader module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearFileUploader.__initialized = true;
+
+      logger.debug('File uploader module initialized');
+    } catch (error) {
+      logger.error('File uploader initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createUploader: (elementId, dotNetRef) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (window.DropBearFileUploader.uploaders.has(elementId)) {
+        logger.warn(`Uploader already exists for ${elementId}, disposing old instance`);
+        window.DropBearFileUploader.dispose(elementId);
+      }
+
+      const manager = new FileUploadManager(elementId, dotNetRef);
+      window.DropBearFileUploader.uploaders.set(elementId, manager);
+      logger.debug(`File uploader created for ID: ${elementId}`);
+    } catch (error) {
+      logger.error('File uploader creation error:', error);
+      throw error;
+    }
+  },
+
+  uploadFiles: async (elementId, files) => {
+    const manager = window.DropBearFileUploader.uploaders.get(elementId);
+    if (!manager) {
+      const error = new Error(`Uploader not found for ID: ${elementId}`);
+      logger.error('Upload error:', error);
+      throw error;
+    }
+    return manager.uploadFiles(files);
+  },
+
+  cancelUpload: (elementId, uploadId) => {
+    const manager = window.DropBearFileUploader.uploaders.get(elementId);
+    if (manager) {
+      manager.cancelUpload(uploadId);
+      logger.debug(`Upload cancelled: ${uploadId}`);
+    }
+  },
+
+  getUploadStatus: elementId => {
+    const manager = window.DropBearFileUploader.uploaders.get(elementId);
+    return manager ? manager.getUploadStatus() : null;
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: elementId => {
+    const manager = window.DropBearFileUploader.uploaders.get(elementId);
+    if (manager) {
+      manager.dispose();
+      window.DropBearFileUploader.uploaders.delete(elementId);
+      logger.debug(`Uploader disposed for ID: ${elementId}`);
+    }
+  },
+
+  disposeAll: () => {
+    Array.from(window.DropBearFileUploader.uploaders.keys()).forEach(id =>
+      window.DropBearFileUploader.dispose(id)
+    );
+    window.DropBearFileUploader.uploaders.clear();
+    isInitialized = false;
+    window.DropBearFileUploader.__initialized = false;
+    logger.debug('All uploaders disposed');
+  }
 };
 
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearFileUploader',
+  {
+    initialize: () => window.DropBearFileUploader.initialize(),
+    isInitialized: () => window.DropBearFileUploader.isInitialized(),
+    dispose: () => window.DropBearFileUploader.disposeAll()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
+
 // Export FileUploadManager and ChunkUploader classes
-export { FileUploadManager, ChunkUploader };
+export {FileUploadManager, ChunkUploader};

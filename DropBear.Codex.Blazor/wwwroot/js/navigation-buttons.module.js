@@ -5,7 +5,6 @@
 
 import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
 import {DropBearUtils} from './utils.module.js';
-import {ModuleManager} from './module-manager.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearNavigationButtons');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
@@ -219,129 +218,97 @@ class NavigationManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearNavigationButtons',
-  {
-    /** @type {NavigationManager|null} */
-    instance: null,
 
-    /**
-     * Initialize the navigation module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Navigation buttons module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearNavigationButtons.__initialized = true;
-
-        logger.debug('Navigation buttons module initialized');
-      } catch (error) {
-        logger.error('Navigation buttons initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new NavigationManager instance
-     * @param {Object} dotNetRef - .NET reference
-     */
-    createNavigationManager(dotNetRef) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        if (this.instance) {
-          logger.debug('Disposing existing NavigationManager instance');
-          this.dispose();
-        }
-
-        this.instance = new NavigationManager(dotNetRef);
-        logger.debug('New NavigationManager instance created');
-      } catch (error) {
-        logger.error('Failed to create NavigationManager:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Scroll to the top of the page
-     */
-    scrollToTop() {
-      if (!this.instance) {
-        throw new Error('No NavigationManager instance exists');
-      }
-      this.instance.scrollToTop();
-    },
-
-    /**
-     * Navigate back in the browser history
-     */
-    goBack() {
-      if (!this.instance) {
-        throw new Error('No NavigationManager instance exists');
-      }
-      this.instance.goBack();
-    },
-
-    /**
-     * Force visibility update
-     * @param {boolean} isVisible - Desired visibility state
-     * @returns {Promise<void>}
-     */
-    async forceVisibilityUpdate(isVisible) {
-      if (!this.instance) {
-        throw new Error('No NavigationManager instance exists');
-      }
-      await this.instance.forceVisibilityUpdate(isVisible);
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose of the current NavigationManager instance
-     */
-    dispose() {
-      if (this.instance) {
-        this.instance.dispose();
-        this.instance = null;
-      }
-      isInitialized = false;
-      window.DropBearNavigationButtons.__initialized = false;
-    },
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const navigationButtonsModule = ModuleManager.get('DropBearNavigationButtons');
-
-// Attach to window
+// Attach to window first
 window.DropBearNavigationButtons = {
   __initialized: false,
-  initialize: () => navigationButtonsModule.initialize(),
-  createNavigationManager: dotNetRef => navigationButtonsModule.createNavigationManager(dotNetRef),
-  scrollToTop: () => navigationButtonsModule.scrollToTop(),
-  goBack: () => navigationButtonsModule.goBack(),
-  forceVisibilityUpdate: isVisible => navigationButtonsModule.forceVisibilityUpdate(isVisible),
-  dispose: () => navigationButtonsModule.dispose()
+  instance: null,
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Navigation buttons module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearNavigationButtons.__initialized = true;
+
+      logger.debug('Navigation buttons module initialized');
+    } catch (error) {
+      logger.error('Navigation buttons initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createNavigationManager: dotNetRef => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (window.DropBearNavigationButtons.instance) {
+        logger.debug('Disposing existing NavigationManager instance');
+        window.DropBearNavigationButtons.dispose();
+      }
+
+      window.DropBearNavigationButtons.instance = new NavigationManager(dotNetRef);
+      logger.debug('New NavigationManager instance created');
+    } catch (error) {
+      logger.error('Failed to create NavigationManager:', error);
+      throw error;
+    }
+  },
+
+  scrollToTop: () => {
+    if (!window.DropBearNavigationButtons.instance) {
+      throw new Error('No NavigationManager instance exists');
+    }
+    window.DropBearNavigationButtons.instance.scrollToTop();
+  },
+
+  goBack: () => {
+    if (!window.DropBearNavigationButtons.instance) {
+      throw new Error('No NavigationManager instance exists');
+    }
+    window.DropBearNavigationButtons.instance.goBack();
+  },
+
+  forceVisibilityUpdate: async isVisible => {
+    if (!window.DropBearNavigationButtons.instance) {
+      throw new Error('No NavigationManager instance exists');
+    }
+    await window.DropBearNavigationButtons.instance.forceVisibilityUpdate(isVisible);
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: () => {
+    if (window.DropBearNavigationButtons.instance) {
+      window.DropBearNavigationButtons.instance.dispose();
+      window.DropBearNavigationButtons.instance = null;
+    }
+    isInitialized = false;
+    window.DropBearNavigationButtons.__initialized = false;
+    logger.debug('Navigation buttons module disposed');
+  }
 };
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearNavigationButtons',
+  {
+    initialize: () => window.DropBearNavigationButtons.initialize(),
+    isInitialized: () => window.DropBearNavigationButtons.isInitialized(),
+    dispose: () => window.DropBearNavigationButtons.dispose()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
 
 // Export NavigationManager class
 export {NavigationManager};

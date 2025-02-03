@@ -277,53 +277,6 @@ const ModuleManager = {
   }
 };
 
-// Register ModuleManager itself
-ModuleManager.register(
-  'DropBearModuleManager',
-  {
-    /**
-     * Initialize the module manager
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('ModuleManager initializing');
-
-        // Initialize utils dependency
-        await ModuleManager.waitForDependencies(['DropBearUtils']);
-
-        isInitialized = true;
-        window.DropBearModuleManager.__initialized = true;
-
-        logger.debug('ModuleManager initialized');
-      } catch (error) {
-        logger.error('ModuleManager initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Check if ModuleManager is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose ModuleManager
-     */
-    dispose() {
-      isInitialized = false;
-      window.DropBearModuleManager.__initialized = false;
-    }
-  },
-  ['DropBearUtils']
-);
 
 // Attach to window
 window.DropBearModuleManager = {
@@ -338,5 +291,37 @@ window.DropBearModuleManager = {
   clear: ModuleManager.clear.bind(ModuleManager)
 };
 
+// Register Utils module after ModuleManager is available
+ModuleManager.register('DropBearUtils', {
+  initialize: () => window.DropBearUtils.initialize(),
+  isInitialized: () => window.DropBearUtils.isInitialized(),
+  dispose: () => window.DropBearUtils.dispose()
+}, []);
+
+// Register ModuleManager itself
+ModuleManager.register('DropBearModuleManager', {
+  async initialize() {
+    if (isInitialized) return;
+
+    try {
+      logger.debug('ModuleManager initializing');
+      await window.DropBearUtils.initialize();
+
+      isInitialized = true;
+      window.DropBearModuleManager.__initialized = true;
+
+      logger.debug('ModuleManager initialized');
+    } catch (error) {
+      logger.error('ModuleManager initialization failed:', error);
+      throw error;
+    }
+  },
+  isInitialized: () => isInitialized,
+  dispose: () => {
+    isInitialized = false;
+    window.DropBearModuleManager.__initialized = false;
+  }
+}, []);
+
 // Export ModuleManager
-export {ModuleManager};
+export { ModuleManager };

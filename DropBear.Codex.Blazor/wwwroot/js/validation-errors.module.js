@@ -5,7 +5,6 @@
 
 import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
 import {DropBearUtils} from './utils.module.js';
-import {ModuleManager} from './module-manager.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearValidationErrors');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
@@ -13,10 +12,11 @@ let isInitialized = false;
 
 /** @type {Object} Validation configuration constants */
 const VALIDATION_CONFIG = {
-  ANIMATION_DURATION: 300, // Animation duration in ms
-  AUTOHIDE_DELAY: 5000, // Auto-hide delay for temporary messages
-  MAX_ERRORS: 100 // Maximum number of error items to display
+  ANIMATION_DURATION: 300,
+  MAX_ERRORS: 100,
+  ERROR_DISPLAY_TIMEOUT: 5000
 };
+
 
 /**
  * Manager for validation errors container
@@ -367,181 +367,127 @@ class ValidationErrorsManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearValidationErrors',
-  {
-    /** @type {Map<string, ValidationErrorsManager>} */
-    validationContainers: new Map(),
-
-    /**
-     * Initialize the validation errors module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Validation errors module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearValidationErrors.__initialized = true;
-
-        logger.debug('Validation errors module initialized');
-      } catch (error) {
-        logger.error('Validation errors initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new validation errors container
-     * @param {string} containerId - Container element ID
-     * @param {Object} [options={}] - Configuration options
-     */
-    createValidationContainer(containerId, options = {}) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        DropBearUtils.validateArgs([containerId], ['string'], 'createValidationContainer');
-
-        if (this.validationContainers.has(containerId)) {
-          logger.warn(`Validation container already exists for ${containerId}, disposing old instance`);
-          this.dispose(containerId);
-        }
-
-        const manager = new ValidationErrorsManager(containerId, options);
-        this.validationContainers.set(containerId, manager);
-        logger.debug(`Validation container created for ID: ${containerId}`);
-      } catch (error) {
-        logger.error('Validation container creation error:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Update validation errors
-     * @param {string} containerId - Container ID
-     * @param {string[]} errors - Array of error messages
-     * @returns {Promise<void>}
-     */
-    async updateErrors(containerId, errors) {
-      const manager = this.validationContainers.get(containerId);
-      if (manager) {
-        await manager.updateErrors(errors);
-      }
-    },
-
-    /**
-     * Update ARIA attributes
-     * @param {string} containerId - Container ID
-     * @param {boolean} isCollapsed - Collapsed state
-     * @returns {Promise<void>}
-     */
-    async updateAriaAttributes(containerId, isCollapsed) {
-      const manager = this.validationContainers.get(containerId);
-      if (manager) {
-        await manager.updateAriaAttributes(isCollapsed);
-      }
-    },
-
-    /**
-     * Show validation errors
-     * @param {string} containerId - Container ID
-     * @returns {Promise<void>}
-     */
-    async show(containerId) {
-      const manager = this.validationContainers.get(containerId);
-      if (manager) {
-        await manager.show();
-      }
-    },
-
-    /**
-     * Hide validation errors
-     * @param {string} containerId - Container ID
-     * @returns {Promise<void>}
-     */
-    async hide(containerId) {
-      const manager = this.validationContainers.get(containerId);
-      if (manager) {
-        await manager.hide();
-      }
-    },
-
-    /**
-     * Clear validation errors
-     * @param {string} containerId - Container ID
-     * @returns {Promise<void>}
-     */
-    async clearErrors(containerId) {
-      const manager = this.validationContainers.get(containerId);
-      if (manager) {
-        await manager.clearErrors();
-      }
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose of a validation container
-     * @param {string} containerId - Container ID
-     */
-    dispose(containerId) {
-      const manager = this.validationContainers.get(containerId);
-      if (manager) {
-        manager.dispose();
-        this.validationContainers.delete(containerId);
-        logger.debug(`Validation container disposed for ID: ${containerId}`);
-      }
-    },
-
-    /**
-     * Dispose all validation containers
-     */
-    disposeAll() {
-      Array.from(this.validationContainers.keys()).forEach(id => this.dispose(id));
-      this.validationContainers.clear();
-      isInitialized = false;
-      window.DropBearValidationErrors.__initialized = false;
-      logger.debug('All validation containers disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const validationErrorsModule = ModuleManager.get('DropBearValidationErrors');
-
-// Attach to window
+// Attach to window first
 window.DropBearValidationErrors = {
   __initialized: false,
-  initialize: () => validationErrorsModule.initialize(),
-  createValidationContainer: (containerId, options) =>
-    validationErrorsModule.createValidationContainer(containerId, options),
-  updateErrors: (containerId, errors) =>
-    validationErrorsModule.updateErrors(containerId, errors),
-  updateAriaAttributes: (containerId, isCollapsed) =>
-    validationErrorsModule.updateAriaAttributes(containerId, isCollapsed),
-  show: containerId => validationErrorsModule.show(containerId),
-  hide: containerId => validationErrorsModule.hide(containerId),
-  clearErrors: containerId => validationErrorsModule.clearErrors(containerId),
-  dispose: containerId => validationErrorsModule.dispose(containerId),
-  disposeAll: () => validationErrorsModule.disposeAll()
+  validationContainers: new Map(),
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Validation errors module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearValidationErrors.__initialized = true;
+
+      logger.debug('Validation errors module initialized');
+    } catch (error) {
+      logger.error('Validation errors initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createValidationContainer: (containerId, options = {}) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      DropBearUtils.validateArgs([containerId], ['string'], 'createValidationContainer');
+
+      if (window.DropBearValidationErrors.validationContainers.has(containerId)) {
+        logger.warn(`Validation container already exists for ${containerId}, disposing old instance`);
+        window.DropBearValidationErrors.dispose(containerId);
+      }
+
+      const manager = new ValidationErrorsManager(containerId, options);
+      window.DropBearValidationErrors.validationContainers.set(containerId, manager);
+      logger.debug(`Validation container created for ID: ${containerId}`);
+    } catch (error) {
+      logger.error('Validation container creation error:', error);
+      throw error;
+    }
+  },
+
+  updateErrors: async (containerId, errors) => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    if (manager) {
+      await manager.updateErrors(errors);
+    }
+  },
+
+  updateAriaAttributes: async (containerId, isCollapsed) => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    if (manager) {
+      await manager.updateAriaAttributes(isCollapsed);
+    }
+  },
+
+  show: async containerId => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    if (manager) {
+      await manager.show();
+    }
+  },
+
+  hide: async containerId => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    if (manager) {
+      await manager.hide();
+    }
+  },
+
+  clearErrors: async containerId => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    if (manager) {
+      await manager.clearErrors();
+    }
+  },
+
+  getErrorCount: containerId => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    return manager ? manager.getErrorCount() : 0;
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: containerId => {
+    const manager = window.DropBearValidationErrors.validationContainers.get(containerId);
+    if (manager) {
+      manager.dispose();
+      window.DropBearValidationErrors.validationContainers.delete(containerId);
+      logger.debug(`Validation container disposed for ID: ${containerId}`);
+    }
+  },
+
+  disposeAll: () => {
+    Array.from(window.DropBearValidationErrors.validationContainers.keys()).forEach(id =>
+      window.DropBearValidationErrors.dispose(id)
+    );
+    window.DropBearValidationErrors.validationContainers.clear();
+    isInitialized = false;
+    window.DropBearValidationErrors.__initialized = false;
+    logger.debug('All validation containers disposed');
+  }
 };
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearValidationErrors',
+  {
+    initialize: () => window.DropBearValidationErrors.initialize(),
+    isInitialized: () => window.DropBearValidationErrors.isInitialized(),
+    dispose: () => window.DropBearValidationErrors.disposeAll()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
 
 // Export ValidationErrorsManager class
 export {ValidationErrorsManager};

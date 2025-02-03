@@ -3,15 +3,20 @@
  * @module file-reader-helpers
  */
 
-import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
+import {DropBearUtils} from './utils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearFileReaderHelpers');
 let isInitialized = false;
 
+/** @type {Object} Reader configuration constants */
+const READER_CONFIG = {
+  MAX_CHUNK_SIZE: 1024 * 1024 * 10, // 10MB max chunk size
+  DEFAULT_CHUNK_SIZE: 1024 * 1024, // 1MB default chunk size
+  READ_TIMEOUT: 30000 // 30 second timeout for read operations
+};
+
 /**
  * Helper functions for file operations
- * @type {Object}
  */
 const FileReaderHelpers = {
   /**
@@ -48,7 +53,6 @@ const FileReaderHelpers = {
    * @param {number} offset - Starting byte index
    * @param {number} count - Number of bytes to read
    * @returns {Promise<Uint8Array>} The file chunk as a Uint8Array
-   * @throws {TypeError} If invalid parameters are provided
    */
   async readFileChunk(file, offset, count) {
     if (!(file instanceof File)) {
@@ -56,15 +60,18 @@ const FileReaderHelpers = {
       throw new TypeError('Input must be a File object');
     }
 
-    if (typeof offset !== 'number' || offset < 0) {
-      throw new TypeError('Offset must be a non-negative number');
-    }
-
-    if (typeof count !== 'number' || count <= 0) {
-      throw new TypeError('Count must be a positive number');
-    }
-
     try {
+      // Validate chunk parameters
+      if (typeof offset !== 'number' || offset < 0) {
+        throw new TypeError('Offset must be a non-negative number');
+      }
+      if (typeof count !== 'number' || count <= 0) {
+        throw new TypeError('Count must be a positive number');
+      }
+      if (count > READER_CONFIG.MAX_CHUNK_SIZE) {
+        throw new Error(`Chunk size cannot exceed ${READER_CONFIG.MAX_CHUNK_SIZE} bytes`);
+      }
+
       const blob = file.slice(offset, offset + count);
       const arrayBuffer = await blob.arrayBuffer();
       const chunk = new Uint8Array(arrayBuffer);
@@ -87,7 +94,6 @@ const FileReaderHelpers = {
    * Retrieve dropped files from a DataTransfer object
    * @param {DataTransfer} dataTransfer - DataTransfer object from a drop event
    * @returns {File[]} An array of File objects
-   * @throws {TypeError} If invalid DataTransfer object is provided
    */
   getDroppedFiles(dataTransfer) {
     if (!dataTransfer?.items) {
@@ -111,141 +117,54 @@ const FileReaderHelpers = {
       logger.error('Error getting dropped files:', error);
       throw error;
     }
-  },
-
-  /**
-   * Read a file as text
-   * @param {File} file - The file to read
-   * @returns {Promise<string>} The file contents as text
-   * @throws {TypeError} If invalid file is provided
-   */
-  async readFileAsText(file) {
-    if (!(file instanceof File)) {
-      logger.error('Invalid file object provided to readFileAsText');
-      throw new TypeError('Input must be a File object');
-    }
-
-    try {
-      const text = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(file);
-      });
-
-      logger.debug('File read as text:', {
-        fileName: file.name,
-        size: text.length
-      });
-
-      return text;
-    } catch (error) {
-      logger.error('Error reading file as text:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Read a file as an ArrayBuffer
-   * @param {File} file - The file to read
-   * @returns {Promise<ArrayBuffer>} The file contents as ArrayBuffer
-   * @throws {TypeError} If invalid file is provided
-   */
-  async readFileAsArrayBuffer(file) {
-    if (!(file instanceof File)) {
-      logger.error('Invalid file object provided to readFileAsArrayBuffer');
-      throw new TypeError('Input must be a File object');
-    }
-
-    try {
-      const buffer = await file.arrayBuffer();
-
-      logger.debug('File read as ArrayBuffer:', {
-        fileName: file.name,
-        size: buffer.byteLength
-      });
-
-      return buffer;
-    } catch (error) {
-      logger.error('Error reading file as ArrayBuffer:', error);
-      throw error;
-    }
   }
 };
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearFileReaderHelpers',
-  {
-    /**
-     * Initialize the file reader helpers module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('File reader helpers module initializing');
-
-        isInitialized = true;
-        window.DropBearFileReaderHelpers.__initialized = true;
-
-        logger.debug('File reader helpers module initialized');
-      } catch (error) {
-        logger.error('File reader helpers initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Check if the module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Get file reader helper functions
-     * @returns {Object} The helper functions
-     */
-    getHelpers() {
-      if (!isInitialized) {
-        throw new Error('Module not initialized');
-      }
-      return FileReaderHelpers;
-    },
-
-    /**
-     * Dispose the module
-     */
-    dispose() {
-      isInitialized = false;
-      window.DropBearFileReaderHelpers.__initialized = false;
-      logger.debug('File reader helpers module disposed');
-    }
-  },
-  [] // No dependencies
-);
-
-// Get module reference
-const fileReaderHelpersModule = ModuleManager.get('DropBearFileReaderHelpers');
-
-// Attach to window
+// Attach to window first
 window.DropBearFileReaderHelpers = {
   __initialized: false,
-  initialize: () => fileReaderHelpersModule.initialize(),
   ...FileReaderHelpers,
-  dispose: () => fileReaderHelpersModule.dispose()
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('File reader helpers module initializing');
+
+      // Initialize dependencies
+      await window.DropBearUtils.initialize();
+
+      isInitialized = true;
+      window.DropBearFileReaderHelpers.__initialized = true;
+
+      logger.debug('File reader helpers module initialized');
+    } catch (error) {
+      logger.error('File reader helpers initialization failed:', error);
+      throw error;
+    }
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: () => {
+    isInitialized = false;
+    window.DropBearFileReaderHelpers.__initialized = false;
+    logger.debug('File reader helpers module disposed');
+  }
 };
 
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearFileReaderHelpers',
+  {
+    initialize: () => window.DropBearFileReaderHelpers.initialize(),
+    isInitialized: () => window.DropBearFileReaderHelpers.isInitialized(),
+    dispose: () => window.DropBearFileReaderHelpers.dispose()
+  },
+  ['DropBearUtils']
+);
+
 // Export helper functions
-export const {
-  getFileInfo,
-  readFileChunk,
-  getDroppedFiles,
-  readFileAsText,
-  readFileAsArrayBuffer
-} = FileReaderHelpers;
+export const {getFileInfo, readFileChunk, getDroppedFiles} = FileReaderHelpers;

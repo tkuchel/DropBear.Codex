@@ -235,78 +235,33 @@ const DropBearUtilities = {
   },
 };
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearUtils',
-  {
-    /**
-     * Initialize the utils module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
 
-      try {
-        const logger = DropBearUtils.createLogger('DropBearUtils');
-        logger.debug('Utils module initializing');
-
-        isInitialized = true;
-        window.DropBearUtils.__initialized = true;
-
-        logger.debug('Utils module initialized');
-      } catch (error) {
-        console.error('Utils initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Check if the module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Get core utilities
-     * @returns {Object}
-     */
-    getUtils() {
-      return DropBearUtils;
-    },
-
-    /**
-     * Get window utilities
-     * @returns {Object}
-     */
-    getWindowUtils() {
-      return DropBearUtilities;
-    },
-
-    /**
-     * Dispose utilities module
-     */
-    dispose() {
-      isInitialized = false;
-      window.DropBearUtils.__initialized = false;
-    }
-  },
-  [] // No dependencies
-);
-
-// Retrieve the registered module
-const utilsModule = ModuleManager.get('DropBearUtils');
-
-// Attach to window
+// Attach to window immediately (without ModuleManager registration)
 window.DropBearUtils = {
   __initialized: false,
-  initialize: () => utilsModule.initialize(),
   ...DropBearUtils,
   ...DropBearUtilities,
-  dispose: () => utilsModule.dispose()
+  initialize: async () => {
+    if (isInitialized) return;
+
+    try {
+      const logger = DropBearUtils.createLogger('DropBearUtils');
+      logger.debug('Utils module initializing');
+
+      isInitialized = true;
+      window.DropBearUtils.__initialized = true;
+
+      logger.debug('Utils module initialized');
+    } catch (error) {
+      console.error('Utils initialization failed:', error);
+      throw error;
+    }
+  },
+  isInitialized: () => isInitialized,
+  dispose: () => {
+    isInitialized = false;
+    window.DropBearUtils.__initialized = false;
+  }
 };
 
 // Export modules

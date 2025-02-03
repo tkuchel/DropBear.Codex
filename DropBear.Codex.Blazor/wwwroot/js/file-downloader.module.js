@@ -3,9 +3,8 @@
  * @module file-downloader
  */
 
-import { CircuitBreaker, DOMOperationQueue, EventEmitter } from './core.module.js';
+import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './core.module.js';
 import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearFileDownloader');
 const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
@@ -194,104 +193,78 @@ class DownloadManager {
     );
   }
 }
-
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearFileDownloader',
-  {
-    /** @type {DownloadManager|null} */
-    downloadManager: null,
-
-    /**
-     * Initialize the file downloader module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('File downloader module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        this.downloadManager = new DownloadManager();
-
-        isInitialized = true;
-        window.DropBearFileDownloader.__initialized = true;
-
-        logger.debug('File downloader module initialized');
-      } catch (error) {
-        logger.error('File downloader initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Download a file
-     * @param {string} fileName - File name
-     * @param {Blob | ArrayBuffer | Uint8Array} content - File content
-     * @param {string} [contentType] - Content type
-     * @returns {Promise<void>}
-     */
-    async downloadFileFromStream(fileName, content, contentType) {
-      if (!isInitialized) {
-        throw new Error('Module not initialized');
-      }
-
-      if (!this.downloadManager) {
-        throw new Error('DownloadManager not created');
-      }
-
-      return this.downloadManager.downloadFileFromStream(fileName, content, contentType);
-    },
-
-    /**
-     * Check if the module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Get active download count
-     * @returns {number}
-     */
-    getActiveDownloadCount() {
-      return this.downloadManager?.getActiveDownloadCount() ?? 0;
-    },
-
-    /**
-     * Dispose the module
-     */
-    dispose() {
-      if (this.downloadManager) {
-        this.downloadManager.dispose();
-        this.downloadManager = null;
-      }
-      isInitialized = false;
-      window.DropBearFileDownloader.__initialized = false;
-      logger.debug('File downloader module disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const fileDownloaderModule = ModuleManager.get('DropBearFileDownloader');
-
-// Attach to window
+// Attach to window first
 window.DropBearFileDownloader = {
   __initialized: false,
-  initialize: () => fileDownloaderModule.initialize(),
-  downloadFileFromStream: (fileName, content, contentType) =>
-    fileDownloaderModule.downloadFileFromStream(fileName, content, contentType),
-  getActiveDownloadCount: () => fileDownloaderModule.getActiveDownloadCount(),
-  dispose: () => fileDownloaderModule.dispose()
+  downloadManager: null,
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('File downloader module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      window.DropBearFileDownloader.downloadManager = new DownloadManager();
+
+      isInitialized = true;
+      window.DropBearFileDownloader.__initialized = true;
+
+      logger.debug('File downloader module initialized');
+    } catch (error) {
+      logger.error('File downloader initialization failed:', error);
+      throw error;
+    }
+  },
+
+  downloadFileFromStream: async (fileName, content, contentType) => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+
+    if (!window.DropBearFileDownloader.downloadManager) {
+      throw new Error('DownloadManager not created');
+    }
+
+    return window.DropBearFileDownloader.downloadManager
+      .downloadFileFromStream(fileName, content, contentType);
+  },
+
+  getActiveDownloadCount: () => {
+    if (!window.DropBearFileDownloader.downloadManager) {
+      return 0;
+    }
+    return window.DropBearFileDownloader.downloadManager.getActiveDownloadCount();
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: () => {
+    if (window.DropBearFileDownloader.downloadManager) {
+      window.DropBearFileDownloader.downloadManager.dispose();
+      window.DropBearFileDownloader.downloadManager = null;
+    }
+    isInitialized = false;
+    window.DropBearFileDownloader.__initialized = false;
+    logger.debug('File downloader module disposed');
+  }
 };
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearFileDownloader',
+  {
+    initialize: () => window.DropBearFileDownloader.initialize(),
+    isInitialized: () => window.DropBearFileDownloader.isInitialized(),
+    dispose: () => window.DropBearFileDownloader.dispose()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
 
 // Export DownloadManager class
 export { DownloadManager };

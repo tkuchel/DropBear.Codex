@@ -5,7 +5,6 @@
 
 import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
 import {DropBearUtils} from './utils.module.js';
-import {ModuleManager} from './module-manager.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearSnackbar');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
@@ -13,12 +12,13 @@ let isInitialized = false;
 
 /** @type {Object} Snackbar configuration constants */
 const SNACKBAR_CONFIG = {
-  ANIMATION_DURATION: 300, // Base animation duration in ms
-  MIN_DURATION: 2000, // Minimum display duration
-  MAX_DURATION: 10000, // Maximum display duration
-  DEFAULT_DURATION: 5000, // Default display duration
-  PROGRESS_UPDATE_INTERVAL: 16 // ~60fps for progress updates
+  ANIMATION_DURATION: 300,
+  MIN_DURATION: 2000,
+  MAX_DURATION: 10000,
+  DEFAULT_DURATION: 5000,
+  PROGRESS_UPDATE_INTERVAL: 16
 };
+
 
 /**
  * Manager for individual snackbar instances
@@ -398,178 +398,119 @@ class SnackbarManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearSnackbar',
-  {
-    /** @type {Map<string, SnackbarManager>} */
-    snackbars: new Map(),
-
-    /**
-     * Initialize the snackbar module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Snackbar module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearSnackbar.__initialized = true;
-
-        logger.debug('Snackbar module initialized');
-      } catch (error) {
-        logger.error('Snackbar initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new snackbar instance
-     * @param {string} snackbarId - Unique identifier
-     * @param {Object} [options={}] - Configuration options
-     * @returns {Promise<void>}
-     */
-    async createSnackbar(snackbarId, options = {}) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        if (this.snackbars.has(snackbarId)) {
-          logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
-          await this.dispose(snackbarId);
-        }
-
-        const manager = new SnackbarManager(snackbarId, options);
-        this.snackbars.set(snackbarId, manager);
-        logger.debug(`Snackbar created for ID: ${snackbarId}`);
-      } catch (error) {
-        logger.error('Snackbar creation error:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Set .NET reference for a snackbar
-     * @param {string} snackbarId - Snackbar identifier
-     * @param {Object} dotNetRef - .NET reference
-     * @returns {Promise<boolean>} Success status
-     */
-    async setDotNetReference(snackbarId, dotNetRef) {
-      const manager = this.snackbars.get(snackbarId);
-      if (manager) {
-        await manager.setDotNetReference(dotNetRef);
-        return true;
-      }
-      logger.warn(`Cannot set .NET reference - no manager found for ${snackbarId}`);
-      return false;
-    },
-
-    /**
-     * Show a snackbar
-     * @param {string} snackbarId - Snackbar identifier
-     * @param {number} [duration] - Display duration in ms
-     * @returns {Promise<boolean>} Success status
-     */
-    show(snackbarId, duration) {
-      const manager = this.snackbars.get(snackbarId);
-      return manager ? manager.show(duration) : Promise.resolve(false);
-    },
-
-    /**
-     * Update snackbar content
-     * @param {string} snackbarId - Snackbar identifier
-     * @param {string} content - New content
-     * @returns {Promise<boolean>} Success status
-     */
-    async updateContent(snackbarId, content) {
-      const manager = this.snackbars.get(snackbarId);
-      return manager ? manager.updateContent(content) : false;
-    },
-
-    /**
-     * Start progress for a snackbar
-     * @param {string} snackbarId - Snackbar identifier
-     * @param {number} duration - Duration in milliseconds
-     * @returns {boolean} Success status
-     */
-    startProgress(snackbarId, duration) {
-      const manager = this.snackbars.get(snackbarId);
-      if (manager) {
-        manager.startProgress(duration);
-        return true;
-      }
-      return false;
-    },
-
-    /**
-     * Hide a snackbar
-     * @param {string} snackbarId - Snackbar identifier
-     * @returns {Promise<boolean>} Success status
-     */
-    hide(snackbarId) {
-      const manager = this.snackbars.get(snackbarId);
-      return manager ? manager.hide() : Promise.resolve(false);
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose of a snackbar
-     * @param {string} snackbarId - Snackbar identifier
-     */
-    dispose(snackbarId) {
-      const manager = this.snackbars.get(snackbarId);
-      if (manager) {
-        manager.dispose();
-        this.snackbars.delete(snackbarId);
-        logger.debug(`Snackbar disposed for ID: ${snackbarId}`);
-      }
-    },
-
-    /**
-     * Dispose all snackbars and reset module
-     */
-    disposeAll() {
-      Array.from(this.snackbars.keys()).forEach(id => this.dispose(id));
-      this.snackbars.clear();
-      isInitialized = false;
-      window.DropBearSnackbar.__initialized = false;
-      logger.debug('All snackbars disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const snackbarModule = ModuleManager.get('DropBearSnackbar');
-
-// Attach to window
+// Attach to window first
 window.DropBearSnackbar = {
   __initialized: false,
-  initialize: () => snackbarModule.initialize(),
-  createSnackbar: (snackbarId, options) => snackbarModule.createSnackbar(snackbarId, options),
-  setDotNetReference: (snackbarId, dotNetRef) => snackbarModule.setDotNetReference(snackbarId, dotNetRef),
-  show: (snackbarId, duration) => snackbarModule.show(snackbarId, duration),
-  updateContent: (snackbarId, content) => snackbarModule.updateContent(snackbarId, content),
-  startProgress: (snackbarId, duration) => snackbarModule.startProgress(snackbarId, duration),
-  hide: snackbarId => snackbarModule.hide(snackbarId),
-  dispose: snackbarId => snackbarModule.dispose(snackbarId),
-  disposeAll: () => snackbarModule.disposeAll()
+  snackbars: new Map(),
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Snackbar module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearSnackbar.__initialized = true;
+
+      logger.debug('Snackbar module initialized');
+    } catch (error) {
+      logger.error('Snackbar initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createSnackbar: async (snackbarId, options = {}) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (window.DropBearSnackbar.snackbars.has(snackbarId)) {
+        logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
+        await window.DropBearSnackbar.dispose(snackbarId);
+      }
+
+      const manager = new SnackbarManager(snackbarId, options);
+      window.DropBearSnackbar.snackbars.set(snackbarId, manager);
+      logger.debug(`Snackbar created for ID: ${snackbarId}`);
+    } catch (error) {
+      logger.error('Snackbar creation error:', error);
+      throw error;
+    }
+  },
+
+  setDotNetReference: async (snackbarId, dotNetRef) => {
+    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    if (manager) {
+      await manager.setDotNetReference(dotNetRef);
+      return true;
+    }
+    logger.warn(`Cannot set .NET reference - no manager found for ${snackbarId}`);
+    return false;
+  },
+
+  show: (snackbarId, duration) => {
+    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    return manager ? manager.show(duration) : Promise.resolve(false);
+  },
+
+  updateContent: async (snackbarId, content) => {
+    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    return manager ? manager.updateContent(content) : false;
+  },
+
+  startProgress: (snackbarId, duration) => {
+    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    if (manager) {
+      manager.startProgress(duration);
+      return true;
+    }
+    return false;
+  },
+
+  hide: snackbarId => {
+    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    return manager ? manager.hide() : Promise.resolve(false);
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: snackbarId => {
+    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    if (manager) {
+      manager.dispose();
+      window.DropBearSnackbar.snackbars.delete(snackbarId);
+      logger.debug(`Snackbar disposed for ID: ${snackbarId}`);
+    }
+  },
+
+  disposeAll: () => {
+    Array.from(window.DropBearSnackbar.snackbars.keys()).forEach(id =>
+      window.DropBearSnackbar.dispose(id)
+    );
+    window.DropBearSnackbar.snackbars.clear();
+    isInitialized = false;
+    window.DropBearSnackbar.__initialized = false;
+    logger.debug('All snackbars disposed');
+  }
 };
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearSnackbar',
+  {
+    initialize: () => window.DropBearSnackbar.initialize(),
+    isInitialized: () => window.DropBearSnackbar.isInitialized(),
+    dispose: () => window.DropBearSnackbar.disposeAll()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
 
 // Export SnackbarManager class
 export {SnackbarManager};

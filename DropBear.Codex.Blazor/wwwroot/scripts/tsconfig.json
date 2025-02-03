@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2015",
+    "lib": [
+      "ES2015",
+      "DOM"
+      /* or other libraries you need, e.g. "ES2020", "DOM.Iterable", "ESNext" */
+    ],
+    "module": "commonjs",
+    "strict": true,
+    "outDir": "dist",
+    "sourceMap": true
+  }
+}

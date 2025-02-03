@@ -3,9 +3,8 @@
  * @module resize-manager
  */
 
-import { CircuitBreaker, EventEmitter } from './core.module.js';
+import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './core.module.js';
 import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearResizeManager');
 const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
@@ -216,125 +215,93 @@ class ResizeManager {
     );
   }
 }
-
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearResizeManager',
-  {
-    /** @type {ResizeManager|null} */
-    instance: null,
-
-    /**
-     * Initialize the resize manager module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Resize manager module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearResizeManager.__initialized = true;
-
-        logger.debug('Resize manager module initialized');
-      } catch (error) {
-        logger.error('Resize manager initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new resize manager instance
-     * @param {Object} dotNetRef - .NET reference for Blazor interop
-     * @param {Object} [options={}] - Configuration options
-     */
-    createResizeManager(dotNetRef, options = {}) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        if (this.instance) {
-          logger.debug('Disposing existing ResizeManager instance');
-          this.dispose();
-        }
-
-        this.instance = new ResizeManager(dotNetRef, options);
-        logger.debug('New ResizeManager instance created');
-      } catch (error) {
-        logger.error('Failed to create ResizeManager:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Force a resize event
-     * @returns {Promise<void>}
-     */
-    async forceResize() {
-      if (!this.instance) {
-        throw new Error('No ResizeManager instance exists');
-      }
-      await this.instance.forceResize();
-    },
-
-    /**
-     * Get current window dimensions
-     * @returns {{width: number, height: number, scale: number}}
-     */
-    getDimensions() {
-      if (!this.instance) {
-        return {
-          width: window.innerWidth,
-          height: window.innerHeight,
-          scale: window.devicePixelRatio || RESIZE_CONFIG.DEFAULT_SCALE
-        };
-      }
-      return this.instance.getDimensions();
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose of the current manager instance
-     */
-    dispose() {
-      if (this.instance) {
-        this.instance.dispose();
-        this.instance = null;
-      }
-      isInitialized = false;
-      window.DropBearResizeManager.__initialized = false;
-      logger.debug('Resize manager module disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const resizeManagerModule = ModuleManager.get('DropBearResizeManager');
-
-// Attach to window
+// Attach to window first
 window.DropBearResizeManager = {
   __initialized: false,
-  initialize: () => resizeManagerModule.initialize(),
-  createResizeManager: (dotNetRef, options) => resizeManagerModule.createResizeManager(dotNetRef, options),
-  forceResize: () => resizeManagerModule.forceResize(),
-  getDimensions: () => resizeManagerModule.getDimensions(),
-  dispose: () => resizeManagerModule.dispose()
+  instance: null,
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Resize manager module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearResizeManager.__initialized = true;
+
+      logger.debug('Resize manager module initialized');
+    } catch (error) {
+      logger.error('Resize manager initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createResizeManager: (dotNetRef, options = {}) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (window.DropBearResizeManager.instance) {
+        logger.debug('Disposing existing ResizeManager instance');
+        window.DropBearResizeManager.dispose();
+      }
+
+      window.DropBearResizeManager.instance = new ResizeManager(dotNetRef, options);
+      logger.debug('New ResizeManager instance created');
+    } catch (error) {
+      logger.error('Failed to create ResizeManager:', error);
+      throw error;
+    }
+  },
+
+  forceResize: async () => {
+    if (!window.DropBearResizeManager.instance) {
+      throw new Error('No ResizeManager instance exists');
+    }
+    await window.DropBearResizeManager.instance.forceResize();
+  },
+
+  getDimensions: () => {
+    if (!window.DropBearResizeManager.instance) {
+      return {
+        width: window.innerWidth,
+        height: window.innerHeight,
+        scale: window.devicePixelRatio || RESIZE_CONFIG.DEFAULT_SCALE
+      };
+    }
+    return window.DropBearResizeManager.instance.getDimensions();
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: () => {
+    if (window.DropBearResizeManager.instance) {
+      window.DropBearResizeManager.instance.dispose();
+      window.DropBearResizeManager.instance = null;
+    }
+    isInitialized = false;
+    window.DropBearResizeManager.__initialized = false;
+    logger.debug('Resize manager module disposed');
+  }
 };
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearResizeManager',
+  {
+    initialize: () => window.DropBearResizeManager.initialize(),
+    isInitialized: () => window.DropBearResizeManager.isInitialized(),
+    dispose: () => window.DropBearResizeManager.dispose()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
 
 // Export ResizeManager class
 export { ResizeManager };

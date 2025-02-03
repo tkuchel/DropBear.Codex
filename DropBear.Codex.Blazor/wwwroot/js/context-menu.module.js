@@ -5,11 +5,11 @@
 
 import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
 import {DropBearUtils} from './utils.module.js';
-import {ModuleManager} from './module-manager.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearContextMenu');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+
 
 /**
  * Manager for context menu behavior and positioning.
@@ -272,168 +272,105 @@ class ContextMenuManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearContextMenu',
-  {
-    /** @type {Map<string, ContextMenuManager>} */
-    menuInstances: new Map(),
-
-    /**
-     * Initialize the context menu module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Context menu module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearContextMenu.__initialized = true;
-
-        logger.debug('Context menu module initialized');
-      } catch (error) {
-        logger.error('Context menu initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new context menu instance
-     * @param {string} menuId - Menu element ID
-     * @param {Object} dotNetRef - .NET reference
-     */
-    createContextMenu(menuId, dotNetRef) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        if (this.menuInstances.has(menuId)) {
-          logger.warn(`Context menu already exists for ${menuId}, disposing old instance`);
-          this.dispose(menuId);
-        }
-
-        const manager = new ContextMenuManager(menuId, dotNetRef);
-        this.menuInstances.set(menuId, manager);
-        logger.debug(`Context menu created for ID: ${menuId}`);
-      } catch (error) {
-        logger.error('Context menu creation error:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Show context menu
-     * @param {string} menuId - Menu ID
-     * @param {number} x - X coordinate
-     * @param {number} y - Y coordinate
-     * @returns {Promise<void>}
-     */
-    show(menuId, x, y) {
-      const manager = this.menuInstances.get(menuId);
-      if (!manager) {
-        logger.warn(`No manager found for menu ID: ${menuId}`);
-        return Promise.resolve();
-      }
-      return manager.show(x, y);
-    },
-
-    /**
-     * Hide context menu
-     * @param {string} menuId - Menu ID
-     * @returns {Promise<void>}
-     */
-    hide(menuId) {
-      const manager = this.menuInstances.get(menuId);
-      if (!manager) {
-        logger.warn(`No manager found for menu ID: ${menuId}`);
-        return Promise.resolve();
-      }
-      return manager.hide();
-    },
-
-    /**
-     * Update menu items
-     * @param {string} menuId - Menu ID
-     * @param {Array} items - New menu items
-     * @returns {Promise<void>}
-     */
-    updateItems(menuId, items) {
-      const manager = this.menuInstances.get(menuId);
-      if (!manager) {
-        logger.warn(`No manager found for menu ID: ${menuId}`);
-        return Promise.resolve();
-      }
-      return manager.updateItems(items);
-    },
-
-    /**
-     * Get menu state
-     * @param {string} menuId - Menu ID
-     * @returns {Object|null} Menu state
-     */
-    getState(menuId) {
-      const manager = this.menuInstances.get(menuId);
-      return manager ? manager.getState() : null;
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose of a context menu
-     * @param {string} menuId - Menu ID
-     */
-    dispose(menuId) {
-      const manager = this.menuInstances.get(menuId);
-      if (manager) {
-        manager.dispose();
-        this.menuInstances.delete(menuId);
-        logger.debug(`Context menu disposed for ID: ${menuId}`);
-      }
-    },
-
-    /**
-     * Dispose of all context menus
-     */
-    disposeAll() {
-      Array.from(this.menuInstances.keys()).forEach(id => this.dispose(id));
-      this.menuInstances.clear();
-      isInitialized = false;
-      window.DropBearContextMenu.__initialized = false;
-      logger.debug('All context menus disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const contextMenuModule = ModuleManager.get('DropBearContextMenu');
-
-// Attach to window
+// Attach to window first
 window.DropBearContextMenu = {
   __initialized: false,
-  initialize: () => contextMenuModule.initialize(),
-  createContextMenu: (menuId, dotNetRef) => contextMenuModule.createContextMenu(menuId, dotNetRef),
-  show: (menuId, x, y) => contextMenuModule.show(menuId, x, y),
-  hide: menuId => contextMenuModule.hide(menuId),
-  updateItems: (menuId, items) => contextMenuModule.updateItems(menuId, items),
-  getState: menuId => contextMenuModule.getState(menuId),
-  dispose: menuId => contextMenuModule.dispose(menuId),
-  disposeAll: () => contextMenuModule.disposeAll()
+  menuInstances: new Map(),
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Context menu module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearContextMenu.__initialized = true;
+
+      logger.debug('Context menu module initialized');
+    } catch (error) {
+      logger.error('Context menu initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createContextMenu: (menuId, dotNetRef) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (window.DropBearContextMenu.menuInstances.has(menuId)) {
+        logger.warn(`Context menu already exists for ${menuId}, disposing old instance`);
+        window.DropBearContextMenu.dispose(menuId);
+      }
+
+      const manager = new ContextMenuManager(menuId, dotNetRef);
+      window.DropBearContextMenu.menuInstances.set(menuId, manager);
+      logger.debug(`Context menu created for ID: ${menuId}`);
+    } catch (error) {
+      logger.error('Context menu creation error:', error);
+      throw error;
+    }
+  },
+
+  show: (menuId, x, y) => {
+    const manager = window.DropBearContextMenu.menuInstances.get(menuId);
+    return manager ? manager.show(x, y) : Promise.resolve();
+  },
+
+  hide: menuId => {
+    const manager = window.DropBearContextMenu.menuInstances.get(menuId);
+    return manager ? manager.hide() : Promise.resolve();
+  },
+
+  updateItems: (menuId, items) => {
+    const manager = window.DropBearContextMenu.menuInstances.get(menuId);
+    return manager ? manager.updateItems(items) : Promise.resolve();
+  },
+
+  getState: menuId => {
+    const manager = window.DropBearContextMenu.menuInstances.get(menuId);
+    return manager ? manager.getState() : null;
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: menuId => {
+    const manager = window.DropBearContextMenu.menuInstances.get(menuId);
+    if (manager) {
+      manager.dispose();
+      window.DropBearContextMenu.menuInstances.delete(menuId);
+      logger.debug(`Context menu disposed for ID: ${menuId}`);
+    }
+  },
+
+  disposeAll: () => {
+    Array.from(window.DropBearContextMenu.menuInstances.keys()).forEach(id =>
+      window.DropBearContextMenu.dispose(id)
+    );
+    window.DropBearContextMenu.menuInstances.clear();
+    isInitialized = false;
+    window.DropBearContextMenu.__initialized = false;
+    logger.debug('All context menus disposed');
+  }
 };
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearContextMenu',
+  {
+    initialize: () => window.DropBearContextMenu.initialize(),
+    isInitialized: () => window.DropBearContextMenu.isInitialized(),
+    dispose: () => window.DropBearContextMenu.disposeAll()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
 
 // Export ContextMenuManager class
 export {ContextMenuManager};

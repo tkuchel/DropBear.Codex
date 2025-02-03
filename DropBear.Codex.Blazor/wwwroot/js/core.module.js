@@ -3,8 +3,7 @@
  * @module core
  */
 
-import { ModuleManager } from './module-manager.module.js';
-import { DropBearUtils } from './utils.module.js';
+import {DropBearUtils} from './utils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearCore');
 let isInitialized = false;
@@ -211,91 +210,46 @@ class CircuitBreaker {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
+// Attach to window first
+window.DropBearCore = {
+  __initialized: false,
+  DOMOperationQueue,
+  EventEmitter,
+  CircuitBreaker,
+  initialize: async () => {
+    if (isInitialized) return;
+
+    try {
+      logger.debug('Core module initializing');
+      // Ensure Utils is initialized first
+      await window.DropBearUtils.initialize();
+
+      isInitialized = true;
+      window.DropBearCore.__initialized = true;
+
+      logger.debug('Core module initialized');
+    } catch (error) {
+      logger.error('Core initialization failed:', error);
+      throw error;
+    }
+  },
+  isInitialized: () => isInitialized,
+  dispose: () => {
+    isInitialized = false;
+    window.DropBearCore.__initialized = false;
+  }
+};
+
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
   'DropBearCore',
   {
-    /**
-     * Initialize the core module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Core module initializing');
-
-        // Ensure utils are initialized first
-        await ModuleManager.initialize('DropBearUtils');
-
-        isInitialized = true;
-        window.DropBearCore.__initialized = true;
-
-        logger.debug('Core module initialized');
-      } catch (error) {
-        logger.error('Core initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Check if the module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Get the DOM operation queue
-     * @returns {Object}
-     */
-    getDOMOperationQueue() {
-      return DOMOperationQueue;
-    },
-
-    /**
-     * Get the event emitter
-     * @returns {Object}
-     */
-    getEventEmitter() {
-      return EventEmitter;
-    },
-
-    /**
-     * Create a new circuit breaker
-     * @param {Object} options - Circuit breaker options
-     * @returns {CircuitBreaker}
-     */
-    createCircuitBreaker(options) {
-      return new CircuitBreaker(options);
-    },
-
-    /**
-     * Dispose core module
-     */
-    dispose() {
-      isInitialized = false;
-      window.DropBearCore.__initialized = false;
-    }
+    initialize: () => window.DropBearCore.initialize(),
+    isInitialized: () => window.DropBearCore.isInitialized(),
+    dispose: () => window.DropBearCore.dispose()
   },
   ['DropBearUtils']
 );
 
-// Retrieve the registered module
-const coreModule = ModuleManager.get('DropBearCore');
-
-// Attach to window
-window.DropBearCore = {
-  __initialized: false,
-  initialize: () => coreModule.initialize(),
-  DOMOperationQueue,
-  EventEmitter,
-  CircuitBreaker,
-  dispose: () => coreModule.dispose()
-};
-
 // Export everything
-export { DOMOperationQueue, EventEmitter, CircuitBreaker };
+export {DOMOperationQueue, EventEmitter, CircuitBreaker};

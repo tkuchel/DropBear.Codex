@@ -3,12 +3,9 @@
  * @module resource-pool
  */
 
-import { CircuitBreaker, EventEmitter } from './core.module.js';
-import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
+import {DropBearUtils} from './utils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearResourcePool');
-const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
 let isInitialized = false;
 
 /** @type {Object} Pool configuration constants */
@@ -26,10 +23,10 @@ const POOL_CONFIG = {
  */
 class ResourcePoolManager {
   constructor() {
-    /** @type {Map<string, Array<any>>} */
+    /** @type {Map<string, Array<any>>} Map of resource pools */
     this.pools = new Map();
 
-    /** @type {Map<string, PoolOptions>} */
+    /** @type {Map<string, PoolOptions>} Map of pool configurations */
     this.poolConfigs = new Map();
 
     /** @type {number|null} */
@@ -40,7 +37,6 @@ class ResourcePoolManager {
 
     // Start cleanup interval
     this._startCleanup();
-
     logger.debug('ResourcePoolManager created');
   }
 
@@ -49,9 +45,7 @@ class ResourcePoolManager {
    * @private
    */
   _startCleanup() {
-    this.cleanupInterval = setInterval(() => {
-      this._cleanupUnusedResources();
-    }, POOL_CONFIG.CLEANUP_INTERVAL);
+    this.cleanupInterval = setInterval(() => this._cleanupUnusedResources(), POOL_CONFIG.CLEANUP_INTERVAL);
   }
 
   /**
@@ -76,7 +70,7 @@ class ResourcePoolManager {
       });
 
       if (totalCleaned > 0) {
-        logger.debug('Cleaned unused resources:', { totalCleaned });
+        logger.debug('Cleaned unused resources:', {totalCleaned});
       }
     } catch (error) {
       logger.error('Error during cleanup:', error);
@@ -153,7 +147,7 @@ class ResourcePoolManager {
           })
         );
 
-        logger.debug('Pool created:', { type, size: pool.length });
+        logger.debug('Pool created:', {type, size: pool.length});
       });
     } catch (error) {
       logger.error(`Failed to create pool "${type}":`, error);
@@ -201,7 +195,7 @@ class ResourcePoolManager {
           })
         );
 
-        logger.debug('Resource acquired:', { type, remainingSize: pool.length });
+        logger.debug('Resource acquired:', {type, remainingSize: pool.length});
         return resource;
       });
     } catch (error) {
@@ -252,11 +246,11 @@ class ResourcePoolManager {
             })
           );
 
-          logger.debug('Resource released:', { type, currentSize: pool.length });
+          logger.debug('Resource released:', {type, currentSize: pool.length});
           return true;
         }
 
-        logger.debug('Resource discarded (pool full):', { type });
+        logger.debug('Resource discarded (pool full):', {type});
         return false;
       });
     } catch (error) {
@@ -296,7 +290,7 @@ class ResourcePoolManager {
       throw new Error(`Pool "${type}" does not exist`);
     }
 
-    return { ...this.poolConfigs.get(type) };
+    return {...this.poolConfigs.get(type)};
   }
 
   /**
@@ -326,7 +320,7 @@ class ResourcePoolManager {
         })
       );
 
-      logger.debug('Pool cleared:', { type, previousSize });
+      logger.debug('Pool cleared:', {type, previousSize});
     } catch (error) {
       logger.error(`Failed to clear pool "${type}":`, error);
       throw error;
@@ -390,7 +384,7 @@ class ResourcePoolManager {
         })
       );
 
-      logger.debug('Pool deleted:', { type });
+      logger.debug('Pool deleted:', {type});
       return true;
     } catch (error) {
       logger.error(`Failed to delete pool "${type}":`, error);
@@ -461,204 +455,120 @@ class ResourcePoolManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearResourcePool',
-  {
-    /** @type {ResourcePoolManager|null} */
-    instance: null,
-
-    /**
-     * Initialize the resource pool module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Resource pool module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        this.instance = new ResourcePoolManager();
-
-        isInitialized = true;
-        window.DropBearResourcePool.__initialized = true;
-
-        logger.debug('Resource pool module initialized');
-      } catch (error) {
-        logger.error('Resource pool initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new resource pool
-     * @param {string} type - Pool identifier
-     * @param {Function} factory - Resource factory function
-     * @param {Object} [options={}] - Pool options
-     * @returns {Promise<void>}
-     */
-    async createPool(type, factory, options = {}) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      await this.instance.create(type, factory, options);
-    },
-
-    /**
-     * Acquire a resource from a pool
-     * @param {string} type - Pool identifier
-     * @returns {Promise<any>} Resource from pool
-     */
-    async acquire(type) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.acquire(type);
-    },
-
-    /**
-     * Release a resource back to its pool
-     * @param {string} type - Pool identifier
-     * @param {any} resource - Resource to release
-     * @returns {Promise<boolean>} Success status
-     */
-    async release(type, resource) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.release(type, resource);
-    },
-
-    /**
-     * Get pool size
-     * @param {string} type - Pool identifier
-     * @returns {number} Pool size
-     */
-    getSize(type) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.getSize(type);
-    },
-
-    /**
-     * Get pool configuration
-     * @param {string} type - Pool identifier
-     * @returns {Object} Pool configuration
-     */
-    getPoolConfig(type) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.getPoolConfig(type);
-    },
-
-    /**
-     * Clear a specific pool
-     * @param {string} type - Pool identifier
-     * @returns {Promise<void>}
-     */
-    async clear(type) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      await this.instance.clear(type);
-    },
-
-    /**
-     * Clear all pools
-     * @returns {Promise<void>}
-     */
-    async clearAll() {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      await this.instance.clearAll();
-    },
-
-    /**
-     * Delete a pool
-     * @param {string} type - Pool identifier
-     * @returns {Promise<boolean>}
-     */
-    async deletePool(type) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.deletePool(type);
-    },
-
-    /**
-     * Check if a pool exists
-     * @param {string} type - Pool identifier
-     * @returns {boolean}
-     */
-    hasPool(type) {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.hasPool(type);
-    },
-
-    /**
-     * Get statistics for all pools
-     * @returns {Object} Pool statistics
-     */
-    getStats() {
-      if (!this.instance) {
-        throw new Error('Module not initialized');
-      }
-      return this.instance.getStats();
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose the module
-     */
-    dispose() {
-      if (this.instance) {
-        this.instance.dispose();
-        this.instance = null;
-      }
-      isInitialized = false;
-      window.DropBearResourcePool.__initialized = false;
-      logger.debug('Resource pool module disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const resourcePoolModule = ModuleManager.get('DropBearResourcePool');
-
-// Attach to window
+// Attach to window first
 window.DropBearResourcePool = {
   __initialized: false,
-  initialize: () => resourcePoolModule.initialize(),
-  createPool: (type, factory, options) => resourcePoolModule.createPool(type, factory, options),
-  acquire: type => resourcePoolModule.acquire(type),
-  release: (type, resource) => resourcePoolModule.release(type, resource),
-  getSize: type => resourcePoolModule.getSize(type),
-  getPoolConfig: type => resourcePoolModule.getPoolConfig(type),
-  clear: type => resourcePoolModule.clear(type),
-  clearAll: () => resourcePoolModule.clearAll(),
-  deletePool: type => resourcePoolModule.deletePool(type),
-  hasPool: type => resourcePoolModule.hasPool(type),
-  getStats: () => resourcePoolModule.getStats(),
-  dispose: () => resourcePoolModule.dispose()
+  instance: null,
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Resource pool module initializing');
+
+      // Initialize dependencies
+      await window.DropBearUtils.initialize();
+
+      window.DropBearResourcePool.instance = new ResourcePoolManager();
+
+      isInitialized = true;
+      window.DropBearResourcePool.__initialized = true;
+
+      logger.debug('Resource pool module initialized');
+    } catch (error) {
+      logger.error('Resource pool initialization failed:', error);
+      throw error;
+    }
+  },
+
+  createPool: async (type, factory, options = {}) => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    await window.DropBearResourcePool.instance.create(type, factory, options);
+  },
+
+  acquire: async type => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    return window.DropBearResourcePool.instance.acquire(type);
+  },
+
+  release: async (type, resource) => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    return window.DropBearResourcePool.instance.release(type, resource);
+  },
+
+  getSize: type => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    return window.DropBearResourcePool.instance.getSize(type);
+  },
+
+  hasPool: type => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    return window.DropBearResourcePool.instance.hasPool(type);
+  },
+
+  getPoolConfig: type => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    return window.DropBearResourcePool.instance.getPoolConfig(type);
+  },
+
+  clear: async type => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    await window.DropBearResourcePool.instance.clear(type);
+  },
+
+  clearAll: async () => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    await window.DropBearResourcePool.instance.clearAll();
+  },
+
+  deletePool: async type => {
+    if (!isInitialized) {
+      throw new Error('Module not initialized');
+    }
+    return window.DropBearResourcePool.instance.deletePool(type);
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: () => {
+    if (window.DropBearResourcePool.instance) {
+      window.DropBearResourcePool.instance.dispose();
+      window.DropBearResourcePool.instance = null;
+    }
+    isInitialized = false;
+    window.DropBearResourcePool.__initialized = false;
+    logger.debug('Resource pool module disposed');
+  }
 };
 
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearResourcePool',
+  {
+    initialize: () => window.DropBearResourcePool.initialize(),
+    isInitialized: () => window.DropBearResourcePool.isInitialized(),
+    dispose: () => window.DropBearResourcePool.dispose()
+  },
+  ['DropBearUtils']
+);
+
 // Export ResourcePoolManager class
-export { ResourcePoolManager };
+export {ResourcePoolManager};

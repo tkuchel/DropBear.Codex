@@ -3,13 +3,21 @@
  * @module page-alert
  */
 
-import { CircuitBreaker, DOMOperationQueue, EventEmitter } from './core.module.js';
-import { DropBearUtils } from './utils.module.js';
-import { ModuleManager } from './module-manager.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
+import {DropBearUtils} from './utils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearPageAlert');
-const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
+const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+
+/** @type {Object} Alert configuration constants */
+const ALERT_CONFIG = {
+  ANIMATION_DURATION: 300,
+  DEFAULT_DURATION: 5000,
+  MIN_DURATION: 2000,
+  MAX_DURATION: 10000,
+  PROGRESS_UPDATE_INTERVAL: 16
+};
 
 /** @type {Object} Animation configuration constants */
 const ANIMATION_CONFIG = {
@@ -76,7 +84,7 @@ class PageAlertManager {
       })
     );
 
-    logger.debug('PageAlertManager created:', { id, isPermanent });
+    logger.debug('PageAlertManager created:', {id, isPermanent});
   }
 
   /**
@@ -124,7 +132,7 @@ class PageAlertManager {
     if (this.isDisposed) return false;
 
     try {
-      await new Promise(resolve => {
+      await new Promise(resolve =>
         DOMOperationQueue.add(() => {
           cancelAnimationFrame(this.animationFrame);
           this.element.classList.remove('hide');
@@ -142,8 +150,7 @@ class PageAlertManager {
             // Fallback
             setTimeout(resolve, this.options.animationDuration + 50);
           });
-        });
-      });
+        }));
 
       if (!this.isPermanent && duration > 0) {
         this.startProgress(duration);
@@ -158,7 +165,7 @@ class PageAlertManager {
         })
       );
 
-      logger.debug('Alert shown:', { id: this.id, duration });
+      logger.debug('Alert shown:', {id: this.id, duration});
       return true;
     } catch (error) {
       logger.error('Error showing alert:', error);
@@ -191,13 +198,11 @@ class PageAlertManager {
         this.progressBar.style.transition = `transform ${duration}ms linear`;
         this.progressBar.style.transform = 'scaleX(0)';
 
-        this.progressTimeout = setTimeout(() => {
-          this.hide();
-        }, duration);
+        this.progressTimeout = setTimeout(() => this.hide(), duration);
       });
     });
 
-    logger.debug('Progress started:', { duration });
+    logger.debug('Progress started:', {duration});
   }
 
   /**
@@ -235,12 +240,10 @@ class PageAlertManager {
       this.progressBar.style.transition = `transform ${remainingTime}ms linear`;
       this.progressBar.style.transform = 'scaleX(0)';
 
-      this.hideTimeout = setTimeout(() => {
-        this.hide();
-      }, remainingTime);
+      this.hideTimeout = setTimeout(() => this.hide(), remainingTime);
     });
 
-    logger.debug('Progress resumed:', { remainingTime });
+    logger.debug('Progress resumed:', {remainingTime});
   }
 
   /**
@@ -314,12 +317,11 @@ class PageAlertManager {
     if (this.isDisposed || !this.content) return false;
 
     try {
-      await new Promise(resolve => {
+      await new Promise(resolve =>
         DOMOperationQueue.add(() => {
           this.content.innerHTML = content;
           resolve();
-        });
-      });
+        }));
 
       EventEmitter.emit(
         this.element,
@@ -343,7 +345,7 @@ class PageAlertManager {
   dispose() {
     if (this.isDisposed) return;
 
-    logger.debug('Disposing alert manager:', { id: this.id });
+    logger.debug('Disposing alert manager:', {id: this.id});
     this.isDisposed = true;
 
     clearTimeout(this.progressTimeout);
@@ -375,142 +377,117 @@ class PageAlertManager {
   }
 }
 
-// Register with ModuleManager
-ModuleManager.register(
-  'DropBearPageAlert',
-  {
-    /** @type {Map<string, PageAlertManager>} */
-    alerts: new Map(),
-
-    /**
-     * Initialize the page alert module
-     * @returns {Promise<void>}
-     */
-    async initialize() {
-      if (isInitialized) {
-        return;
-      }
-
-      try {
-        logger.debug('Page alert module initializing');
-
-        // Initialize dependencies
-        await ModuleManager.waitForDependencies(['DropBearCore']);
-
-        isInitialized = true;
-        window.DropBearPageAlert.__initialized = true;
-
-        logger.debug('Page alert module initialized');
-      } catch (error) {
-        logger.error('Page alert initialization failed:', error);
-        throw error;
-      }
-    },
-
-    /**
-     * Create a new page alert
-     * @param {string} id - Alert element ID
-     * @param {number} [duration=5000] - Duration in ms
-     * @param {boolean} [isPermanent=false] - Whether the alert is permanent
-     * @param {Object} [options={}] - Additional options
-     * @returns {boolean} Success status
-     */
-    create(id, duration = 5000, isPermanent = false, options = {}) {
-      try {
-        if (!isInitialized) {
-          throw new Error('Module not initialized');
-        }
-
-        DropBearUtils.validateArgs([id], ['string'], 'create');
-
-        if (this.alerts.has(id)) {
-          logger.debug(`Alert ${id} already exists; disposing old instance`);
-          this.alerts.get(id).dispose();
-        }
-
-        const manager = new PageAlertManager(id, isPermanent, options);
-        this.alerts.set(id, manager);
-
-        // Show immediately
-        manager.show(duration);
-
-        logger.debug('Alert created:', { id, duration, isPermanent });
-        return true;
-      } catch (error) {
-        logger.error('Error creating alert:', error);
-        return false;
-      }
-    },
-
-    /**
-     * Update alert content
-     * @param {string} id - Alert ID
-     * @param {string} content - New content
-     * @returns {Promise<boolean>} Success status
-     */
-    async updateContent(id, content) {
-      const manager = this.alerts.get(id);
-      return manager ? manager.updateContent(content) : false;
-    },
-
-    /**
-     * Hide a single alert
-     * @param {string} id - Alert ID
-     * @returns {Promise<boolean>} Success status
-     */
-    hide(id) {
-      const manager = this.alerts.get(id);
-      if (!manager) {
-        logger.warn(`Cannot hide alert: no manager found for ${id}`);
-        return Promise.resolve(false);
-      }
-      return manager.hide();
-    },
-
-    /**
-     * Hide all alerts
-     * @returns {Promise<boolean[]>} Array of success statuses
-     */
-    async hideAll() {
-      const promises = Array.from(this.alerts.values()).map(manager => manager.hide());
-      return Promise.all(promises);
-    },
-
-    /**
-     * Check if module is initialized
-     * @returns {boolean}
-     */
-    isInitialized() {
-      return isInitialized;
-    },
-
-    /**
-     * Dispose the module
-     */
-    dispose() {
-      Array.from(this.alerts.values()).forEach(manager => manager.dispose());
-      this.alerts.clear();
-      isInitialized = false;
-      window.DropBearPageAlert.__initialized = false;
-      logger.debug('Page alert module disposed');
-    }
-  },
-  ['DropBearCore']
-);
-
-// Get module reference
-const pageAlertModule = ModuleManager.get('DropBearPageAlert');
-
-// Attach to window
+// Attach to window first
 window.DropBearPageAlert = {
   __initialized: false,
-  initialize: () => pageAlertModule.initialize(),
-  create: (id, duration, isPermanent, options) => pageAlertModule.create(id, duration, isPermanent, options),
-  updateContent: (id, content) => pageAlertModule.updateContent(id, content),
-  hide: id => pageAlertModule.hide(id),
-  hideAll: () => pageAlertModule.hideAll(),
-  dispose: () => pageAlertModule.dispose()
+  alerts: new Map(),
+
+  initialize: async () => {
+    if (isInitialized) {
+      return;
+    }
+
+    try {
+      logger.debug('Page alert module initializing');
+
+      // Initialize dependencies first
+      await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
+
+      isInitialized = true;
+      window.DropBearPageAlert.__initialized = true;
+
+      logger.debug('Page alert module initialized');
+    } catch (error) {
+      logger.error('Page alert initialization failed:', error);
+      throw error;
+    }
+  },
+
+  create: (id, duration = ALERT_CONFIG.DEFAULT_DURATION, isPermanent = false, options = {}) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      DropBearUtils.validateArgs([id], ['string'], 'create');
+
+      if (window.DropBearPageAlert.alerts.has(id)) {
+        logger.debug(`Alert ${id} already exists; disposing old instance`);
+        window.DropBearPageAlert.alerts.get(id).dispose();
+      }
+
+      const manager = new PageAlertManager(id, isPermanent, options);
+      window.DropBearPageAlert.alerts.set(id, manager);
+
+      // Show immediately
+      manager.show(duration);
+
+      logger.debug('Alert created:', {id, duration, isPermanent});
+      return true;
+    } catch (error) {
+      logger.error('Error creating alert:', error);
+      return false;
+    }
+  },
+
+  updateContent: async (id, content) => {
+    const manager = window.DropBearPageAlert.alerts.get(id);
+    return manager ? manager.updateContent(content) : false;
+  },
+
+  show: async id => {
+    const manager = window.DropBearPageAlert.alerts.get(id);
+    return manager ? manager.show() : false;
+  },
+
+  hide: async id => {
+    const manager = window.DropBearPageAlert.alerts.get(id);
+    if (!manager) {
+      logger.warn(`Cannot hide alert: no manager found for ${id}`);
+      return false;
+    }
+    return manager.hide();
+  },
+
+  hideAll: async () => {
+    const promises = Array.from(window.DropBearPageAlert.alerts.values())
+      .map(manager => manager.hide());
+    return Promise.all(promises);
+  },
+
+  isInitialized: () => isInitialized,
+
+  dispose: id => {
+    const manager = window.DropBearPageAlert.alerts.get(id);
+    if (manager) {
+      manager.dispose();
+      window.DropBearPageAlert.alerts.delete(id);
+      logger.debug(`Alert disposed for ID: ${id}`);
+    }
+  },
+
+  disposeAll: () => {
+    Array.from(window.DropBearPageAlert.alerts.values()).forEach(manager =>
+      manager.dispose()
+    );
+    window.DropBearPageAlert.alerts.clear();
+    isInitialized = false;
+    window.DropBearPageAlert.__initialized = false;
+    logger.debug('All alerts disposed');
+  }
 };
 
+// Register with ModuleManager after window attachment
+window.DropBearModuleManager.register(
+  'DropBearPageAlert',
+  {
+    initialize: () => window.DropBearPageAlert.initialize(),
+    isInitialized: () => window.DropBearPageAlert.isInitialized(),
+    dispose: () => window.DropBearPageAlert.disposeAll()
+  },
+  ['DropBearUtils', 'DropBearCore']
+);
+
 // Export PageAlertManager class
-export { PageAlertManager };
+export {PageAlertManager};
