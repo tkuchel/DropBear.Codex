@@ -355,7 +355,3 @@ export const DropBearNavigationButtonsAPI = {
 // Also export the NavigationManager class for direct access if needed.
 export { NavigationManager };
 
-
-
-// Export NavigationManager class
-export {NavigationManager};
