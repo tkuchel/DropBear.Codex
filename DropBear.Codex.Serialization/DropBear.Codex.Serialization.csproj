@@ -7,8 +7,8 @@
     <LangVersion>latest</LangVersion>
 
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.1.0</Version>
-    <PackageVersion>2025.1.0</PackageVersion>
+    <Version>2025.2.0</Version>
+    <PackageVersion>2025.2.0</PackageVersion>
     <PackageId>DropBear.Codex.Serialization</PackageId>
     <Title>DropBear Codex Serialization</Title>
     <Description>Provides serialization and deserialization utilities for the DropBear.Codex ecosystem</Description>
@@ -40,8 +40,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="MessagePack" Version="3.1.1" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.184">
+    <PackageReference Include="MessagePack" Version="3.1.2" />
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.186">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -49,7 +49,7 @@
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1"/>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0"/>
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.7.112</Version>
+      <Version>3.7.115</Version>
     </PackageReference>
   </ItemGroup>
 

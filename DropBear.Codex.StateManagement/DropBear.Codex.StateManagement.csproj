@@ -11,8 +11,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.1.0</Version>
-    <PackageVersion>2025.1.0</PackageVersion> <!-- Specifies the version of the package -->
+    <Version>2025.2.0</Version>
+    <PackageVersion>2025.2.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.StateManagement</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex State Management</Title>
     <Description>Simplified state management and snapshot system for the DropBear Codex framework.</Description>
@@ -47,7 +47,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.184">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.186">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -55,7 +55,7 @@
     <PackageReference Include="R3" Version="1.2.9" />
     <PackageReference Include="Stateless" Version="5.17.0" />
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.7.112</Version>
+      <Version>3.7.115</Version>
     </PackageReference>
   </ItemGroup>
 

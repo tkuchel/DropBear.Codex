@@ -11,8 +11,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.1.0</Version>
-    <PackageVersion>2025.1.0</PackageVersion> <!-- Specifies the version of the package -->
+    <Version>2025.2.0</Version>
+    <PackageVersion>2025.2.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.Core</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex Core</Title>
     <Description>The core set of classes used throughout the DropBear.Codex.* libraries</Description>
@@ -44,7 +44,7 @@
 
   <!-- Item Group for Source Files -->
   <ItemGroup>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.184">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.186">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -52,7 +52,7 @@
     <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0"/>
     <PackageReference Include="Serilog.Sinks.File" Version="6.0.0"/>
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.7.112</Version>
+      <Version>3.7.115</Version>
     </PackageReference>
   </ItemGroup>
 

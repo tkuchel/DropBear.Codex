@@ -11,8 +11,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.1.0</Version>
-    <PackageVersion>2025.1.0</PackageVersion>
+    <Version>2025.2.0</Version>
+    <PackageVersion>22025.2.0</PackageVersion>
     <PackageId>DropBear.Codex.Blazor</PackageId>
     <Title>DropBear Codex Blazor</Title>
     <Description>Blazor components and utilities for the DropBear.Codex ecosystem</Description>
@@ -70,7 +70,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="8.0.11"/>
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.7.112</Version>
+      <Version>3.7.115</Version>
     </PackageReference>
   </ItemGroup>
 
