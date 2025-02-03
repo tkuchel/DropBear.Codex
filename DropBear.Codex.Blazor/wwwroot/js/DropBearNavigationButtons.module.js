@@ -302,7 +302,7 @@ window[moduleName] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'navigationButtons',
+  moduleName,
   {
     initialize: () => window[moduleName].initialize(),
     isInitialized: () => window[moduleName].isInitialized(),

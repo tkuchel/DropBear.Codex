@@ -481,7 +481,7 @@ window[moduleName] = {
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'validation-errors',
+  moduleName,
   {
     initialize: () => window[moduleName].initialize(),
     isInitialized: () => window[moduleName].isInitialized(),
