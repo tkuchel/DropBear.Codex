@@ -3,7 +3,7 @@
  * @module core
  */
 
-import {DropBearUtils} from './utils.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearCore');
 let isInitialized = false;

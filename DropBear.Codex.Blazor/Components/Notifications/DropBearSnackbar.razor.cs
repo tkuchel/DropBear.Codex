@@ -1,6 +1,7 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -15,7 +16,7 @@ namespace DropBear.Codex.Blazor.Components.Notifications;
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
     private IJSObjectReference? _jsModule;
-    private const string JsModuleName = "snackbar";
+    private const string JsModuleName = JsModuleNames.Snackbar;
 
     /// <summary>
     ///     Unique snackbar instance details (title, message, duration, etc.)

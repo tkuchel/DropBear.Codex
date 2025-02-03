@@ -1,4 +1,5 @@
 ﻿using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
@@ -12,7 +13,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     // -- Private fields --
     private IJSObjectReference? _module;
     private DotNetObjectReference<DropBearNavigationButtons>? _dotNetRef;
-    private const string JsModuleName = "navigation-buttons";
+    private const string JsModuleName = JsModuleNames.NavigationButtons;
 
     // Use this property for controlling the 'Scroll to Top' button's visibility
     private bool _isVisible;

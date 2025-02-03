@@ -3,13 +3,13 @@
  * @module file-downloader
  */
 
-import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './core.module.js';
-import { DropBearUtils } from './utils.module.js';
+import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './DropBearCore.module.js';
+import { DropBearUtils } from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearFileDownloader');
 const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
 let isInitialized = false;
-
+const moduleName = 'DropBearFileDownloader';
 /**
  * Download manager for handling file downloads
  * @implements {IDownloadManager}
@@ -194,7 +194,7 @@ class DownloadManager {
   }
 }
 // Attach to window first
-window["file-downloader"] = {
+window[moduleName] = {
   __initialized: false,
   downloadManager: null,
 
@@ -210,10 +210,10 @@ window["file-downloader"] = {
       await window.DropBearUtils.initialize();
       await window.DropBearCore.initialize();
 
-      window["file-downloader"].downloadManager = new DownloadManager();
+      window[moduleName].downloadManager = new DownloadManager();
 
       isInitialized = true;
-      window["file-downloader"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('File downloader module initialized');
     } catch (error) {
@@ -227,30 +227,30 @@ window["file-downloader"] = {
       throw new Error('Module not initialized');
     }
 
-    if (!window["file-downloader"].downloadManager) {
+    if (!window[moduleName].downloadManager) {
       throw new Error('DownloadManager not created');
     }
 
-    return window["file-downloader"].downloadManager
+    return window[moduleName].downloadManager
       .downloadFileFromStream(fileName, content, contentType);
   },
 
   getActiveDownloadCount: () => {
-    if (!window["file-downloader"].downloadManager) {
+    if (!window[moduleName].downloadManager) {
       return 0;
     }
-    return window["file-downloader"].downloadManager.getActiveDownloadCount();
+    return window[moduleName].downloadManager.getActiveDownloadCount();
   },
 
   isInitialized: () => isInitialized,
 
   dispose: () => {
-    if (window["file-downloader"].downloadManager) {
-      window["file-downloader"].downloadManager.dispose();
-      window["file-downloader"].downloadManager = null;
+    if (window[moduleName].downloadManager) {
+      window[moduleName].downloadManager.dispose();
+      window[moduleName].downloadManager = null;
     }
     isInitialized = false;
-    window["file-downloader"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('File downloader module disposed');
   }
 };
@@ -259,9 +259,9 @@ window["file-downloader"] = {
 window.DropBearModuleManager.register(
   'file-downloader',
   {
-    initialize: () => window["file-downloader"].initialize(),
-    isInitialized: () => window["file-downloader"].isInitialized(),
-    dispose: () => window["file-downloader"].dispose()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].dispose()
   },
   ['DropBearUtils', 'DropBearCore']
 );

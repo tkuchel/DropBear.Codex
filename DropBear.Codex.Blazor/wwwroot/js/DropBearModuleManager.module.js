@@ -3,7 +3,7 @@
  * @module module-manager
  */
 
-import {DropBearUtils} from './utils.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearModuleManager');
 let isInitialized = false;

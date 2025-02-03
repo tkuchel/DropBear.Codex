@@ -36,7 +36,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     private IJSObjectReference? _jsModule;
 
     // JS module name
-    private const string JsModuleName = "page-alert";
+    private const string JsModuleName = JsModuleNames.PageAlerts;
 
     #region Parameters
 

@@ -3,12 +3,13 @@
  * @module resize-manager
  */
 
-import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './core.module.js';
-import { DropBearUtils } from './utils.module.js';
+import { DOMOperationQueue, EventEmitter, CircuitBreaker } from './DropBearCore.module.js';
+import { DropBearUtils } from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearResizeManager');
 const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
 let isInitialized = false;
+const moduleName = 'DropBearResizeManager';
 
 /** @type {Object} Resize configuration constants */
 const RESIZE_CONFIG = {
@@ -216,7 +217,7 @@ class ResizeManager {
   }
 }
 // Attach to window first
-window["resize-manager"] = {
+window[moduleName] = {
   __initialized: false,
   instance: null,
 
@@ -233,7 +234,7 @@ window["resize-manager"] = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window["resize-manager"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('Resize manager module initialized');
     } catch (error) {
@@ -248,12 +249,12 @@ window["resize-manager"] = {
         throw new Error('Module not initialized');
       }
 
-      if (window["resize-manager"].instance) {
+      if (window[moduleName].instance) {
         logger.debug('Disposing existing ResizeManager instance');
-        window["resize-manager"].dispose();
+        window[moduleName].dispose();
       }
 
-      window["resize-manager"].instance = new ResizeManager(dotNetRef, options);
+      window[moduleName].instance = new ResizeManager(dotNetRef, options);
       logger.debug('New ResizeManager instance created');
     } catch (error) {
       logger.error('Failed to create ResizeManager:', error);
@@ -262,32 +263,32 @@ window["resize-manager"] = {
   },
 
   forceResize: async () => {
-    if (!window["resize-manager"].instance) {
+    if (!window[moduleName].instance) {
       throw new Error('No ResizeManager instance exists');
     }
-    await window["resize-manager"].instance.forceResize();
+    await window[moduleName].instance.forceResize();
   },
 
   getDimensions: () => {
-    if (!window["resize-manager"].instance) {
+    if (!window[moduleName].instance) {
       return {
         width: window.innerWidth,
         height: window.innerHeight,
         scale: window.devicePixelRatio || RESIZE_CONFIG.DEFAULT_SCALE
       };
     }
-    return window["resize-manager"].instance.getDimensions();
+    return window[moduleName].instance.getDimensions();
   },
 
   isInitialized: () => isInitialized,
 
   dispose: () => {
-    if (window["resize-manager"].instance) {
-      window["resize-manager"].instance.dispose();
-      window["resize-manager"].instance = null;
+    if (window[moduleName].instance) {
+      window[moduleName].instance.dispose();
+      window[moduleName].instance = null;
     }
     isInitialized = false;
-    window["resize-manager"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('Resize manager module disposed');
   }
 };
@@ -296,9 +297,9 @@ window["resize-manager"] = {
 window.DropBearModuleManager.register(
   'resize-manager',
   {
-    initialize: () => window["resize-manager"].initialize(),
-    isInitialized: () => window["resize-manager"].isInitialized(),
-    dispose: () => window["resize-manager"].dispose()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].dispose()
   },
   ['DropBearUtils', 'DropBearCore']
 );

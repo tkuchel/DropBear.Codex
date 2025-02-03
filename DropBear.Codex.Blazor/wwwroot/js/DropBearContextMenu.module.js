@@ -3,12 +3,13 @@
  * @module context-menu
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
-import {DropBearUtils} from './utils.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearContextMenu');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+const moduleName = 'DropBearContextMenu';
 
 
 /**
@@ -273,7 +274,7 @@ class ContextMenuManager {
 }
 
 // Attach to window first
-window["context-menu"] = {
+window[moduleName] = {
   __initialized: false,
   menuInstances: new Map(),
 
@@ -290,7 +291,7 @@ window["context-menu"] = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window["context-menu"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('Context menu module initialized');
     } catch (error) {
@@ -305,13 +306,13 @@ window["context-menu"] = {
         throw new Error('Module not initialized');
       }
 
-      if (window["context-menu"].menuInstances.has(menuId)) {
+      if (window[moduleName].menuInstances.has(menuId)) {
         logger.warn(`Context menu already exists for ${menuId}, disposing old instance`);
-        window["context-menu"].dispose(menuId);
+        window[moduleName].dispose(menuId);
       }
 
       const manager = new ContextMenuManager(menuId, dotNetRef);
-      window["context-menu"].menuInstances.set(menuId, manager);
+      window[moduleName].menuInstances.set(menuId, manager);
       logger.debug(`Context menu created for ID: ${menuId}`);
     } catch (error) {
       logger.error('Context menu creation error:', error);
@@ -320,43 +321,43 @@ window["context-menu"] = {
   },
 
   show: (menuId, x, y) => {
-    const manager = window["context-menu"].menuInstances.get(menuId);
+    const manager = window[moduleName].menuInstances.get(menuId);
     return manager ? manager.show(x, y) : Promise.resolve();
   },
 
   hide: menuId => {
-    const manager = window["context-menu"].menuInstances.get(menuId);
+    const manager = window[moduleName].menuInstances.get(menuId);
     return manager ? manager.hide() : Promise.resolve();
   },
 
   updateItems: (menuId, items) => {
-    const manager = window["context-menu"].menuInstances.get(menuId);
+    const manager = window[moduleName].menuInstances.get(menuId);
     return manager ? manager.updateItems(items) : Promise.resolve();
   },
 
   getState: menuId => {
-    const manager = window["context-menu"].menuInstances.get(menuId);
+    const manager = window[moduleName].menuInstances.get(menuId);
     return manager ? manager.getState() : null;
   },
 
   isInitialized: () => isInitialized,
 
   dispose: menuId => {
-    const manager = window["context-menu"].menuInstances.get(menuId);
+    const manager = window[moduleName].menuInstances.get(menuId);
     if (manager) {
       manager.dispose();
-      window["context-menu"].menuInstances.delete(menuId);
+      window[moduleName].menuInstances.delete(menuId);
       logger.debug(`Context menu disposed for ID: ${menuId}`);
     }
   },
 
   disposeAll: () => {
-    Array.from(window["context-menu"].menuInstances.keys()).forEach(id =>
-      window["context-menu"].dispose(id)
+    Array.from(window[moduleName].menuInstances.keys()).forEach(id =>
+      window[moduleName].dispose(id)
     );
-    window["context-menu"].menuInstances.clear();
+    window[moduleName].menuInstances.clear();
     isInitialized = false;
-    window["context-menu"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('All context menus disposed');
   }
 };
@@ -365,9 +366,9 @@ window["context-menu"] = {
 window.DropBearModuleManager.register(
   'context-menu',
   {
-    initialize: () => window["context-menu"].initialize(),
-    isInitialized: () => window["context-menu"].isInitialized(),
-    dispose: () => window["context-menu"].disposeAll()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].disposeAll()
   },
   ['DropBearUtils', 'DropBearCore']
 );

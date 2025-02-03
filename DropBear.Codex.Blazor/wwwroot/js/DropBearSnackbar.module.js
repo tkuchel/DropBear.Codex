@@ -3,12 +3,13 @@
  * @module snackbar
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
-import {DropBearUtils} from './utils.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearSnackbar');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+const moduleName = 'DropBearSnackbar';
 
 /** @type {Object} Snackbar configuration constants */
 const SNACKBAR_CONFIG = {
@@ -399,7 +400,7 @@ class SnackbarManager {
 }
 
 // Attach to window first
-window["snackbar"] = {
+window[moduleName] = {
   __initialized: false,
   snackbars: new Map(),
 
@@ -416,7 +417,7 @@ window["snackbar"] = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window["snackbar"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('Snackbar module initialized');
     } catch (error) {
@@ -431,13 +432,13 @@ window["snackbar"] = {
         throw new Error('Module not initialized');
       }
 
-      if (window["snackbar"].snackbars.has(snackbarId)) {
+      if (window[moduleName].snackbars.has(snackbarId)) {
         logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
-        await window["snackbar"].dispose(snackbarId);
+        await window[moduleName].dispose(snackbarId);
       }
 
       const manager = new SnackbarManager(snackbarId, options);
-      window["snackbar"].snackbars.set(snackbarId, manager);
+      window[moduleName].snackbars.set(snackbarId, manager);
       logger.debug(`Snackbar created for ID: ${snackbarId}`);
     } catch (error) {
       logger.error('Snackbar creation error:', error);
@@ -446,7 +447,7 @@ window["snackbar"] = {
   },
 
   setDotNetReference: async (snackbarId, dotNetRef) => {
-    const manager = window["snackbar"].snackbars.get(snackbarId);
+    const manager = window[moduleName].snackbars.get(snackbarId);
     if (manager) {
       await manager.setDotNetReference(dotNetRef);
       return true;
@@ -456,17 +457,17 @@ window["snackbar"] = {
   },
 
   show: (snackbarId, duration) => {
-    const manager = window["snackbar"].snackbars.get(snackbarId);
+    const manager = window[moduleName].snackbars.get(snackbarId);
     return manager ? manager.show(duration) : Promise.resolve(false);
   },
 
   updateContent: async (snackbarId, content) => {
-    const manager = window["snackbar"].snackbars.get(snackbarId);
+    const manager = window[moduleName].snackbars.get(snackbarId);
     return manager ? manager.updateContent(content) : false;
   },
 
   startProgress: (snackbarId, duration) => {
-    const manager = window["snackbar"].snackbars.get(snackbarId);
+    const manager = window[moduleName].snackbars.get(snackbarId);
     if (manager) {
       manager.startProgress(duration);
       return true;
@@ -475,28 +476,28 @@ window["snackbar"] = {
   },
 
   hide: snackbarId => {
-    const manager = window["snackbar"].snackbars.get(snackbarId);
+    const manager = window[moduleName].snackbars.get(snackbarId);
     return manager ? manager.hide() : Promise.resolve(false);
   },
 
   isInitialized: () => isInitialized,
 
   dispose: snackbarId => {
-    const manager = window["snackbar"].snackbars.get(snackbarId);
+    const manager = window[moduleName].snackbars.get(snackbarId);
     if (manager) {
       manager.dispose();
-      window["snackbar"].snackbars.delete(snackbarId);
+      window[moduleName].snackbars.delete(snackbarId);
       logger.debug(`Snackbar disposed for ID: ${snackbarId}`);
     }
   },
 
   disposeAll: () => {
-    Array.from(window["snackbar"].snackbars.keys()).forEach(id =>
-      window["snackbar"].dispose(id)
+    Array.from(window[moduleName].snackbars.keys()).forEach(id =>
+      window[moduleName].dispose(id)
     );
-    window["snackbar"].snackbars.clear();
+    window[moduleName].snackbars.clear();
     isInitialized = false;
-    window["snackbar"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('All snackbars disposed');
   }
 };
@@ -505,9 +506,9 @@ window["snackbar"] = {
 window.DropBearModuleManager.register(
   'snackbar',
   {
-    initialize: () => window["snackbar"].initialize(),
-    isInitialized: () => window["snackbar"].isInitialized(),
-    dispose: () => window["snackbar"].disposeAll()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].disposeAll()
   },
   ['DropBearUtils', 'DropBearCore']
 );

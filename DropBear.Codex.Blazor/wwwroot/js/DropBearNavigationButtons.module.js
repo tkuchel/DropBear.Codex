@@ -1,14 +1,15 @@
 ﻿/**
  * @fileoverview Navigation buttons manager for handling scroll-to-top and back navigation
- * @module navigation-buttons
+ * @module navigationButtons
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
-import {DropBearUtils} from './utils.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearNavigationButtons');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+const moduleName = 'DropBearNavigationButtons';
 
 /**
  * Manager for navigation button behavior and visibility
@@ -220,7 +221,7 @@ class NavigationManager {
 
 
 // Attach to window first
-window["navigation-buttons"] = {
+window[moduleName] = {
   __initialized: false,
   instance: null,
 
@@ -237,7 +238,7 @@ window["navigation-buttons"] = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window["navigation-buttons"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('Navigation buttons module initialized');
     } catch (error) {
@@ -252,12 +253,12 @@ window["navigation-buttons"] = {
         throw new Error('Module not initialized');
       }
 
-      if (window["navigation-buttons"].instance) {
+      if (window[moduleName].instance) {
         logger.debug('Disposing existing NavigationManager instance');
-        window["navigation-buttons"].dispose();
+        window[moduleName].dispose();
       }
 
-      window["navigation-buttons"].instance = new NavigationManager(dotNetRef);
+      window[moduleName].instance = new NavigationManager(dotNetRef);
       logger.debug('New NavigationManager instance created');
     } catch (error) {
       logger.error('Failed to create NavigationManager:', error);
@@ -266,46 +267,46 @@ window["navigation-buttons"] = {
   },
 
   scrollToTop: () => {
-    if (!window["navigation-buttons"].instance) {
+    if (!window[moduleName].instance) {
       throw new Error('No NavigationManager instance exists');
     }
-    window["navigation-buttons"].instance.scrollToTop();
+    window[moduleName].instance.scrollToTop();
   },
 
   goBack: () => {
-    if (!window["navigation-buttons"].instance) {
+    if (!window[moduleName].instance) {
       throw new Error('No NavigationManager instance exists');
     }
-    window["navigation-buttons"].instance.goBack();
+    window[moduleName].instance.goBack();
   },
 
   forceVisibilityUpdate: async isVisible => {
-    if (!window["navigation-buttons"].instance) {
+    if (!window[moduleName].instance) {
       throw new Error('No NavigationManager instance exists');
     }
-    await window["navigation-buttons"].instance.forceVisibilityUpdate(isVisible);
+    await window[moduleName].instance.forceVisibilityUpdate(isVisible);
   },
 
   isInitialized: () => isInitialized,
 
   dispose: () => {
-    if (window["navigation-buttons"].instance) {
-      window["navigation-buttons"].instance.dispose();
-      window["navigation-buttons"].instance = null;
+    if (window[moduleName].instance) {
+      window[moduleName].instance.dispose();
+      window[moduleName].instance = null;
     }
     isInitialized = false;
-    window["navigation-buttons"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('Navigation buttons module disposed');
   }
 };
 
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
-  'navigation-buttons',
+  'navigationButtons',
   {
-    initialize: () => window["navigation-buttons"].initialize(),
-    isInitialized: () => window["navigation-buttons"].isInitialized(),
-    dispose: () => window["navigation-buttons"].dispose()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].dispose()
   },
   ['DropBearUtils', 'DropBearCore']
 );

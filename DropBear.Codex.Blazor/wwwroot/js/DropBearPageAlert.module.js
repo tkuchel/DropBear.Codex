@@ -3,12 +3,13 @@
  * @module page-alert
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
-import {DropBearUtils} from './utils.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearPageAlert');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+const moduleName = 'DropBearPageAlert';
 
 /** @type {Object} Alert configuration constants */
 const ALERT_CONFIG = {
@@ -378,7 +379,7 @@ class PageAlertManager {
 }
 
 // Attach to window first
-window["page-alert"] = {
+window[moduleName] = {
   __initialized: false,
   alerts: new Map(),
 
@@ -395,7 +396,7 @@ window["page-alert"] = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window["page-alert"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('Page alert module initialized');
     } catch (error) {
@@ -412,13 +413,13 @@ window["page-alert"] = {
 
       DropBearUtils.validateArgs([id], ['string'], 'create');
 
-      if (window["page-alert"].alerts.has(id)) {
+      if (window[moduleName].alerts.has(id)) {
         logger.debug(`Alert ${id} already exists; disposing old instance`);
-        window["page-alert"].alerts.get(id).dispose();
+        window[moduleName].alerts.get(id).dispose();
       }
 
       const manager = new PageAlertManager(id, isPermanent, options);
-      window["page-alert"].alerts.set(id, manager);
+      window[moduleName].alerts.set(id, manager);
 
       // Show immediately
       manager.show(duration);
@@ -432,17 +433,17 @@ window["page-alert"] = {
   },
 
   updateContent: async (id, content) => {
-    const manager = window["page-alert"].alerts.get(id);
+    const manager = window[moduleName].alerts.get(id);
     return manager ? manager.updateContent(content) : false;
   },
 
   show: async id => {
-    const manager = window["page-alert"].alerts.get(id);
+    const manager = window[moduleName].alerts.get(id);
     return manager ? manager.show() : false;
   },
 
   hide: async id => {
-    const manager = window["page-alert"].alerts.get(id);
+    const manager = window[moduleName].alerts.get(id);
     if (!manager) {
       logger.warn(`Cannot hide alert: no manager found for ${id}`);
       return false;
@@ -451,7 +452,7 @@ window["page-alert"] = {
   },
 
   hideAll: async () => {
-    const promises = Array.from(window["page-alert"].alerts.values())
+    const promises = Array.from(window[moduleName].alerts.values())
       .map(manager => manager.hide());
     return Promise.all(promises);
   },
@@ -459,21 +460,21 @@ window["page-alert"] = {
   isInitialized: () => isInitialized,
 
   dispose: id => {
-    const manager = window["page-alert"].alerts.get(id);
+    const manager = window[moduleName].alerts.get(id);
     if (manager) {
       manager.dispose();
-      window["page-alert"].alerts.delete(id);
+      window[moduleName].alerts.delete(id);
       logger.debug(`Alert disposed for ID: ${id}`);
     }
   },
 
   disposeAll: () => {
-    Array.from(window["page-alert"].alerts.values()).forEach(manager =>
+    Array.from(window[moduleName].alerts.values()).forEach(manager =>
       manager.dispose()
     );
-    window["page-alert"].alerts.clear();
+    window[moduleName].alerts.clear();
     isInitialized = false;
-    window["page-alert"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('All alerts disposed');
   }
 };
@@ -482,9 +483,9 @@ window["page-alert"] = {
 window.DropBearModuleManager.register(
   'page-alert',
   {
-    initialize: () => window["page-alert"].initialize(),
-    isInitialized: () => window["page-alert"].isInitialized(),
-    dispose: () => window["page-alert"].disposeAll()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].disposeAll()
   },
   ['DropBearUtils', 'DropBearCore']
 );

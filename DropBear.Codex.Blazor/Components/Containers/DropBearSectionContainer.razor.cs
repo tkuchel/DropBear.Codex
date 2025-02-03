@@ -1,5 +1,6 @@
 ﻿using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -17,7 +18,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     // -- Private fields for JS interop and state --
     private IJSObjectReference? _module;
     private DotNetObjectReference<DropBearSectionContainer>? _dotNetRef;
-    private const string JsModuleName = "resize-manager";
+    private const string JsModuleName = JsModuleNames.ResizeManager;
 
     private WindowDimensions? _cachedDimensions;
     private string? _containerClassCache;

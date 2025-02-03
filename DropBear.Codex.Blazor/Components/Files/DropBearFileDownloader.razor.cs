@@ -1,6 +1,7 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
@@ -26,7 +27,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
     private bool _isDownloading;
 
     private IJSObjectReference? _module;
-    private const string JsModuleName = "file-downloader";
+    private const string JsModuleName = JsModuleNames.FileDownloader;
 
     #region Lifecycle
 

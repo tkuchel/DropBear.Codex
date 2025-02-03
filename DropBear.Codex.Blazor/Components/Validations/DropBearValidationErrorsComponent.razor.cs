@@ -1,4 +1,5 @@
 ﻿using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -12,7 +13,7 @@ namespace DropBear.Codex.Blazor.Components.Validations;
 public sealed partial class DropBearValidationErrorsComponent : DropBearComponentBase
 {
     private IJSObjectReference? _jsModule;
-    private const string JsModuleName = "validation-errors";
+    private const string JsModuleName = JsModuleNames.ValidationErrors;
     private bool _isCollapsed;
 
     // We generate a unique ID from the base class’s ComponentId

@@ -3,12 +3,13 @@
  * @module validation-errors
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './core.module.js';
-import {DropBearUtils} from './utils.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearValidationErrors');
 const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
+const moduleName = 'DropBearValidationErrors';
 
 /** @type {Object} Validation configuration constants */
 const VALIDATION_CONFIG = {
@@ -368,7 +369,7 @@ class ValidationErrorsManager {
 }
 
 // Attach to window first
-window["validation-errors"] = {
+window[moduleName] = {
   __initialized: false,
   validationContainers: new Map(),
 
@@ -385,7 +386,7 @@ window["validation-errors"] = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window["validation-errors"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('Validation errors module initialized');
     } catch (error) {
@@ -402,13 +403,13 @@ window["validation-errors"] = {
 
       DropBearUtils.validateArgs([containerId], ['string'], 'createValidationContainer');
 
-      if (window["validation-errors"].validationContainers.has(containerId)) {
+      if (window[moduleName].validationContainers.has(containerId)) {
         logger.warn(`Validation container already exists for ${containerId}, disposing old instance`);
-        window["validation-errors"].dispose(containerId);
+        window[moduleName].dispose(containerId);
       }
 
       const manager = new ValidationErrorsManager(containerId, options);
-      window["validation-errors"].validationContainers.set(containerId, manager);
+      window[moduleName].validationContainers.set(containerId, manager);
       logger.debug(`Validation container created for ID: ${containerId}`);
     } catch (error) {
       logger.error('Validation container creation error:', error);
@@ -417,63 +418,63 @@ window["validation-errors"] = {
   },
 
   updateErrors: async (containerId, errors) => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     if (manager) {
       await manager.updateErrors(errors);
     }
   },
 
   updateAriaAttributes: async (containerId, isCollapsed) => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     if (manager) {
       await manager.updateAriaAttributes(isCollapsed);
     }
   },
 
   show: async containerId => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     if (manager) {
       await manager.show();
     }
   },
 
   hide: async containerId => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     if (manager) {
       await manager.hide();
     }
   },
 
   clearErrors: async containerId => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     if (manager) {
       await manager.clearErrors();
     }
   },
 
   getErrorCount: containerId => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     return manager ? manager.getErrorCount() : 0;
   },
 
   isInitialized: () => isInitialized,
 
   dispose: containerId => {
-    const manager = window["validation-errors"].validationContainers.get(containerId);
+    const manager = window[moduleName].validationContainers.get(containerId);
     if (manager) {
       manager.dispose();
-      window["validation-errors"].validationContainers.delete(containerId);
+      window[moduleName].validationContainers.delete(containerId);
       logger.debug(`Validation container disposed for ID: ${containerId}`);
     }
   },
 
   disposeAll: () => {
-    Array.from(window["validation-errors"].validationContainers.keys()).forEach(id =>
-      window["validation-errors"].dispose(id)
+    Array.from(window[moduleName].validationContainers.keys()).forEach(id =>
+      window[moduleName].dispose(id)
     );
-    window["validation-errors"].validationContainers.clear();
+    window[moduleName].validationContainers.clear();
     isInitialized = false;
-    window["validation-errors"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('All validation containers disposed');
   }
 };
@@ -482,9 +483,9 @@ window["validation-errors"] = {
 window.DropBearModuleManager.register(
   'validation-errors',
   {
-    initialize: () => window["validation-errors"].initialize(),
-    isInitialized: () => window["validation-errors"].isInitialized(),
-    dispose: () => window["validation-errors"].disposeAll()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].disposeAll()
   },
   ['DropBearUtils', 'DropBearCore']
 );

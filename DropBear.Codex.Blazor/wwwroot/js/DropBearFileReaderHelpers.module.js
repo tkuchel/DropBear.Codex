@@ -3,10 +3,11 @@
  * @module file-reader-helpers
  */
 
-import {DropBearUtils} from './utils.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearFileReaderHelpers');
 let isInitialized = false;
+const moduleName = 'DropBearFileReaderHelpers';
 
 /** @type {Object} Reader configuration constants */
 const READER_CONFIG = {
@@ -121,7 +122,7 @@ const FileReaderHelpers = {
 };
 
 // Attach to window first
-window["file-reader-helpers"] = {
+window[moduleName] = {
   __initialized: false,
   ...FileReaderHelpers,
 
@@ -137,7 +138,7 @@ window["file-reader-helpers"] = {
       await window.DropBearUtils.initialize();
 
       isInitialized = true;
-      window["file-reader-helpers"].__initialized = true;
+      window[moduleName].__initialized = true;
 
       logger.debug('File reader helpers module initialized');
     } catch (error) {
@@ -150,7 +151,7 @@ window["file-reader-helpers"] = {
 
   dispose: () => {
     isInitialized = false;
-    window["file-reader-helpers"].__initialized = false;
+    window[moduleName].__initialized = false;
     logger.debug('File reader helpers module disposed');
   }
 };
@@ -159,9 +160,9 @@ window["file-reader-helpers"] = {
 window.DropBearModuleManager.register(
   'file-reader-helpers',
   {
-    initialize: () => window["file-reader-helpers"].initialize(),
-    isInitialized: () => window["file-reader-helpers"].isInitialized(),
-    dispose: () => window["file-reader-helpers"].dispose()
+    initialize: () => window[moduleName].initialize(),
+    isInitialized: () => window[moduleName].isInitialized(),
+    dispose: () => window[moduleName].dispose()
   },
   ['DropBearUtils']
 );
