@@ -26,6 +26,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
     private bool _isDownloading;
 
     private IJSObjectReference? _module;
+    private const string JsModuleName = "file-downloader";
 
     #region Lifecycle
 
@@ -44,9 +45,9 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
         try
         {
             // Load/cache the "file-downloader" module
-            _module = await GetJsModuleAsync("file-downloader").ConfigureAwait(false);
+            _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
             // Optionally call an initialization function within that module
-            await _module.InvokeVoidAsync("DropBearFileDownloader.initialize").ConfigureAwait(false);
+            await _module.InvokeVoidAsync($"{JsModuleName}.initialize").ConfigureAwait(false);
 
             LogDebug("DropBearFileDownloader JS module initialized.");
         }

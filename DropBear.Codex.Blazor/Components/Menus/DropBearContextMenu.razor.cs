@@ -85,7 +85,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
             _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
 
             // Now call the "createContextMenu" method within that module
-            await SafeJsVoidInteropAsync("DropBearContextMenu.createContextMenu", _contextMenuId, _objectReference)
+            await SafeJsVoidInteropAsync($"{MODULE_NAME}.createContextMenu", _contextMenuId, _objectReference)
                 .ConfigureAwait(false);
 
             LogDebug("Context menu JS initialized with ID: {MenuId}", _contextMenuId);
@@ -107,7 +107,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
             // If the JS was successfully initialized, call the module's dispose function
             if (_jsModule is not null)
             {
-                await SafeJsVoidInteropAsync("DropBearContextMenu.dispose", _contextMenuId).ConfigureAwait(false);
+                await SafeJsVoidInteropAsync($"{MODULE_NAME}.dispose", _contextMenuId).ConfigureAwait(false);
                 LogDebug("Context menu JS resources disposed for {MenuId}", _contextMenuId);
             }
         }
@@ -173,7 +173,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
         // Show the context menu via the JS module
         try
         {
-            await SafeJsVoidInteropAsync("DropBearContextMenu.show", _contextMenuId, e.ClientX, e.ClientY)
+            await SafeJsVoidInteropAsync($"{MODULE_NAME}.show", _contextMenuId, e.ClientX, e.ClientY)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

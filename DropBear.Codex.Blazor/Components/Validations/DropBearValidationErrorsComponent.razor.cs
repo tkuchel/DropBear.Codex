@@ -12,6 +12,7 @@ namespace DropBear.Codex.Blazor.Components.Validations;
 public sealed partial class DropBearValidationErrorsComponent : DropBearComponentBase
 {
     private IJSObjectReference? _jsModule;
+    private const string JsModuleName = "validation-errors";
     private bool _isCollapsed;
 
     // We generate a unique ID from the base class’s ComponentId
@@ -103,17 +104,17 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
         try
         {
             // 1) Load/cache the module
-            _jsModule = await GetJsModuleAsync("DropBearValidationErrors").ConfigureAwait(false);
+            _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
             // 2) Create the container in JS
             await _jsModule.InvokeVoidAsync(
-                "DropBearValidationErrors.createValidationContainer",
+                $"{JsModuleName}.createValidationContainer",
                 _componentId
             );
 
             // 3) Now update ARIA attributes for the initial collapse state
             await _jsModule.InvokeVoidAsync(
-                "DropBearValidationErrors.updateAriaAttributes",
+                $"{JsModuleName}.updateAriaAttributes",
                 _componentId,
                 IsCollapsed
             );
@@ -155,11 +156,11 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
         try
         {
             // If we haven't loaded or lost the module reference, reacquire it
-            _jsModule ??= await GetJsModuleAsync("DropBearValidationErrors").ConfigureAwait(false);
+            _jsModule ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
             // Then update the ARIA attributes
             await _jsModule.InvokeVoidAsync(
-                "DropBearValidationErrors.updateAriaAttributes",
+                $"{JsModuleName}.updateAriaAttributes",
                 _componentId,
                 IsCollapsed
             );

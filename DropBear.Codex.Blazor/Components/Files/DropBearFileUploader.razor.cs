@@ -31,6 +31,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private bool _isUploading;
 
     private IJSObjectReference? _jsModule;
+
     private int _uploadProgress;
 
     #region Properties

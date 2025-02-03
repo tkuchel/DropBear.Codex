@@ -35,6 +35,9 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     // JS module reference (cached once loaded in OnAfterRenderAsync)
     private IJSObjectReference? _jsModule;
 
+    // JS module name
+    private const string JsModuleName = "page-alert";
+
     #region Parameters
 
     [Parameter] public string? ChannelId { get; set; }
@@ -72,7 +75,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             // Load/cache the JS module once (similar to "FileUploader style")
-            _jsModule = await GetJsModuleAsync("page-alert").ConfigureAwait(false);
+            _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
             // If any alerts have queued up before the module was ready, initialize them
             if (_alertsToInitialize.Count > 0)
@@ -100,7 +103,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             // Hide all active alerts via JS
-            await _jsModule.InvokeAsync<bool[]>("DropBearPageAlert.hideAll").ConfigureAwait(false);
+            await _jsModule.InvokeAsync<bool[]>($"{JsModuleName}.hideAll").ConfigureAwait(false);
             LogDebug("All page alerts hidden during cleanup");
         }
         catch (JSDisconnectedException jsDiscEx)
@@ -254,7 +257,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             {
                 // "DropBearPageAlert.create" -> (alert.Id, alert.Duration, alert.IsPermanent)
                 var result = await _jsModule.InvokeAsync<bool>(
-                    "DropBearPageAlert.create",
+                    $"{JsModuleName}.create",
                     alert.Id,
                     alert.Duration ?? 5000,
                     alert.IsPermanent
@@ -311,7 +314,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             var result = await _jsModule.InvokeAsync<bool>(
-                "DropBearPageAlert.hide",
+                $"{JsModuleName}.hide",
                 alertId
             ).ConfigureAwait(false);
 

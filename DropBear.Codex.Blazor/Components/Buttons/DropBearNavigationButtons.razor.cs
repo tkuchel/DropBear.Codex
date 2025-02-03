@@ -12,6 +12,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     // -- Private fields --
     private IJSObjectReference? _module;
     private DotNetObjectReference<DropBearNavigationButtons>? _dotNetRef;
+    private const string JsModuleName = "navigation-buttons";
 
     // Use this property for controlling the 'Scroll to Top' button's visibility
     private bool _isVisible;
@@ -48,18 +49,18 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         try
         {
             // Get (and cache) the module once
-            _module = await GetJsModuleAsync("navigation-buttons").ConfigureAwait(false);
+            _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
             // Initialize the global navigation-buttons module
             // "DropBearNavigationButtons.initialize()" sets up the JS environment
             await _module.InvokeVoidAsync(
-                "DropBearNavigationButtons.initialize"
+                $"{JsModuleName}.initialize"
             ).ConfigureAwait(false);
 
             // Create the NavigationManager instance passing this .NET reference
             _dotNetRef = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync(
-                "DropBearNavigationButtons.createNavigationManager",
+                $"{JsModuleName}.createNavigationManager",
                 _dotNetRef
             ).ConfigureAwait(false);
 
@@ -82,8 +83,8 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         try
         {
             // Reuse the cached module
-            _module ??= await GetJsModuleAsync("navigation-buttons").ConfigureAwait(false);
-            await _module.InvokeVoidAsync("DropBearNavigationButtons.goBack").ConfigureAwait(false);
+            _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
+            await _module.InvokeVoidAsync($"{JsModuleName}.goBack").ConfigureAwait(false);
             LogDebug("Navigated back via DropBearNavigationButtons.");
         }
         catch (Exception ex)
@@ -117,8 +118,8 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 
         try
         {
-            _module ??= await GetJsModuleAsync("navigation-buttons").ConfigureAwait(false);
-            await _module.InvokeVoidAsync("DropBearNavigationButtons.scrollToTop").ConfigureAwait(false);
+            _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
+            await _module.InvokeVoidAsync($"{JsModuleName}.scrollToTop").ConfigureAwait(false);
             LogDebug("Page scrolled to top via DropBearNavigationButtons.");
         }
         catch (Exception ex)
@@ -147,7 +148,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         {
             if (_module is not null)
             {
-                await _module.InvokeVoidAsync("DropBearNavigationButtons.dispose").ConfigureAwait(false);
+                await _module.InvokeVoidAsync($"{JsModuleName}.dispose").ConfigureAwait(false);
                 LogDebug("DropBearNavigationButtons disposed via JS interop.");
             }
         }
