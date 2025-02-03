@@ -72,7 +72,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             // Load/cache the JS module once (similar to "FileUploader style")
-            _jsModule = await GetJsModuleAsync("DropBearPageAlert").ConfigureAwait(false);
+            _jsModule = await GetJsModuleAsync("page-alert").ConfigureAwait(false);
 
             // If any alerts have queued up before the module was ready, initialize them
             if (_alertsToInitialize.Count > 0)

@@ -3,8 +3,6 @@
  * @module utils
  */
 
-import { ModuleManager } from './module-manager.module.js';
-
 let isInitialized = false;
 
 /**
