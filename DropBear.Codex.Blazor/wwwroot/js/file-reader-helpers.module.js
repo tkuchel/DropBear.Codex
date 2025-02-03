@@ -121,7 +121,7 @@ const FileReaderHelpers = {
 };
 
 // Attach to window first
-window.DropBearFileReaderHelpers = {
+window["file-reader-helpers"] = {
   __initialized: false,
   ...FileReaderHelpers,
 
@@ -137,7 +137,7 @@ window.DropBearFileReaderHelpers = {
       await window.DropBearUtils.initialize();
 
       isInitialized = true;
-      window.DropBearFileReaderHelpers.__initialized = true;
+      window["file-reader-helpers"].__initialized = true;
 
       logger.debug('File reader helpers module initialized');
     } catch (error) {
@@ -150,7 +150,7 @@ window.DropBearFileReaderHelpers = {
 
   dispose: () => {
     isInitialized = false;
-    window.DropBearFileReaderHelpers.__initialized = false;
+    window["file-reader-helpers"].__initialized = false;
     logger.debug('File reader helpers module disposed');
   }
 };
@@ -159,9 +159,9 @@ window.DropBearFileReaderHelpers = {
 window.DropBearModuleManager.register(
   'DropBearFileReaderHelpers',
   {
-    initialize: () => window.DropBearFileReaderHelpers.initialize(),
-    isInitialized: () => window.DropBearFileReaderHelpers.isInitialized(),
-    dispose: () => window.DropBearFileReaderHelpers.dispose()
+    initialize: () => window["file-reader-helpers"].initialize(),
+    isInitialized: () => window["file-reader-helpers"].isInitialized(),
+    dispose: () => window["file-reader-helpers"].dispose()
   },
   ['DropBearUtils']
 );

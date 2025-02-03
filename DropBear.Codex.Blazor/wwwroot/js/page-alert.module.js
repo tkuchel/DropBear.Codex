@@ -378,7 +378,7 @@ class PageAlertManager {
 }
 
 // Attach to window first
-window.DropBearPageAlert = {
+window["page-alert"] = {
   __initialized: false,
   alerts: new Map(),
 
@@ -395,7 +395,7 @@ window.DropBearPageAlert = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window.DropBearPageAlert.__initialized = true;
+      window["page-alert"].__initialized = true;
 
       logger.debug('Page alert module initialized');
     } catch (error) {
@@ -412,13 +412,13 @@ window.DropBearPageAlert = {
 
       DropBearUtils.validateArgs([id], ['string'], 'create');
 
-      if (window.DropBearPageAlert.alerts.has(id)) {
+      if (window["page-alert"].alerts.has(id)) {
         logger.debug(`Alert ${id} already exists; disposing old instance`);
-        window.DropBearPageAlert.alerts.get(id).dispose();
+        window["page-alert"].alerts.get(id).dispose();
       }
 
       const manager = new PageAlertManager(id, isPermanent, options);
-      window.DropBearPageAlert.alerts.set(id, manager);
+      window["page-alert"].alerts.set(id, manager);
 
       // Show immediately
       manager.show(duration);
@@ -432,17 +432,17 @@ window.DropBearPageAlert = {
   },
 
   updateContent: async (id, content) => {
-    const manager = window.DropBearPageAlert.alerts.get(id);
+    const manager = window["page-alert"].alerts.get(id);
     return manager ? manager.updateContent(content) : false;
   },
 
   show: async id => {
-    const manager = window.DropBearPageAlert.alerts.get(id);
+    const manager = window["page-alert"].alerts.get(id);
     return manager ? manager.show() : false;
   },
 
   hide: async id => {
-    const manager = window.DropBearPageAlert.alerts.get(id);
+    const manager = window["page-alert"].alerts.get(id);
     if (!manager) {
       logger.warn(`Cannot hide alert: no manager found for ${id}`);
       return false;
@@ -451,7 +451,7 @@ window.DropBearPageAlert = {
   },
 
   hideAll: async () => {
-    const promises = Array.from(window.DropBearPageAlert.alerts.values())
+    const promises = Array.from(window["page-alert"].alerts.values())
       .map(manager => manager.hide());
     return Promise.all(promises);
   },
@@ -459,21 +459,21 @@ window.DropBearPageAlert = {
   isInitialized: () => isInitialized,
 
   dispose: id => {
-    const manager = window.DropBearPageAlert.alerts.get(id);
+    const manager = window["page-alert"].alerts.get(id);
     if (manager) {
       manager.dispose();
-      window.DropBearPageAlert.alerts.delete(id);
+      window["page-alert"].alerts.delete(id);
       logger.debug(`Alert disposed for ID: ${id}`);
     }
   },
 
   disposeAll: () => {
-    Array.from(window.DropBearPageAlert.alerts.values()).forEach(manager =>
+    Array.from(window["page-alert"].alerts.values()).forEach(manager =>
       manager.dispose()
     );
-    window.DropBearPageAlert.alerts.clear();
+    window["page-alert"].alerts.clear();
     isInitialized = false;
-    window.DropBearPageAlert.__initialized = false;
+    window["page-alert"].__initialized = false;
     logger.debug('All alerts disposed');
   }
 };
@@ -482,9 +482,9 @@ window.DropBearPageAlert = {
 window.DropBearModuleManager.register(
   'DropBearPageAlert',
   {
-    initialize: () => window.DropBearPageAlert.initialize(),
-    isInitialized: () => window.DropBearPageAlert.isInitialized(),
-    dispose: () => window.DropBearPageAlert.disposeAll()
+    initialize: () => window["page-alert"].initialize(),
+    isInitialized: () => window["page-alert"].isInitialized(),
+    dispose: () => window["page-alert"].disposeAll()
   },
   ['DropBearUtils', 'DropBearCore']
 );

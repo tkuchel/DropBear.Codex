@@ -194,7 +194,7 @@ class DownloadManager {
   }
 }
 // Attach to window first
-window.DropBearFileDownloader = {
+window["file-downloader"] = {
   __initialized: false,
   downloadManager: null,
 
@@ -210,10 +210,10 @@ window.DropBearFileDownloader = {
       await window.DropBearUtils.initialize();
       await window.DropBearCore.initialize();
 
-      window.DropBearFileDownloader.downloadManager = new DownloadManager();
+      window["file-downloader"].downloadManager = new DownloadManager();
 
       isInitialized = true;
-      window.DropBearFileDownloader.__initialized = true;
+      window["file-downloader"].__initialized = true;
 
       logger.debug('File downloader module initialized');
     } catch (error) {
@@ -227,30 +227,30 @@ window.DropBearFileDownloader = {
       throw new Error('Module not initialized');
     }
 
-    if (!window.DropBearFileDownloader.downloadManager) {
+    if (!window["file-downloader"].downloadManager) {
       throw new Error('DownloadManager not created');
     }
 
-    return window.DropBearFileDownloader.downloadManager
+    return window["file-downloader"].downloadManager
       .downloadFileFromStream(fileName, content, contentType);
   },
 
   getActiveDownloadCount: () => {
-    if (!window.DropBearFileDownloader.downloadManager) {
+    if (!window["file-downloader"].downloadManager) {
       return 0;
     }
-    return window.DropBearFileDownloader.downloadManager.getActiveDownloadCount();
+    return window["file-downloader"].downloadManager.getActiveDownloadCount();
   },
 
   isInitialized: () => isInitialized,
 
   dispose: () => {
-    if (window.DropBearFileDownloader.downloadManager) {
-      window.DropBearFileDownloader.downloadManager.dispose();
-      window.DropBearFileDownloader.downloadManager = null;
+    if (window["file-downloader"].downloadManager) {
+      window["file-downloader"].downloadManager.dispose();
+      window["file-downloader"].downloadManager = null;
     }
     isInitialized = false;
-    window.DropBearFileDownloader.__initialized = false;
+    window["file-downloader"].__initialized = false;
     logger.debug('File downloader module disposed');
   }
 };
@@ -259,9 +259,9 @@ window.DropBearFileDownloader = {
 window.DropBearModuleManager.register(
   'DropBearFileDownloader',
   {
-    initialize: () => window.DropBearFileDownloader.initialize(),
-    isInitialized: () => window.DropBearFileDownloader.isInitialized(),
-    dispose: () => window.DropBearFileDownloader.dispose()
+    initialize: () => window["file-downloader"].initialize(),
+    isInitialized: () => window["file-downloader"].isInitialized(),
+    dispose: () => window["file-downloader"].dispose()
   },
   ['DropBearUtils', 'DropBearCore']
 );

@@ -220,7 +220,7 @@ class NavigationManager {
 
 
 // Attach to window first
-window.DropBearNavigationButtons = {
+window["navigation-buttons"] = {
   __initialized: false,
   instance: null,
 
@@ -237,7 +237,7 @@ window.DropBearNavigationButtons = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window.DropBearNavigationButtons.__initialized = true;
+      window["navigation-buttons"].__initialized = true;
 
       logger.debug('Navigation buttons module initialized');
     } catch (error) {
@@ -252,12 +252,12 @@ window.DropBearNavigationButtons = {
         throw new Error('Module not initialized');
       }
 
-      if (window.DropBearNavigationButtons.instance) {
+      if (window["navigation-buttons"].instance) {
         logger.debug('Disposing existing NavigationManager instance');
-        window.DropBearNavigationButtons.dispose();
+        window["navigation-buttons"].dispose();
       }
 
-      window.DropBearNavigationButtons.instance = new NavigationManager(dotNetRef);
+      window["navigation-buttons"].instance = new NavigationManager(dotNetRef);
       logger.debug('New NavigationManager instance created');
     } catch (error) {
       logger.error('Failed to create NavigationManager:', error);
@@ -266,35 +266,35 @@ window.DropBearNavigationButtons = {
   },
 
   scrollToTop: () => {
-    if (!window.DropBearNavigationButtons.instance) {
+    if (!window["navigation-buttons"].instance) {
       throw new Error('No NavigationManager instance exists');
     }
-    window.DropBearNavigationButtons.instance.scrollToTop();
+    window["navigation-buttons"].instance.scrollToTop();
   },
 
   goBack: () => {
-    if (!window.DropBearNavigationButtons.instance) {
+    if (!window["navigation-buttons"].instance) {
       throw new Error('No NavigationManager instance exists');
     }
-    window.DropBearNavigationButtons.instance.goBack();
+    window["navigation-buttons"].instance.goBack();
   },
 
   forceVisibilityUpdate: async isVisible => {
-    if (!window.DropBearNavigationButtons.instance) {
+    if (!window["navigation-buttons"].instance) {
       throw new Error('No NavigationManager instance exists');
     }
-    await window.DropBearNavigationButtons.instance.forceVisibilityUpdate(isVisible);
+    await window["navigation-buttons"].instance.forceVisibilityUpdate(isVisible);
   },
 
   isInitialized: () => isInitialized,
 
   dispose: () => {
-    if (window.DropBearNavigationButtons.instance) {
-      window.DropBearNavigationButtons.instance.dispose();
-      window.DropBearNavigationButtons.instance = null;
+    if (window["navigation-buttons"].instance) {
+      window["navigation-buttons"].instance.dispose();
+      window["navigation-buttons"].instance = null;
     }
     isInitialized = false;
-    window.DropBearNavigationButtons.__initialized = false;
+    window["navigation-buttons"].__initialized = false;
     logger.debug('Navigation buttons module disposed');
   }
 };
@@ -303,9 +303,9 @@ window.DropBearNavigationButtons = {
 window.DropBearModuleManager.register(
   'DropBearNavigationButtons',
   {
-    initialize: () => window.DropBearNavigationButtons.initialize(),
-    isInitialized: () => window.DropBearNavigationButtons.isInitialized(),
-    dispose: () => window.DropBearNavigationButtons.dispose()
+    initialize: () => window["navigation-buttons"].initialize(),
+    isInitialized: () => window["navigation-buttons"].isInitialized(),
+    dispose: () => window["navigation-buttons"].dispose()
   },
   ['DropBearUtils', 'DropBearCore']
 );

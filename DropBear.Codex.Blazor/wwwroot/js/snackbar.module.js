@@ -399,7 +399,7 @@ class SnackbarManager {
 }
 
 // Attach to window first
-window.DropBearSnackbar = {
+window["snackbar"] = {
   __initialized: false,
   snackbars: new Map(),
 
@@ -416,7 +416,7 @@ window.DropBearSnackbar = {
       await window.DropBearCore.initialize();
 
       isInitialized = true;
-      window.DropBearSnackbar.__initialized = true;
+      window["snackbar"].__initialized = true;
 
       logger.debug('Snackbar module initialized');
     } catch (error) {
@@ -431,13 +431,13 @@ window.DropBearSnackbar = {
         throw new Error('Module not initialized');
       }
 
-      if (window.DropBearSnackbar.snackbars.has(snackbarId)) {
+      if (window["snackbar"].snackbars.has(snackbarId)) {
         logger.warn(`Snackbar already exists for ${snackbarId}, disposing old instance`);
-        await window.DropBearSnackbar.dispose(snackbarId);
+        await window["snackbar"].dispose(snackbarId);
       }
 
       const manager = new SnackbarManager(snackbarId, options);
-      window.DropBearSnackbar.snackbars.set(snackbarId, manager);
+      window["snackbar"].snackbars.set(snackbarId, manager);
       logger.debug(`Snackbar created for ID: ${snackbarId}`);
     } catch (error) {
       logger.error('Snackbar creation error:', error);
@@ -446,7 +446,7 @@ window.DropBearSnackbar = {
   },
 
   setDotNetReference: async (snackbarId, dotNetRef) => {
-    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    const manager = window["snackbar"].snackbars.get(snackbarId);
     if (manager) {
       await manager.setDotNetReference(dotNetRef);
       return true;
@@ -456,17 +456,17 @@ window.DropBearSnackbar = {
   },
 
   show: (snackbarId, duration) => {
-    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    const manager = window["snackbar"].snackbars.get(snackbarId);
     return manager ? manager.show(duration) : Promise.resolve(false);
   },
 
   updateContent: async (snackbarId, content) => {
-    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    const manager = window["snackbar"].snackbars.get(snackbarId);
     return manager ? manager.updateContent(content) : false;
   },
 
   startProgress: (snackbarId, duration) => {
-    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    const manager = window["snackbar"].snackbars.get(snackbarId);
     if (manager) {
       manager.startProgress(duration);
       return true;
@@ -475,28 +475,28 @@ window.DropBearSnackbar = {
   },
 
   hide: snackbarId => {
-    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    const manager = window["snackbar"].snackbars.get(snackbarId);
     return manager ? manager.hide() : Promise.resolve(false);
   },
 
   isInitialized: () => isInitialized,
 
   dispose: snackbarId => {
-    const manager = window.DropBearSnackbar.snackbars.get(snackbarId);
+    const manager = window["snackbar"].snackbars.get(snackbarId);
     if (manager) {
       manager.dispose();
-      window.DropBearSnackbar.snackbars.delete(snackbarId);
+      window["snackbar"].snackbars.delete(snackbarId);
       logger.debug(`Snackbar disposed for ID: ${snackbarId}`);
     }
   },
 
   disposeAll: () => {
-    Array.from(window.DropBearSnackbar.snackbars.keys()).forEach(id =>
-      window.DropBearSnackbar.dispose(id)
+    Array.from(window["snackbar"].snackbars.keys()).forEach(id =>
+      window["snackbar"].dispose(id)
     );
-    window.DropBearSnackbar.snackbars.clear();
+    window["snackbar"].snackbars.clear();
     isInitialized = false;
-    window.DropBearSnackbar.__initialized = false;
+    window["snackbar"].__initialized = false;
     logger.debug('All snackbars disposed');
   }
 };
@@ -505,9 +505,9 @@ window.DropBearSnackbar = {
 window.DropBearModuleManager.register(
   'DropBearSnackbar',
   {
-    initialize: () => window.DropBearSnackbar.initialize(),
-    isInitialized: () => window.DropBearSnackbar.isInitialized(),
-    dispose: () => window.DropBearSnackbar.disposeAll()
+    initialize: () => window["snackbar"].initialize(),
+    isInitialized: () => window["snackbar"].isInitialized(),
+    dispose: () => window["snackbar"].disposeAll()
   },
   ['DropBearUtils', 'DropBearCore']
 );
