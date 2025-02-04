@@ -103,13 +103,13 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
 
             // 1) Initialize the module
             await _module.InvokeVoidAsync(
-                $"{JsModuleName}.initialize"
+                $"{JsModuleName}API.initialize"
             ).ConfigureAwait(false);
 
             // 2) Create a new resize manager instance in JS, passing a .NET reference for callback
             _dotNetRef = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync(
-                $"{JsModuleName}.createResizeManager",
+                $"{JsModuleName}API.createResizeManager",
                 _dotNetRef
             ).ConfigureAwait(false);
 
@@ -174,7 +174,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
 
             // "DropBearResizeManager.getDimensions" is a function on the window scope
             var dimensions = await _module.InvokeAsync<WindowDimensions>(
-                $"{JsModuleName}.getDimensions",
+                $"{JsModuleName}API.getDimensions",
                 ComponentToken
             ).ConfigureAwait(false);
 
@@ -259,7 +259,7 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
         {
             if (_module is not null)
             {
-                await _module.InvokeVoidAsync($"{JsModuleName}.dispose").ConfigureAwait(false);
+                await _module.InvokeVoidAsync($"{JsModuleName}API.dispose").ConfigureAwait(false);
                 LogDebug("Resize manager disposed in JS.");
             }
         }

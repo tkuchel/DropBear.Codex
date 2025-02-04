@@ -109,13 +109,13 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
             // 2) Create the container in JS
             await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}.createValidationContainer",
+                $"{JsModuleName}API.createValidationContainer",
                 _componentId
             );
 
             // 3) Now update ARIA attributes for the initial collapse state
             await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}.updateAriaAttributes",
+                $"{JsModuleName}API.updateAriaAttributes",
                 _componentId,
                 IsCollapsed
             );
@@ -161,7 +161,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
             // Then update the ARIA attributes
             await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}.updateAriaAttributes",
+                $"{JsModuleName}API.updateAriaAttributes",
                 _componentId,
                 IsCollapsed
             );

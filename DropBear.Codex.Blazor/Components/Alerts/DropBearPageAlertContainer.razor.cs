@@ -103,7 +103,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             // Hide all active alerts via JS
-            await _jsModule.InvokeAsync<bool[]>($"{JsModuleName}.hideAll").ConfigureAwait(false);
+            await _jsModule.InvokeAsync<bool[]>($"{JsModuleName}API.hideAll").ConfigureAwait(false);
             LogDebug("All page alerts hidden during cleanup");
         }
         catch (JSDisconnectedException jsDiscEx)
@@ -257,7 +257,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             {
                 // "DropBearPageAlert.create" -> (alert.Id, alert.Duration, alert.IsPermanent)
                 var result = await _jsModule.InvokeAsync<bool>(
-                    $"{JsModuleName}.create",
+                    $"{JsModuleName}API.create",
                     alert.Id,
                     alert.Duration ?? 5000,
                     alert.IsPermanent
@@ -314,7 +314,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             var result = await _jsModule.InvokeAsync<bool>(
-                $"{JsModuleName}.hide",
+                $"{JsModuleName}API.hide",
                 alertId
             ).ConfigureAwait(false);
 

@@ -48,7 +48,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
             // Load/cache the "file-downloader" module
             _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
             // Optionally call an initialization function within that module
-            await _module.InvokeVoidAsync($"{JsModuleName}.initialize").ConfigureAwait(false);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize").ConfigureAwait(false);
 
             LogDebug("DropBearFileDownloader JS module initialized.");
         }

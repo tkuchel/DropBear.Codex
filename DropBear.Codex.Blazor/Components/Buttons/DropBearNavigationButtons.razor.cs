@@ -55,13 +55,13 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             // Initialize the global navigation-buttons module
             // "DropBearNavigationButtons.initialize()" sets up the JS environment
             await _module.InvokeVoidAsync(
-                $"{JsModuleName}.initialize"
+                $"{JsModuleName}API.initialize"
             ).ConfigureAwait(false);
 
             // Create the NavigationManager instance passing this .NET reference
             _dotNetRef = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync(
-                $"{JsModuleName}.createNavigationManager",
+                $"{JsModuleName}API.createNavigationManager",
                 _dotNetRef
             ).ConfigureAwait(false);
 
@@ -85,7 +85,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         {
             // Reuse the cached module
             _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-            await _module.InvokeVoidAsync($"{JsModuleName}.goBack").ConfigureAwait(false);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.goBack").ConfigureAwait(false);
             LogDebug("Navigated back via DropBearNavigationButtons.");
         }
         catch (Exception ex)
@@ -120,7 +120,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         try
         {
             _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-            await _module.InvokeVoidAsync($"{JsModuleName}.scrollToTop").ConfigureAwait(false);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.scrollToTop").ConfigureAwait(false);
             LogDebug("Page scrolled to top via DropBearNavigationButtons.");
         }
         catch (Exception ex)
@@ -149,7 +149,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         {
             if (_module is not null)
             {
-                await _module.InvokeVoidAsync($"{JsModuleName}.dispose").ConfigureAwait(false);
+                await _module.InvokeVoidAsync($"{JsModuleName}.disposeAPI").ConfigureAwait(false);
                 LogDebug("DropBearNavigationButtons disposed via JS interop.");
             }
         }

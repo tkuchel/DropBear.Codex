@@ -64,18 +64,18 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             // 2) Call an "initialize" function in the JS
             //    Pass the unique ID (SnackbarInstance.Id) plus this .NET reference.
             await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}.initializeSnackbar",
+                $"{JsModuleName}API.initializeSnackbar",
                 SnackbarInstance.Id,
                 DotNetObjectReference.Create(this)
             );
 
             // (Optional) If you want to show immediately:
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}.show", SnackbarInstance.Id);
+            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id);
 
             // (Optional) If you have auto-close logic in JS, start progress here
             if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
             {
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}.startProgress",
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress",
                     SnackbarInstance.Id,
                     SnackbarInstance.Duration
                 );
@@ -128,7 +128,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
         try
         {
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}.hide", SnackbarInstance.Id);
+            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.hide", SnackbarInstance.Id);
             if (OnClose.HasDelegate)
             {
                 await OnClose.InvokeAsync();
@@ -168,7 +168,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         {
             // If your JS code has a method to remove the snackbar object,
             // you might call something like:
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}.dispose", SnackbarInstance.Id);
+            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", SnackbarInstance.Id);
 
             LogDebug("Snackbar JS object disposed for {Id}", SnackbarInstance.Id);
         }
