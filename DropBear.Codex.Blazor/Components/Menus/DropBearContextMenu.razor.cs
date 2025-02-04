@@ -80,7 +80,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
             _objectReference = DotNetObjectReference.Create(this);
 
             // Ensure the JS module is registered/loaded
-            await EnsureJsModuleInitializedAsync(MODULE_NAME).ConfigureAwait(false);
+            // await EnsureJsModuleInitializedAsync(MODULE_NAME).ConfigureAwait(false);
 
             // Retrieve the module reference from the base class's cache
             _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
