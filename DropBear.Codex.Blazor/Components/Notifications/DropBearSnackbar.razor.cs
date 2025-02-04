@@ -15,8 +15,8 @@ namespace DropBear.Codex.Blazor.Components.Notifications;
 /// </summary>
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
-    private IJSObjectReference? _jsModule;
     private const string JsModuleName = JsModuleNames.Snackbar;
+    private IJSObjectReference? _jsModule;
 
     /// <summary>
     ///     Unique snackbar instance details (title, message, duration, etc.)
@@ -61,13 +61,12 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             // 1) Retrieve the module reference once
             _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
-            // 2) Call an "initialize" function in the JS
-            //    Pass the unique ID (SnackbarInstance.Id) plus this .NET reference.
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.initializeSnackbar",
-                SnackbarInstance.Id,
-                DotNetObjectReference.Create(this)
-            );
+            // 2) Call an "createSnackbar" function in the JS
+            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance);
+
+            // 3) Pass the .NET reference to the JS module
+            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id,
+                DotNetObjectReference.Create(this));
 
             // (Optional) If you want to show immediately:
             await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id);
