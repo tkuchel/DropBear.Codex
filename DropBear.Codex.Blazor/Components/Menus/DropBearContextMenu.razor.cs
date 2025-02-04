@@ -1,6 +1,7 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
@@ -16,7 +17,7 @@ namespace DropBear.Codex.Blazor.Components.Menus;
 /// </summary>
 public sealed partial class DropBearContextMenu : DropBearComponentBase
 {
-    private const string MODULE_NAME = "context-menu"; // The registered name in your JS "import"
+    private const string MODULE_NAME = JsModuleNames.ContextMenu; // The registered name in your JS "import"
 
     // Unique ID for the menu element in the DOM
     private readonly string _contextMenuId = $"context-menu-{Guid.NewGuid()}";
@@ -85,7 +86,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
             _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
 
             // Now call the "createContextMenu" method within that module
-            await SafeJsVoidInteropAsync($"{MODULE_NAME}.createContextMenu", _contextMenuId, _objectReference)
+            await _jsModule.InvokeVoidAsync($"{MODULE_NAME}API.createContextMenu", _contextMenuId, _objectReference)
                 .ConfigureAwait(false);
 
             LogDebug("Context menu JS initialized with ID: {MenuId}", _contextMenuId);
@@ -107,7 +108,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
             // If the JS was successfully initialized, call the module's dispose function
             if (_jsModule is not null)
             {
-                await SafeJsVoidInteropAsync($"{MODULE_NAME}.dispose", _contextMenuId).ConfigureAwait(false);
+                await _jsModule.InvokeVoidAsync($"{MODULE_NAME}API.dispose", _contextMenuId).ConfigureAwait(false);
                 LogDebug("Context menu JS resources disposed for {MenuId}", _contextMenuId);
             }
         }
@@ -173,7 +174,7 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
         // Show the context menu via the JS module
         try
         {
-            await SafeJsVoidInteropAsync($"{MODULE_NAME}.show", _contextMenuId, e.ClientX, e.ClientY)
+            await _jsModule.InvokeVoidAsync($"{MODULE_NAME}API.show", _contextMenuId, e.ClientX, e.ClientY)
                 .ConfigureAwait(false);
         }
         catch (Exception ex)

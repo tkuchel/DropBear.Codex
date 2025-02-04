@@ -20,7 +20,7 @@ namespace DropBear.Codex.Blazor.Components.Files;
 public sealed partial class DropBearFileUploader : DropBearComponentBase
 {
     // Typically rename to match your actual JS module name:
-    private const string MODULE_NAME = "file-reader-helpers";
+    private const string MODULE_NAME = JsModuleNames.FileReaderHelpers;
     private const long BYTES_PER_MB = 1024 * 1024;
 
     // Private fields
@@ -208,7 +208,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
 
             var jsFiles = await _jsModule.InvokeAsync<IJSObjectReference[]>(
-                "getDroppedFiles",
+                $"{MODULE_NAME}API.getDroppedFiles",
                 ComponentToken, // base class token for cancellation
                 e.DataTransfer
             ).ConfigureAwait(false);
