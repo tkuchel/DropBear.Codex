@@ -262,5 +262,40 @@ window.DropBearUtils = {
   }
 };
 
+// Export the API functions under a unique namespace for the DropBearUtils module.
+export const DropBearUtilsAPI = {
+  /**
+   * Initializes the DropBearUtils module.
+   * @returns {Promise<void>}
+   */
+  initialize: async () => window.DropBearUtils.initialize(),
+
+  /**
+   * Checks whether the DropBearUtils module is initialized.
+   * @returns {boolean}
+   */
+  isInitialized: () => window.DropBearUtils.isInitialized(),
+
+  /**
+   * Disposes the DropBearUtils module.
+   */
+  dispose: () => window.DropBearUtils.dispose(),
+
+  // Utility functions from DropBearUtils:
+  createLogger: (...args) => window.DropBearUtils.createLogger(...args),
+  validateArgs: (...args) => window.DropBearUtils.validateArgs(...args),
+  debounce: (...args) => window.DropBearUtils.debounce(...args),
+  throttle: (...args) => window.DropBearUtils.throttle(...args),
+  isElement: (element) => window.DropBearUtils.isElement(element),
+  createError: (...args) => window.DropBearUtils.createError(...args),
+  createEvent: (...args) => window.DropBearUtils.createEvent(...args),
+
+  // Functions from DropBearUtilities:
+  getWindowDimensions: () => window.DropBearUtils.getWindowDimensions(),
+  safeWindowOperation: (...args) => window.DropBearUtils.safeWindowOperation(...args),
+  isElementInViewport: (...args) => window.DropBearUtils.isElementInViewport(...args)
+};
+
+
 // Export modules
 export { DropBearUtils, DropBearUtilities };

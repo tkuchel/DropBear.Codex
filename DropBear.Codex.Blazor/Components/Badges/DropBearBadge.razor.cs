@@ -22,6 +22,7 @@ public sealed partial class DropBearBadge : DropBearComponentBase
 
     // Cached module reference for "dropbear-utils" or whichever JS file
     private IJSObjectReference? _jsModule;
+    private const string JsModuleName = JsModuleNames.Utils;
 
     // Private fields for tooltip visibility and style
     private bool _showTooltip;
@@ -47,7 +48,7 @@ public sealed partial class DropBearBadge : DropBearComponentBase
         {
             // 1) Retrieve the JS module reference once (similar to FileUploader approach).
             //    "dropbear-utils" must match the name in your "import" statement in the .js file path.
-            _jsModule = await GetJsModuleAsync("dropbear-utils").ConfigureAwait(false);
+            _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
             LogDebug("DropBearBadge JS module loaded successfully for tooltips.");
         }
@@ -203,11 +204,11 @@ public sealed partial class DropBearBadge : DropBearComponentBase
         try
         {
             // If we haven't loaded or lost the reference, reacquire it
-            _jsModule ??= await GetJsModuleAsync("dropbear-utils").ConfigureAwait(false);
+            _jsModule ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
             // 2) Call "DropBearUtilities.getWindowDimensions" inside that module
             var dimensions = await _jsModule.InvokeAsync<WindowDimensions>(
-                "DropBearUtilities.getWindowDimensions"
+                $"{JsModuleName}API.getWindowDimensions"
             ).ConfigureAwait(false);
 
             CalculateTooltipPosition(args, dimensions);
