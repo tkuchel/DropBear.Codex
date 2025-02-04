@@ -660,6 +660,3 @@ export const DropBearFileUploaderAPI = {
 // Also export the FileUploadManager and ChunkUploader classes if direct access is needed.
 export { FileUploadManager, ChunkUploader };
 
-
-// Export FileUploadManager and ChunkUploader classes
-export {FileUploadManager, ChunkUploader};

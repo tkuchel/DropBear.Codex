@@ -594,6 +594,3 @@ export const DropBearSnackbarAPI = {
 // Also export the SnackbarManager class for direct access if needed.
 export { SnackbarManager };
 
-
-// Export SnackbarManager class
-export {SnackbarManager};

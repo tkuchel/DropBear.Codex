@@ -444,8 +444,3 @@ export const DropBearContextMenuAPI = {
 // Also export the ContextMenuManager class if needed
 export { ContextMenuManager };
 
-
-
-
-// Export ContextMenuManager class
-export {ContextMenuManager};

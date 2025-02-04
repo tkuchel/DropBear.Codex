@@ -349,6 +349,3 @@ export const DropBearResizeManagerAPI = {
 // Also export the ResizeManager class for direct access if needed.
 export { ResizeManager };
 
-
-// Export ResizeManager class
-export { ResizeManager };

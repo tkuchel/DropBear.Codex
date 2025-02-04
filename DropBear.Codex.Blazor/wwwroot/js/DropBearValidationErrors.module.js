@@ -574,6 +574,3 @@ export const DropBearValidationErrorsAPI = {
 // Also export the ValidationErrorsManager class for direct access if needed.
 export { ValidationErrorsManager };
 
-
-// Export ValidationErrorsManager class
-export {ValidationErrorsManager};

@@ -559,6 +559,3 @@ export const DropBearPageAlertAPI = {
 // Also export the PageAlertManager class if you need direct access.
 export { PageAlertManager };
 
-
-// Export PageAlertManager class
-export {PageAlertManager};

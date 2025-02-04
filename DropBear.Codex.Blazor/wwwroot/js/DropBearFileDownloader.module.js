@@ -306,6 +306,3 @@ export const DropBearFileDownloaderAPI = {
 // Also export the DownloadManager class if you need direct access to it.
 export { DownloadManager };
 
-
-// Export DownloadManager class
-export { DownloadManager };
