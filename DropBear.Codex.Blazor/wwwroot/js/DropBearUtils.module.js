@@ -18,21 +18,12 @@ const DropBearUtils = {
     if (typeof namespace !== 'string' || !namespace.trim()) {
       throw new TypeError('Namespace must be a non-empty string');
     }
-
     const prefix = `[${namespace}]`;
     return {
-      debug: (message, ...args) => {
-        console.debug(`${prefix} ${message}`, ...args);
-      },
-      info: (message, ...args) => {
-        console.log(`${prefix} ${message}`, ...args);
-      },
-      warn: (message, ...args) => {
-        console.warn(`${prefix} ${message}`, ...args);
-      },
-      error: (message, ...args) => {
-        console.error(`${prefix} ${message}`, ...args);
-      },
+      debug: (message, ...args) => console.debug(`${prefix} ${message}`, ...args),
+      info: (message, ...args) => console.log(`${prefix} ${message}`, ...args),
+      warn: (message, ...args) => console.warn(`${prefix} ${message}`, ...args),
+      error: (message, ...args) => console.error(`${prefix} ${message}`, ...args),
     };
   },
 
@@ -50,7 +41,6 @@ const DropBearUtils = {
     if (typeof functionName !== 'string') {
       throw new TypeError('Function name must be a string');
     }
-
     args.forEach((arg, index) => {
       const expectedType = types[index];
       const actualType = typeof arg;
@@ -75,7 +65,6 @@ const DropBearUtils = {
     if (typeof wait !== 'number' || wait < 0) {
       throw new TypeError('Wait must be a positive number');
     }
-
     let timeout;
     return function executedFunction(...args) {
       const later = () => {
@@ -100,11 +89,9 @@ const DropBearUtils = {
     if (typeof limit !== 'number' || limit < 0) {
       throw new TypeError('Limit must be a positive number');
     }
-
     let inThrottle;
     let lastFunc;
     let lastRan;
-
     return function executedFunction(...args) {
       if (!inThrottle) {
         func.apply(this, args);
@@ -146,7 +133,6 @@ const DropBearUtils = {
     if (typeof code !== 'string' || !code.trim()) {
       throw new TypeError('Code must be a non-empty string');
     }
-
     const error = new Error(message);
     error.code = code;
     if (component) error.component = component;
@@ -168,8 +154,27 @@ const DropBearUtils = {
     if (typeof type !== 'string' || !type.trim()) {
       throw new TypeError('Type must be a non-empty string');
     }
+    return {id, type, data};
+  },
 
-    return { id, type, data };
+  /**
+   * Clicks a DOM element by its id.
+   * @param {string} id - The id of the element to click.
+   * @throws {TypeError} If id is not a string.
+   * @throws {Error} If no element with the specified id is found.
+   */
+  clickElementById(id) {
+    // Validate that the provided id is a string.
+    this.validateArgs([id], ['string'], 'clickElementById');
+    const element = document.getElementById(id);
+    if (!element) {
+      throw this.createError(
+        `Element with id "${id}" not found.`,
+        'ELEMENT_NOT_FOUND',
+        'clickElementById'
+      );
+    }
+    element.click();
   },
 };
 
@@ -189,7 +194,7 @@ const DropBearUtilities = {
       };
     } catch (error) {
       console.error('Error getting window dimensions:', error);
-      return { width: 0, height: 0 };
+      return {width: 0, height: 0};
     }
   },
 
@@ -217,22 +222,18 @@ const DropBearUtilities = {
     if (!DropBearUtils.isElement(element)) {
       throw new TypeError('Parameter must be a DOM element');
     }
-
     try {
       const rect = element.getBoundingClientRect();
-      return (
-        rect.top >= 0 &&
+      return rect.top >= 0 &&
         rect.left >= 0 &&
         rect.bottom <= window.innerHeight &&
-        rect.right <= window.innerWidth
-      );
+        rect.right <= window.innerWidth;
     } catch (error) {
       console.error('Error checking element visibility:', error);
       return false;
     }
   },
 };
-
 
 // Attach to window immediately (without ModuleManager registration)
 window.DropBearUtils = {
@@ -241,14 +242,11 @@ window.DropBearUtils = {
   ...DropBearUtilities,
   initialize: async () => {
     if (isInitialized) return;
-
     try {
       const logger = DropBearUtils.createLogger('DropBearUtils');
       logger.debug('Utils module initializing');
-
       isInitialized = true;
       window.DropBearUtils.__initialized = true;
-
       logger.debug('Utils module initialized');
     } catch (error) {
       console.error('Utils initialization failed:', error);
@@ -286,9 +284,10 @@ export const DropBearUtilsAPI = {
   validateArgs: (...args) => window.DropBearUtils.validateArgs(...args),
   debounce: (...args) => window.DropBearUtils.debounce(...args),
   throttle: (...args) => window.DropBearUtils.throttle(...args),
-  isElement: (element) => window.DropBearUtils.isElement(element),
+  isElement: element => window.DropBearUtils.isElement(element),
   createError: (...args) => window.DropBearUtils.createError(...args),
   createEvent: (...args) => window.DropBearUtils.createEvent(...args),
+  clickElementById: id => window.DropBearUtils.clickElementById(id), // New API method
 
   // Functions from DropBearUtilities:
   getWindowDimensions: () => window.DropBearUtils.getWindowDimensions(),
@@ -296,6 +295,5 @@ export const DropBearUtilsAPI = {
   isElementInViewport: (...args) => window.DropBearUtils.isElementInViewport(...args)
 };
 
-
 // Export modules
-export { DropBearUtils, DropBearUtilities };
+export {DropBearUtils, DropBearUtilities};

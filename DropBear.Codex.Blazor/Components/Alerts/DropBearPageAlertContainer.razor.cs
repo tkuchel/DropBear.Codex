@@ -106,9 +106,13 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             await _jsModule.InvokeAsync<bool[]>($"{JsModuleName}API.hideAll").ConfigureAwait(false);
             LogDebug("All page alerts hidden during cleanup");
         }
-        catch (JSDisconnectedException jsDiscEx)
+        catch (JSDisconnectedException)
         {
-            LogWarning("JS disconnected while hiding all alerts: {Message}", jsDiscEx, jsDiscEx.Message);
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         catch (Exception ex)
         {

@@ -61,23 +61,26 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             // 1) Retrieve the module reference once
             _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
-            // 2) Call an "createSnackbar" function in the JS
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance);
-
-            // 3) Pass the .NET reference to the JS module
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id,
-                DotNetObjectReference.Create(this));
-
-            // (Optional) If you want to show immediately:
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id);
-
-            // (Optional) If you have auto-close logic in JS, start progress here
-            if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
+            if (_jsModule is not null)
             {
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress",
-                    SnackbarInstance.Id,
-                    SnackbarInstance.Duration
-                );
+                // 2) Call an "createSnackbar" function in the JS
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance);
+
+                // 3) Pass the .NET reference to the JS module
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id,
+                    DotNetObjectReference.Create(this));
+
+                // (Optional) If you want to show immediately:
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id);
+
+                // (Optional) If you have auto-close logic in JS, start progress here
+                if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
+                {
+                    await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress",
+                        SnackbarInstance.Id,
+                        SnackbarInstance.Duration
+                    );
+                }
             }
 
             LogDebug("Snackbar {Id} initialized via JS module.", SnackbarInstance.Id);
@@ -170,6 +173,14 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", SnackbarInstance.Id);
 
             LogDebug("Snackbar JS object disposed for {Id}", SnackbarInstance.Id);
+        }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         catch (Exception ex)
         {

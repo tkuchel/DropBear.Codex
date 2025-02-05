@@ -112,6 +112,14 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
                 LogDebug("Context menu JS resources disposed for {MenuId}", _contextMenuId);
             }
         }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
+        }
         catch (Exception ex)
         {
             LogWarning("Failed to dispose context menu JS resources for {MenuId}, reason: {Message}", ex,

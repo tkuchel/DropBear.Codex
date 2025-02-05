@@ -263,9 +263,13 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
                 LogDebug("Resize manager disposed in JS.");
             }
         }
-        catch (JSDisconnectedException jsEx)
+        catch (JSDisconnectedException)
         {
-            LogWarning("JS disconnected while disposing DropBearSectionContainer. {Message}", jsEx.Message);
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         catch (ObjectDisposedException objEx)
         {

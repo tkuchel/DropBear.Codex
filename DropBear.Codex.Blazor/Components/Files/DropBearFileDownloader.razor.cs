@@ -72,6 +72,14 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
             // Optional short delay to allow in-flight tasks or JS calls to settle
             await Task.Delay(DISPOSAL_DELAY_MS).ConfigureAwait(false);
         }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
+        }
         catch (Exception ex)
         {
             LogError("Error during JS cleanup for DropBearFileDownloader.", ex);
@@ -171,7 +179,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
         LogDebug("Initiating client-side download: {FileName}", FileName);
 
         var result = _module?.InvokeAsync<bool>(
-            "DropBearFileDownloader.downloadFileFromStream", token, FileName,
+            $"{JsModuleName}API.downloadFileFromStream", token, FileName,
             streamRef,
             ContentType
         ).ConfigureAwait(false);

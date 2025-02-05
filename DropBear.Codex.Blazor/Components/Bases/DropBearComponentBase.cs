@@ -104,7 +104,11 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
         catch (JSDisconnectedException)
         {
-            LogWarning("JS disconnected during cleanup");
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         finally
         {
@@ -244,7 +248,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region Resource Management
 
     /// <summary>
-    ///     Disposes all cached JavaScript module references
+    /// Disposes all cached JavaScript module references.
+    /// Exceptions due to circuit disconnection or cancellation are logged as warnings.
     /// </summary>
     private async ValueTask DisposeJsModulesAsync()
     {
@@ -255,14 +260,22 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 await moduleRef.DisposeAsync().ConfigureAwait(false);
                 LogDebug("Disposed JS module: {Module}", moduleName);
             }
+            catch (JSDisconnectedException)
+            {
+                LogWarning("JS module {Module} disposal skipped due to circuit disconnection", moduleName);
+            }
+            catch (TaskCanceledException)
+            {
+                LogWarning("JS module {Module} disposal skipped due to cancellation", moduleName);
+            }
             catch (Exception ex)
             {
                 LogError("Error disposing JS module: {Module}", ex, moduleName);
             }
         }
-
         _jsModuleCache.Clear();
     }
+
 
     /// <summary>
     ///     Override point for component-specific JavaScript cleanup

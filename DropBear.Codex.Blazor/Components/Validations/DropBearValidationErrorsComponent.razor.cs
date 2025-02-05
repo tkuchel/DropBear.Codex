@@ -188,8 +188,16 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
         try
         {
-            await _jsModule.InvokeVoidAsync("DropBearValidationErrors.dispose", _componentId);
+            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", _componentId);
             LogDebug("Validation errors JS disposed: {Id}", _componentId);
+        }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         catch (Exception ex)
         {

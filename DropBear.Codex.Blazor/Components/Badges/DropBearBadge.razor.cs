@@ -19,10 +19,10 @@ public sealed partial class DropBearBadge : DropBearComponentBase
     // For positioning the tooltip near the mouse
     private const int TOOLTIP_MARGIN = 10;
     private const int TOOLTIP_MAX_WIDTH = 200;
+    private const string JsModuleName = JsModuleNames.Utils;
 
     // Cached module reference for "dropbear-utils" or whichever JS file
     private IJSObjectReference? _jsModule;
-    private const string JsModuleName = JsModuleNames.Utils;
 
     // Private fields for tooltip visibility and style
     private bool _showTooltip;
@@ -95,16 +95,31 @@ public sealed partial class DropBearBadge : DropBearComponentBase
     /// </remarks>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
-        // Hide tooltip
-        ShowTooltip = false;
-        TooltipStyle = string.Empty;
+        try
+        {
+            // Hide tooltip
+            ShowTooltip = false;
+            TooltipStyle = string.Empty;
 
-        // If you had something to do with the JS module (like unsubscribing from an event),
-        // you could do it here. For now, just log.
-        LogDebug("DropBearBadge cleaning up JS resources (if any).");
+            // If you had something to do with the JS module (like unsubscribing from an event),
+            // you could do it here. For now, just log.
+            LogDebug("DropBearBadge cleaning up JS resources (if any).");
 
-        // Let the base handle final disposal (which calls DisposeJsModulesAsync).
-        await base.CleanupJavaScriptResourcesAsync();
+            // Let the base handle final disposal (which calls DisposeJsModulesAsync).
+            await base.CleanupJavaScriptResourcesAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
+        }
+        catch (Exception e)
+        {
+            LogError("Error during JS cleanup for DropBearBadge.", e);
+        }
     }
 
     #endregion

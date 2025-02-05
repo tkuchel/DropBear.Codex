@@ -149,13 +149,17 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
         {
             if (_module is not null)
             {
-                await _module.InvokeVoidAsync($"{JsModuleName}.disposeAPI").ConfigureAwait(false);
+                await _module.InvokeVoidAsync($"{JsModuleName}API.disposeAPI").ConfigureAwait(false);
                 LogDebug("DropBearNavigationButtons disposed via JS interop.");
             }
         }
-        catch (JSDisconnectedException jsEx)
+        catch (JSDisconnectedException)
         {
-            LogWarning("JS disconnected while disposing DropBearNavigationButtons. {Message}", jsEx.Message);
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         catch (Exception ex)
         {

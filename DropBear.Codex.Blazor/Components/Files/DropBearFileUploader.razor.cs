@@ -31,6 +31,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private bool _isUploading;
 
     private IJSObjectReference? _jsModule;
+    private IJSObjectReference? _jsUtilsModule;
 
     private int _uploadProgress;
 
@@ -110,8 +111,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         try
         {
             // Ensure the JS module is loaded once and cached
-            await EnsureJsModuleInitializedAsync(MODULE_NAME).ConfigureAwait(false);
             _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
+            _jsUtilsModule = await GetJsModuleAsync(JsModuleNames.Utils).ConfigureAwait(false);
 
             Logger.Debug("File uploader JS module initialized: {ComponentId}", ComponentId);
         }
@@ -157,6 +158,14 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             // If your JS module has a dispose function:
             // await _jsModule?.InvokeVoidAsync("DropBearFileUploader.dispose", ComponentId);
+        }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
         }
         catch (Exception ex)
         {
@@ -443,9 +452,11 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     {
         try
         {
+            _jsUtilsModule ??= await GetJsModuleAsync(JsModuleNames.Utils).ConfigureAwait(false);
+
             // Invokes a JS helper that triggers a click on the <input> element
-            await SafeJsVoidInteropAsync(
-                "clickElementById",
+            await _jsUtilsModule.InvokeVoidAsync(
+                $"{JsModuleNames.Utils}API.clickElementById",
                 $"{ComponentId}-file-input"
             ).ConfigureAwait(false);
         }
