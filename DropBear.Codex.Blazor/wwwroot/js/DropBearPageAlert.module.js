@@ -362,11 +362,33 @@ class PageAlertManager {
       this.closeButton.removeEventListener('click', this.handleClose);
     }
 
-    DOMOperationQueue.add(() => {
-      if (this.element?.parentNode) {
-        this.element.parentNode.removeChild(this.element);
-      }
-    });
+    // Capture both the element and its parent at queue time
+    const element = this.element;
+    const parent = element?.parentNode;
+
+    if (element && parent) {
+      DOMOperationQueue.add(() => {
+        try {
+          const element = this.element;
+          if (!element) return; // If the element is no longer defined, exit early
+
+          // Check using document.contains to see if the element is in the DOM
+          if (document.contains(element)) {
+            // Capture the parent once more, in case it has changed
+            const parent = element.parentNode;
+            if (parent) {
+              parent.removeChild(element);
+            }
+          }
+        } catch (error) {
+          // Log the error but don't rethrow it
+          // console.error('Error during element removal:', error);
+          // You can also use your framework logger if desired:
+          logger.error('Error during element removal:', error);
+        }
+      });
+
+    }
 
     EventEmitter.emit(
       this.element,
@@ -522,14 +544,14 @@ export const DropBearPageAlertAPI = {
    * @param {string} id - The ID of the alert element.
    * @returns {Promise<boolean>} True if the alert was shown successfully.
    */
-  show: async (id) => window[moduleName].show(id),
+  show: async id => window[moduleName].show(id),
 
   /**
    * Hides an alert.
    * @param {string} id - The ID of the alert element.
    * @returns {Promise<boolean>} True if the alert was hidden successfully.
    */
-  hide: async (id) => window[moduleName].hide(id),
+  hide: async id => window[moduleName].hide(id),
 
   /**
    * Hides all alerts.
@@ -547,7 +569,7 @@ export const DropBearPageAlertAPI = {
    * Disposes a specific alert.
    * @param {string} id - The ID of the alert element.
    */
-  dispose: (id) => window[moduleName].dispose(id),
+  dispose: id => window[moduleName].dispose(id),
 
   /**
    * Disposes all alerts and resets the module.
@@ -557,5 +579,5 @@ export const DropBearPageAlertAPI = {
 };
 
 // Also export the PageAlertManager class if you need direct access.
-export { PageAlertManager };
+export {PageAlertManager};
 

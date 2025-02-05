@@ -381,11 +381,33 @@ class SnackbarManager {
       this.closeButton.removeEventListener('click', this.handleClose);
     }
 
-    DOMOperationQueue.add(() => {
-      if (this.element?.parentNode) {
-        this.element.parentNode.removeChild(this.element);
-      }
-    });
+// Capture both the element and its parent at queue time
+    const element = this.element;
+    const parent = element?.parentNode;
+
+    if (element && parent) {
+      DOMOperationQueue.add(() => {
+        try {
+          const element = this.element;
+          if (!element) return; // If the element is no longer defined, exit early
+
+          // Check using document.contains to see if the element is in the DOM
+          if (document.contains(element)) {
+            // Capture the parent once more, in case it has changed
+            const parent = element.parentNode;
+            if (parent) {
+              parent.removeChild(element);
+            }
+          }
+        } catch (error) {
+          // Log the error but don't rethrow it
+          // console.error('Error during element removal:', error);
+          // You can also use your framework logger if desired:
+          logger.error('Error during element removal:', error);
+        }
+      });
+
+    }
 
     this.dotNetRef = null;
 
@@ -570,7 +592,7 @@ export const DropBearSnackbarAPI = {
    * @param {string} snackbarId - The ID of the snackbar element.
    * @returns {Promise<boolean>} True if the snackbar was hidden successfully.
    */
-  hide: async (snackbarId) => window[moduleName].hide(snackbarId),
+  hide: async snackbarId => window[moduleName].hide(snackbarId),
 
   /**
    * Checks whether the snackbar module is initialized.
@@ -582,7 +604,7 @@ export const DropBearSnackbarAPI = {
    * Disposes a specific snackbar instance.
    * @param {string} snackbarId - The ID of the snackbar element.
    */
-  dispose: (snackbarId) => window[moduleName].dispose(snackbarId),
+  dispose: snackbarId => window[moduleName].dispose(snackbarId),
 
   /**
    * Disposes all snackbar instances.
@@ -592,5 +614,5 @@ export const DropBearSnackbarAPI = {
 };
 
 // Also export the SnackbarManager class for direct access if needed.
-export { SnackbarManager };
+export {SnackbarManager};
 

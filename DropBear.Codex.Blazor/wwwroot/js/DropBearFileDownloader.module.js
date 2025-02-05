@@ -123,40 +123,64 @@ class DownloadManager {
   }
 
   /**
-   * Initiate the file download
-   * @private
-   * @param {Blob} blob - The file content as a Blob
-   * @param {string} [fileName='download'] - Desired filename
+   * Initiates a download by creating an object URL for a blob and using a temporary anchor element.
+   * The DOM operations are scheduled via DOMOperationQueue.
+   *
+   * @param {Blob} blob - The blob to download.
+   * @param {string} [fileName='download'] - The file name for the download.
+   * @returns {Promise<void>}
    */
   async _initiateDownload(blob, fileName = 'download') {
+    // Create an object URL for the blob
     const url = URL.createObjectURL(blob);
+    // Create an anchor element with the download attributes
     const link = document.createElement('a');
     link.href = url;
     link.download = fileName;
 
     try {
-      // Use DOMOperationQueue to schedule DOM work
+      // Use DOMOperationQueue to schedule DOM work and return a promise that resolves when complete
       await new Promise(resolve => {
         DOMOperationQueue.add(() => {
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          resolve();
+          try {
+            // Capture document.body immediately
+            const body = document.body;
+            if (!body) {
+              // If the body is not available, log a warning and exit early
+              console.warn('document.body is not available.');
+              return;
+            }
+            // Append the link to the DOM and trigger the click to start the download
+            body.appendChild(link);
+            link.click();
+
+            // Check if the link is still attached before removing it
+            if (link.parentNode) {
+              link.parentNode.removeChild(link);
+            }
+          } catch (error) {
+            // Log any errors encountered during the DOM operation
+            console.error('Error during DOM operation in download:', error);
+          } finally {
+            // Always resolve the promise to prevent hanging, regardless of errors
+            resolve();
+          }
         });
       });
 
-      logger.debug('Download link clicked:', fileName);
+      console.debug('Download link clicked:', fileName);
     } catch (error) {
-      logger.error('Error initiating download:', error);
+      console.error('Error initiating download:', error);
       throw error;
     } finally {
       // Clean up the object URL after a short delay
       setTimeout(() => {
         URL.revokeObjectURL(url);
-        logger.debug('Object URL revoked:', fileName);
+        console.debug('Object URL revoked:', fileName);
       }, 100);
     }
   }
+
 
   /**
    * Check if there are any active downloads
