@@ -3,11 +3,11 @@
  * @module snackbar
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
-import {DropBearUtils} from './DropBearUtils.module.js';
+import { CircuitBreaker, DOMOperationQueue, EventEmitter } from './DropBearCore.module.js';
+import { DropBearUtils } from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearSnackbar');
-const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
+const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
 let isInitialized = false;
 const moduleName = 'DropBearSnackbar';
 
@@ -72,7 +72,7 @@ class SnackbarManager {
       })
     );
 
-    logger.debug('SnackbarManager created:', {id});
+    logger.debug('SnackbarManager created:', { id });
   }
 
   /**
@@ -175,7 +175,7 @@ class SnackbarManager {
         })
       );
 
-      logger.debug('Snackbar shown:', {id: this.id, duration});
+      logger.debug('Snackbar shown:', { id: this.id, duration });
       return true;
     } catch (error) {
       logger.error('Error showing snackbar:', error);
@@ -213,7 +213,7 @@ class SnackbarManager {
       });
     });
 
-    logger.debug('Progress started:', {duration});
+    logger.debug('Progress started:', { duration });
   }
 
   /**
@@ -264,7 +264,7 @@ class SnackbarManager {
       }, remainingTime);
     });
 
-    logger.debug('Progress resumed:', {remainingTime});
+    logger.debug('Progress resumed:', { remainingTime });
   }
 
   /**
@@ -380,16 +380,17 @@ class SnackbarManager {
       this.closeButton.removeEventListener('click', this.handleClose);
     }
 
-    // Capture the element reference once to avoid race conditions
+    // Instead of attempting to remove the element from the DOM,
+    // which can cause errors if its parent is already null,
+    // we simply hide it and clear its content.
     const el = this.element;
-    if (el && el.parentNode) {
+    if (el) {
       DOMOperationQueue.add(() => {
         try {
-          if (el.parentNode) {
-            el.parentNode.removeChild(el);
-          }
+          el.style.display = 'none';
+          el.innerHTML = '';
         } catch (error) {
-          logger.error('Error during element removal:', error);
+          logger.error('Error during element cleanup:', error);
         }
       });
     }
@@ -599,4 +600,4 @@ export const DropBearSnackbarAPI = {
 };
 
 // Also export the SnackbarManager class for direct access if needed.
-export {SnackbarManager};
+export { SnackbarManager };

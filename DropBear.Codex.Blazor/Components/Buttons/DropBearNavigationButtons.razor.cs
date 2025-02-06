@@ -17,7 +17,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     private const string JsModuleName = JsModuleNames.NavigationButtons;
     private DotNetObjectReference<DropBearNavigationButtons>? _dotNetRef;
 
-    // Use this property for controlling the 'Scroll to Top' button's visibility.
+    // Controls the 'Scroll to Top' button's visibility.
     private bool _isVisible;
 
     // -- Private fields --
@@ -36,12 +36,12 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             _isVisible = value;
             try
             {
-                // Use the safe UI update method from the base class.
+                // Use safe UI update helper (already modified in DropBearComponentBase).
                 InvokeStateHasChanged(() => { });
             }
             catch (ObjectDisposedException)
             {
-                // Component is disposed; no UI update is necessary.
+                // Component disposed; ignore UI update.
             }
         }
     }
@@ -50,7 +50,6 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
-
         if (!firstRender || IsDisposed)
         {
             return;
@@ -58,13 +57,13 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 
         try
         {
-            // Get (and cache) the module once
+            // Get (and cache) the JS module once.
             _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
 
-            // Initialize the global navigation-buttons module.
+            // Initialize the JS module.
             await _module.InvokeVoidAsync($"{JsModuleName}API.initialize").ConfigureAwait(false);
 
-            // Create the NavigationManager instance by passing this .NET reference.
+            // Create the NavigationManager instance in JS by passing this .NET reference.
             _dotNetRef = DotNetObjectReference.Create(this);
             await _module.InvokeVoidAsync($"{JsModuleName}API.createNavigationManager", _dotNetRef)
                 .ConfigureAwait(false);
@@ -90,7 +89,6 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 
         try
         {
-            // Reuse the cached module.
             _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
             await _module.InvokeVoidAsync($"{JsModuleName}API.goBack").ConfigureAwait(false);
             LogDebug("Navigated back via DropBearNavigationButtons.");
@@ -146,7 +144,6 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     [JSInvokable]
     public void UpdateVisibility(bool isVisible)
     {
-        // If the component is disposed, ignore the update.
         if (IsDisposed)
         {
             return;

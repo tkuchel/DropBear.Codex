@@ -1,12 +1,8 @@
-﻿#region
-
-using DropBear.Codex.Blazor.Components.Bases;
+﻿using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
-
-#endregion
 
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
@@ -17,6 +13,8 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
     private const string JsModuleName = JsModuleNames.Snackbar;
     private IJSObjectReference? _jsModule;
+    // Store the DotNet reference for cleanup.
+    private DotNetObjectReference<DropBearSnackbar>? _dotNetRef;
 
     /// <summary>
     ///     Unique snackbar instance details (title, message, duration, etc.)
@@ -63,23 +61,24 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
             if (_jsModule is not null)
             {
-                // 2) Call an "createSnackbar" function in the JS
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance);
+                // 2) Create the snackbar in JS
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance)
+                    .ConfigureAwait(false);
 
-                // 3) Pass the .NET reference to the JS module
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id,
-                    DotNetObjectReference.Create(this));
+                // 3) Create and store the .NET reference for interop
+                _dotNetRef = DotNetObjectReference.Create(this);
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id, _dotNetRef)
+                    .ConfigureAwait(false);
 
-                // (Optional) If you want to show immediately:
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id);
+                // 4) Show the snackbar
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id)
+                    .ConfigureAwait(false);
 
-                // (Optional) If you have auto-close logic in JS, start progress here
+                // 5) If auto-close is enabled, start the progress
                 if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
                 {
-                    await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress",
-                        SnackbarInstance.Id,
-                        SnackbarInstance.Duration
-                    );
+                    await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress", SnackbarInstance.Id, SnackbarInstance.Duration)
+                        .ConfigureAwait(false);
                 }
             }
 
@@ -109,31 +108,46 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             }
         }
 
-        // Optionally, call a "hide" method in JS or do the .NET close sequence
-        await CloseAsync();
+        // Optionally, call a "hide" method in JS or do the .NET close sequence.
+        await CloseAsync().ConfigureAwait(false);
     }
 
     /// <summary>
-    ///     .NET method to hide the snackbar, triggered from .NET or JS
+    ///     .NET method to hide the snackbar, triggered from .NET or JS.
     /// </summary>
     private async Task CloseAsync()
     {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        if (_jsModule is null)
+        if (IsDisposed || _jsModule is null)
         {
             return;
         }
 
         try
         {
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.hide", SnackbarInstance.Id);
+            // Wrap the call to hide in a try/catch to specifically ignore errors
+            // when the element has already been removed.
+            try
+            {
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.hide", SnackbarInstance.Id)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message is not null &&
+                    ex.Message.Contains("removeChild") &&
+                    ex.Message.Contains("parentNode is null"))
+                {
+                    LogWarning("JS hide warning: element already removed. {Message}", ex.Message);
+                }
+                else
+                {
+                    throw;
+                }
+            }
+
             if (OnClose.HasDelegate)
             {
-                await OnClose.InvokeAsync();
+                await OnClose.InvokeAsync().ConfigureAwait(false);
             }
 
             LogDebug("Snackbar {Id} closed", SnackbarInstance.Id);
@@ -151,7 +165,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     public async Task OnProgressComplete()
     {
         LogDebug("JS invoked OnProgressComplete for {Id}", SnackbarInstance.Id);
-        await CloseAsync();
+        await CloseAsync().ConfigureAwait(false);
     }
 
     /// <inheritdoc />
@@ -168,11 +182,25 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
         try
         {
-            // If your JS code has a method to remove the snackbar object,
-            // you might call something like:
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", SnackbarInstance.Id);
-
-            LogDebug("Snackbar JS object disposed for {Id}", SnackbarInstance.Id);
+            try
+            {
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", SnackbarInstance.Id)
+                    .ConfigureAwait(false);
+                LogDebug("Snackbar JS object disposed for {Id}", SnackbarInstance.Id);
+            }
+            catch (Exception ex)
+            {
+                if (ex.Message is not null &&
+                    ex.Message.Contains("removeChild") &&
+                    ex.Message.Contains("parentNode is null"))
+                {
+                    LogWarning("JS dispose warning: element already removed. {Message}", ex.Message);
+                }
+                else
+                {
+                    LogWarning("Error disposing JS resources for {Id}: {Message}", ex, SnackbarInstance.Id, ex.Message);
+                }
+            }
         }
         catch (JSDisconnectedException)
         {
@@ -182,13 +210,11 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         {
             LogWarning("Cleanup skipped: Operation cancelled.");
         }
-        catch (Exception ex)
-        {
-            LogWarning("Error disposing JS resources for {Id}: {Message}", ex, SnackbarInstance.Id, ex.Message);
-        }
         finally
         {
             _jsModule = null;
+            _dotNetRef?.Dispose();
+            _dotNetRef = null;
         }
     }
 }
