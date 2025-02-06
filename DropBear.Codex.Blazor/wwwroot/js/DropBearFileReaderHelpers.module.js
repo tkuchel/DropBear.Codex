@@ -3,7 +3,7 @@
  * @module file-reader-helpers
  */
 
-import {DropBearUtils} from './DropBearUtils.module.js';
+import { DropBearUtils } from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearFileReaderHelpers');
 let isInitialized = false;
@@ -12,8 +12,8 @@ const moduleName = 'DropBearFileReaderHelpers';
 /** @type {Object} Reader configuration constants */
 const READER_CONFIG = {
   MAX_CHUNK_SIZE: 1024 * 1024 * 10, // 10MB max chunk size
-  DEFAULT_CHUNK_SIZE: 1024 * 1024, // 1MB default chunk size
-  READ_TIMEOUT: 30000 // 30 second timeout for read operations
+  DEFAULT_CHUNK_SIZE: 1024 * 1024,    // 1MB default chunk size
+  READ_TIMEOUT: 30000                 // 30 second timeout for read operations
 };
 
 /**
@@ -97,15 +97,21 @@ const FileReaderHelpers = {
    * @returns {File[]} An array of File objects
    */
   getDroppedFiles(dataTransfer) {
-    if (!dataTransfer?.items) {
+    if (!dataTransfer) {
       logger.error('Invalid DataTransfer object provided');
       throw new TypeError('Invalid DataTransfer object');
     }
 
     try {
-      const files = Array.from(dataTransfer.items)
-        .filter(item => item.kind === 'file')
-        .map(item => item.getAsFile())
+      // Prefer items if available; otherwise, use files.
+      const source = dataTransfer.items
+        ? Array.from(dataTransfer.items)
+        : Array.from(dataTransfer.files);
+
+      // When using items, filter on kind === 'file' and call getAsFile(); otherwise, assume each is a File.
+      const files = source
+        .filter(item => dataTransfer.items ? item.kind === 'file' : item instanceof File)
+        .map(item => (dataTransfer.items ? item.getAsFile() : item))
         .filter(file => file !== null);
 
       logger.debug('Dropped files retrieved:', {
@@ -153,6 +159,8 @@ window[moduleName] = {
     isInitialized = false;
     window[moduleName].__initialized = false;
     logger.debug('File reader helpers module disposed');
+    // Optionally, to free memory, you could remove the module from window:
+    // delete window[moduleName];
   }
 };
 
@@ -212,6 +220,5 @@ export const DropBearFileReaderHelpersAPI = {
   dispose: async () => window[moduleName].dispose()
 };
 
-
 // Export helper functions
-export const {getFileInfo, readFileChunk, getDroppedFiles} = FileReaderHelpers;
+export const { getFileInfo, readFileChunk, getDroppedFiles } = FileReaderHelpers;

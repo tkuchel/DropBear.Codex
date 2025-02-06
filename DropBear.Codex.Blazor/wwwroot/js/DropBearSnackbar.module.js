@@ -20,7 +20,6 @@ const SNACKBAR_CONFIG = {
   PROGRESS_UPDATE_INTERVAL: 16
 };
 
-
 /**
  * Manager for individual snackbar instances
  * @implements {ISnackbarManager}
@@ -381,32 +380,18 @@ class SnackbarManager {
       this.closeButton.removeEventListener('click', this.handleClose);
     }
 
-// Capture both the element and its parent at queue time
-    const element = this.element;
-    const parent = element?.parentNode;
-
-    if (element && parent) {
+    // Capture the element reference once to avoid race conditions
+    const el = this.element;
+    if (el && el.parentNode) {
       DOMOperationQueue.add(() => {
         try {
-          const element = this.element;
-          if (!element) return; // If the element is no longer defined, exit early
-
-          // Check using document.contains to see if the element is in the DOM
-          if (document.contains(element)) {
-            // Capture the parent once more, in case it has changed
-            const parent = element.parentNode;
-            if (parent) {
-              parent.removeChild(element);
-            }
+          if (el.parentNode) {
+            el.parentNode.removeChild(el);
           }
         } catch (error) {
-          // Log the error but don't rethrow it
-          // console.error('Error during element removal:', error);
-          // You can also use your framework logger if desired:
           logger.error('Error during element removal:', error);
         }
       });
-
     }
 
     this.dotNetRef = null;
@@ -615,4 +600,3 @@ export const DropBearSnackbarAPI = {
 
 // Also export the SnackbarManager class for direct access if needed.
 export {SnackbarManager};
-

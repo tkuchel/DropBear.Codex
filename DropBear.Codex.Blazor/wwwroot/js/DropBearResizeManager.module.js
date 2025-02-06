@@ -14,9 +14,9 @@ const moduleName = 'DropBearResizeManager';
 /** @type {Object} Resize configuration constants */
 const RESIZE_CONFIG = {
   MIN_RESIZE_INTERVAL: 100, // Minimum time between resize events (ms)
-  DIMENSION_THRESHOLD: 5, // Minimum pixel change to trigger resize
-  MAX_DIMENSION: 10000, // Maximum supported dimension
-  DEFAULT_SCALE: 1 // Default device pixel ratio
+  DIMENSION_THRESHOLD: 5,   // Minimum pixel change to trigger resize
+  MAX_DIMENSION: 10000,     // Maximum supported dimension
+  DEFAULT_SCALE: 1          // Default device pixel ratio
 };
 
 /**
@@ -52,11 +52,11 @@ class ResizeManager {
       ...options
     };
 
-    /** @type {number|null} */
-    this.debounceTimeout = null;
+    // Removed unused debounceTimeout
 
     this._initializeResizeObserver();
 
+    // Emit created event with a generated ID (using crypto.randomUUID)
     EventEmitter.emit(
       this,
       'created',
@@ -70,15 +70,16 @@ class ResizeManager {
   }
 
   /**
-   * Initialize the ResizeObserver
+   * Initialize the ResizeObserver to observe the document body.
    * @private
    */
   _initializeResizeObserver() {
     try {
+      // Create a debounced resize handler
       this.resizeObserver = new ResizeObserver(
         this._createResizeHandler()
       );
-
+      // Observe the document body (adjust if a different element is desired)
       this.resizeObserver.observe(document.body);
       logger.debug('ResizeObserver initialized');
     } catch (error) {
@@ -88,7 +89,7 @@ class ResizeManager {
   }
 
   /**
-   * Create debounced resize handler
+   * Create a debounced resize handler using DropBearUtils.debounce.
    * @private
    * @returns {Function} Debounced handler
    */
@@ -100,7 +101,8 @@ class ResizeManager {
   }
 
   /**
-   * Handle resize events
+   * Handle resize events by comparing current dimensions to the last known dimensions.
+   * If the change is significant, notify the .NET side.
    * @private
    * @returns {Promise<void>}
    */
@@ -115,6 +117,7 @@ class ResizeManager {
 
       this.lastDimensions = dimensions;
 
+      // Use the circuit breaker to invoke the .NET method
       await circuitBreaker.execute(() =>
         this.dotNetReference.invokeMethodAsync(
           'SetMaxWidthBasedOnWindowSize',
@@ -139,7 +142,7 @@ class ResizeManager {
   }
 
   /**
-   * Get the current window dimensions
+   * Get the current window dimensions, constrained by MAX_DIMENSION.
    * @private
    * @returns {{ width: number, height: number, scale: number }}
    */
@@ -152,7 +155,7 @@ class ResizeManager {
   }
 
   /**
-   * Compare two dimension objects
+   * Compare two dimension objects to see if they are effectively equal.
    * @private
    * @param {Object} dim1 - First dimensions object
    * @param {Object} dim2 - Second dimensions object
@@ -167,7 +170,7 @@ class ResizeManager {
   }
 
   /**
-   * Force a resize event
+   * Force a resize event by calling the handler directly.
    * @returns {Promise<void>}
    */
   async forceResize() {
@@ -178,7 +181,7 @@ class ResizeManager {
   }
 
   /**
-   * Get current dimensions
+   * Get current dimensions (throws if disposed).
    * @returns {{ width: number, height: number, scale: number }}
    */
   getDimensions() {
@@ -189,7 +192,7 @@ class ResizeManager {
   }
 
   /**
-   * Dispose of the resize manager
+   * Dispose of the resize manager by disconnecting the observer and clearing references.
    */
   dispose() {
     if (this.isDisposed) return;
@@ -197,7 +200,10 @@ class ResizeManager {
     logger.debug('Disposing ResizeManager');
     this.isDisposed = true;
 
-    clearTimeout(this.debounceTimeout);
+    // Clear any pending debounced calls (if applicable)
+    // Note: If DropBearUtils.debounce does not expose a cancel method,
+    // ensure that no further calls occur by checking isDisposed in the handler.
+    // clearTimeout(this.debounceTimeout); // Removed since debounceTimeout is not used
 
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
@@ -216,6 +222,7 @@ class ResizeManager {
     );
   }
 }
+
 // Attach to window first
 window[moduleName] = {
   __initialized: false,
@@ -348,4 +355,3 @@ export const DropBearResizeManagerAPI = {
 
 // Also export the ResizeManager class for direct access if needed.
 export { ResizeManager };
-

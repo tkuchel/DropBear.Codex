@@ -3,11 +3,11 @@
  * @module validation-errors
  */
 
-import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
-import {DropBearUtils} from './DropBearUtils.module.js';
+import { CircuitBreaker, DOMOperationQueue, EventEmitter } from './DropBearCore.module.js';
+import { DropBearUtils } from './DropBearUtils.module.js';
 
 const logger = DropBearUtils.createLogger('DropBearValidationErrors');
-const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
+const circuitBreaker = new CircuitBreaker({ failureThreshold: 3, resetTimeout: 30000 });
 let isInitialized = false;
 const moduleName = 'DropBearValidationErrors';
 
@@ -17,7 +17,6 @@ const VALIDATION_CONFIG = {
   MAX_ERRORS: 100,
   ERROR_DISPLAY_TIMEOUT: 5000
 };
-
 
 /**
  * Manager for validation errors container
@@ -46,17 +45,30 @@ class ValidationErrorsManager {
     /** @type {HTMLElement|null} */
     this.header = null;
 
+    /** @type {HTMLElement|null} */
+    this.summary = null;
+
+    /** @type {HTMLElement|null} */
+    this.clearButton = null;
+
     /** @type {Function|null} */
     this.keyboardHandler = null;
 
+    /** @type {Function|null} */
+    this.handleClear = null;
+
     /** @type {WeakMap<HTMLElement, boolean>} */
     this.items = new WeakMap();
+
+    /** @type {number|null} */
+    this.autoHideTimeout = null;
 
     /** @type {Object} */
     this.options = {
       animationDuration: VALIDATION_CONFIG.ANIMATION_DURATION,
       autoHide: false,
-      autoHideDelay: VALIDATION_CONFIG.AUTOHIDE_DELAY,
+      // Use ERROR_DISPLAY_TIMEOUT as the default auto-hide delay
+      autoHideDelay: VALIDATION_CONFIG.ERROR_DISPLAY_TIMEOUT,
       ...options
     };
 
@@ -76,7 +88,7 @@ class ValidationErrorsManager {
       })
     );
 
-    logger.debug('ValidationErrorsManager created:', {id});
+    logger.debug('ValidationErrorsManager created:', { id });
   }
 
   /**
@@ -164,7 +176,7 @@ class ValidationErrorsManager {
         );
       });
 
-      logger.debug('ARIA attributes updated:', {isCollapsed});
+      logger.debug('ARIA attributes updated:', { isCollapsed });
     } catch (error) {
       logger.error('Error updating ARIA attributes:', error);
       throw error;
@@ -299,7 +311,7 @@ class ValidationErrorsManager {
         })
       );
 
-      logger.debug('Validation errors updated:', {count: limitedErrors.length});
+      logger.debug('Validation errors updated:', { count: limitedErrors.length });
     } catch (error) {
       logger.error('Error updating validation errors:', error);
       throw error;
@@ -336,6 +348,14 @@ class ValidationErrorsManager {
       logger.error('Error clearing validation errors:', error);
       throw error;
     }
+  }
+
+  /**
+   * Get the number of error items currently displayed.
+   * @returns {number}
+   */
+  getErrorCount() {
+    return this.list ? this.list.querySelectorAll('.validation-errors__item').length : 0;
   }
 
   /**
@@ -529,28 +549,28 @@ export const DropBearValidationErrorsAPI = {
    * @param {string} containerId - The ID of the container element.
    * @returns {Promise<void>}
    */
-  show: async (containerId) => window[moduleName].show(containerId),
+  show: async containerId => window[moduleName].show(containerId),
 
   /**
    * Hides the validation errors for a given container.
    * @param {string} containerId - The ID of the container element.
    * @returns {Promise<void>}
    */
-  hide: async (containerId) => window[moduleName].hide(containerId),
+  hide: async containerId => window[moduleName].hide(containerId),
 
   /**
    * Clears all error messages in a validation container.
    * @param {string} containerId - The ID of the container element.
    * @returns {Promise<void>}
    */
-  clearErrors: async (containerId) => window[moduleName].clearErrors(containerId),
+  clearErrors: async containerId => window[moduleName].clearErrors(containerId),
 
   /**
    * Returns the number of errors in a validation container.
    * @param {string} containerId - The ID of the container element.
    * @returns {number}
    */
-  getErrorCount: (containerId) => window[moduleName].getErrorCount(containerId),
+  getErrorCount: containerId => window[moduleName].getErrorCount(containerId),
 
   /**
    * Checks whether the validation errors module is initialized.
@@ -562,7 +582,7 @@ export const DropBearValidationErrorsAPI = {
    * Disposes a specific validation container.
    * @param {string} containerId - The ID of the container element.
    */
-  dispose: (containerId) => window[moduleName].dispose(containerId),
+  dispose: containerId => window[moduleName].dispose(containerId),
 
   /**
    * Disposes all validation containers and resets the module.
@@ -573,4 +593,3 @@ export const DropBearValidationErrorsAPI = {
 
 // Also export the ValidationErrorsManager class for direct access if needed.
 export { ValidationErrorsManager };
-

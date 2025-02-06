@@ -1,9 +1,13 @@
-﻿using System.Text;
+﻿#region
+
+using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Components.Containers;
 
@@ -14,18 +18,238 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
 {
     // -- Constants & Defaults --
     private const string DEFAULT_MAX_WIDTH = "100%";
-
-    // -- Private fields for JS interop and state --
-    private IJSObjectReference? _module;
-    private DotNetObjectReference<DropBearSectionContainer>? _dotNetRef;
     private const string JsModuleName = JsModuleNames.ResizeManager;
 
     private WindowDimensions? _cachedDimensions;
     private string? _containerClassCache;
+    private DotNetObjectReference<DropBearSectionContainer>? _dotNetRef;
+
+    // Backing field for MaxWidth parameter
+    private string? _maxWidth;
     private string _maxWidthStyle = DEFAULT_MAX_WIDTH;
 
-    // The backing field for MaxWidth
-    private string? _maxWidth;
+    // -- Private fields for JS interop and state --
+    private IJSObjectReference? _module;
+
+    /// <summary>
+    ///     Gets a CSS class for the container, caching the result until parameters change.
+    /// </summary>
+    private string ContainerClass => _containerClassCache ??= BuildContainerClass();
+
+    /// <inheritdoc />
+    protected override void OnParametersSet()
+    {
+        // Clear cached container class so it recomputes if any parameter changed
+        _containerClassCache = null;
+        base.OnParametersSet();
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
+
+        if (!firstRender || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            // Load (and cache) our "resize-manager" JS module
+            _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
+
+            // 1) Initialize the JS module
+            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize").ConfigureAwait(false);
+
+            // 2) Create a new resize manager instance in JS, passing a .NET reference for callbacks.
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.createResizeManager", _dotNetRef)
+                .ConfigureAwait(false);
+
+            LogDebug("DropBearSectionContainer JS interop initialized.");
+
+            // Optionally set the container's max width immediately based on the current window dimensions.
+            await SetMaxWidthBasedOnWindowSize().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogError("Error during DropBearSectionContainer initialization", ex);
+            // Optionally, further error handling (e.g. displaying a UI error) can be added here.
+        }
+    }
+
+    /// <summary>
+    ///     JS-invokable method that recalculates and sets the container's max width.
+    /// </summary>
+    [JSInvokable]
+    public async Task SetMaxWidthBasedOnWindowSize()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            var dimensions = await GetWindowDimensionsAsync().ConfigureAwait(false);
+            if (dimensions is null)
+            {
+                return;
+            }
+
+            var newMaxWidth = CalculateMaxWidth(dimensions.Width);
+            if (_maxWidthStyle != newMaxWidth)
+            {
+                _maxWidthStyle = newMaxWidth;
+                // Update the UI and notify listeners of the dimension change.
+                await InvokeStateHasChangedAsync(() => NotifyDimensionsChangedAsync(dimensions))
+                    .ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError("Error setting max width", ex);
+            _maxWidthStyle = DEFAULT_MAX_WIDTH;
+        }
+    }
+
+    /// <summary>
+    ///     Requests window dimensions from the JS side.
+    /// </summary>
+    private async Task<WindowDimensions?> GetWindowDimensionsAsync()
+    {
+        if (IsDisposed)
+        {
+            return _cachedDimensions;
+        }
+
+        try
+        {
+            // Ensure the module reference is available.
+            _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
+
+            // Invoke the JS method to get the current dimensions.
+            var dimensions = await _module.InvokeAsync<WindowDimensions>(
+                    $"{JsModuleName}API.getDimensions",
+                    ComponentToken)
+                .ConfigureAwait(false);
+
+            _cachedDimensions = dimensions;
+            return dimensions;
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to get window dimensions", ex);
+            return _cachedDimensions;
+        }
+    }
+
+    /// <summary>
+    ///     Builds the container CSS class based on centering options.
+    /// </summary>
+    private string BuildContainerClass()
+    {
+        var builder = new StringBuilder("section-container", 100);
+
+        if (IsHorizontalCentered)
+        {
+            builder.Append(" horizontal-centered");
+        }
+
+        if (IsVerticalCentered)
+        {
+            builder.Append(" vertical-centered");
+        }
+
+        return builder.ToString();
+    }
+
+    /// <summary>
+    ///     Calculates the max-width style based on the specified (percent or px) MaxWidth
+    ///     and the current window width.
+    /// </summary>
+    private string CalculateMaxWidth(double windowWidth)
+    {
+        // If no MaxWidth parameter is specified, default to 100%
+        if (string.IsNullOrEmpty(MaxWidth))
+        {
+            return DEFAULT_MAX_WIDTH;
+        }
+
+        // If MaxWidth is specified as a percentage, convert it to pixels based on window width.
+        if (MaxWidth.EndsWith("%"))
+        {
+            if (double.TryParse(MaxWidth.TrimEnd('%'), out var percentage))
+            {
+                var calculatedWidth = windowWidth * (percentage / 100);
+                return $"{calculatedWidth:F0}px";
+            }
+
+            LogWarning("Failed to parse MaxWidth percentage: {0}", MaxWidth);
+            return DEFAULT_MAX_WIDTH;
+        }
+
+        // Otherwise, assume it's already a valid pixel value.
+        return MaxWidth;
+    }
+
+    /// <summary>
+    ///     Notifies any registered listeners that the container's dimensions changed.
+    /// </summary>
+    private async Task NotifyDimensionsChangedAsync(WindowDimensions dimensions)
+    {
+        if (!OnDimensionsChanged.HasDelegate)
+        {
+            return;
+        }
+
+        try
+        {
+            await OnDimensionsChanged.InvokeAsync(dimensions).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            LogError("Error notifying dimension change", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Called during disposal to clean up JS resources.
+    ///     The base class automatically calls this in DisposeCoreAsync().
+    /// </summary>
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            if (_module is not null)
+            {
+                await _module.InvokeVoidAsync($"{JsModuleName}API.dispose").ConfigureAwait(false);
+                LogDebug("Resize manager disposed in JS.");
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            LogWarning("Cleanup skipped: JS runtime disconnected.");
+        }
+        catch (TaskCanceledException)
+        {
+            LogWarning("Cleanup skipped: Operation cancelled.");
+        }
+        catch (ObjectDisposedException objEx)
+        {
+            LogWarning("JS object already disposed for DropBearSectionContainer. {Message}", objEx.Message);
+        }
+        catch (Exception ex)
+        {
+            LogError("Error cleaning up JS resources for DropBearSectionContainer", ex);
+        }
+        finally
+        {
+            _dotNetRef?.Dispose();
+            _dotNetRef = null;
+        }
+    }
 
     #region Parameters
 
@@ -74,215 +298,4 @@ public sealed partial class DropBearSectionContainer : DropBearComponentBase
     public EventCallback<WindowDimensions> OnDimensionsChanged { get; set; }
 
     #endregion
-
-    /// <summary>
-    ///     Gets a CSS class for the container, caching the result until parameters change.
-    /// </summary>
-    private string ContainerClass => _containerClassCache ??= BuildContainerClass();
-
-    /// <inheritdoc />
-    protected override void OnParametersSet()
-    {
-        // Clear cached container class so it recomputes if any parameter changed
-        _containerClassCache = null;
-        base.OnParametersSet();
-    }
-
-    /// <inheritdoc />
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
-
-        if (!firstRender || IsDisposed)
-            return;
-
-        try
-        {
-            // Load (and cache) our "resize-manager" JS module
-            _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-
-            // 1) Initialize the module
-            await _module.InvokeVoidAsync(
-                $"{JsModuleName}API.initialize"
-            ).ConfigureAwait(false);
-
-            // 2) Create a new resize manager instance in JS, passing a .NET reference for callback
-            _dotNetRef = DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync(
-                $"{JsModuleName}API.createResizeManager",
-                _dotNetRef
-            ).ConfigureAwait(false);
-
-            LogDebug("DropBearSectionContainer JS interop initialized.");
-
-            // Optionally set the width immediately
-            await SetMaxWidthBasedOnWindowSize();
-        }
-        catch (Exception ex)
-        {
-            LogError("Error during DropBearSectionContainer initialization", ex);
-            // Optionally handle or surface the error to UI
-        }
-    }
-
-    /// <summary>
-    ///     JS-invokable method that recalculates and sets the container's max width.
-    /// </summary>
-    [JSInvokable]
-    public async Task SetMaxWidthBasedOnWindowSize()
-    {
-        if (IsDisposed)
-            return;
-
-        try
-        {
-            var dimensions = await GetWindowDimensionsAsync().ConfigureAwait(false);
-            if (dimensions is null)
-                return;
-
-            var newMaxWidth = CalculateMaxWidth(dimensions.Width);
-            if (_maxWidthStyle != newMaxWidth)
-            {
-                _maxWidthStyle = newMaxWidth;
-
-                // Update the UI and optionally notify that dimensions changed
-                await InvokeStateHasChangedAsync(async () =>
-                {
-                    await NotifyDimensionsChangedAsync(dimensions).ConfigureAwait(false);
-                }).ConfigureAwait(false);
-            }
-        }
-        catch (Exception ex)
-        {
-            LogError("Error setting max width", ex);
-            _maxWidthStyle = DEFAULT_MAX_WIDTH;
-        }
-    }
-
-    /// <summary>
-    ///     Requests window dimensions from the JS side.
-    /// </summary>
-    private async Task<WindowDimensions?> GetWindowDimensionsAsync()
-    {
-        if (IsDisposed)
-            return _cachedDimensions;
-
-        try
-        {
-            // Reuse the module reference (and re-fetch it if needed)
-            _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-
-            // "DropBearResizeManager.getDimensions" is a function on the window scope
-            var dimensions = await _module.InvokeAsync<WindowDimensions>(
-                $"{JsModuleName}API.getDimensions",
-                ComponentToken
-            ).ConfigureAwait(false);
-
-            _cachedDimensions = dimensions;
-            return dimensions;
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to get window dimensions", ex);
-            return _cachedDimensions;
-        }
-    }
-
-    /// <summary>
-    ///     Builds the container CSS class based on centering options.
-    /// </summary>
-    private string BuildContainerClass()
-    {
-        var builder = new StringBuilder("section-container", 100);
-
-        if (IsHorizontalCentered)
-            builder.Append(" horizontal-centered");
-
-        if (IsVerticalCentered)
-            builder.Append(" vertical-centered");
-
-        return builder.ToString();
-    }
-
-    /// <summary>
-    ///     Calculates the max-width style based on the specified (percent or px) MaxWidth
-    ///     and the current window width.
-    /// </summary>
-    private string CalculateMaxWidth(double windowWidth)
-    {
-        // If no MaxWidth param is specified, default to 100%
-        if (string.IsNullOrEmpty(MaxWidth))
-            return DEFAULT_MAX_WIDTH;
-
-        // If MaxWidth is "70%", parse the numeric portion and convert to px
-        if (MaxWidth.EndsWith("%"))
-        {
-            if (double.TryParse(MaxWidth.TrimEnd('%'), out var percentage))
-            {
-                var calculatedWidth = windowWidth * (percentage / 100);
-                return $"{calculatedWidth:F0}px";
-            }
-
-            LogWarning("Failed to parse MaxWidth percentage: {0}", MaxWidth);
-            return DEFAULT_MAX_WIDTH;
-        }
-
-        // Otherwise, assume it's a pixel value like "800px"
-        return MaxWidth;
-    }
-
-    /// <summary>
-    ///     Notifies any registered listeners that the container's dimensions changed.
-    /// </summary>
-    private async Task NotifyDimensionsChangedAsync(WindowDimensions dimensions)
-    {
-        if (!OnDimensionsChanged.HasDelegate)
-            return;
-
-        try
-        {
-            await OnDimensionsChanged.InvokeAsync(dimensions).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            LogError("Error notifying dimension change", ex);
-        }
-    }
-
-    /// <summary>
-    ///     Called during disposal to clean up JS resources.
-    ///     The base class automatically calls this in DisposeCoreAsync().
-    /// </summary>
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        try
-        {
-            if (_module is not null)
-            {
-                await _module.InvokeVoidAsync($"{JsModuleName}API.dispose").ConfigureAwait(false);
-                LogDebug("Resize manager disposed in JS.");
-            }
-        }
-        catch (JSDisconnectedException)
-        {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
-        }
-        catch (ObjectDisposedException objEx)
-        {
-            LogWarning("JS object already disposed for DropBearSectionContainer. {Message}", objEx.Message);
-        }
-        catch (Exception ex)
-        {
-            LogError("Error cleaning up JS resources for DropBearSectionContainer", ex);
-        }
-        finally
-        {
-            _dotNetRef?.Dispose();
-            _dotNetRef = null;
-        }
-    }
 }
