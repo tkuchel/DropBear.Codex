@@ -317,15 +317,24 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region State Management
 
     /// <summary>
-    ///     Executes an action and triggers a UI update.
+    /// Executes an action and triggers a UI update.
+    /// If the component is disposed, the UI update is silently skipped.
     /// </summary>
     protected void InvokeStateHasChanged(Action action)
     {
-        EnsureNotDisposed();
+        if (IsDisposed)
+        {
+            // Component is disposed; skip UI update.
+            return;
+        }
         try
         {
             action();
             StateHasChanged();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The component has been disposed—ignore this update.
         }
         catch (Exception ex)
         {
@@ -335,16 +344,24 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Executes an asynchronous operation and triggers a UI update.
+    /// Executes an asynchronous operation and triggers a UI update.
+    /// If the component is disposed, the UI update is silently skipped.
     /// </summary>
     protected async Task InvokeStateHasChangedAsync(Func<Task> action)
     {
-        EnsureNotDisposed();
+        if (IsDisposed)
+        {
+            // Component is disposed; skip UI update.
+            return;
+        }
         try
         {
             await action().ConfigureAwait(false);
-            // Ensure the UI update occurs on the correct synchronization context.
             await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The component has been disposed—ignore this update.
         }
         catch (Exception ex)
         {
@@ -354,6 +371,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     }
 
     #endregion
+
 
     #region Helpers
 

@@ -49,10 +49,23 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
 
             _isUploading = value;
-            // Schedule a UI update.
-            InvokeStateHasChanged(() => { });
+
+            if (IsDisposed)
+            {
+                return;
+            }
+
+            try
+            {
+                InvokeStateHasChanged(() => { });
+            }
+            catch (ObjectDisposedException)
+            {
+                // Component disposed; ignore UI update.
+            }
         }
     }
+
 
     /// <summary>
     ///     Current upload progress as a percentage.
@@ -145,16 +158,17 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     /// <inheritdoc />
-    /// <remarks>
-    ///     Override point for JS cleanup. For example, if your "file-reader-helpers" module includes a dispose function,
-    ///     it could be invoked here.
-    /// </remarks>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
             // If needed, call a JS dispose function.
             // Example: await _jsModule?.InvokeVoidAsync("DropBearFileUploader.dispose", ComponentId);
+            if (_jsUtilsModule is not null)
+            {
+                await _jsUtilsModule.DisposeAsync().ConfigureAwait(false);
+                _jsUtilsModule = null;
+            }
         }
         catch (JSDisconnectedException)
         {
@@ -420,12 +434,20 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         try
         {
             // Create a progress delegate to update both the file's individual progress and the overall progress.
-            var progress = new Progress<int>(async percent =>
+            var progress = new Progress<int>(percent =>
             {
-                file.UploadProgress = percent;
-                // Update the overall progress as the average of all file progress values.
-                UploadProgress = (int)_selectedFiles.Average(f => f.UploadProgress);
-                await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+                try
+                {
+                    file.UploadProgress = percent;
+                    // Update the overall progress as the average of all file progress values.
+                    UploadProgress = (int)_selectedFiles.Average(f => f.UploadProgress);
+                    // Schedule a UI update (fire and forget).
+                    _ = InvokeAsync(StateHasChanged);
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error updating progress UI.");
+                }
             });
 
             if (UploadFileAsync is not null)
