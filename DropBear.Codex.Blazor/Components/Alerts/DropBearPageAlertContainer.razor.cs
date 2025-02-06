@@ -125,7 +125,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     ///     Dispose local resources (subscriptions, semaphores, lists).
     ///     The base class calls this after <see cref="CleanupJavaScriptResourcesAsync" />.
     /// </remarks>
-    protected override async ValueTask DisposeCoreAsync()
+    public override async ValueTask DisposeAsync()
     {
         try
         {
@@ -152,7 +152,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
         finally
         {
-            await base.DisposeCoreAsync().ConfigureAwait(false);
+            await base.DisposeAsync().ConfigureAwait(false);
         }
     }
 

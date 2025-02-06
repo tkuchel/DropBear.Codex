@@ -15,24 +15,22 @@ namespace DropBear.Codex.Blazor.Components.Files;
 
 /// <summary>
 ///     A Blazor component for handling file uploads with drag-and-drop support and progress tracking.
-///     Refactored to leverage DropBearComponentBase for JS interop and disposal.
+///     Leverages <see cref="DropBearComponentBase" /> for JavaScript interop and disposal.
 /// </summary>
 public sealed partial class DropBearFileUploader : DropBearComponentBase
 {
-    // Typically rename to match your actual JS module name:
+    // Typically rename to match your actual JS module name.
     private const string MODULE_NAME = JsModuleNames.FileReaderHelpers;
     private const long BYTES_PER_MB = 1024 * 1024;
 
-    // Private fields
+    // Private fields.
     private readonly List<UploadFile> _selectedFiles = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _uploadCancellationTokens = new();
     private readonly List<UploadFile> _uploadedFiles = new();
     private bool _isDragOver;
     private bool _isUploading;
-
     private IJSObjectReference? _jsModule;
     private IJSObjectReference? _jsUtilsModule;
-
     private int _uploadProgress;
 
     #region Properties
@@ -51,6 +49,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
 
             _isUploading = value;
+            // Schedule a UI update.
             InvokeStateHasChanged(() => { });
         }
     }
@@ -69,6 +68,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
 
             _uploadProgress = value;
+            // Schedule a UI update.
             InvokeStateHasChanged(() => { });
         }
     }
@@ -84,12 +84,13 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private IReadOnlyList<UploadFile> UploadedFiles => _uploadedFiles;
 
     /// <summary>
-    ///     Indicates whether uploading is allowed (some files are selected and no active upload).
+    ///     Indicates whether uploading is allowed (some files are selected, no active upload, not disposed, and an upload
+    ///     delegate is set).
     /// </summary>
-    private bool CanUpload => SelectedFiles.Any()
-                              && !IsUploading
-                              && !IsDisposed
-                              && UploadFileAsync != null;
+    private bool CanUpload => SelectedFiles.Any() &&
+                              !IsUploading &&
+                              !IsDisposed &&
+                              UploadFileAsync != null;
 
     #endregion
 
@@ -97,12 +98,11 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <inheritdoc />
     /// <remarks>
-    ///     Loads the JS module once on first render and logs initialization.
+    ///     Loads the JS modules on first render.
     /// </remarks>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await base.OnAfterRenderAsync(firstRender);
-
+        await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
         if (!firstRender || IsDisposed)
         {
             return;
@@ -110,10 +110,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
         try
         {
-            // Ensure the JS module is loaded once and cached
+            // Load and cache the required JS modules.
             _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
             _jsUtilsModule = await GetJsModuleAsync(JsModuleNames.Utils).ConfigureAwait(false);
-
             Logger.Debug("File uploader JS module initialized: {ComponentId}", ComponentId);
         }
         catch (Exception ex)
@@ -124,13 +123,13 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <inheritdoc />
     /// <remarks>
-    ///     Cancel any ongoing uploads, then call base disposal logic.
-    ///     This is your custom disposal for <see cref="_uploadCancellationTokens" />.
+    ///     Cancel any ongoing uploads and dispose cancellation tokens before calling base disposal logic.
     /// </remarks>
-    protected override async ValueTask DisposeCoreAsync()
+    public override async ValueTask DisposeAsync()
     {
         try
         {
+            // Cancel and dispose all per-file cancellation tokens.
             foreach (var cts in _uploadCancellationTokens.Values)
             {
                 await cts.CancelAsync().ConfigureAwait(false);
@@ -141,23 +140,21 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
         finally
         {
-            // Always call the base
-            await base.DisposeCoreAsync().ConfigureAwait(false);
+            await base.DisposeAsync().ConfigureAwait(false);
         }
     }
 
     /// <inheritdoc />
     /// <remarks>
-    ///     Called by the base class to allow final JS cleanup if needed.
-    ///     For example, you could call a JS dispose function if your
-    ///     "file-reader-helpers" module includes it.
+    ///     Override point for JS cleanup. For example, if your "file-reader-helpers" module includes a dispose function,
+    ///     it could be invoked here.
     /// </remarks>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
-            // If your JS module has a dispose function:
-            // await _jsModule?.InvokeVoidAsync("DropBearFileUploader.dispose", ComponentId);
+            // If needed, call a JS dispose function.
+            // Example: await _jsModule?.InvokeVoidAsync("DropBearFileUploader.dispose", ComponentId);
         }
         catch (JSDisconnectedException)
         {
@@ -173,7 +170,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
         finally
         {
-            // This just resets our local reference; the base class also cleans up
             _jsModule = null;
         }
     }
@@ -182,6 +178,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     #region Drag & Drop
 
+    /// <summary>
+    ///     Handles the drag-enter event.
+    /// </summary>
     private void HandleDragEnter()
     {
         if (!IsUploading && !IsDisposed)
@@ -191,6 +190,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Handles the drag-leave event.
+    /// </summary>
     private void HandleDragLeave()
     {
         if (!IsUploading && !IsDisposed)
@@ -200,6 +202,10 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Handles the drop event, obtains file references via JS interop, and processes them.
+    /// </summary>
+    /// <param name="e">Drag event arguments.</param>
     private async Task HandleDrop(DragEventArgs e)
     {
         _isDragOver = false;
@@ -210,24 +216,25 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
         try
         {
-            // If you have a function in "file-reader-helpers" named "getDroppedFiles":
+            // Ensure the JS module is loaded.
             if (_jsModule is null)
             {
                 _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
             }
 
+            // Retrieve dropped files from JavaScript.
             var jsFiles = await _jsModule.InvokeAsync<IJSObjectReference[]>(
-                $"{MODULE_NAME}API.getDroppedFiles",
-                ComponentToken, // base class token for cancellation
-                e.DataTransfer
-            ).ConfigureAwait(false);
+                    $"{MODULE_NAME}API.getDroppedFiles",
+                    ComponentToken, // Use component cancellation token.
+                    e.DataTransfer)
+                .ConfigureAwait(false);
 
             var browserFiles = new List<IBrowserFile>();
             foreach (var jsFile in jsFiles)
             {
                 try
                 {
-                    // If you have a separate helper to create a file proxy:
+                    // Create a file proxy from the JS file reference.
                     var proxy = await BrowserFileProxy.CreateAsync(jsFile).ConfigureAwait(false);
                     browserFiles.Add(proxy);
                 }
@@ -239,7 +246,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
 
             await ProcessSelectedFiles(browserFiles).ConfigureAwait(false);
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -251,6 +258,10 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     #region File Selection
 
+    /// <summary>
+    ///     Handles file selection from an input element.
+    /// </summary>
+    /// <param name="e">Event arguments containing the selected files.</param>
     private async Task HandleFileSelectionAsync(InputFileChangeEventArgs e)
     {
         if (IsUploading || IsDisposed)
@@ -261,7 +272,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         try
         {
             await ProcessSelectedFiles(e.GetMultipleFiles()).ConfigureAwait(false);
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -269,6 +280,10 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Processes and validates the selected files.
+    /// </summary>
+    /// <param name="files">The files to process.</param>
     private async Task ProcessSelectedFiles(IReadOnlyList<IBrowserFile> files)
     {
         foreach (var file in files)
@@ -279,13 +294,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
                     file.Name,
                     file.Size,
                     file.ContentType,
-                    file
-                );
-
+                    file);
                 _selectedFiles.Add(uploadFile);
-                Logger.Debug("File selected: {FileName} ({FileSize})",
-                    file.Name,
-                    FormatFileSize(file.Size));
+                Logger.Debug("File selected: {FileName} ({FileSize})", file.Name, FormatFileSize(file.Size));
             }
             else
             {
@@ -299,13 +310,17 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Validates the file against size and allowed type constraints.
+    /// </summary>
+    /// <param name="file">The file to validate.</param>
+    /// <returns>True if valid; otherwise, false.</returns>
     private bool ValidateFile(IBrowserFile file)
     {
         if (file.Size > MaxFileSize)
         {
             Logger.Warning("File exceeds size limit: {FileName} ({FileSize})",
-                file.Name,
-                FormatFileSize(file.Size));
+                file.Name, FormatFileSize(file.Size));
             return false;
         }
 
@@ -313,14 +328,17 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             !AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
         {
             Logger.Warning("File type not allowed: {FileName} ({FileType})",
-                file.Name,
-                file.ContentType);
+                file.Name, file.ContentType);
             return false;
         }
 
         return true;
     }
 
+    /// <summary>
+    ///     Removes a selected file.
+    /// </summary>
+    /// <param name="file">The file to remove.</param>
     private async Task RemoveFile(UploadFile file)
     {
         if (IsUploading || IsDisposed)
@@ -335,13 +353,16 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
 
         Logger.Debug("File removed: {FileName}", file.Name);
-        StateHasChanged();
+        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
     }
 
     #endregion
 
     #region Upload Logic
 
+    /// <summary>
+    ///     Initiates the upload of all selected files.
+    /// </summary>
     private async Task UploadFilesAsync()
     {
         if (!CanUpload)
@@ -355,13 +376,12 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         try
         {
             var uploadTasks = new List<Task>();
+            // Make a copy of the selected files list.
             foreach (var file in _selectedFiles.ToList())
             {
-                // For each file, create a separate CancellationTokenSource if you need
-                // per-file cancellation. Alternatively, you could link to ComponentToken.
+                // Create a separate cancellation token source for each file.
                 var cts = new CancellationTokenSource();
                 _uploadCancellationTokens[file.Name] = cts;
-
                 uploadTasks.Add(UploadSingleFile(file, cts.Token));
             }
 
@@ -383,10 +403,15 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
             IsUploading = false;
             UploadProgress = 0;
-            StateHasChanged();
+            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
         }
     }
 
+    /// <summary>
+    ///     Uploads a single file using the user-provided delegate.
+    /// </summary>
+    /// <param name="file">The file to upload.</param>
+    /// <param name="cancellationToken">Cancellation token for the upload.</param>
     private async Task UploadSingleFile(UploadFile file, CancellationToken cancellationToken)
     {
         file.UploadStatus = UploadStatus.Uploading;
@@ -394,18 +419,18 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
         try
         {
-            // Progress delegate updates both the file’s individual progress
-            // and the overall component’s average progress
-            var progress = new Progress<int>(percent =>
+            // Create a progress delegate to update both the file's individual progress and the overall progress.
+            var progress = new Progress<int>(async percent =>
             {
                 file.UploadProgress = percent;
+                // Update the overall progress as the average of all file progress values.
                 UploadProgress = (int)_selectedFiles.Average(f => f.UploadProgress);
-                StateHasChanged();
+                await InvokeAsync(StateHasChanged).ConfigureAwait(false);
             });
 
             if (UploadFileAsync is not null)
             {
-                // The user-provided delegate performs the actual upload
+                // Invoke the user-provided delegate to perform the upload.
                 var result = await UploadFileAsync(file, progress, cancellationToken).ConfigureAwait(false);
                 file.UploadStatus = result.Status;
 
@@ -437,6 +462,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Notifies listeners that files have been uploaded and removes successfully uploaded files from the selected list.
+    /// </summary>
     private async Task NotifyUploadCompletion()
     {
         if (OnFilesUploaded.HasDelegate)
@@ -444,21 +472,22 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             await OnFilesUploaded.InvokeAsync(_uploadedFiles.ToList()).ConfigureAwait(false);
         }
 
-        // Remove successfully uploaded files from the "selected" list
+        // Remove successfully uploaded files from the selected files list.
         _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
     }
 
+    /// <summary>
+    ///     Opens the file dialog via JavaScript.
+    /// </summary>
     private async Task OpenFileDialog()
     {
         try
         {
             _jsUtilsModule ??= await GetJsModuleAsync(JsModuleNames.Utils).ConfigureAwait(false);
-
-            // Invokes a JS helper that triggers a click on the <input> element
+            // Invoke a JS helper that triggers a click on the hidden file input element.
             await _jsUtilsModule.InvokeVoidAsync(
                 $"{JsModuleNames.Utils}API.clickElementById",
-                $"{ComponentId}-file-input"
-            ).ConfigureAwait(false);
+                $"{ComponentId}-file-input").ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -470,12 +499,15 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     #region Helpers
 
+    /// <summary>
+    ///     Formats a file size in bytes into a human-readable string.
+    /// </summary>
+    /// <param name="bytes">The file size in bytes.</param>
     private static string FormatFileSize(long bytes)
     {
-        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
+        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
         var order = 0;
         double len = bytes;
-
         while (len >= 1024 && order < sizes.Length - 1)
         {
             order++;
@@ -485,6 +517,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         return $"{len:0.##} {sizes[order]}";
     }
 
+    /// <summary>
+    ///     Returns a CSS class name based on the upload status.
+    /// </summary>
     private static string GetStatusClass(UploadStatus status)
     {
         return status switch
@@ -497,6 +532,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         };
     }
 
+    /// <summary>
+    ///     Returns an icon CSS class based on the upload status.
+    /// </summary>
     private static string GetStatusIconClass(UploadStatus status)
     {
         return status switch
@@ -520,13 +558,13 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     public int MaxFileSize { get; set; } = (int)(10 * BYTES_PER_MB);
 
     /// <summary>
-    ///     List of allowed file types (MIME types). Empty = allow all.
+    ///     List of allowed file types (MIME types). An empty list allows all types.
     /// </summary>
     [Parameter]
     public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
 
     /// <summary>
-    ///     Event callback triggered after files upload successfully.
+    ///     Event callback triggered after files are successfully uploaded.
     /// </summary>
     [Parameter]
     public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }

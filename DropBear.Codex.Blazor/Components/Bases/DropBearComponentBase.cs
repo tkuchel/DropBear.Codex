@@ -26,22 +26,22 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     private int _isDisposed;
 
     /// <summary>
-    ///     Unique component identifier for DOM interactions
+    ///     Unique component identifier for DOM interactions.
     /// </summary>
     protected string ComponentId { get; } = $"dropbear-{Guid.NewGuid():N}";
 
     /// <summary>
-    ///     Indicates if the component is connected to an active circuit
+    ///     Indicates if the component is connected to an active circuit.
     /// </summary>
     protected bool IsConnected { get; private set; } = true;
 
     /// <summary>
-    ///     Cancellation token tied to component lifecycle
+    ///     Cancellation token tied to component lifecycle.
     /// </summary>
     protected CancellationToken ComponentToken => _circuitCts.Token;
 
     /// <summary>
-    ///     Flag indicating if the component has been disposed
+    ///     Flag indicating if the component has been disposed.
     /// </summary>
     protected bool IsDisposed => _isDisposed == 1;
 
@@ -57,6 +57,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     {
         try
         {
+            // Ensure the base component initialization is complete.
             await base.OnInitializedAsync().ConfigureAwait(false);
             IsConnected = true;
         }
@@ -67,16 +68,27 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     **[Deprecated Override Point]**
+    ///     This method is provided for backward compatibility. Derived classes should override <see cref="DisposeAsyncCore" />
+    ///     instead.
+    /// </summary>
+    /// <param name="disposing">Indicates whether the method is being called during disposal.</param>
     protected virtual async ValueTask DisposeAsync(bool disposing)
     {
         if (disposing)
         {
+            // Note: This method is not used by the base implementation.
             await DisposeAsync().ConfigureAwait(false);
         }
     }
 
+    /// <summary>
+    ///     Public asynchronous disposal method following the IAsyncDisposable pattern.
+    /// </summary>
     public virtual async ValueTask DisposeAsync()
     {
+        // Ensure disposal happens only once.
         if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
         {
             return;
@@ -84,7 +96,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            await DisposeCoreAsync().ConfigureAwait(false);
+            // Call the core disposal logic.
+            await DisposeAsyncCore().ConfigureAwait(false);
             GC.SuppressFinalize(this);
         }
         catch (Exception ex)
@@ -93,13 +106,22 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    protected virtual async ValueTask DisposeCoreAsync()
+    /// <summary>
+    ///     Core disposal logic that derived classes can override to add custom disposal steps.
+    /// </summary>
+    /// <remarks>
+    ///     Derived classes should override this method instead of <see cref="DisposeAsync(bool)" />.
+    /// </remarks>
+    protected virtual async ValueTask DisposeAsyncCore()
     {
-        await _circuitCts.CancelAsync();
+        // Cancel any ongoing operations associated with this component.
+        await _circuitCts.CancelAsync().ConfigureAwait(false);
 
         try
         {
+            // Allow derived components to clean up their JavaScript resources.
             await CleanupJavaScriptResourcesAsync().ConfigureAwait(false);
+            // Dispose all cached JS modules.
             await DisposeJsModulesAsync().ConfigureAwait(false);
         }
         catch (JSDisconnectedException)
@@ -112,6 +134,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
         finally
         {
+            // Dispose managed resources.
             _circuitCts.Dispose();
             _moduleCacheLock.Dispose();
         }
@@ -122,11 +145,14 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region JavaScript Interop
 
     /// <summary>
-    ///     Safely retrieves a JavaScript module reference with caching and initialization
+    ///     Safely retrieves a JavaScript module reference with caching and initialization.
     /// </summary>
-    /// <param name="moduleName">Name of the JS module to load</param>
-    /// <param name="modulePath">Path to the module file (defaults to standard location)</param>
-    /// <returns>Cached JavaScript module reference</returns>
+    /// <param name="moduleName">Name of the JS module to load.</param>
+    /// <param name="modulePath">
+    ///     Path to the module file (defaults to standard location).
+    ///     Use string.Format notation to insert the module name.
+    /// </param>
+    /// <returns>Cached JavaScript module reference.</returns>
     protected async Task<IJSObjectReference> GetJsModuleAsync(
         string moduleName,
         string modulePath = "./_content/DropBear.Codex.Blazor/js/{0}.module.js")
@@ -138,6 +164,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             return cachedModule;
         }
 
+        // Use an asynchronous lock to ensure that only one load operation occurs per module.
         using (await _moduleCacheLock.LockAsync(ComponentToken).ConfigureAwait(false))
         {
             if (_jsModuleCache.TryGetValue(moduleName, out cachedModule))
@@ -147,8 +174,9 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
             try
             {
-                // First, load the module
-                var module = await JsRuntime.InvokeAsync<IJSObjectReference>(
+                // Load the JS module.
+                var module = await JsRuntime
+                    .InvokeAsync<IJSObjectReference>(
                         "import",
                         ComponentToken,
                         string.Format(modulePath, moduleName))
@@ -157,7 +185,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
                 _jsModuleCache[moduleName] = module;
 
-                // Then, ensure initialization
+                // Ensure that the module is properly initialized.
                 await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName)
                     .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
                     .ConfigureAwait(false);
@@ -178,7 +206,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Safely invokes a JavaScript function with result handling
+    ///     Safely invokes a JavaScript function with result handling.
     /// </summary>
     protected async Task<T> SafeJsInteropAsync<T>(string identifier, params object[] args)
     {
@@ -186,10 +214,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            return await JsRuntime.InvokeAsync<T>(
-                    identifier,
-                    ComponentToken,
-                    args)
+            return await JsRuntime
+                .InvokeAsync<T>(identifier, ComponentToken, args)
                 .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
                 .ConfigureAwait(false);
         }
@@ -200,7 +226,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Safely invokes a JavaScript void function
+    ///     Safely invokes a JavaScript void function.
     /// </summary>
     protected async Task SafeJsVoidInteropAsync(string identifier, params object[] args)
     {
@@ -208,10 +234,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            await JsRuntime.InvokeVoidAsync(
-                    identifier,
-                    ComponentToken,
-                    args)
+            await JsRuntime
+                .InvokeVoidAsync(identifier, ComponentToken, args)
                 .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
                 .ConfigureAwait(false);
         }
@@ -221,6 +245,9 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Ensures that the specified JavaScript module is initialized.
+    /// </summary>
     protected async Task EnsureJsModuleInitializedAsync(string moduleName)
     {
         EnsureNotDisposed();
@@ -248,8 +275,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region Resource Management
 
     /// <summary>
-    /// Disposes all cached JavaScript module references.
-    /// Exceptions due to circuit disconnection or cancellation are logged as warnings.
+    ///     Disposes all cached JavaScript module references.
+    ///     Exceptions due to circuit disconnection or cancellation are logged as warnings.
     /// </summary>
     private async ValueTask DisposeJsModulesAsync()
     {
@@ -273,12 +300,12 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 LogError("Error disposing JS module: {Module}", ex, moduleName);
             }
         }
+
         _jsModuleCache.Clear();
     }
 
-
     /// <summary>
-    ///     Override point for component-specific JavaScript cleanup
+    ///     Override point for component-specific JavaScript cleanup.
     /// </summary>
     protected virtual Task CleanupJavaScriptResourcesAsync()
     {
@@ -290,7 +317,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region State Management
 
     /// <summary>
-    ///     Executes an action and triggers UI update
+    ///     Executes an action and triggers a UI update.
     /// </summary>
     protected void InvokeStateHasChanged(Action action)
     {
@@ -308,7 +335,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Executes an async operation and triggers UI update
+    ///     Executes an asynchronous operation and triggers a UI update.
     /// </summary>
     protected async Task InvokeStateHasChangedAsync(Func<Task> action)
     {
@@ -316,6 +343,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         try
         {
             await action().ConfigureAwait(false);
+            // Ensure the UI update occurs on the correct synchronization context.
             await InvokeAsync(StateHasChanged).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -329,6 +357,9 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
     #region Helpers
 
+    /// <summary>
+    ///     Throws an ObjectDisposedException if the component has already been disposed.
+    /// </summary>
     private void EnsureNotDisposed()
     {
         if (IsDisposed)
@@ -337,6 +368,9 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Handles JavaScript interop exceptions, setting the connection state and logging appropriately.
+    /// </summary>
     private bool HandleJsException(Exception ex, string identifier)
     {
         if (ex is JSDisconnectedException or TaskCanceledException)
@@ -350,16 +384,25 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         return false;
     }
 
+    /// <summary>
+    ///     Logs errors with the component type name as context.
+    /// </summary>
     protected void LogError(string message, Exception ex, params object[] args)
     {
         Logger.Error(ex, $"{GetType().Name}: {message}", args);
     }
 
+    /// <summary>
+    ///     Logs warnings with the component type name as context.
+    /// </summary>
     protected void LogWarning(string message, params object[] args)
     {
         Logger.Warning($"{GetType().Name}: {message}", args);
     }
 
+    /// <summary>
+    ///     Logs debug information with the component type name as context.
+    /// </summary>
     protected void LogDebug(string message, params object[] args)
     {
         Logger.Debug($"{GetType().Name}: {message}", args);
