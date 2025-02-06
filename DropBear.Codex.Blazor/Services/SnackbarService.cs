@@ -12,6 +12,9 @@ using Microsoft.Extensions.Logging;
 
 namespace DropBear.Codex.Blazor.Services;
 
+/// <summary>
+///     Provides methods to show, remove, and manage snackbars.
+/// </summary>
 public class SnackbarService : ISnackbarService
 {
     private const int MaxSnackbars = 5;
@@ -25,6 +28,12 @@ public class SnackbarService : ISnackbarService
         _logger = logger;
     }
 
+    /// <summary>
+    ///     Shows the provided snackbar. If the maximum number of snackbars is reached, it removes
+    ///     the oldest non-error snackbar (if available) to make room.
+    /// </summary>
+    /// <param name="snackbar">The snackbar instance to show.</param>
+    /// <returns>A result indicating success or a SnackbarError on failure.</returns>
     public async Task<Result<Unit, SnackbarError>> Show(SnackbarInstance snackbar)
     {
         if (_isDisposed)
@@ -32,16 +41,15 @@ public class SnackbarService : ISnackbarService
             return Result<Unit, SnackbarError>.Failure(new SnackbarError("Service is disposed."));
         }
 
+        await _semaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _semaphore.WaitAsync();
-
             _logger.LogDebug("Attempting to show snackbar {SnackbarId}. Current count: {Count}",
                 snackbar.Id, _activeSnackbars.Count);
 
             if (_activeSnackbars.Count >= MaxSnackbars)
             {
-                // Remove oldest non-error snackbar
+                // Remove oldest non-error snackbar if available
                 var oldestNonError = _activeSnackbars.Values
                     .Where(s => s.Type != SnackbarType.Error)
                     .OrderBy(s => s.CreatedAt)
@@ -51,7 +59,7 @@ public class SnackbarService : ISnackbarService
                 {
                     _logger.LogDebug("Removing oldest non-error snackbar {SnackbarId} to make room",
                         oldestNonError.Id);
-                    await RemoveSnackbar(oldestNonError.Id);
+                    await RemoveSnackbar(oldestNonError.Id).ConfigureAwait(false);
                 }
                 else if (snackbar.Type != SnackbarType.Error)
                 {
@@ -61,12 +69,11 @@ public class SnackbarService : ISnackbarService
                 }
             }
 
-            // Ensure the snackbar isn't already in the collection
+            // Remove any existing instance with the same ID.
             if (_activeSnackbars.ContainsKey(snackbar.Id))
             {
-                _logger.LogWarning("Snackbar {SnackbarId} already exists, removing old instance first",
-                    snackbar.Id);
-                await RemoveSnackbar(snackbar.Id);
+                _logger.LogWarning("Snackbar {SnackbarId} already exists, removing old instance first", snackbar.Id);
+                await RemoveSnackbar(snackbar.Id).ConfigureAwait(false);
             }
 
             if (_activeSnackbars.TryAdd(snackbar.Id, snackbar))
@@ -76,7 +83,7 @@ public class SnackbarService : ISnackbarService
 
                 if (OnShow != null)
                 {
-                    await OnShow.Invoke(snackbar);
+                    await OnShow.Invoke(snackbar).ConfigureAwait(false);
                 }
 
                 return Result<Unit, SnackbarError>.Success(Unit.Value);
@@ -96,6 +103,11 @@ public class SnackbarService : ISnackbarService
         }
     }
 
+    /// <summary>
+    ///     Removes a snackbar with the specified ID.
+    /// </summary>
+    /// <param name="id">The ID of the snackbar to remove.</param>
+    /// <returns>A result indicating success or a SnackbarError on failure.</returns>
     public async Task<Result<Unit, SnackbarError>> RemoveSnackbar(string id)
     {
         if (_isDisposed)
@@ -103,10 +115,9 @@ public class SnackbarService : ISnackbarService
             return Result<Unit, SnackbarError>.Failure(new SnackbarError("Service is disposed."));
         }
 
+        await _semaphore.WaitAsync().ConfigureAwait(false);
         try
         {
-            await _semaphore.WaitAsync();
-
             _logger.LogDebug("Attempting to remove snackbar {SnackbarId}. Current count: {Count}",
                 id, _activeSnackbars.Count);
 
@@ -117,7 +128,7 @@ public class SnackbarService : ISnackbarService
 
                 if (OnRemove != null)
                 {
-                    await OnRemove.Invoke(id);
+                    await OnRemove.Invoke(id).ConfigureAwait(false);
                 }
 
                 return Result<Unit, SnackbarError>.Success(Unit.Value);
@@ -137,8 +148,12 @@ public class SnackbarService : ISnackbarService
         }
     }
 
+    /// <summary>
+    ///     Returns a read-only collection of active snackbar instances.
+    /// </summary>
     public IReadOnlyCollection<SnackbarInstance> GetActiveSnackbars()
     {
+        // Create a snapshot copy to avoid threading issues.
         return _activeSnackbars.Values.ToList().AsReadOnly();
     }
 
@@ -206,16 +221,17 @@ public class SnackbarService : ISnackbarService
 
         try
         {
-            await _semaphore.WaitAsync();
+            await _semaphore.WaitAsync().ConfigureAwait(false);
 
-            // Clear all event handlers
+            // Clear event handlers
             OnShow = null;
             OnRemove = null;
 
             // Remove all active snackbars
-            foreach (var id in _activeSnackbars.Keys.ToList())
+            var ids = _activeSnackbars.Keys.ToList();
+            foreach (var id in ids)
             {
-                await RemoveSnackbar(id);
+                await RemoveSnackbar(id).ConfigureAwait(false);
             }
 
             _activeSnackbars.Clear();

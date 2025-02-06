@@ -1,108 +1,275 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Provides methods to show various page alerts (Success, Error, Warning, etc.)
-///     and to clear all alerts.
+///     Thread-safe service for managing page alerts with batching and rate limiting support.
+///     Optimized for Blazor Server environments.
 /// </summary>
 public sealed class PageAlertService : IPageAlertService
 {
-    /// <summary>
-    ///     Event fired when a new alert should be shown.
-    ///     The handler can perform asynchronous UI rendering or logging.
-    /// </summary>
-    public event Func<PageAlertInstance, Task>? OnAlert;
+    private const int DefaultSuccessDuration = 5000;
+    private const int DefaultErrorDuration = 8000;
+    private const int DefaultWarningDuration = 6000;
+    private const int DefaultInfoDuration = 5000;
+    private const int MaxQueueSize = 100;
+    private readonly CancellationTokenSource _cts;
+    private readonly SemaphoreSlim _eventSemaphore;
+
+    private readonly ILogger<PageAlertService>? _logger;
+    private readonly ConcurrentQueue<PageAlertInstance> _pendingAlerts;
+    private bool _isDisposed;
 
     /// <summary>
-    ///     Event fired when all alerts should be cleared.
+    ///     Initializes a new instance of the PageAlertService.
     /// </summary>
+    /// <param name="logger">Optional logger for diagnostic information.</param>
+    public PageAlertService(ILogger<PageAlertService>? logger = null)
+    {
+        _logger = logger;
+        _pendingAlerts = new ConcurrentQueue<PageAlertInstance>();
+        _cts = new CancellationTokenSource();
+        _eventSemaphore = new SemaphoreSlim(1, 1);
+    }
+
+    public event Func<PageAlertInstance, Task>? OnAlert;
     public event Action? OnClear;
 
     /// <summary>
-    ///     Displays a general alert with the specified parameters.
+    ///     Shows a general alert with the specified parameters.
     /// </summary>
     /// <param name="title">The alert's title.</param>
     /// <param name="message">The alert's message body.</param>
-    /// <param name="type">Type of the alert (e.g., Info, Success).</param>
-    /// <param name="duration">How long (in milliseconds) the alert is shown. Null means default duration.</param>
-    /// <param name="isPermanent">If true, the alert does not automatically disappear.</param>
-    public void ShowAlert(
+    /// <param name="type">Type of the alert.</param>
+    /// <param name="duration">Duration in milliseconds (null for default).</param>
+    /// <param name="isPermanent">If true, the alert will not auto-dismiss.</param>
+    /// <exception cref="InvalidOperationException">Thrown if the service is disposed.</exception>
+    public async Task ShowAlertAsync(
         string title,
         string message,
         PageAlertType type = PageAlertType.Info,
-        int? duration = 5000,
+        int? duration = null,
         bool isPermanent = false)
     {
-        // Create a unique ID for this alert
+        if (_isDisposed)
+        {
+            throw new ObjectDisposedException(nameof(PageAlertService));
+        }
+
+        if (_pendingAlerts.Count >= MaxQueueSize)
+        {
+            _logger?.LogWarning("Alert queue is full. Dropping alert: {Title}", title);
+            return;
+        }
+
         var alert = new PageAlertInstance
         {
-            Id = Guid.NewGuid().ToString("N"), // Using "N" to remove dashes
+            Id = $"alert-{Guid.NewGuid():N}",
             Title = title,
             Message = message,
             Type = type,
-            Duration = duration,
+            Duration = duration ?? GetDefaultDuration(type),
             IsPermanent = isPermanent
         };
 
-        OnAlert?.Invoke(alert);
+        _pendingAlerts.Enqueue(alert);
+        await TryProcessPendingAlertsAsync();
     }
 
     /// <summary>
-    ///     Displays a success alert with an optional duration.
+    ///     Shows a success alert.
     /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="duration">Optional duration in milliseconds.</param>
-    public void ShowSuccess(string title, string message, int? duration = 5000)
+    public Task ShowSuccessAsync(string title, string message, int? duration = DefaultSuccessDuration)
     {
-        ShowAlert(title, message, PageAlertType.Success, duration);
+        return ShowAlertAsync(title, message, PageAlertType.Success, duration);
     }
 
     /// <summary>
-    ///     Displays an error alert with an optional duration.
+    ///     Shows an error alert.
     /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="duration">Optional duration in milliseconds (default is 8000).</param>
-    public void ShowError(string title, string message, int? duration = 8000)
+    public Task ShowErrorAsync(string title, string message, int? duration = DefaultErrorDuration)
     {
-        ShowAlert(title, message, PageAlertType.Error, duration);
+        return ShowAlertAsync(title, message, PageAlertType.Error, duration);
     }
 
     /// <summary>
-    ///     Displays a warning alert. Can be made permanent by setting <paramref name="isPermanent" /> to true.
+    ///     Shows a warning alert.
     /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="isPermanent">If true, the alert is not automatically dismissed.</param>
+    public Task ShowWarningAsync(string title, string message, bool isPermanent = false)
+    {
+        return ShowAlertAsync(
+            title,
+            message,
+            PageAlertType.Warning,
+            isPermanent ? null : DefaultWarningDuration,
+            isPermanent
+        );
+    }
+
+    /// <summary>
+    ///     Shows an info alert.
+    /// </summary>
+    public Task ShowInfoAsync(string title, string message, bool isPermanent = false)
+    {
+        return ShowAlertAsync(
+            title,
+            message,
+            PageAlertType.Info,
+            isPermanent ? null : DefaultInfoDuration,
+            isPermanent
+        );
+    }
+
+    /// <summary>
+    ///     Clears all displayed alerts.
+    /// </summary>
+    public async Task ClearAsync()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _eventSemaphore.WaitAsync(_cts.Token);
+
+            while (_pendingAlerts.TryDequeue(out _)) { }
+
+            OnClear?.Invoke();
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error clearing alerts");
+        }
+        finally
+        {
+            if (!_cts.Token.IsCancellationRequested)
+            {
+                _eventSemaphore.Release();
+            }
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            _isDisposed = true;
+            await _cts.CancelAsync();
+            _cts.Dispose();
+            _eventSemaphore.Dispose();
+
+            while (_pendingAlerts.TryDequeue(out _)) { }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error disposing PageAlertService");
+        }
+    }
+
+    private async Task TryProcessPendingAlertsAsync()
+    {
+        if (_isDisposed || OnAlert == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _eventSemaphore.WaitAsync(_cts.Token);
+
+            while (_pendingAlerts.TryDequeue(out var alert))
+            {
+                try
+                {
+                    await OnAlert.Invoke(alert);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.LogError(ex, "Error processing alert: {AlertId}", alert.Id);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error processing pending alerts");
+        }
+        finally
+        {
+            if (!_cts.Token.IsCancellationRequested)
+            {
+                _eventSemaphore.Release();
+            }
+        }
+    }
+
+    private static int GetDefaultDuration(PageAlertType type)
+    {
+        return type switch
+        {
+            PageAlertType.Success => DefaultSuccessDuration,
+            PageAlertType.Error => DefaultErrorDuration,
+            PageAlertType.Warning => DefaultWarningDuration,
+            PageAlertType.Info => DefaultInfoDuration,
+            _ => DefaultInfoDuration
+        };
+    }
+
+    #region Backwards Compatibility Methods
+
+    // These methods maintain backwards compatibility with the old sync API
+    public void ShowAlert(string title, string message, PageAlertType type = PageAlertType.Info,
+        int? duration = null, bool isPermanent = false)
+    {
+        _ = ShowAlertAsync(title, message, type, duration, isPermanent);
+    }
+
+    public void ShowSuccess(string title, string message, int? duration = DefaultSuccessDuration)
+    {
+        _ = ShowSuccessAsync(title, message, duration);
+    }
+
+    public void ShowError(string title, string message, int? duration = DefaultErrorDuration)
+    {
+        _ = ShowErrorAsync(title, message, duration);
+    }
+
     public void ShowWarning(string title, string message, bool isPermanent = false)
     {
-        ShowAlert(title, message, PageAlertType.Warning, null, isPermanent);
+        _ = ShowWarningAsync(title, message, isPermanent);
     }
 
-    /// <summary>
-    ///     Displays an informational alert. Can be made permanent by setting <paramref name="isPermanent" /> to true.
-    /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="isPermanent">If true, the alert is not automatically dismissed.</param>
     public void ShowInfo(string title, string message, bool isPermanent = false)
     {
-        ShowAlert(title, message, PageAlertType.Info, null, isPermanent);
+        _ = ShowInfoAsync(title, message, isPermanent);
     }
 
-    /// <summary>
-    ///     Clears all displayed alerts by invoking the <see cref="OnClear" /> event.
-    /// </summary>
     public void Clear()
     {
-        OnClear?.Invoke();
+        _ = ClearAsync();
     }
+
+    #endregion
 }

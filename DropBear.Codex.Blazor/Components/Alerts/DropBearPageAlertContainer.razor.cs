@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -15,36 +16,48 @@ using Microsoft.JSInterop;
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
 /// <summary>
-///     Container for displaying and managing page-level alerts using the new DropBearPageAlert JS module.
-///     Subscribes to alert services, notification channels, and global notifications.
+///     Container for displaying and managing page-level alerts using the DropBearPageAlert JS module.
+///     Handles alert queuing, batching, and lifecycle management with optimizations for Blazor Server.
 /// </summary>
+/// <remarks>
+///     This component manages alert notifications through multiple channels:
+///     - Direct page alerts via PageAlertService
+///     - Channel-specific notifications
+///     - Global notifications
+///     Performance optimizations include:
+///     - Batched UI updates
+///     - Concurrent queue for alert management
+///     - Automatic cleanup of stale alerts
+///     - Memory-efficient event handling
+/// </remarks>
 public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 {
-    // Active page alerts displayed
-    private readonly List<PageAlertInstance> _activeAlerts = new();
+    private const string JsModuleName = JsModuleNames.PageAlerts;
+    private const int MaxQueueSize = 100;
+    private const int BatchUpdateIntervalMs = 100;
+    private const int MaxActiveAlerts = 5;
+    private readonly ConcurrentDictionary<string, PageAlertInstance> _activeAlerts = new();
 
-    // Alerts that need to be initialized in JS after first render
-    private readonly List<PageAlertInstance> _alertsToInitialize = new();
+    // Cancellation and synchronization
+    private readonly CancellationTokenSource _batchingCts = new();
+    private readonly SemaphoreSlim _initializationSemaphore = new(1, 1);
 
-    // Lock to protect concurrent modifications
-    private readonly SemaphoreSlim _semaphore = new(1, 1);
+    // Thread-safe collections for alert management
+    private readonly ConcurrentQueue<PageAlertInstance> _pendingAlerts = new();
+    private bool _batchUpdateScheduled;
+    private Task? _batchUpdateTask;
 
-    // Subscription to channel events
+    // Event subscriptions and JS module
     private IDisposable? _channelSubscription;
-
-    // JS module reference (cached once loaded in OnAfterRenderAsync)
     private IJSObjectReference? _jsModule;
 
-    // JS module name
-    private const string JsModuleName = JsModuleNames.PageAlerts;
+    /// <summary>
+    ///     Gets or sets the channel ID for notification routing.
+    /// </summary>
+    [Parameter]
+    public string? ChannelId { get; set; }
 
-    #region Parameters
-
-    [Parameter] public string? ChannelId { get; set; }
-
-    #endregion
-
-    #region Lifecycle
+    #region Lifecycle Methods
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -54,6 +67,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             InitializeSubscriptions();
+            StartBatchProcessor();
         }
         catch (Exception ex)
         {
@@ -74,25 +88,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
         try
         {
-            // Load/cache the JS module once (similar to "FileUploader style")
-            _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-
-            // If any alerts have queued up before the module was ready, initialize them
-            if (_alertsToInitialize.Count > 0)
-            {
-                await InitializeNewAlerts().ConfigureAwait(false);
-            }
+            await InitializeJsModuleAsync();
         }
         catch (Exception ex)
         {
-            LogError("Error during first render initialization for DropBearPageAlertContainer", ex);
+            LogError("Error during first render initialization", ex);
         }
     }
 
     /// <inheritdoc />
-    /// <remarks>
-    ///     Called by the base class to do final JS cleanup (e.g. hide all page alerts).
-    /// </remarks>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         if (_jsModule is null)
@@ -102,34 +106,38 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
         try
         {
-            // Hide all active alerts via JS
-            await _jsModule.InvokeAsync<bool[]>($"{JsModuleName}API.hideAll").ConfigureAwait(false);
-            LogDebug("All page alerts hidden during cleanup");
+            // Attempt to hide all active alerts gracefully
+            var hideAllResult = await _jsModule.InvokeAsync<bool[]>(
+                $"{JsModuleName}API.hideAll",
+                new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token
+            );
+
+            LogDebug("All page alerts hidden during cleanup. Success count: {SuccessCount}",
+                hideAllResult.Count(success => success));
         }
-        catch (JSDisconnectedException)
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
         {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
+            LogWarning("JS cleanup skipped: {Reason}", ex.GetType().Name);
         }
         catch (Exception ex)
         {
-            LogError("Error hiding all alerts during cleanup", ex);
+            LogError("Error hiding alerts during cleanup", ex);
         }
     }
 
     /// <inheritdoc />
-    /// <remarks>
-    ///     Dispose local resources (subscriptions, semaphores, lists).
-    ///     The base class calls this after <see cref="CleanupJavaScriptResourcesAsync" />.
-    /// </remarks>
     public override async ValueTask DisposeAsync()
     {
         try
         {
-            // Unsubscribe from .NET events
+            // Cancel batch processing
+            await _batchingCts.CancelAsync();
+            if (_batchUpdateTask != null)
+            {
+                await _batchUpdateTask;
+            }
+
+            // Cleanup subscriptions and resources
             if (PageAlertService is not null)
             {
                 PageAlertService.OnAlert -= HandleAlert;
@@ -137,14 +145,12 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             }
 
             _channelSubscription?.Dispose();
-            _semaphore.Dispose();
+            _initializationSemaphore.Dispose();
+            _batchingCts.Dispose();
 
+            // Clear collections
             _activeAlerts.Clear();
-            _alertsToInitialize.Clear();
-        }
-        catch (ObjectDisposedException ode)
-        {
-            LogWarning("Error disposing page alert container: {Message}", ode, ode.Message);
+            while (_pendingAlerts.TryDequeue(out _)) { }
         }
         catch (Exception ex)
         {
@@ -152,13 +158,164 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
         finally
         {
-            await base.DisposeAsync().ConfigureAwait(false);
+            await base.DisposeAsync();
         }
     }
 
     #endregion
 
-    #region Subscription / Notification Handling
+    #region Alert Processing
+
+    private async Task InitializeJsModuleAsync()
+    {
+        try
+        {
+            await _initializationSemaphore.WaitAsync();
+            _jsModule = await GetJsModuleAsync(JsModuleName);
+
+            // Process any queued alerts
+            await ProcessPendingAlertsAsync();
+        }
+        finally
+        {
+            _initializationSemaphore.Release();
+        }
+    }
+
+    private void StartBatchProcessor()
+    {
+        _batchUpdateTask = Task.Run(async () =>
+        {
+            try
+            {
+                while (!_batchingCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(BatchUpdateIntervalMs, _batchingCts.Token);
+                    await ProcessPendingAlertsAsync();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown
+            }
+            catch (Exception ex)
+            {
+                LogError("Error in batch processor", ex);
+            }
+        }, _batchingCts.Token);
+    }
+
+    private async Task ProcessPendingAlertsAsync()
+    {
+        if (_jsModule is null || !_pendingAlerts.Any())
+        {
+            return;
+        }
+
+        var processedCount = 0;
+        var availableSlots = MaxActiveAlerts - _activeAlerts.Count;
+
+        while (processedCount < availableSlots && _pendingAlerts.TryDequeue(out var alert))
+        {
+            try
+            {
+                var result = await _jsModule.InvokeAsync<bool>(
+                    $"{JsModuleName}API.create",
+                    alert.Id,
+                    alert.Duration ?? 5000,
+                    alert.IsPermanent
+                );
+
+                if (result)
+                {
+                    _activeAlerts.TryAdd(alert.Id, alert);
+                    processedCount++;
+                }
+                else
+                {
+                    LogWarning("Failed to create alert: {AlertId}", alert.Id);
+                }
+            }
+            catch (Exception ex)
+            {
+                LogError("Error processing alert {AlertId}", ex, alert.Id);
+            }
+        }
+
+        if (processedCount > 0)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task HandleAlert(PageAlertInstance alert)
+    {
+        try
+        {
+            if (_pendingAlerts.Count >= MaxQueueSize)
+            {
+                LogWarning("Alert queue full. Dropping alert: {AlertId}", alert.Id);
+                return;
+            }
+
+            _pendingAlerts.Enqueue(alert);
+            await ProcessPendingAlertsAsync();
+        }
+        catch (Exception ex)
+        {
+            LogError("Error handling alert {AlertId}", ex, alert.Id);
+        }
+    }
+
+    private void HandleClear()
+    {
+        try
+        {
+            // Fire and forget the async clear operation
+            _ = InvokeAsync(async () =>
+            {
+                try
+                {
+                    await _initializationSemaphore.WaitAsync();
+                    var hideTasks = _activeAlerts.Keys
+                        .Select(async alertId =>
+                        {
+                            if (_jsModule != null)
+                            {
+                                try
+                                {
+                                    await _jsModule.InvokeAsync<bool>($"{JsModuleName}API.hide", alertId);
+                                }
+                                catch (Exception ex)
+                                {
+                                    LogError($"Error hiding alert: {alertId}", ex);
+                                }
+                            }
+                        });
+
+                    await Task.WhenAll(hideTasks);
+                    _activeAlerts.Clear();
+                    StateHasChanged();
+                }
+                catch (Exception ex)
+                {
+                    LogError("Error in async clear operation", ex);
+                }
+                finally
+                {
+                    _initializationSemaphore.Release();
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            LogError("Error initiating clear operation", ex);
+        }
+    }
+
+    #endregion
+
+    #region Notification Handling
 
     private void InitializeSubscriptions()
     {
@@ -166,7 +323,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         if (PageAlertService is not null)
         {
             PageAlertService.OnAlert += HandleAlert;
-            PageAlertService.OnClear += HandleClear;
+            PageAlertService.OnClear += HandleClear;  // This needs to be void
             LogDebug("Subscribed to PageAlertService events");
         }
         else
@@ -203,7 +360,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             var alert = CreateAlertFromNotification(notification);
-            await HandleAlert(alert).ConfigureAwait(false);
+            await InvokeAsync(() => HandleAlert(alert));
         }
         catch (Exception ex)
         {
@@ -211,8 +368,14 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
     }
 
+    #endregion
+
+    #region Helper Methods
+
     private static PageAlertInstance CreateAlertFromNotification(Notification notification)
     {
+        ArgumentNullException.ThrowIfNull(notification);
+
         return new PageAlertInstance
         {
             Id = $"alert-{Guid.NewGuid():N}",
@@ -223,122 +386,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             Duration = GetDurationForSeverity(notification.Severity)
         };
     }
-
-    #endregion
-
-    #region Alert Handling
-
-    private async Task HandleAlert(PageAlertInstance alert)
-    {
-        try
-        {
-            await _semaphore.WaitAsync();
-            _activeAlerts.Add(alert);
-            _alertsToInitialize.Add(alert);
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error queuing page alert: {alert.Id}", ex);
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    private async Task InitializeNewAlerts()
-    {
-        // If we haven't loaded the module yet, wait for OnAfterRender to do it
-        if (_jsModule is null)
-        {
-            return;
-        }
-
-        foreach (var alert in _alertsToInitialize.ToList())
-        {
-            try
-            {
-                // "DropBearPageAlert.create" -> (alert.Id, alert.Duration, alert.IsPermanent)
-                var result = await _jsModule.InvokeAsync<bool>(
-                    $"{JsModuleName}API.create",
-                    alert.Id,
-                    alert.Duration ?? 5000,
-                    alert.IsPermanent
-                ).ConfigureAwait(false);
-
-                if (!result)
-                {
-                    LogWarning("Failed to create alert with ID: {AlertId}", alert.Id);
-                    _activeAlerts.Remove(alert);
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogError($"Error showing page alert: {alert.Id}", ex);
-                _activeAlerts.Remove(alert);
-                await InvokeAsync(StateHasChanged);
-            }
-            finally
-            {
-                _alertsToInitialize.Remove(alert);
-            }
-        }
-    }
-
-    private async void HandleClear()
-    {
-        try
-        {
-            await _semaphore.WaitAsync();
-            var hideTasks = _activeAlerts.Select(alert => HideAlert(alert.Id)).ToList();
-            await Task.WhenAll(hideTasks);
-
-            _activeAlerts.Clear();
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (Exception ex)
-        {
-            LogError("Error clearing alerts", ex);
-        }
-        finally
-        {
-            _semaphore.Release();
-        }
-    }
-
-    private async Task<bool> HideAlert(string alertId)
-    {
-        if (_jsModule is null)
-        {
-            return false;
-        }
-
-        try
-        {
-            var result = await _jsModule.InvokeAsync<bool>(
-                $"{JsModuleName}API.hide",
-                alertId
-            ).ConfigureAwait(false);
-
-            if (!result)
-            {
-                LogWarning("Failed to hide alert with ID: {AlertId}", alertId);
-            }
-
-            return result;
-        }
-        catch (Exception ex)
-        {
-            LogError($"Error hiding alert: {alertId}", ex);
-            return false;
-        }
-    }
-
-    #endregion
-
-    #region Helper Methods
 
     private static bool ShouldBePermanent(NotificationSeverity severity)
     {

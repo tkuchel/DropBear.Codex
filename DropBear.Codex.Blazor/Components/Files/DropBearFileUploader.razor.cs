@@ -15,368 +15,250 @@ namespace DropBear.Codex.Blazor.Components.Files;
 
 /// <summary>
 ///     A Blazor component for handling file uploads with drag-and-drop support and progress tracking.
-///     Leverages <see cref="DropBearComponentBase" /> for JavaScript interop and disposal.
+///     Optimized for Blazor Server with proper thread safety and memory management.
 /// </summary>
 public sealed partial class DropBearFileUploader : DropBearComponentBase
 {
-    // Typically rename to match your actual JS module name.
-    private const string MODULE_NAME = JsModuleNames.FileReaderHelpers;
-    private const long BYTES_PER_MB = 1024 * 1024;
+    private const string ModuleName = JsModuleNames.FileReaderHelpers;
+    private const long BytesPerMb = 1024 * 1024;
+    private const int StateUpdateDebounceMs = 100;
+    private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
 
-    // Private fields.
-    private readonly List<UploadFile> _selectedFiles = new();
+    private readonly ConcurrentDictionary<string, UploadFile> _selectedFiles = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _uploadCancellationTokens = new();
-    private readonly List<UploadFile> _uploadedFiles = new();
-    private bool _isDragOver;
-    private bool _isUploading;
+    private readonly ConcurrentQueue<UploadFile> _uploadedFiles = new();
+    private readonly SemaphoreSlim _uploadSemaphore = new(1, 1);
+    private volatile bool _isDragOver;
+
+    private volatile bool _isInitialized;
+    private volatile bool _isUploading;
     private IJSObjectReference? _jsModule;
     private IJSObjectReference? _jsUtilsModule;
-    private int _uploadProgress;
+    private CancellationTokenSource? _stateUpdateDebouncer;
+    private volatile int _uploadProgress;
 
-    #region Properties
+    [Parameter] public int MaxFileSize { get; set; } = (int)(10 * BytesPerMb);
+    [Parameter] public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
+    [Parameter] public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }
 
-    /// <summary>
-    ///     Indicates whether file upload is currently in progress.
-    /// </summary>
-    private bool IsUploading
+    [Parameter]
+    public Func<UploadFile, IProgress<int>, CancellationToken, Task<UploadResult>>? UploadFileAsync { get; set; }
+
+    private bool CanUpload => _selectedFiles.Any() && !_isUploading && !IsDisposed && UploadFileAsync != null;
+    private IReadOnlyDictionary<string, UploadFile> SelectedFiles => _selectedFiles;
+    private IEnumerable<UploadFile> UploadedFiles => _uploadedFiles.ToArray();
+
+    protected override async Task InitializeComponentAsync()
     {
-        get => _isUploading;
-        set
-        {
-            if (_isUploading == value)
-            {
-                return;
-            }
-
-            _isUploading = value;
-
-            if (IsDisposed)
-            {
-                return;
-            }
-
-            try
-            {
-                InvokeStateHasChanged(() => { });
-            }
-            catch (ObjectDisposedException)
-            {
-                // Component disposed; ignore UI update.
-            }
-        }
-    }
-
-
-    /// <summary>
-    ///     Current upload progress as a percentage.
-    /// </summary>
-    private int UploadProgress
-    {
-        get => _uploadProgress;
-        set
-        {
-            if (_uploadProgress == value)
-            {
-                return;
-            }
-
-            _uploadProgress = value;
-            // Schedule a UI update.
-            InvokeStateHasChanged(() => { });
-        }
-    }
-
-    /// <summary>
-    ///     Read-only view of currently selected files.
-    /// </summary>
-    private IReadOnlyList<UploadFile> SelectedFiles => _selectedFiles;
-
-    /// <summary>
-    ///     Read-only view of successfully uploaded files.
-    /// </summary>
-    private IReadOnlyList<UploadFile> UploadedFiles => _uploadedFiles;
-
-    /// <summary>
-    ///     Indicates whether uploading is allowed (some files are selected, no active upload, not disposed, and an upload
-    ///     delegate is set).
-    /// </summary>
-    private bool CanUpload => SelectedFiles.Any() &&
-                              !IsUploading &&
-                              !IsDisposed &&
-                              UploadFileAsync != null;
-
-    #endregion
-
-    #region Lifecycle
-
-    /// <inheritdoc />
-    /// <remarks>
-    ///     Loads the JS modules on first render.
-    /// </remarks>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
-        if (!firstRender || IsDisposed)
+        if (_isInitialized || IsDisposed)
         {
             return;
         }
 
         try
         {
-            // Load and cache the required JS modules.
-            _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
-            _jsUtilsModule = await GetJsModuleAsync(JsModuleNames.Utils).ConfigureAwait(false);
-            Logger.Debug("File uploader JS module initialized: {ComponentId}", ComponentId);
+            await _uploadSemaphore.WaitAsync(ComponentToken);
+
+            _jsModule = await GetJsModuleAsync(ModuleName);
+            _jsUtilsModule = await GetJsModuleAsync(JsModuleNames.Utils);
+
+            _isInitialized = true;
+            LogDebug("File uploader initialized");
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to initialize file uploader module: {ComponentId}", ComponentId);
-        }
-    }
-
-    /// <inheritdoc />
-    /// <remarks>
-    ///     Cancel any ongoing uploads and dispose cancellation tokens before calling base disposal logic.
-    /// </remarks>
-    public override async ValueTask DisposeAsync()
-    {
-        try
-        {
-            // Cancel and dispose all per-file cancellation tokens.
-            foreach (var cts in _uploadCancellationTokens.Values)
-            {
-                await cts.CancelAsync().ConfigureAwait(false);
-                cts.Dispose();
-            }
-
-            _uploadCancellationTokens.Clear();
+            LogError("Failed to initialize file uploader", ex);
+            throw;
         }
         finally
         {
-            await base.DisposeAsync().ConfigureAwait(false);
+            _uploadSemaphore.Release();
         }
     }
 
-    /// <inheritdoc />
-    protected override async Task CleanupJavaScriptResourcesAsync()
+    private async Task QueueStateUpdate()
     {
+        _stateUpdateDebouncer?.Cancel();
+        _stateUpdateDebouncer = new CancellationTokenSource();
+
         try
         {
-            // If needed, call a JS dispose function.
-            // Example: await _jsModule?.InvokeVoidAsync("DropBearFileUploader.dispose", ComponentId);
-            if (_jsUtilsModule is not null)
-            {
-                await _jsUtilsModule.DisposeAsync().ConfigureAwait(false);
-                _jsUtilsModule = null;
-            }
+            await Task.Delay(StateUpdateDebounceMs, _stateUpdateDebouncer.Token);
+            await InvokeAsync(StateHasChanged);
         }
-        catch (JSDisconnectedException)
+        catch (OperationCanceledException)
         {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during JS cleanup for DropBearFileUploader: {ComponentId}", ComponentId);
+            // Debouncing in action, ignore
         }
         finally
         {
-            _jsModule = null;
+            _stateUpdateDebouncer?.Dispose();
+            _stateUpdateDebouncer = null;
         }
     }
 
-    #endregion
-
-    #region Drag & Drop
-
-    /// <summary>
-    ///     Handles the drag-enter event.
-    /// </summary>
     private void HandleDragEnter()
     {
-        if (!IsUploading && !IsDisposed)
-        {
-            _isDragOver = true;
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>
-    ///     Handles the drag-leave event.
-    /// </summary>
-    private void HandleDragLeave()
-    {
-        if (!IsUploading && !IsDisposed)
-        {
-            _isDragOver = false;
-            StateHasChanged();
-        }
-    }
-
-    /// <summary>
-    ///     Handles the drop event, obtains file references via JS interop, and processes them.
-    /// </summary>
-    /// <param name="e">Drag event arguments.</param>
-    private async Task HandleDrop(DragEventArgs e)
-    {
-        _isDragOver = false;
-        if (IsUploading || IsDisposed)
+        if (_isUploading || IsDisposed)
         {
             return;
         }
 
+        _isDragOver = true;
+        _ = QueueStateUpdate();
+    }
+
+    private void HandleDragLeave()
+    {
+        if (_isUploading || IsDisposed)
+        {
+            return;
+        }
+
+        _isDragOver = false;
+        _ = QueueStateUpdate();
+    }
+
+    private async Task HandleDrop(DragEventArgs e)
+    {
+        if (_isUploading || IsDisposed)
+        {
+            return;
+        }
+
+        _isDragOver = false;
+
         try
         {
-            // Ensure the JS module is loaded.
-            if (_jsModule is null)
+            await _fileSemaphore.WaitAsync(ComponentToken);
+
+            if (!_isInitialized)
             {
-                _jsModule = await GetJsModuleAsync(MODULE_NAME).ConfigureAwait(false);
+                await InitializeComponentAsync();
             }
 
-            // Retrieve dropped files from JavaScript.
-            var jsFiles = await _jsModule.InvokeAsync<IJSObjectReference[]>(
-                    $"{MODULE_NAME}API.getDroppedFiles",
-                    ComponentToken, // Use component cancellation token.
-                    e.DataTransfer)
-                .ConfigureAwait(false);
+            var jsFiles = await _jsModule!.InvokeAsync<IJSObjectReference[]>(
+                $"{ModuleName}API.getDroppedFiles",
+                ComponentToken,
+                e.DataTransfer
+            );
 
             var browserFiles = new List<IBrowserFile>();
             foreach (var jsFile in jsFiles)
             {
                 try
                 {
-                    // Create a file proxy from the JS file reference.
-                    var proxy = await BrowserFileProxy.CreateAsync(jsFile).ConfigureAwait(false);
+                    var proxy = await BrowserFileProxy.CreateAsync(jsFile);
                     browserFiles.Add(proxy);
                 }
-                catch (Exception exProxy)
+                catch (Exception ex)
                 {
-                    Logger.Error(exProxy, "Failed to create file proxy for dropped file");
-                    await jsFile.DisposeAsync().ConfigureAwait(false);
+                    LogError("Failed to create file proxy", ex);
+                    await jsFile.DisposeAsync();
                 }
             }
 
-            await ProcessSelectedFiles(browserFiles).ConfigureAwait(false);
-            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+            await ProcessSelectedFiles(browserFiles);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling dropped files for: {ComponentId}", ComponentId);
+            LogError("Failed to handle dropped files", ex);
+        }
+        finally
+        {
+            _fileSemaphore.Release();
+            await QueueStateUpdate();
         }
     }
 
-    #endregion
-
-    #region File Selection
-
-    /// <summary>
-    ///     Handles file selection from an input element.
-    /// </summary>
-    /// <param name="e">Event arguments containing the selected files.</param>
     private async Task HandleFileSelectionAsync(InputFileChangeEventArgs e)
     {
-        if (IsUploading || IsDisposed)
+        if (_isUploading || IsDisposed)
         {
             return;
         }
 
         try
         {
-            await ProcessSelectedFiles(e.GetMultipleFiles()).ConfigureAwait(false);
-            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+            await _fileSemaphore.WaitAsync(ComponentToken);
+            await ProcessSelectedFiles(e.GetMultipleFiles());
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error processing selected files");
+            LogError("Failed to process selected files", ex);
+        }
+        finally
+        {
+            _fileSemaphore.Release();
+            await QueueStateUpdate();
         }
     }
 
-    /// <summary>
-    ///     Processes and validates the selected files.
-    /// </summary>
-    /// <param name="files">The files to process.</param>
     private async Task ProcessSelectedFiles(IReadOnlyList<IBrowserFile> files)
     {
         foreach (var file in files)
         {
             if (ValidateFile(file))
             {
-                var uploadFile = new UploadFile(
-                    file.Name,
-                    file.Size,
-                    file.ContentType,
-                    file);
-                _selectedFiles.Add(uploadFile);
-                Logger.Debug("File selected: {FileName} ({FileSize})", file.Name, FormatFileSize(file.Size));
+                var uploadFile = new UploadFile(file.Name, file.Size, file.ContentType, file);
+                _selectedFiles.TryAdd(file.Name, uploadFile);
+                LogDebug("File selected: {FileName} ({Size})", file.Name, FormatFileSize(file.Size));
             }
             else
             {
                 if (file is IAsyncDisposable disposable)
                 {
-                    await disposable.DisposeAsync().ConfigureAwait(false);
+                    await disposable.DisposeAsync();
                 }
 
-                Logger.Warning("Invalid file rejected: {FileName}", file.Name);
+                LogWarning("Invalid file rejected: {FileName}", file.Name);
             }
         }
     }
 
-    /// <summary>
-    ///     Validates the file against size and allowed type constraints.
-    /// </summary>
-    /// <param name="file">The file to validate.</param>
-    /// <returns>True if valid; otherwise, false.</returns>
     private bool ValidateFile(IBrowserFile file)
     {
         if (file.Size > MaxFileSize)
         {
-            Logger.Warning("File exceeds size limit: {FileName} ({FileSize})",
-                file.Name, FormatFileSize(file.Size));
+            LogWarning("File too large: {FileName} ({Size})", file.Name, FormatFileSize(file.Size));
             return false;
         }
 
         if (AllowedFileTypes.Any() &&
             !AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
         {
-            Logger.Warning("File type not allowed: {FileName} ({FileType})",
-                file.Name, file.ContentType);
+            LogWarning("File type not allowed: {FileName} ({Type})", file.Name, file.ContentType);
             return false;
         }
 
         return true;
     }
 
-    /// <summary>
-    ///     Removes a selected file.
-    /// </summary>
-    /// <param name="file">The file to remove.</param>
     private async Task RemoveFile(UploadFile file)
     {
-        if (IsUploading || IsDisposed)
+        if (_isUploading || IsDisposed)
         {
             return;
         }
 
-        _selectedFiles.Remove(file);
-        if (file.File is IAsyncDisposable disposable)
+        try
         {
-            await disposable.DisposeAsync().ConfigureAwait(false);
-        }
+            await _fileSemaphore.WaitAsync(ComponentToken);
 
-        Logger.Debug("File removed: {FileName}", file.Name);
-        await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+            if (_selectedFiles.TryRemove(file.Name, out _) && file.File is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
+
+            LogDebug("File removed: {FileName}", file.Name);
+        }
+        finally
+        {
+            _fileSemaphore.Release();
+            await QueueStateUpdate();
+        }
     }
 
-    #endregion
-
-    #region Upload Logic
-
-    /// <summary>
-    ///     Initiates the upload of all selected files.
-    /// </summary>
     private async Task UploadFilesAsync()
     {
         if (!CanUpload)
@@ -384,27 +266,26 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             return;
         }
 
-        IsUploading = true;
-        UploadProgress = 0;
-
         try
         {
+            await _uploadSemaphore.WaitAsync(ComponentToken);
+            _isUploading = true;
+            _uploadProgress = 0;
+
             var uploadTasks = new List<Task>();
-            // Make a copy of the selected files list.
-            foreach (var file in _selectedFiles.ToList())
+            foreach (var file in SelectedFiles.Values)
             {
-                // Create a separate cancellation token source for each file.
                 var cts = new CancellationTokenSource();
                 _uploadCancellationTokens[file.Name] = cts;
                 uploadTasks.Add(UploadSingleFile(file, cts.Token));
             }
 
-            await Task.WhenAll(uploadTasks).ConfigureAwait(false);
-            await NotifyUploadCompletion().ConfigureAwait(false);
+            await Task.WhenAll(uploadTasks);
+            await NotifyUploadCompletion();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during file upload");
+            LogError("Upload failed", ex);
         }
         finally
         {
@@ -415,17 +296,14 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
             _uploadCancellationTokens.Clear();
 
-            IsUploading = false;
-            UploadProgress = 0;
-            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
+            _isUploading = false;
+            _uploadProgress = 0;
+
+            _uploadSemaphore.Release();
+            await QueueStateUpdate();
         }
     }
 
-    /// <summary>
-    ///     Uploads a single file using the user-provided delegate.
-    /// </summary>
-    /// <param name="file">The file to upload.</param>
-    /// <param name="cancellationToken">Cancellation token for the upload.</param>
     private async Task UploadSingleFile(UploadFile file, CancellationToken cancellationToken)
     {
         file.UploadStatus = UploadStatus.Uploading;
@@ -433,103 +311,129 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
         try
         {
-            // Create a progress delegate to update both the file's individual progress and the overall progress.
             var progress = new Progress<int>(percent =>
             {
-                try
-                {
-                    file.UploadProgress = percent;
-                    // Update the overall progress as the average of all file progress values.
-                    UploadProgress = (int)_selectedFiles.Average(f => f.UploadProgress);
-                    // Schedule a UI update (fire and forget).
-                    _ = InvokeAsync(StateHasChanged);
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error updating progress UI.");
-                }
+                file.UploadProgress = percent;
+                _uploadProgress = (int)_selectedFiles.Values.Average(f => f.UploadProgress);
+                _ = QueueStateUpdate();
             });
 
-            if (UploadFileAsync is not null)
+            if (UploadFileAsync != null)
             {
-                // Invoke the user-provided delegate to perform the upload.
-                var result = await UploadFileAsync(file, progress, cancellationToken).ConfigureAwait(false);
+                var result = await UploadFileAsync(file, progress, cancellationToken);
                 file.UploadStatus = result.Status;
 
                 if (result.Status == UploadStatus.Success)
                 {
-                    _uploadedFiles.Add(file);
-                    Logger.Debug("Upload succeeded: {FileName}", file.Name);
+                    _uploadedFiles.Enqueue(file);
+                    LogDebug("Upload succeeded: {FileName}", file.Name);
                 }
                 else
                 {
-                    Logger.Warning("Upload failed: {FileName} - {Status}", file.Name, result.Status);
+                    LogWarning("Upload failed: {FileName} - {Status}", file.Name, result.Status);
                 }
-            }
-            else
-            {
-                file.UploadStatus = UploadStatus.Failure;
-                Logger.Warning("No upload delegate set for file: {FileName}", file.Name);
             }
         }
         catch (OperationCanceledException)
         {
             file.UploadStatus = UploadStatus.Cancelled;
-            Logger.Information("Upload cancelled: {FileName}", file.Name);
+            LogDebug("Upload cancelled: {FileName}", file.Name);
         }
         catch (Exception ex)
         {
             file.UploadStatus = UploadStatus.Failure;
-            Logger.Error(ex, "Upload error: {FileName}", file.Name);
+            LogError("Upload error: {FileName}", ex, file.Name);
         }
     }
 
-    /// <summary>
-    ///     Notifies listeners that files have been uploaded and removes successfully uploaded files from the selected list.
-    /// </summary>
     private async Task NotifyUploadCompletion()
     {
         if (OnFilesUploaded.HasDelegate)
         {
-            await OnFilesUploaded.InvokeAsync(_uploadedFiles.ToList()).ConfigureAwait(false);
+            await OnFilesUploaded.InvokeAsync(_uploadedFiles.ToList());
         }
 
-        // Remove successfully uploaded files from the selected files list.
-        _selectedFiles.RemoveAll(f => f.UploadStatus == UploadStatus.Success);
+        foreach (var file in _selectedFiles.Values.Where(f => f.UploadStatus == UploadStatus.Success))
+        {
+            _selectedFiles.TryRemove(file.Name, out _);
+        }
     }
 
-    /// <summary>
-    ///     Opens the file dialog via JavaScript.
-    /// </summary>
     private async Task OpenFileDialog()
     {
         try
         {
-            _jsUtilsModule ??= await GetJsModuleAsync(JsModuleNames.Utils).ConfigureAwait(false);
-            // Invoke a JS helper that triggers a click on the hidden file input element.
-            await _jsUtilsModule.InvokeVoidAsync(
+            if (!_isInitialized)
+            {
+                await InitializeComponentAsync();
+            }
+
+            await _jsUtilsModule!.InvokeVoidAsync(
                 $"{JsModuleNames.Utils}API.clickElementById",
-                $"{ComponentId}-file-input").ConfigureAwait(false);
+                $"{ComponentId}-file-input"
+            );
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error opening file dialog");
+            LogError("Failed to open file dialog", ex);
         }
     }
 
-    #endregion
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            foreach (var cts in _uploadCancellationTokens.Values)
+            {
+                await cts.CancelAsync();
+                cts.Dispose();
+            }
 
-    #region Helpers
+            _uploadCancellationTokens.Clear();
 
-    /// <summary>
-    ///     Formats a file size in bytes into a human-readable string.
-    /// </summary>
-    /// <param name="bytes">The file size in bytes.</param>
+            if (_jsUtilsModule != null)
+            {
+                await _uploadSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await _jsUtilsModule.DisposeAsync();
+                }
+                finally
+                {
+                    _uploadSemaphore.Release();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to cleanup file uploader", ex);
+        }
+        finally
+        {
+            try
+            {
+                _uploadSemaphore.Dispose();
+                _fileSemaphore.Dispose();
+                _stateUpdateDebouncer?.Dispose();
+            }
+            catch (ObjectDisposedException) { }
+
+            _jsModule = null;
+            _jsUtilsModule = null;
+            _isInitialized = false;
+        }
+    }
+
     private static string FormatFileSize(long bytes)
     {
         string[] sizes = { "B", "KB", "MB", "GB", "TB" };
         var order = 0;
         double len = bytes;
+
         while (len >= 1024 && order < sizes.Length - 1)
         {
             order++;
@@ -539,9 +443,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         return $"{len:0.##} {sizes[order]}";
     }
 
-    /// <summary>
-    ///     Returns a CSS class name based on the upload status.
-    /// </summary>
     private static string GetStatusClass(UploadStatus status)
     {
         return status switch
@@ -554,9 +455,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         };
     }
 
-    /// <summary>
-    ///     Returns an icon CSS class based on the upload status.
-    /// </summary>
     private static string GetStatusIconClass(UploadStatus status)
     {
         return status switch
@@ -568,34 +466,4 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             _ => "fas fa-question-circle text-muted"
         };
     }
-
-    #endregion
-
-    #region Parameters
-
-    /// <summary>
-    ///     Maximum allowed file size in bytes (default: 10 MB).
-    /// </summary>
-    [Parameter]
-    public int MaxFileSize { get; set; } = (int)(10 * BYTES_PER_MB);
-
-    /// <summary>
-    ///     List of allowed file types (MIME types). An empty list allows all types.
-    /// </summary>
-    [Parameter]
-    public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
-
-    /// <summary>
-    ///     Event callback triggered after files are successfully uploaded.
-    /// </summary>
-    [Parameter]
-    public EventCallback<List<UploadFile>> OnFilesUploaded { get; set; }
-
-    /// <summary>
-    ///     Delegate that performs the actual file upload and returns an <see cref="UploadResult" />.
-    /// </summary>
-    [Parameter]
-    public Func<UploadFile, IProgress<int>, CancellationToken, Task<UploadResult>>? UploadFileAsync { get; set; }
-
-    #endregion
 }

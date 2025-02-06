@@ -10,143 +10,205 @@ using Microsoft.JSInterop;
 namespace DropBear.Codex.Blazor.Components.Files;
 
 /// <summary>
-///     A Blazor component for downloading files with progress indication,
-///     refactored to support user cancellation and use DropBearComponentBase
-///     for JS interop and disposal.
+///     A Blazor component for downloading files with progress indication.
+///     Optimized for Blazor Server with proper thread safety and resource management.
 /// </summary>
 public sealed partial class DropBearFileDownloader : DropBearComponentBase
 {
-    // A small delay (optional) to allow any leftover JS calls to finish
-    private const int DISPOSAL_DELAY_MS = 100;
-
-    // A local CTS used for user-driven cancellation (e.g., a "Cancel" button).
-    // We combine it with the base class’s token so the operation also ends if
-    // the circuit is torn down or the component is disposed.
-    private readonly CancellationTokenSource _userCancellationSource = new();
-    private int _downloadProgress;
-    private bool _isDownloading;
-
-    private IJSObjectReference? _module;
     private const string JsModuleName = JsModuleNames.FileDownloader;
+    private const int DisposalDelayMs = 100;
+    private const int JsOperationTimeoutMs = 30000;
 
-    #region Lifecycle
+    private readonly SemaphoreSlim _downloadSemaphore = new(1, 1);
+    private readonly CancellationTokenSource _userCancellationSource = new();
+    private volatile int _downloadProgress;
+    private volatile bool _isDownloading;
+    private volatile bool _isInitialized;
+    private IJSObjectReference? _module;
 
-    /// <summary>
-    ///     Called after the first render to load and optionally initialize the JS module.
-    /// </summary>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    [Parameter] public string FileName { get; set; } = string.Empty;
+    [Parameter] public string FileSize { get; set; } = string.Empty;
+    [Parameter] public string FileIconClass { get; set; } = "fas fa-file-pdf";
+    [Parameter] public string ContentType { get; set; } = "application/octet-stream";
+    [Parameter] public Func<IProgress<int>, CancellationToken, Task<Stream>>? DownloadFileAsync { get; set; }
+    [Parameter] public EventCallback<bool> OnDownloadComplete { get; set; }
+
+    protected override async Task InitializeComponentAsync()
     {
-        await base.OnAfterRenderAsync(firstRender);
-
-        if (!firstRender || IsDisposed)
+        if (_isInitialized || IsDisposed)
         {
             return;
         }
 
         try
         {
-            // Load/cache the "file-downloader" module
-            _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-            // Optionally call an initialization function within that module
-            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize").ConfigureAwait(false);
+            await _downloadSemaphore.WaitAsync(ComponentToken);
 
-            LogDebug("DropBearFileDownloader JS module initialized.");
+            _module = await GetJsModuleAsync(JsModuleName);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", ComponentToken);
+
+            _isInitialized = true;
+            LogDebug("File downloader initialized");
         }
         catch (Exception ex)
         {
-            LogError("Error initializing DropBearFileDownloader module.", ex);
+            LogError("Failed to initialize file downloader", ex);
             throw;
-        }
-    }
-
-    /// <summary>
-    ///     Called by the base class during disposal to clean up JS resources and local tokens.
-    /// </summary>
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        try
-        {
-            // Cancel any user-initiated downloads to prevent hanging tasks
-            await _userCancellationSource.CancelAsync();
-
-            // Optional short delay to allow in-flight tasks or JS calls to settle
-            await Task.Delay(DISPOSAL_DELAY_MS).ConfigureAwait(false);
-        }
-        catch (JSDisconnectedException)
-        {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
-        }
-        catch (Exception ex)
-        {
-            LogError("Error during JS cleanup for DropBearFileDownloader.", ex);
         }
         finally
         {
-            _userCancellationSource.Dispose();
-            _module = null; // The base class also disposes the JS module reference from its cache
+            _downloadSemaphore.Release();
         }
     }
 
-    #endregion
-
-    #region Download Logic
-
-    /// <summary>
-    ///     Initiates the file download process.
-    /// </summary>
     private async Task StartDownload()
     {
-        if (!ValidateDownloadState())
+        if (!await ValidateDownloadStateAsync())
         {
             return;
         }
 
-        _isDownloading = true;
-        _downloadProgress = 0;
-
         try
         {
-            Logger.Information("Starting download: {FileName}", FileName);
+            await _downloadSemaphore.WaitAsync(ComponentToken);
 
-            // Wrap the component’s token + user token in a linked token:
-            // so the download stops if EITHER the component is disposed OR the user cancels.
+            await QueueStateHasChangedAsync(() =>
+            {
+                _isDownloading = true;
+                _downloadProgress = 0;
+            });
+
+            LogDebug("Starting download: {FileName}", FileName);
+
             using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
-                ComponentToken, _userCancellationSource.Token
+                ComponentToken,
+                _userCancellationSource.Token
             );
-            var downloadToken = linkedCts.Token;
+            linkedCts.Token.ThrowIfCancellationRequested();
 
-            // Perform the download
-            await ProcessDownload(downloadToken).ConfigureAwait(false);
-            await OnDownloadComplete.InvokeAsync(true).ConfigureAwait(false);
+            await ProcessDownload(linkedCts.Token);
+            await NotifyDownloadComplete(true);
         }
-        catch (JSDisconnectedException jsEx)
+        catch (Exception ex) when (ex is OperationCanceledException or JSDisconnectedException)
         {
-            LogWarning("Download interrupted (JS disconnected): {FileName}", jsEx, FileName);
-            await OnDownloadComplete.InvokeAsync(false).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException ocEx)
-        {
-            LogWarning("Download canceled: {FileName}", ocEx, FileName);
-            await OnDownloadComplete.InvokeAsync(false).ConfigureAwait(false);
+            LogWarning("Download interrupted: {Reason}", ex.GetType().Name);
+            await NotifyDownloadComplete(false);
         }
         catch (Exception ex)
         {
             LogError("Download failed: {FileName}", ex, FileName);
-            await OnDownloadComplete.InvokeAsync(false).ConfigureAwait(false);
+            await NotifyDownloadComplete(false);
         }
         finally
         {
-            await CleanupDownload().ConfigureAwait(false);
+            await CleanupDownload();
+            _downloadSemaphore.Release();
         }
     }
 
-    /// <summary>
-    ///     Cancel the active download by canceling our local token.
-    /// </summary>
+    private async Task ProcessDownload(CancellationToken token)
+    {
+        if (DownloadFileAsync == null || _module == null)
+        {
+            throw new InvalidOperationException("Download not properly configured");
+        }
+
+        // Create a progress object that safely updates UI
+        var progress = new Progress<int>(async percent =>
+        {
+            await QueueStateHasChangedAsync(() => _downloadProgress = percent);
+            LogDebug("Download progress: {Progress}%", percent);
+        });
+
+        // Get the file stream
+        await using var resultStream = await DownloadFileAsync(progress, token);
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+        timeoutCts.CancelAfter(JsOperationTimeoutMs);
+
+        // Create stream reference and invoke JS download
+        using var streamRef = new DotNetStreamReference(resultStream);
+        var success = await _module.InvokeAsync<bool>(
+            $"{JsModuleName}API.downloadFileFromStream",
+            timeoutCts.Token,
+            FileName,
+            streamRef,
+            ContentType
+        );
+
+        if (!success)
+        {
+            throw new InvalidOperationException("JS download failed");
+        }
+    }
+
+    private async Task NotifyDownloadComplete(bool success)
+    {
+        if (OnDownloadComplete.HasDelegate)
+        {
+            try
+            {
+                await OnDownloadComplete.InvokeAsync(success);
+            }
+            catch (Exception ex)
+            {
+                LogError("Error in download completion callback", ex);
+            }
+        }
+    }
+
+    private async Task CleanupDownload()
+    {
+        await QueueStateHasChangedAsync(() =>
+        {
+            _isDownloading = false;
+            _downloadProgress = 0;
+        });
+        LogDebug("Download finalized: {FileName}", FileName);
+    }
+
+    private async Task<bool> ValidateDownloadStateAsync()
+    {
+        if (!_isInitialized)
+        {
+            LogWarning("Cannot start download - component not initialized");
+            return false;
+        }
+
+        if (_isDownloading)
+        {
+            LogWarning("Download already in progress");
+            return false;
+        }
+
+        if (DownloadFileAsync == null)
+        {
+            LogWarning("No download delegate provided");
+            return false;
+        }
+
+        if (IsDisposed)
+        {
+            LogWarning("Cannot start download - component is disposed");
+            return false;
+        }
+
+        if (_module == null)
+        {
+            try
+            {
+                await InitializeComponentAsync();
+                return _module != null;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void CancelDownload()
     {
         if (!_isDownloading)
@@ -154,127 +216,58 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
             return;
         }
 
-        LogDebug("User cancel requested for file: {FileName}", FileName);
+        LogDebug("Canceling download: {FileName}", FileName);
         _userCancellationSource.Cancel();
     }
 
-    /// <summary>
-    ///     Actual download logic: fetches the stream, calls JS to prompt user save.
-    /// </summary>
-    private async Task ProcessDownload(CancellationToken token)
+    protected override async Task CleanupJavaScriptResourcesAsync()
     {
-        // 1) Retrieve the file stream from the user-provided delegate with progress
-        if (DownloadFileAsync is null)
+        try
         {
-            throw new InvalidOperationException("No download delegate provided.");
+            _userCancellationSource.Cancel();
+
+            if (_isDownloading)
+            {
+                await Task.Delay(DisposalDelayMs, CancellationToken.None);
+            }
+
+            if (_module != null)
+            {
+                await _downloadSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await _module.InvokeVoidAsync(
+                        $"{JsModuleName}API.dispose",
+                        new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token
+                    );
+                    LogDebug("File downloader resources cleaned up");
+                }
+                finally
+                {
+                    _downloadSemaphore.Release();
+                }
+            }
         }
-
-        var progress = new Progress<int>(UpdateProgress);
-        await using var resultStream = await DownloadFileAsync(progress, token).ConfigureAwait(false);
-
-        // 2) Convert the result stream into a DotNetStreamReference for JS to handle
-        var streamRef = new DotNetStreamReference(resultStream);
-
-        // 3) Call into the JS module to save the file
-        LogDebug("Initiating client-side download: {FileName}", FileName);
-
-        var result = _module?.InvokeAsync<bool>(
-            $"{JsModuleName}API.downloadFileFromStream", token, FileName,
-            streamRef,
-            ContentType
-        ).ConfigureAwait(false);
-
-        if (result is null)
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
         {
-            throw new InvalidOperationException("JS module not available.");
+            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to cleanup file downloader", ex);
+        }
+        finally
+        {
+            try
+            {
+                _userCancellationSource.Dispose();
+                _downloadSemaphore.Dispose();
+            }
+            catch (ObjectDisposedException) { }
+
+            _module = null;
+            _isInitialized = false;
+            _isDownloading = false;
         }
     }
-
-    /// <summary>
-    ///     Handle progress updates. Not thread-safe by default, but typically safe for a single download.
-    /// </summary>
-    private void UpdateProgress(int percent)
-    {
-        _downloadProgress = percent;
-        LogDebug("Download progress: {Progress}%", percent);
-        _ = InvokeAsync(StateHasChanged); // Fire & forget
-    }
-
-    /// <summary>
-    ///     Finalize the download, reset flags, re-render.
-    /// </summary>
-    private async Task CleanupDownload()
-    {
-        _isDownloading = false;
-
-        // Optionally force a final render
-        await InvokeStateHasChangedAsync(() =>
-        {
-            LogDebug("Download finalized: {FileName}", FileName);
-            return Task.CompletedTask;
-        });
-    }
-
-    /// <summary>
-    ///     Confirm that we can start a download.
-    /// </summary>
-    private bool ValidateDownloadState()
-    {
-        if (_isDownloading || DownloadFileAsync is null)
-        {
-            Logger.Warning("Invalid download state: IsDownloading={IsDownloading}, HasDelegate={HasDelegate}",
-                _isDownloading, DownloadFileAsync != null);
-            return false;
-        }
-
-        if (IsDisposed)
-        {
-            Logger.Warning("Cannot start download - component is disposed");
-            return false;
-        }
-
-        return true;
-    }
-
-    #endregion
-
-    #region Parameters
-
-    /// <summary>
-    ///     Displayed filename (e.g., "document.pdf").
-    /// </summary>
-    [Parameter]
-    public string FileName { get; set; } = string.Empty;
-
-    /// <summary>
-    ///     Displayed file size (e.g., "2.5 MB").
-    /// </summary>
-    [Parameter]
-    public string FileSize { get; set; } = string.Empty;
-
-    /// <summary>
-    ///     CSS class for the file icon (e.g., "fas fa-file-pdf").
-    /// </summary>
-    [Parameter]
-    public string FileIconClass { get; set; } = "fas fa-file-pdf";
-
-    /// <summary>
-    ///     Delegate returning a stream for the file to be downloaded, plus progress reporting and cancellation.
-    /// </summary>
-    [Parameter]
-    public Func<IProgress<int>, CancellationToken, Task<Stream>>? DownloadFileAsync { get; set; }
-
-    /// <summary>
-    ///     Event callback invoked upon download completion (true=success, false=failed/cancelled).
-    /// </summary>
-    [Parameter]
-    public EventCallback<bool> OnDownloadComplete { get; set; }
-
-    /// <summary>
-    ///     The MIME content type for the file.
-    /// </summary>
-    [Parameter]
-    public string ContentType { get; set; } = "application/octet-stream";
-
-    #endregion
 }

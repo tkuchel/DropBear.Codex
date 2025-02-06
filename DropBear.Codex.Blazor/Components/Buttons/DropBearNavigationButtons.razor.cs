@@ -11,16 +11,15 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 
 /// <summary>
 ///     A component that renders navigational buttons for going back, going home, and scrolling to top.
+///     Optimized for Blazor Server with proper thread synchronization and memory management.
 /// </summary>
 public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 {
     private const string JsModuleName = JsModuleNames.NavigationButtons;
+    private readonly SemaphoreSlim _navigationSemaphore = new(1, 1);
     private DotNetObjectReference<DropBearNavigationButtons>? _dotNetRef;
-
-    // Controls the 'Scroll to Top' button's visibility.
-    private bool _isVisible;
-
-    // -- Private fields --
+    private bool _isInitialized;
+    private volatile bool _isVisible;
     private IJSObjectReference? _module;
 
     private bool IsVisible
@@ -34,158 +33,9 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             }
 
             _isVisible = value;
-            try
-            {
-                // Use safe UI update helper (already modified in DropBearComponentBase).
-                InvokeStateHasChanged(() => { });
-            }
-            catch (ObjectDisposedException)
-            {
-                // Component disposed; ignore UI update.
-            }
+            _ = QueueStateHasChangedAsync(() => { });
         }
     }
-
-    /// <inheritdoc />
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
-        if (!firstRender || IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            // Get (and cache) the JS module once.
-            _module = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-
-            // Initialize the JS module.
-            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize").ConfigureAwait(false);
-
-            // Create the NavigationManager instance in JS by passing this .NET reference.
-            _dotNetRef = DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync($"{JsModuleName}API.createNavigationManager", _dotNetRef)
-                .ConfigureAwait(false);
-
-            LogDebug("DropBearNavigationButtons JS interop initialized.");
-        }
-        catch (Exception ex)
-        {
-            LogError("Error initializing DropBearNavigationButtons JS interop.", ex);
-            throw;
-        }
-    }
-
-    /// <summary>
-    ///     Navigate back one step in the browser history.
-    /// </summary>
-    private async Task GoBack()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-            await _module.InvokeVoidAsync($"{JsModuleName}API.goBack").ConfigureAwait(false);
-            LogDebug("Navigated back via DropBearNavigationButtons.");
-        }
-        catch (Exception ex)
-        {
-            LogError("Error navigating back", ex);
-        }
-    }
-
-    /// <summary>
-    ///     Navigate to the home page ("/") using Blazor NavigationManager.
-    /// </summary>
-    private void GoHome()
-    {
-        try
-        {
-            NavigationManager.NavigateTo("/");
-            LogDebug("Navigated to home via DropBearNavigationButtons.");
-        }
-        catch (Exception ex)
-        {
-            LogError("Error navigating to home", ex);
-        }
-    }
-
-    /// <summary>
-    ///     Scroll the page to the top.
-    /// </summary>
-    private async Task ScrollToTop()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            _module ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-            await _module.InvokeVoidAsync($"{JsModuleName}API.scrollToTop").ConfigureAwait(false);
-            LogDebug("Page scrolled to top via DropBearNavigationButtons.");
-        }
-        catch (Exception ex)
-        {
-            LogError("Error scrolling to top", ex);
-        }
-    }
-
-    /// <summary>
-    ///     JS-invokable method called by the JavaScript code to update the scroll-to-top button's visibility.
-    /// </summary>
-    /// <param name="isVisible">True if the button should be visible; otherwise false.</param>
-    [JSInvokable]
-    public void UpdateVisibility(bool isVisible)
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        IsVisible = isVisible;
-        LogDebug("Scroll-to-top button visibility updated: {IsVisible}", isVisible);
-    }
-
-    /// <summary>
-    ///     Called by the base class during disposal to allow custom JS cleanup.
-    /// </summary>
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        try
-        {
-            if (_module is not null)
-            {
-                await _module.InvokeVoidAsync($"{JsModuleName}API.disposeAPI").ConfigureAwait(false);
-                LogDebug("DropBearNavigationButtons disposed via JS interop.");
-            }
-        }
-        catch (JSDisconnectedException)
-        {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
-        }
-        catch (Exception ex)
-        {
-            LogError("Error disposing DropBearNavigationButtons via JS interop.", ex);
-        }
-        finally
-        {
-            _dotNetRef?.Dispose();
-            _dotNetRef = null;
-        }
-    }
-
-    #region Parameters
 
     [Parameter] public string BackButtonTop { get; set; } = "20px";
     [Parameter] public string BackButtonLeft { get; set; } = "80px";
@@ -194,5 +44,172 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     [Parameter] public string ScrollTopButtonBottom { get; set; } = "20px";
     [Parameter] public string ScrollTopButtonRight { get; set; } = "20px";
 
-    #endregion
+    protected override async Task InitializeComponentAsync()
+    {
+        if (_isInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _navigationSemaphore.WaitAsync(ComponentToken);
+
+            _module = await GetJsModuleAsync(JsModuleName);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", ComponentToken);
+
+            _dotNetRef = DotNetObjectReference.Create(this);
+            await _module.InvokeVoidAsync($"{JsModuleName}API.createNavigationManager",
+                ComponentToken, _dotNetRef);
+
+            _isInitialized = true;
+            LogDebug("Navigation buttons initialized");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to initialize navigation buttons", ex);
+            throw;
+        }
+        finally
+        {
+            _navigationSemaphore.Release();
+        }
+    }
+
+    private async Task GoBack()
+    {
+        if (!_isInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _navigationSemaphore.WaitAsync(ComponentToken);
+
+            if (_module == null)
+            {
+                _module = await GetJsModuleAsync(JsModuleName);
+            }
+
+            await _module.InvokeVoidAsync($"{JsModuleName}API.goBack", ComponentToken);
+            LogDebug("Navigated back");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to navigate back", ex);
+        }
+        finally
+        {
+            _navigationSemaphore.Release();
+        }
+    }
+
+    private async Task GoHome()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await InvokeAsync(() => NavigationManager.NavigateTo("/"));
+            LogDebug("Navigated home");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to navigate home", ex);
+        }
+    }
+
+    private async Task ScrollToTop()
+    {
+        if (!_isInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _navigationSemaphore.WaitAsync(ComponentToken);
+
+            if (_module == null)
+            {
+                _module = await GetJsModuleAsync(JsModuleName);
+            }
+
+            await _module.InvokeVoidAsync($"{JsModuleName}API.scrollToTop", ComponentToken);
+            LogDebug("Scrolled to top");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to scroll to top", ex);
+        }
+        finally
+        {
+            _navigationSemaphore.Release();
+        }
+    }
+
+    [JSInvokable]
+    public async Task UpdateVisibility(bool isVisible)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await InvokeAsync(() => IsVisible = isVisible);
+            LogDebug("Visibility updated: {IsVisible}", isVisible);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to update visibility", ex);
+        }
+    }
+
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            if (_module != null)
+            {
+                await _navigationSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
+                try
+                {
+                    await _module.InvokeVoidAsync($"{JsModuleName}API.disposeAPI",
+                        new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+                    LogDebug("Navigation resources cleaned up");
+                }
+                finally
+                {
+                    _navigationSemaphore.Release();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to cleanup navigation resources", ex);
+        }
+        finally
+        {
+            try
+            {
+                _dotNetRef?.Dispose();
+                _navigationSemaphore.Dispose();
+            }
+            catch (ObjectDisposedException) { }
+
+            _dotNetRef = null;
+            _module = null;
+            _isInitialized = false;
+        }
+    }
 }

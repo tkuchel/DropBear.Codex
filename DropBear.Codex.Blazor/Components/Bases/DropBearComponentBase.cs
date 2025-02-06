@@ -1,7 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
-using DropBear.Codex.Blazor.Extensions;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using Microsoft.AspNetCore.Components;
@@ -13,43 +13,43 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Components.Bases;
 
 /// <summary>
-///     Abstract base class for DropBear components providing common lifecycle management,
-///     JavaScript interop, and resource disposal patterns.
+///     Abstract base class for DropBear components providing optimized lifecycle management,
+///     JavaScript interop, and resource disposal patterns for Blazor Server.
 /// </summary>
 public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 {
-    #region Fields and Properties
-
+    private const int JS_OPERATION_TIMEOUT_SECONDS = 5;
     private readonly CancellationTokenSource _circuitCts = new();
-    private readonly AsyncLock _moduleCacheLock = new();
     private readonly ConcurrentDictionary<string, IJSObjectReference> _jsModuleCache = new();
+    private readonly AsyncLock _moduleCacheLock = new();
+    private readonly SemaphoreSlim _stateChangeSemaphore = new(1, 1);
+    private TaskCompletionSource<bool>? _initializationTcs;
     private int _isDisposed;
+    private volatile bool _isStateChangeQueued;
 
     /// <summary>
-    ///     Unique component identifier for DOM interactions.
+    ///     Unique component identifier using a thread-safe initialization pattern.
     /// </summary>
     protected string ComponentId { get; } = $"dropbear-{Guid.NewGuid():N}";
 
     /// <summary>
-    ///     Indicates if the component is connected to an active circuit.
+    ///     Thread-safe connection state tracking.
     /// </summary>
     protected bool IsConnected { get; private set; } = true;
 
     /// <summary>
-    ///     Cancellation token tied to component lifecycle.
+    ///     Cancellation token for component operations.
     /// </summary>
     protected CancellationToken ComponentToken => _circuitCts.Token;
 
     /// <summary>
-    ///     Flag indicating if the component has been disposed.
+    ///     Thread-safe disposal state.
     /// </summary>
-    protected bool IsDisposed => _isDisposed == 1;
+    protected bool IsDisposed => Volatile.Read(ref _isDisposed) == 1;
 
     [Inject] protected IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] protected ILogger Logger { get; set; } = null!;
     [Inject] protected IJsInitializationService JsInitializationService { get; set; } = null!;
-
-    #endregion
 
     #region Lifecycle Management
 
@@ -57,38 +57,46 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     {
         try
         {
-            // Ensure the base component initialization is complete.
-            await base.OnInitializedAsync().ConfigureAwait(false);
+            _initializationTcs = new TaskCompletionSource<bool>();
+            await base.OnInitializedAsync();
             IsConnected = true;
+            _initializationTcs.TrySetResult(true);
         }
         catch (Exception ex)
         {
             LogError("Component initialization failed", ex);
+            _initializationTcs?.TrySetException(ex);
             throw;
         }
     }
 
-    /// <summary>
-    ///     **[Deprecated Override Point]**
-    ///     This method is provided for backward compatibility. Derived classes should override <see cref="DisposeAsyncCore" />
-    ///     instead.
-    /// </summary>
-    /// <param name="disposing">Indicates whether the method is being called during disposal.</param>
-    protected virtual async ValueTask DisposeAsync(bool disposing)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (disposing)
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (firstRender)
         {
-            // Note: This method is not used by the base implementation.
-            await DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await InitializeComponentAsync();
+            }
+            catch (Exception ex)
+            {
+                LogError("Component post-render initialization failed", ex);
+            }
         }
     }
 
     /// <summary>
-    ///     Public asynchronous disposal method following the IAsyncDisposable pattern.
+    ///     Override point for component-specific initialization after first render.
     /// </summary>
+    protected virtual Task InitializeComponentAsync()
+    {
+        return Task.CompletedTask;
+    }
+
     public virtual async ValueTask DisposeAsync()
     {
-        // Ensure disposal happens only once.
         if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
         {
             return;
@@ -96,8 +104,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
         try
         {
-            // Call the core disposal logic.
-            await DisposeAsyncCore().ConfigureAwait(false);
+            await DisposeAsyncCore();
             GC.SuppressFinalize(this);
         }
         catch (Exception ex)
@@ -106,37 +113,30 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
     }
 
-    /// <summary>
-    ///     Core disposal logic that derived classes can override to add custom disposal steps.
-    /// </summary>
-    /// <remarks>
-    ///     Derived classes should override this method instead of <see cref="DisposeAsync(bool)" />.
-    /// </remarks>
     protected virtual async ValueTask DisposeAsyncCore()
     {
-        // Cancel any ongoing operations associated with this component.
-        await _circuitCts.CancelAsync().ConfigureAwait(false);
-
         try
         {
-            // Allow derived components to clean up their JavaScript resources.
-            await CleanupJavaScriptResourcesAsync().ConfigureAwait(false);
-            // Dispose all cached JS modules.
-            await DisposeJsModulesAsync().ConfigureAwait(false);
+            await _circuitCts.CancelAsync();
+
+            var cleanupTask = Task.WhenAll(
+                CleanupJavaScriptResourcesAsync(),
+                DisposeJsModulesAsync()
+            );
+
+            // Use timeout to prevent hanging
+            await Task.WhenAny(cleanupTask, Task.Delay(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS), ComponentToken));
         }
-        catch (JSDisconnectedException)
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
         {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
+            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
         }
         finally
         {
-            // Dispose managed resources.
             _circuitCts.Dispose();
             _moduleCacheLock.Dispose();
+            _stateChangeSemaphore.Dispose();
+            _initializationTcs = null;
         }
     }
 
@@ -144,18 +144,10 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
     #region JavaScript Interop
 
-    /// <summary>
-    ///     Safely retrieves a JavaScript module reference with caching and initialization.
-    /// </summary>
-    /// <param name="moduleName">Name of the JS module to load.</param>
-    /// <param name="modulePath">
-    ///     Path to the module file (defaults to standard location).
-    ///     Use string.Format notation to insert the module name.
-    /// </param>
-    /// <returns>Cached JavaScript module reference.</returns>
     protected async Task<IJSObjectReference> GetJsModuleAsync(
         string moduleName,
-        string modulePath = "./_content/DropBear.Codex.Blazor/js/{0}.module.js")
+        string modulePath = "./_content/DropBear.Codex.Blazor/js/{0}.module.js",
+        [CallerMemberName] string? caller = null)
     {
         EnsureNotDisposed();
 
@@ -164,8 +156,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             return cachedModule;
         }
 
-        // Use an asynchronous lock to ensure that only one load operation occurs per module.
-        using (await _moduleCacheLock.LockAsync(ComponentToken).ConfigureAwait(false))
+        using (await _moduleCacheLock.LockAsync(ComponentToken))
         {
             if (_jsModuleCache.TryGetValue(moduleName, out cachedModule))
             {
@@ -174,126 +165,130 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
             try
             {
-                // Load the JS module.
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+                cts.CancelAfter(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS));
+
                 var module = await JsRuntime
                     .InvokeAsync<IJSObjectReference>(
                         "import",
-                        ComponentToken,
-                        string.Format(modulePath, moduleName))
-                    .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
-                    .ConfigureAwait(false);
+                        cts.Token,
+                        string.Format(modulePath, moduleName));
 
                 _jsModuleCache[moduleName] = module;
 
-                // Ensure that the module is properly initialized.
-                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName)
-                    .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
-                    .ConfigureAwait(false);
+                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName);
 
+                LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
                 return module;
-            }
-            catch (OperationCanceledException)
-            {
-                LogDebug("Module load cancelled: {Module}", moduleName);
-                throw;
             }
             catch (Exception ex)
             {
-                LogError("Failed to load JS module: {Module}", ex, moduleName);
-                throw new InvalidOperationException($"JS module '{moduleName}' load failed", ex);
+                LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
+                throw new InvalidOperationException($"Failed to load JS module: {moduleName}", ex);
             }
         }
     }
 
-    /// <summary>
-    ///     Safely invokes a JavaScript function with result handling.
-    /// </summary>
-    protected async Task<T> SafeJsInteropAsync<T>(string identifier, params object[] args)
+    protected async Task<T> SafeJsInteropAsync<T>(
+        string identifier,
+        [CallerMemberName] string? caller = null,
+        params object[] args)
     {
         EnsureNotDisposed();
 
         try
         {
-            return await JsRuntime
-                .InvokeAsync<T>(identifier, ComponentToken, args)
-                .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
-                .ConfigureAwait(false);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS));
+
+            return await JsRuntime.InvokeAsync<T>(identifier, cts.Token, args);
         }
-        catch (Exception ex) when (HandleJsException(ex, identifier))
+        catch (Exception ex) when (HandleJsException(ex, identifier, caller))
         {
             throw;
         }
     }
 
-    /// <summary>
-    ///     Safely invokes a JavaScript void function.
-    /// </summary>
-    protected async Task SafeJsVoidInteropAsync(string identifier, params object[] args)
+    protected async Task SafeJsVoidInteropAsync(
+        string identifier,
+        [CallerMemberName] string? caller = null,
+        params object[] args)
     {
         EnsureNotDisposed();
 
         try
         {
-            await JsRuntime
-                .InvokeVoidAsync(identifier, ComponentToken, args)
-                .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
-                .ConfigureAwait(false);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS));
+
+            await JsRuntime.InvokeVoidAsync(identifier, cts.Token, args);
         }
-        catch (Exception ex) when (HandleJsException(ex, identifier))
+        catch (Exception ex) when (HandleJsException(ex, identifier, caller))
         {
             throw;
         }
     }
 
-    /// <summary>
-    ///     Ensures that the specified JavaScript module is initialized.
-    /// </summary>
-    protected async Task EnsureJsModuleInitializedAsync(string moduleName)
+    #endregion
+
+    #region State Management
+
+    protected async Task QueueStateHasChangedAsync(Func<Task> action)
     {
-        EnsureNotDisposed();
+        if (IsDisposed)
+        {
+            return;
+        }
 
         try
         {
-            await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName)
-                .WaitAsync(TimeSpan.FromSeconds(5), ComponentToken)
-                .ConfigureAwait(false);
+            await _stateChangeSemaphore.WaitAsync(ComponentToken);
+
+            if (!_isStateChangeQueued)
+            {
+                _isStateChangeQueued = true;
+                try
+                {
+                    await action();
+                    await InvokeAsync(StateHasChanged);
+                }
+                finally
+                {
+                    _isStateChangeQueued = false;
+                }
+            }
         }
-        catch (OperationCanceledException)
+        finally
         {
-            LogDebug("Module initialization cancelled: {Module}", moduleName);
-            throw;
+            _stateChangeSemaphore.Release();
         }
-        catch (Exception ex)
+    }
+
+    protected async Task QueueStateHasChangedAsync(Action action)
+    {
+        await QueueStateHasChangedAsync(() =>
         {
-            LogError("Failed to initialize JS module: {Module}", ex, moduleName);
-            throw new InvalidOperationException($"JS module '{moduleName}' initialization failed", ex);
-        }
+            action();
+            return Task.CompletedTask;
+        });
     }
 
     #endregion
 
     #region Resource Management
 
-    /// <summary>
-    ///     Disposes all cached JavaScript module references.
-    ///     Exceptions due to circuit disconnection or cancellation are logged as warnings.
-    /// </summary>
-    private async ValueTask DisposeJsModulesAsync()
+    private async Task DisposeJsModulesAsync()
     {
         foreach (var (moduleName, moduleRef) in _jsModuleCache)
         {
             try
             {
-                await moduleRef.DisposeAsync().ConfigureAwait(false);
+                await moduleRef.DisposeAsync();
                 LogDebug("Disposed JS module: {Module}", moduleName);
             }
-            catch (JSDisconnectedException)
+            catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
             {
-                LogWarning("JS module {Module} disposal skipped due to circuit disconnection", moduleName);
-            }
-            catch (TaskCanceledException)
-            {
-                LogWarning("JS module {Module} disposal skipped due to cancellation", moduleName);
+                LogWarning("JS module {Module} disposal interrupted: {Reason}", moduleName, ex.GetType().Name);
             }
             catch (Exception ex)
             {
@@ -304,9 +299,6 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         _jsModuleCache.Clear();
     }
 
-    /// <summary>
-    ///     Override point for component-specific JavaScript cleanup.
-    /// </summary>
     protected virtual Task CleanupJavaScriptResourcesAsync()
     {
         return Task.CompletedTask;
@@ -314,113 +306,39 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
     #endregion
 
-    #region State Management
+    #region Helper Methods
 
-    /// <summary>
-    /// Executes an action and triggers a UI update.
-    /// If the component is disposed, the UI update is silently skipped.
-    /// </summary>
-    protected void InvokeStateHasChanged(Action action)
+    private void EnsureNotDisposed([CallerMemberName] string? caller = null)
     {
         if (IsDisposed)
         {
-            // Component is disposed; skip UI update.
-            return;
-        }
-        try
-        {
-            action();
-            StateHasChanged();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The component has been disposed—ignore this update.
-        }
-        catch (Exception ex)
-        {
-            LogError("State update failed", ex);
-            throw;
+            throw new ObjectDisposedException(GetType().Name, $"Component disposed when calling {caller}");
         }
     }
 
-    /// <summary>
-    /// Executes an asynchronous operation and triggers a UI update.
-    /// If the component is disposed, the UI update is silently skipped.
-    /// </summary>
-    protected async Task InvokeStateHasChangedAsync(Func<Task> action)
-    {
-        if (IsDisposed)
-        {
-            // Component is disposed; skip UI update.
-            return;
-        }
-        try
-        {
-            await action().ConfigureAwait(false);
-            await InvokeAsync(StateHasChanged).ConfigureAwait(false);
-        }
-        catch (ObjectDisposedException)
-        {
-            // The component has been disposed—ignore this update.
-        }
-        catch (Exception ex)
-        {
-            LogError("Async state update failed", ex);
-            throw;
-        }
-    }
-
-    #endregion
-
-
-    #region Helpers
-
-    /// <summary>
-    ///     Throws an ObjectDisposedException if the component has already been disposed.
-    /// </summary>
-    private void EnsureNotDisposed()
-    {
-        if (IsDisposed)
-        {
-            throw new ObjectDisposedException(GetType().Name);
-        }
-    }
-
-    /// <summary>
-    ///     Handles JavaScript interop exceptions, setting the connection state and logging appropriately.
-    /// </summary>
-    private bool HandleJsException(Exception ex, string identifier)
+    private bool HandleJsException(Exception ex, string identifier, string? caller)
     {
         if (ex is JSDisconnectedException or TaskCanceledException)
         {
             IsConnected = false;
-            LogWarning("JS disconnected during operation: {Operation}", identifier);
+            LogWarning("JS operation interrupted: {Operation} (called from {Caller})", identifier, caller);
             return true;
         }
 
-        LogError("JS operation failed: {Operation}", ex, identifier);
+        LogError("JS operation failed: {Operation} (called from {Caller})", ex, identifier, caller);
         return false;
     }
 
-    /// <summary>
-    ///     Logs errors with the component type name as context.
-    /// </summary>
     protected void LogError(string message, Exception ex, params object[] args)
     {
         Logger.Error(ex, $"{GetType().Name}: {message}", args);
     }
 
-    /// <summary>
-    ///     Logs warnings with the component type name as context.
-    /// </summary>
     protected void LogWarning(string message, params object[] args)
     {
         Logger.Warning($"{GetType().Name}: {message}", args);
     }
 
-    /// <summary>
-    ///     Logs debug information with the component type name as context.
-    /// </summary>
     protected void LogDebug(string message, params object[] args)
     {
         Logger.Debug($"{GetType().Name}: {message}", args);

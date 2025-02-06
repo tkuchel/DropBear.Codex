@@ -1,8 +1,12 @@
-﻿using DropBear.Codex.Blazor.Components.Bases;
+﻿#region
+
+using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
@@ -12,9 +16,10 @@ namespace DropBear.Codex.Blazor.Components.Notifications;
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
     private const string JsModuleName = JsModuleNames.Snackbar;
-    private IJSObjectReference? _jsModule;
+
     // Store the DotNet reference for cleanup.
     private DotNetObjectReference<DropBearSnackbar>? _dotNetRef;
+    private IJSObjectReference? _jsModule;
 
     /// <summary>
     ///     Unique snackbar instance details (title, message, duration, etc.)
@@ -57,28 +62,24 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         try
         {
             // 1) Retrieve the module reference once
-            _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
+            _jsModule = await GetJsModuleAsync(JsModuleName);
 
             if (_jsModule is not null)
             {
                 // 2) Create the snackbar in JS
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance)
-                    .ConfigureAwait(false);
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.createSnackbar", SnackbarInstance.Id, SnackbarInstance);
 
                 // 3) Create and store the .NET reference for interop
                 _dotNetRef = DotNetObjectReference.Create(this);
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id, _dotNetRef)
-                    .ConfigureAwait(false);
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.setDotNetReference", SnackbarInstance.Id, _dotNetRef);
 
                 // 4) Show the snackbar
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id)
-                    .ConfigureAwait(false);
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.show", SnackbarInstance.Id);
 
                 // 5) If auto-close is enabled, start the progress
                 if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
                 {
-                    await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress", SnackbarInstance.Id, SnackbarInstance.Duration)
-                        .ConfigureAwait(false);
+                    await _jsModule.InvokeVoidAsync($"{JsModuleName}API.startProgress", SnackbarInstance.Id, SnackbarInstance.Duration);
                 }
             }
 
@@ -100,7 +101,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         {
             try
             {
-                await action.OnClick.Invoke().ConfigureAwait(false);
+                await action.OnClick.Invoke();
             }
             catch (Exception ex)
             {
@@ -108,8 +109,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             }
         }
 
-        // Optionally, call a "hide" method in JS or do the .NET close sequence.
-        await CloseAsync().ConfigureAwait(false);
+        await CloseAsync();
     }
 
     /// <summary>
@@ -128,8 +128,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             // when the element has already been removed.
             try
             {
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.hide", SnackbarInstance.Id)
-                    .ConfigureAwait(false);
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.hide", SnackbarInstance.Id);
             }
             catch (Exception ex)
             {
@@ -147,7 +146,11 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
             if (OnClose.HasDelegate)
             {
-                await OnClose.InvokeAsync().ConfigureAwait(false);
+                // Use the Dispatcher to ensure we're on the correct thread for UI updates
+                await InvokeAsync(async () =>
+                {
+                    await OnClose.InvokeAsync();
+                });
             }
 
             LogDebug("Snackbar {Id} closed", SnackbarInstance.Id);
@@ -162,10 +165,15 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     ///     JS callback for progress complete or any other relevant event.
     /// </summary>
     [JSInvokable]
+    [JSInvokable]
     public async Task OnProgressComplete()
     {
         LogDebug("JS invoked OnProgressComplete for {Id}", SnackbarInstance.Id);
-        await CloseAsync().ConfigureAwait(false);
+        // Ensure we're on the correct thread when handling JS callback
+        await InvokeAsync(async () =>
+        {
+            await CloseAsync();
+        });
     }
 
     /// <inheritdoc />
@@ -184,8 +192,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         {
             try
             {
-                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", SnackbarInstance.Id)
-                    .ConfigureAwait(false);
+                await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", SnackbarInstance.Id);
                 LogDebug("Snackbar JS object disposed for {Id}", SnackbarInstance.Id);
             }
             catch (Exception ex)

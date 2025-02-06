@@ -1,20 +1,56 @@
 ﻿@inject IPageAlertService PageAlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
+@inject ILogger<DropBearPageAlertContainer> Logger
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
 @using MessagePipe
+@using Microsoft.Extensions.Logging
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div id="page-alert-container" class="page-alert-container">
-    @foreach (var alert in _activeAlerts)
-    {
-        <DropBearPageAlert
-            AlertId="@alert.Id"
-            Title="@alert.Title"
-            Message="@alert.Message"
-            Type="@alert.Type"
-            IsPermanent="@alert.IsPermanent"
-            Duration="@alert.Duration"
-            OnClose="@(() => HideAlert(alert.Id))" />
-    }
+    <CascadingValue Value="this" IsFixed="true">
+        <ErrorBoundary @ref="_errorBoundary" Context="error">
+            <ChildContent>
+                @if (_activeAlerts.Any())
+                {
+                    @foreach (var alert in _activeAlerts.Values.OrderByDescending(a => a.IsPermanent).ThenByDescending(a => a.Type))
+                    {
+                        <DropBearPageAlert @key="alert.Id"
+                                           AlertId="@alert.Id"
+                                           Title="@alert.Title"
+                                           Message="@alert.Message"
+                                           Type="@alert.Type"
+                                           IsPermanent="@alert.IsPermanent"
+                                           Duration="@alert.Duration"
+                                           OnClose="@(() => RemoveAlertAsync(alert.Id))" />
+                    }
+                }
+            </ChildContent>
+            <ErrorContent>
+                @{
+                    Logger.LogError(error, "Error in alert container");
+                }
+                <div class="alert alert-danger" role="alert">
+                    An error occurred displaying alerts. Please try refreshing the page.
+                </div>
+            </ErrorContent>
+        </ErrorBoundary>
+    </CascadingValue>
 </div>
+
+@code {
+    private ErrorBoundary? _errorBoundary;
+
+    protected override void OnParametersSet()
+    {
+        _errorBoundary?.Recover();
+    }
+
+    private async Task RemoveAlertAsync(string alertId)
+    {
+        if (_activeAlerts.TryRemove(alertId, out _))
+        {
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+}

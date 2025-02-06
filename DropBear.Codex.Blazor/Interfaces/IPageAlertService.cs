@@ -8,79 +8,83 @@ using DropBear.Codex.Blazor.Models;
 namespace DropBear.Codex.Blazor.Interfaces;
 
 /// <summary>
-///     Interface for the Page Alert Service.
+///     Defines methods for displaying and managing page-level alerts.
 /// </summary>
-public interface IPageAlertService
+public interface IPageAlertService : IAsyncDisposable
 {
     /// <summary>
-    ///     Occurs when a new alert should be shown.
-    ///     The delegate returns a <see cref="Task" /> indicating when the alert rendering/processing is complete.
+    ///     Event fired when a new alert should be shown.
     /// </summary>
-    event Func<PageAlertInstance, Task> OnAlert;
+    event Func<PageAlertInstance, Task>? OnAlert;
 
     /// <summary>
-    ///     Occurs when all alerts should be cleared.
+    ///     Event fired when all alerts should be cleared.
     /// </summary>
-    event Action OnClear;
+    event Action? OnClear;
 
     /// <summary>
-    ///     Shows an alert with the specified title, message, and type.
+    ///     Shows a general alert with the specified parameters.
     /// </summary>
-    /// <param name="title">Title of the alert.</param>
-    /// <param name="message">Message for the alert.</param>
-    /// <param name="type">Type of the alert (info, success, etc.).</param>
-    /// <param name="duration">
-    ///     Time in milliseconds the alert should be displayed.
-    ///     If <c>null</c>, a default duration is used.
-    /// </param>
-    /// <param name="isPermanent">If <c>true</c>, the alert will not automatically disappear.</param>
-    void ShowAlert(
-        string title,
-        string message,
-        PageAlertType type = PageAlertType.Info,
-        int? duration = 5000,
-        bool isPermanent = false);
+    Task ShowAlertAsync(string title, string message, PageAlertType type = PageAlertType.Info,
+        int? duration = null, bool isPermanent = false);
 
     /// <summary>
-    ///     Shows a success alert with default duration.
+    ///     Shows a success alert.
     /// </summary>
-    /// <param name="title">Title of the alert.</param>
-    /// <param name="message">Message for the alert.</param>
-    /// <param name="duration">
-    ///     Time in milliseconds the alert should be displayed.
-    ///     If <c>null</c>, a default duration is used.
-    /// </param>
+    Task ShowSuccessAsync(string title, string message, int? duration = 5000);
+
+    /// <summary>
+    ///     Shows an error alert.
+    /// </summary>
+    Task ShowErrorAsync(string title, string message, int? duration = 8000);
+
+    /// <summary>
+    ///     Shows a warning alert.
+    /// </summary>
+    Task ShowWarningAsync(string title, string message, bool isPermanent = false);
+
+    /// <summary>
+    ///     Shows an info alert.
+    /// </summary>
+    Task ShowInfoAsync(string title, string message, bool isPermanent = false);
+
+    /// <summary>
+    ///     Clears all displayed alerts.
+    /// </summary>
+    Task ClearAsync();
+
+    #region Backwards Compatibility Methods
+
+    /// <summary>
+    ///     Shows a general alert (legacy sync method).
+    /// </summary>
+    void ShowAlert(string title, string message, PageAlertType type = PageAlertType.Info,
+        int? duration = null, bool isPermanent = false);
+
+    /// <summary>
+    ///     Shows a success alert (legacy sync method).
+    /// </summary>
     void ShowSuccess(string title, string message, int? duration = 5000);
 
     /// <summary>
-    ///     Shows an error alert with default duration.
+    ///     Shows an error alert (legacy sync method).
     /// </summary>
-    /// <param name="title">Title of the alert.</param>
-    /// <param name="message">Message for the alert.</param>
-    /// <param name="duration">
-    ///     Time in milliseconds the alert should be displayed.
-    ///     If <c>null</c>, a default duration is used.
-    /// </param>
     void ShowError(string title, string message, int? duration = 8000);
 
     /// <summary>
-    ///     Shows a warning alert. Can be made permanent by setting <paramref name="isPermanent" /> to <c>true</c>.
+    ///     Shows a warning alert (legacy sync method).
     /// </summary>
-    /// <param name="title">Title of the alert.</param>
-    /// <param name="message">Message for the alert.</param>
-    /// <param name="isPermanent">If <c>true</c>, the alert will not automatically disappear.</param>
     void ShowWarning(string title, string message, bool isPermanent = false);
 
     /// <summary>
-    ///     Shows an info alert. Can be made permanent by setting <paramref name="isPermanent" /> to <c>true</c>.
+    ///     Shows an info alert (legacy sync method).
     /// </summary>
-    /// <param name="title">Title of the alert.</param>
-    /// <param name="message">Message for the alert.</param>
-    /// <param name="isPermanent">If <c>true</c>, the alert will not automatically disappear.</param>
     void ShowInfo(string title, string message, bool isPermanent = false);
 
     /// <summary>
-    ///     Clears all alerts.
+    ///     Clears all displayed alerts (legacy sync method).
     /// </summary>
     void Clear();
+
+    #endregion
 }
