@@ -212,10 +212,21 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             return;
         }
 
-        var processedCount = 0;
-        var availableSlots = MaxActiveAlerts - _activeAlerts.Count;
+        // First, add pending alerts to the active collection so that they render.
+        while (_pendingAlerts.TryDequeue(out var alert))
+        {
+            _activeAlerts.TryAdd(alert.Id, alert);
+        }
 
-        while (processedCount < availableSlots && _pendingAlerts.TryDequeue(out var alert))
+        // Trigger a re-render so that the new alerts are placed in the DOM.
+        await InvokeAsync(StateHasChanged);
+
+        // Optionally, wait a tick to ensure the DOM updates
+        await Task.Yield();
+
+        // Now, for each alert in the active collection that hasn’t been initialized in JS,
+        // invoke the JS interop to create the PageAlertManager.
+        foreach (var alert in _activeAlerts.Values)
         {
             try
             {
@@ -226,12 +237,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                     alert.IsPermanent
                 );
 
-                if (result)
-                {
-                    _activeAlerts.TryAdd(alert.Id, alert);
-                    processedCount++;
-                }
-                else
+                if (!result)
                 {
                     LogWarning("Failed to create alert: {AlertId}", alert.Id);
                 }
@@ -241,12 +247,8 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
                 LogError("Error processing alert {AlertId}", ex, alert.Id);
             }
         }
-
-        if (processedCount > 0)
-        {
-            await InvokeAsync(StateHasChanged);
-        }
     }
+
 
     private async Task HandleAlert(PageAlertInstance alert)
     {
