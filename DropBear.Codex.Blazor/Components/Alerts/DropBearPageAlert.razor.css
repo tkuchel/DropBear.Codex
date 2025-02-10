@@ -1,8 +1,6 @@
 ﻿.page-alert {
   --alert-border-width: 4px;
   --alert-animation-duration: 0.3s;
-
-  /* Initial state for JS animation */
   display: none;
   border-radius: var(--br-md);
   padding: var(--spacing-sm);
@@ -27,6 +25,32 @@
   display: none;
 }
 
+/* Header: Align the icon and title on the same line */
+.page-alert-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Adjust title to be inline with the icon */
+.page-alert-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--clr-text-primary);
+}
+
+.page-alert-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
 /* Enhanced focus styles */
 .page-alert:focus-within {
   outline: 2px solid var(--clr-focus, #4a90e2);
@@ -43,17 +67,6 @@
   background-color: var(--clr-accent);
 }
 
-.page-alert-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  transition: transform 0.2s ease;
-}
-
 .page-alert:hover .alert-icon {
   transform: scale(1.05);
 }
@@ -61,13 +74,6 @@
 .page-alert-content {
   flex-grow: 1;
   min-width: 0; /* Prevent text overflow */
-}
-
-.page-alert-title {
-  font-size: 18px;
-  font-weight: 600;
-  margin: 0 0 var(--spacing-xs) 0;
-  color: var(--clr-text-primary);
 }
 
 .page-alert-message {
