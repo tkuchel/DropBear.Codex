@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Interfaces;
 using Microsoft.JSInterop;
 using Serilog;
@@ -10,121 +11,241 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Provides services to ensure JavaScript modules are properly initialized.
+///     Thread-safe service for managing JavaScript module initialization.
 /// </summary>
-public class JsInitializationService : IJsInitializationService
+public sealed class JsInitializationService : IJsInitializationService
 {
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _initializationLocks = new();
+    private const int DefaultTimeoutSeconds = 5;
+    private const int DefaultMaxAttempts = 50;
+    private const int RetryDelayMs = 100;
     private readonly IJSRuntime _jsRuntime;
     private readonly ILogger _logger;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="JsInitializationService" /> class.
-    /// </summary>
-    /// <param name="jsRuntime">The JavaScript runtime instance.</param>
-    /// <param name="logger">The logger instance.</param>
+    private readonly ConcurrentDictionary<string, ModuleInitializationState> _moduleStates = new();
+    private int _isDisposed;
+
     public JsInitializationService(IJSRuntime jsRuntime, ILogger logger)
     {
-        _jsRuntime = jsRuntime;
-        _logger = logger;
+        _jsRuntime = jsRuntime ?? throw new ArgumentNullException(nameof(jsRuntime));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    /// <summary>
-    ///     Ensures that the specified JavaScript module is initialized within an optional timeout period.
-    /// </summary>
-    /// <param name="moduleName">Name of the JavaScript module to initialize.</param>
-    /// <param name="timeout">Optional timeout period. Defaults to 5 seconds.</param>
-    /// <returns>A task representing the asynchronous initialization operation.</returns>
-    /// <exception cref="OperationCanceledException">Thrown if the initialization times out.</exception>
-    public async Task EnsureJsModuleInitializedAsync(string moduleName, TimeSpan? timeout = null)
+    public async ValueTask DisposeAsync()
     {
-        timeout ??= TimeSpan.FromSeconds(5);
-        using var cts = new CancellationTokenSource(timeout.Value);
-        var cancellationToken = cts.Token;
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
+        {
+            return;
+        }
 
-        // Get or create the semaphore for the module.
-        var lockObj = _initializationLocks.GetOrAdd(moduleName, _ => new SemaphoreSlim(1, 1));
+        foreach (var state in _moduleStates.Values)
+        {
+            try
+            {
+                await state.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(ex, "Error disposing module state");
+            }
+        }
 
-        // Wait to acquire the semaphore while observing cancellation.
-        await lockObj.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _moduleStates.Clear();
+    }
+
+    public async Task EnsureJsModuleInitializedAsync(
+        string moduleName,
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
+
+        timeout ??= TimeSpan.FromSeconds(DefaultTimeoutSeconds);
+        if (timeout.Value <= TimeSpan.Zero)
+        {
+            timeout = TimeSpan.FromSeconds(DefaultTimeoutSeconds);
+        }
+
+        var state = _moduleStates.GetOrAdd(
+            moduleName,
+            name => new ModuleInitializationState(name, _logger)
+        );
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout.Value);
+
         try
         {
-            // Poll until the module is fully initialized.
-            await WaitForModuleInitializationAsync(moduleName, cancellationToken).ConfigureAwait(false);
-            _logger.Debug("JavaScript module {ModuleName} initialization confirmed", moduleName);
+            await state.InitializeLock.WaitAsync(timeoutCts.Token);
+            try
+            {
+                if (await IsModuleInitialized(moduleName, timeoutCts.Token))
+                {
+                    return;
+                }
+
+                await WaitForModuleInitializationAsync(
+                    moduleName,
+                    state,
+                    timeoutCts.Token
+                );
+            }
+            finally
+            {
+                state.InitializeLock.Release();
+            }
         }
-        finally
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Always release the semaphore.
-            lockObj.Release();
+            throw new TimeoutException(
+                $"JavaScript module {moduleName} initialization timed out after {timeout.Value.TotalSeconds:F1}s"
+            );
         }
     }
 
-    /// <summary>
-    ///     Waits for the specified JavaScript module to be fully initialized.
-    /// </summary>
-    /// <param name="moduleName">Name of the JavaScript module.</param>
-    /// <param name="cancellationToken">Cancellation token to observe.</param>
-    /// <param name="maxAttempts">Maximum number of polling attempts. Defaults to 50.</param>
-    /// <returns>A task representing the asynchronous wait operation.</returns>
-    /// <exception cref="JSException">
-    ///     Thrown if the module fails to initialize after the specified number of attempts.
-    /// </exception>
-    private async Task WaitForModuleInitializationAsync(string moduleName, CancellationToken cancellationToken,
-        int maxAttempts = 50)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private async Task<bool> IsModuleInitialized(
+        string moduleName,
+        CancellationToken cancellationToken)
     {
-        for (var i = 0; i < maxAttempts; i++)
+        try
+        {
+            return await _jsRuntime.InvokeAsync<bool>(
+                "eval",
+                cancellationToken,
+                @$"
+                    typeof window['{moduleName}'] !== 'undefined' &&
+                    window['{moduleName}'] !== null &&
+                    window['{moduleName}'].__initialized === true
+                "
+            );
+        }
+        catch (JSException)
+        {
+            return false;
+        }
+    }
+
+    private async Task WaitForModuleInitializationAsync(
+        string moduleName,
+        ModuleInitializationState state,
+        CancellationToken cancellationToken)
+    {
+        var attempts = 0;
+        while (attempts++ < DefaultMaxAttempts)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
             try
             {
-                // Check for module existence and initialization state.
-                var isInitialized = await _jsRuntime.InvokeAsync<bool>(
+                var needsInitialization = await _jsRuntime.InvokeAsync<bool>(
                     "eval",
                     cancellationToken,
-                    $@"
+                    @$"
                         typeof window['{moduleName}'] !== 'undefined' &&
                         window['{moduleName}'] !== null &&
-                        (window['{moduleName}'].__initialized === true ||
-                         typeof window['{moduleName}'].initialize === 'function')
-                    ").ConfigureAwait(false);
+                        window['{moduleName}'].__initialized !== true &&
+                        typeof window['{moduleName}'].initialize === 'function'
+                    "
+                );
 
-                if (isInitialized)
+                if (needsInitialization)
                 {
-                    // Determine if the module still requires initialization.
-                    var needsInitialization = await _jsRuntime.InvokeAsync<bool>(
-                        "eval",
-                        cancellationToken,
-                        $@"
-                            typeof window['{moduleName}'] !== 'undefined' &&
-                            window['{moduleName}'] !== null &&
-                            window['{moduleName}'].__initialized !== true &&
-                            typeof window['{moduleName}'].initialize === 'function'
-                        ").ConfigureAwait(false);
+                    await _jsRuntime.InvokeVoidAsync(
+                        $"{moduleName}.initialize",
+                        cancellationToken
+                    );
 
-                    if (needsInitialization)
-                    {
-                        // Invoke the initialization function and continue polling.
-                        await _jsRuntime.InvokeVoidAsync($"{moduleName}.initialize", cancellationToken)
-                            .ConfigureAwait(false);
-                        continue;
-                    }
-
-                    // The module is fully initialized.
+                    state.IncrementInitializationAttempts();
+                    _logger.Debug(
+                        "Initialization attempt {Attempt} for module {Module}",
+                        state.InitializationAttempts,
+                        moduleName
+                    );
+                }
+                else if (await IsModuleInitialized(moduleName, cancellationToken))
+                {
+                    _logger.Debug(
+                        "Module {Module} initialized after {Attempts} attempts",
+                        moduleName,
+                        state.InitializationAttempts
+                    );
                     return;
                 }
-
-                // Wait briefly before the next polling attempt.
-                await Task.Delay(100, cancellationToken).ConfigureAwait(false);
             }
-            catch (JSException)
+            catch (JSException ex)
             {
-                // On JS interop errors, wait briefly before retrying.
-                await Task.Delay(100, cancellationToken).ConfigureAwait(false);
+                _logger.Warning(
+                    ex,
+                    "JS error during initialization attempt {Attempt} for {Module}",
+                    attempts,
+                    moduleName
+                );
+            }
+
+            await Task.Delay(RetryDelayMs, cancellationToken);
+        }
+
+        throw new JSException(
+            $"JavaScript module {moduleName} failed to initialize after {attempts} attempts"
+        );
+    }
+
+    private void ThrowIfDisposed([CallerMemberName] string? caller = null)
+    {
+        if (Volatile.Read(ref _isDisposed) != 0)
+        {
+            throw new ObjectDisposedException(
+                GetType().Name,
+                $"Cannot {caller} on disposed {GetType().Name}"
+            );
+        }
+    }
+
+    /// <summary>
+    ///     Manages initialization state for a specific module.
+    /// </summary>
+    private sealed class ModuleInitializationState : IAsyncDisposable
+    {
+        private readonly ILogger _logger;
+        private readonly string _moduleName;
+        private volatile int _initializationAttempts;
+        private volatile int _isDisposed;
+
+        public ModuleInitializationState(string moduleName, ILogger logger)
+        {
+            _moduleName = moduleName;
+            _logger = logger;
+            InitializeLock = new SemaphoreSlim(1, 1);
+        }
+
+        public SemaphoreSlim InitializeLock { get; }
+        public int InitializationAttempts => _initializationAttempts;
+
+        public async ValueTask DisposeAsync()
+        {
+            if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                InitializeLock.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.Warning(
+                    ex,
+                    "Error disposing initialization lock for {Module}",
+                    _moduleName
+                );
             }
         }
 
-        throw new JSException($"JavaScript module {moduleName} failed to initialize after {maxAttempts} attempts");
+        public void IncrementInitializationAttempts()
+        {
+            Interlocked.Increment(ref _initializationAttempts);
+        }
     }
 }

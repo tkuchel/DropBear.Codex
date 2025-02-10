@@ -10,71 +10,35 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     A versatile progress bar component that supports indeterminate, normal (0-100), and stepped progress modes.
+///     A versatile progress bar component that supports indeterminate, normal, and stepped progress modes.
+///     Optimized for Blazor Server.
 /// </summary>
 public sealed partial class DropBearProgressBar : DropBearComponentBase
 {
+    private const double MinProgress = 0;
+    private const double MaxProgress = 100;
+    private readonly CancellationTokenSource _disposalCts = new();
+
     private readonly ProgressStatePool _statePool = new();
     private readonly SemaphoreSlim _updateLock = new(1, 1);
 
     private int _currentStepIndex;
     private List<ProgressStepConfig>? _currentSteps;
-
-    private bool _isInitialized;
+    private volatile bool _isInitialized;
     private string? _lastMessage = string.Empty;
     private double _lastProgress;
     private CancellationTokenSource? _smoothingCts;
     private ProgressState? _state;
 
-    /// <summary>
-    ///     Indicates whether the progress bar is currently indeterminate.
-    /// </summary>
-    [Parameter]
-    public bool IsIndeterminate { get; set; }
+    [Parameter] public bool IsIndeterminate { get; set; }
+    [Parameter] public string Message { get; set; } = string.Empty;
+    [Parameter] public double Progress { get; set; }
+    [Parameter] public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
+    [Parameter] public int MinStepDisplayTimeMs { get; set; } = 500;
+    [Parameter] public bool UseSmoothProgress { get; set; } = true;
+    [Parameter] public EasingFunction EasingFunction { get; set; } = EasingFunction.EaseInOutCubic;
+    [Parameter] public EventCallback<(string StepId, StepStatus Status)> OnStepStateChanged { get; set; }
 
-    /// <summary>
-    ///     The message displayed above the progress bar (e.g., "Loading...").
-    /// </summary>
-    [Parameter]
-    public string Message { get; set; } = string.Empty;
-
-    /// <summary>
-    ///     The overall numeric progress (0..100).
-    /// </summary>
-    [Parameter]
-    public double Progress { get; set; }
-
-    /// <summary>
-    ///     A list of step configurations for stepped progress mode.
-    /// </summary>
-    [Parameter]
-    public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
-
-    /// <summary>
-    ///     The minimum time (ms) to display each step before moving to the next.
-    /// </summary>
-    [Parameter]
-    public int MinStepDisplayTimeMs { get; set; } = 500;
-
-    /// <summary>
-    ///     If true, progress transitions are eased smoothly instead of jumping.
-    /// </summary>
-    [Parameter]
-    public bool UseSmoothProgress { get; set; } = true;
-
-    /// <summary>
-    ///     The easing function to apply to progress transitions (e.g., EaseInOutCubic).
-    /// </summary>
-    [Parameter]
-    public EasingFunction EasingFunction { get; set; } = EasingFunction.EaseInOutCubic;
-
-    /// <summary>
-    ///     Event raised when a step's status changes (e.g., from InProgress to Completed).
-    /// </summary>
-    [Parameter]
-    public EventCallback<(string StepId, StepStatus Status)> OnStepStateChanged { get; set; }
-
-    /// <inheritdoc />
     protected override async Task OnInitializedAsync()
     {
         try
@@ -86,7 +50,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error initializing {ComponentName}", nameof(DropBearProgressBar));
+            LogError("Failed to initialize progress bar", ex);
             throw;
         }
     }
@@ -120,10 +84,8 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
-    /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
-        // Only update if the component is initialized and not disposed.
         if (!_isInitialized || IsDisposed)
         {
             return;
@@ -131,9 +93,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
         try
         {
-            var shouldUpdate = false;
-
-            await _updateLock.WaitAsync();
+            await _updateLock.WaitAsync(_disposalCts.Token);
             try
             {
                 if (_state is null)
@@ -141,8 +101,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
                     return;
                 }
 
-                // Check if Indeterminate or message/progress changed significantly.
-                shouldUpdate =
+                var shouldUpdate =
                     IsIndeterminate != _state.IsIndeterminate ||
                     Message != _lastMessage ||
                     (!IsIndeterminate && Math.Abs(Progress - _lastProgress) > 0.001);
@@ -154,123 +113,117 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
                     if (IsIndeterminate)
                     {
-                        await _state.SetIndeterminateAsync(Message);
+                        await _state.SetIndeterminateAsync(Message, _disposalCts.Token);
                     }
                     else
                     {
-                        await _state.UpdateOverallProgressAsync(Progress, Message);
+                        await _state.UpdateOverallProgressAsync(Progress, Message, _disposalCts.Token);
                     }
+
+                    await InvokeAsync(StateHasChanged);
                 }
             }
             finally
             {
                 _updateLock.Release();
             }
-
-            if (shouldUpdate)
-            {
-                await InvokeAsync(StateHasChanged);
-            }
         }
         catch (Exception ex) when (ex is not ObjectDisposedException)
         {
-            Logger.Error(ex, "Error in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBar));
+            LogError("Failed to update parameters", ex);
         }
     }
 
-    /// <summary>
-    ///     Public method to trigger a re-render from external code.
-    /// </summary>
-    private void RequestRender()
+    private async Task RequestRenderAsync()
     {
         if (!IsDisposed)
         {
             try
             {
-                InvokeAsync(StateHasChanged);
+                await InvokeAsync(StateHasChanged);
             }
             catch (ObjectDisposedException)
             {
-                // Component already disposed, ignore
+                // Ignore if disposed
             }
         }
     }
 
-    /// <summary>
-    ///     Updates the progress and status of a particular step in stepped mode.
-    /// </summary>
-    public async Task UpdateStepProgressAsync(string stepId, double progress, StepStatus status)
+    public async Task UpdateStepProgressAsync(
+        string stepId,
+        double progress,
+        StepStatus status,
+        CancellationToken cancellationToken = default)
     {
         if (!_isInitialized || IsDisposed)
         {
             return;
         }
 
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
         try
         {
-            await _updateLock.WaitAsync();
+            await _updateLock.WaitAsync(cts.Token);
             try
             {
                 var stepState = _state!.GetOrCreateStepState(stepId);
                 var previousStatus = stepState.Status;
 
-                await stepState.UpdateProgressAsync(progress, status);
+                await stepState.UpdateProgressAsync(progress, status, cts.Token);
 
                 if (status != previousStatus)
                 {
                     await OnStepStateChanged.InvokeAsync((stepId, status));
                 }
 
-                // If the step is completed or failed/skipped, move to next step automatically
                 if (status is StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped)
                 {
-                    await MoveToNextStepAsync();
+                    await MoveToNextStepAsync(cts.Token);
                 }
+
+                await RequestRenderAsync();
             }
             finally
             {
                 _updateLock.Release();
             }
-
-            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex) when (ex is not ObjectDisposedException)
         {
-            Logger.Error(ex, "Error updating step progress in {ComponentName}", nameof(DropBearProgressBar));
+            LogError("Failed to update step progress", ex);
         }
     }
 
-    private async Task MoveToNextStepAsync()
+    private async Task MoveToNextStepAsync(CancellationToken cancellationToken)
     {
         if (_currentSteps == null || _currentStepIndex >= _currentSteps.Count - 1)
         {
             return;
         }
 
-        // Cancel any smoothing in progress
         await _smoothingCts?.CancelAsync()!;
+        _smoothingCts?.Dispose();
         _smoothingCts = new CancellationTokenSource();
 
         try
         {
-            var token = _smoothingCts.Token;
             _currentStepIndex++;
 
-            // Force minimum display time if smoothing is enabled
             if (UseSmoothProgress)
             {
-                await Task.Delay(MinStepDisplayTimeMs, token);
+                await Task.Delay(MinStepDisplayTimeMs, _smoothingCts.Token);
             }
         }
         catch (OperationCanceledException)
         {
-            // Transition canceled
+            // Transition cancelled
         }
     }
 
-    /// <summary>
-    ///     Returns a small subset of steps (previous, current, next) for display, if relevant.
-    /// </summary>
     private IEnumerable<(ProgressStepConfig Config, int Index)> GetVisibleSteps()
     {
         if (_currentSteps == null)
@@ -278,7 +231,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             yield break;
         }
 
-        // Show up to 3 steps: the previous, current, and next.
         var startIdx = Math.Max(0, _currentStepIndex - 1);
         var endIdx = Math.Min(_currentSteps.Count - 1, startIdx + 2);
 
@@ -288,59 +240,30 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
-    /// <inheritdoc />
-    protected override async ValueTask DisposeAsync(bool disposing)
-    {
-        if (disposing)
-        {
-            try
-            {
-                if (_smoothingCts != null)
-                {
-                    await _smoothingCts.CancelAsync();
-                    _smoothingCts.Dispose();
-                }
-
-                _updateLock.Dispose();
-
-                if (_state != null)
-                {
-                    await _state.DisposeAsync();
-                    _statePool.Return(_state);
-                    _state = null;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error disposing {ComponentName}", nameof(DropBearProgressBar));
-            }
-        }
-
-        await base.DisposeAsync(disposing);
-    }
-
-    #region Public Methods for External Control
-
-    /// <summary>
-    ///     Switches the progress bar into indeterminate mode (no numeric progress).
-    /// </summary>
-    public async Task SetIndeterminateModeAsync(string message)
+    public async Task SetIndeterminateModeAsync(
+        string message,
+        CancellationToken cancellationToken = default)
     {
         if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _updateLock.WaitAsync(cts.Token);
         try
         {
             IsIndeterminate = true;
             Message = message;
-            Progress = 0;
+            Progress = MinProgress;
 
             if (_isInitialized && _state != null)
             {
-                await _state.SetIndeterminateAsync(message);
+                await _state.SetIndeterminateAsync(message, cts.Token);
             }
         }
         finally
@@ -348,29 +271,34 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock.Release();
         }
 
-        RequestRender();
+        await RequestRenderAsync();
     }
 
-    /// <summary>
-    ///     Sets the progress bar to a specific numeric value (0-100) and updates the message.
-    /// </summary>
-    public async Task SetNormalProgressAsync(double progress, string message)
+    public async Task SetNormalProgressAsync(
+        double progress,
+        string message,
+        CancellationToken cancellationToken = default)
     {
         if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _updateLock.WaitAsync(cts.Token);
         try
         {
             IsIndeterminate = false;
-            Progress = Math.Clamp(progress, 0, 100);
+            Progress = Math.Clamp(progress, MinProgress, MaxProgress);
             Message = message;
 
             if (_isInitialized && _state != null)
             {
-                await _state.UpdateOverallProgressAsync(Progress, Message);
+                await _state.UpdateOverallProgressAsync(Progress, Message, cts.Token);
             }
         }
         finally
@@ -378,20 +306,24 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock.Release();
         }
 
-        RequestRender();
+        await RequestRenderAsync();
     }
 
-    /// <summary>
-    ///     Updates the step configurations for stepped progress mode.
-    /// </summary>
-    public async Task SetStepsAsync(IReadOnlyList<ProgressStepConfig>? steps)
+    public async Task SetStepsAsync(
+        IReadOnlyList<ProgressStepConfig>? steps,
+        CancellationToken cancellationToken = default)
     {
         if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _updateLock.WaitAsync(cts.Token);
         try
         {
             Steps = steps;
@@ -414,28 +346,31 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock.Release();
         }
 
-        RequestRender();
+        await RequestRenderAsync();
     }
 
-    /// <summary>
-    ///     Sets all parameters at once: mode (indeterminate or not), progress, message, and steps.
-    /// </summary>
     public async Task SetParametersManuallyAsync(
         bool isIndeterminate,
         double progress,
         string message,
-        IReadOnlyList<ProgressStepConfig>? steps)
+        IReadOnlyList<ProgressStepConfig>? steps,
+        CancellationToken cancellationToken = default)
     {
         if (IsDisposed)
         {
             return;
         }
 
-        await _updateLock.WaitAsync();
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _updateLock.WaitAsync(cts.Token);
         try
         {
             IsIndeterminate = isIndeterminate;
-            Progress = Math.Clamp(progress, 0, 100);
+            Progress = Math.Clamp(progress, MinProgress, MaxProgress);
             Message = message;
             Steps = steps;
 
@@ -443,11 +378,11 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             {
                 if (isIndeterminate)
                 {
-                    await _state.SetIndeterminateAsync(message);
+                    await _state.SetIndeterminateAsync(message, cts.Token);
                 }
                 else
                 {
-                    await _state.UpdateOverallProgressAsync(Progress, Message);
+                    await _state.UpdateOverallProgressAsync(Progress, Message, cts.Token);
                 }
 
                 if (steps?.Any() == true)
@@ -469,8 +404,36 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
             _updateLock.Release();
         }
 
-        RequestRender();
+        await RequestRenderAsync();
     }
 
-    #endregion
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _disposalCts.CancelAsync();
+
+            if (_smoothingCts != null)
+            {
+                await _smoothingCts.CancelAsync();
+                _smoothingCts.Dispose();
+            }
+
+            if (_state != null)
+            {
+                await _state.DisposeAsync();
+                _statePool.Return(_state);
+                _state = null;
+            }
+
+            _updateLock.Dispose();
+        }
+        catch (Exception ex)
+        {
+            LogError("Error disposing progress bar", ex);
+        }
+
+        _disposalCts.Dispose();
+        await base.DisposeAsync();
+    }
 }

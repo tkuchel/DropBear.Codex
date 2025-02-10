@@ -54,7 +54,7 @@ public sealed partial class DropBearCard : DropBearComponentBase
 
         try
         {
-            await InvokeStateHasChangedAsync(async () =>
+            await QueueStateHasChangedAsync(async () =>
             {
                 Logger.Debug("Button clicked: {ButtonText}", button.Text);
                 await OnButtonClicked.InvokeAsync(button);

@@ -1,104 +1,107 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Models;
 
-/// <summary>
-///     Thread-safe progress state manager for a progress bar.
-///     Manages overall progress, indeterminate states, and step-level states.
-/// </summary>
 public sealed class ProgressState : IAsyncDisposable
 {
+    private const int DefaultCapacity = 8;
+    private const double MinProgress = 0;
+    private const double MaxProgress = 100;
+    private readonly CancellationTokenSource _disposalCts;
+
     private readonly SemaphoreSlim _stateLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, StepProgressState> _stepStates = new();
+    private readonly ConcurrentDictionary<string, StepProgressState> _stepStates;
 
     private volatile string? _currentMessage;
-    private volatile bool _isDisposed;
+    private int _isDisposed;
     private volatile bool _isIndeterminate;
+    private double _overallProgress;
 
-    /// <summary>
-    ///     Gets whether the progress is in indeterminate mode (true = no known completion percentage).
-    /// </summary>
+    public ProgressState(int? capacity = null)
+    {
+        _stepStates = new ConcurrentDictionary<string, StepProgressState>(
+            Environment.ProcessorCount,
+            capacity ?? DefaultCapacity
+        );
+        _disposalCts = new CancellationTokenSource();
+        StartTime = DateTime.UtcNow;
+    }
+
     public bool IsIndeterminate => _isIndeterminate;
-
-    /// <summary>
-    ///     Gets the current overall progress (0-100).
-    /// </summary>
-    public double OverallProgress { get; private set; }
-
-    /// <summary>
-    ///     Gets the current status message (may be null if not set).
-    /// </summary>
+    public double OverallProgress => Volatile.Read(ref _overallProgress);
     public string? CurrentMessage => _currentMessage;
-
-    /// <summary>
-    ///     Provides a thread-safe, read-only view of the step states.
-    ///     Keyed by step ID.
-    /// </summary>
+    public DateTime StartTime { get; }
+    public bool IsDisposed => Volatile.Read(ref _isDisposed) == 1;
     public IReadOnlyDictionary<string, StepProgressState> StepStates => _stepStates;
 
-    /// <summary>
-    ///     Gets the UTC date/time when this progress state was created.
-    /// </summary>
-    public DateTime StartTime { get; } = DateTime.UtcNow;
-
-    /// <summary>
-    ///     Disposes of this progress state asynchronously.
-    /// </summary>
-    /// <remarks>
-    ///     Cleans up associated <see cref="StepProgressState" /> locks
-    ///     and clears internal collections.
-    /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed)
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
         {
             return;
         }
 
-        _isDisposed = true;
-
-        await _stateLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            // Dispose each step's own lock
-            foreach (var state in _stepStates.Values)
-            {
-                await state.UpdateLock.WaitAsync().ConfigureAwait(false);
-                try
-                {
-                    state.UpdateLock.Dispose();
-                }
-                catch
-                {
-                    // Ignore lock disposal errors
-                }
-            }
+            await _disposalCts.CancelAsync();
 
-            _stepStates.Clear();
-            _stateLock.Dispose();
+            await _stateLock.WaitAsync(TimeSpan.FromSeconds(5));
+            try
+            {
+                // Properly dispose each StepProgressState
+                foreach (var state in _stepStates.Values)
+                {
+                    try
+                    {
+                        await state.DisposeAsync();
+                    }
+                    catch (Exception)
+                    {
+                        // Continue disposing other states
+                    }
+                }
+
+                _stepStates.Clear();
+            }
+            finally
+            {
+                _stateLock.Dispose();
+            }
         }
-        catch
+        finally
         {
-            // Ignore disposal errors
+            _disposalCts.Dispose();
         }
     }
 
-    /// <summary>
-    ///     Puts the progress bar into indeterminate mode, optionally setting a <paramref name="message" />.
-    /// </summary>
-    /// <param name="message">A status message to display.</param>
-    public async Task SetIndeterminateAsync(string message)
+    public async Task SetIndeterminateAsync(
+        string message,
+        CancellationToken cancellationToken = default)
     {
-        await _stateLock.WaitAsync().ConfigureAwait(false);
+        ThrowIfDisposed();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _stateLock.WaitAsync(cts.Token);
         try
         {
+            // Dispose existing step states before clearing
+            foreach (var state in _stepStates.Values)
+            {
+                await state.DisposeAsync();
+            }
+
             _isIndeterminate = true;
             _currentMessage = message;
-            OverallProgress = 0;
+            Volatile.Write(ref _overallProgress, MinProgress);
             _stepStates.Clear();
         }
         finally
@@ -107,19 +110,23 @@ public sealed class ProgressState : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    ///     Updates the overall progress (0-100) and sets a status <paramref name="message" />.
-    ///     Automatically sets <see cref="IsIndeterminate" /> to false.
-    /// </summary>
-    /// <param name="progress">A value from 0 to 100 indicating current completion.</param>
-    /// <param name="message">A status message to display.</param>
-    public async Task UpdateOverallProgressAsync(double progress, string message)
+    public async Task UpdateOverallProgressAsync(
+        double progress,
+        string message,
+        CancellationToken cancellationToken = default)
     {
-        await _stateLock.WaitAsync().ConfigureAwait(false);
+        ThrowIfDisposed();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _stateLock.WaitAsync(cts.Token);
         try
         {
             _isIndeterminate = false;
-            OverallProgress = Math.Clamp(progress, 0, 100);
+            Volatile.Write(ref _overallProgress, ClampProgress(progress));
             _currentMessage = message;
         }
         finally
@@ -128,14 +135,53 @@ public sealed class ProgressState : IAsyncDisposable
         }
     }
 
-    /// <summary>
-    ///     Retrieves or creates a <see cref="StepProgressState" /> for the specified <paramref name="stepId" />.
-    /// </summary>
-    /// <param name="stepId">A unique identifier for the step.</param>
-    /// <returns>The existing or newly created <see cref="StepProgressState" />.</returns>
     public StepProgressState GetOrCreateStepState(string stepId)
     {
-        // ConcurrentDictionary handles thread-safe get-or-add semantics
-        return _stepStates.GetOrAdd(stepId, _ => new StepProgressState());
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(stepId);
+
+        return _stepStates.GetOrAdd(stepId, static _ => new StepProgressState());
+    }
+
+    public bool TryRemoveStepState(string stepId)
+    {
+        ThrowIfDisposed();
+
+        if (_stepStates.TryRemove(stepId, out var state))
+        {
+            // Dispose the removed state
+            state.DisposeAsync()
+                .AsTask()
+                .ContinueWith(
+                    t => Console.WriteLine($"Error disposing step state: {t.Exception}"),
+                    TaskContinuationOptions.OnlyOnFaulted
+                );
+            return true;
+        }
+
+        return false;
+    }
+
+    public bool TryGetStepState(string stepId, out StepProgressState? state)
+    {
+        ThrowIfDisposed();
+        return _stepStates.TryGetValue(stepId, out state);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static double ClampProgress(double value)
+    {
+        return Math.Clamp(value, MinProgress, MaxProgress);
+    }
+
+    private void ThrowIfDisposed([CallerMemberName] string? caller = null)
+    {
+        if (IsDisposed)
+        {
+            throw new ObjectDisposedException(
+                GetType().Name,
+                $"Cannot {caller} on disposed ProgressState"
+            );
+        }
     }
 }

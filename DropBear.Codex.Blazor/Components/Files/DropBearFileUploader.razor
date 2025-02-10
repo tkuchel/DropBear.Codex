@@ -26,7 +26,7 @@
             <button type="button"
                     @onclick="OpenFileDialog"
                     class="file-upload-button"
-                    disabled="@(IsUploading || IsDisposed)">
+                    disabled="@(_isUploading || IsDisposed)">
                 Choose Files
             </button>
         </div>
@@ -35,7 +35,7 @@
         @if (SelectedFiles.Any())
         {
             <div class="file-upload-list">
-                @foreach (var file in SelectedFiles)
+                @foreach (var file in SelectedFiles.Values)
                 {
                     <div class="file-upload-item" key="@file.Name">
                         <div class="file-upload-info">
@@ -63,7 +63,7 @@
                         <button type="button"
                                 class="file-upload-remove-btn"
                                 @onclick="() => RemoveFile(file)"
-                                disabled="@(IsUploading || IsDisposed)">
+                                disabled="@(_isUploading || IsDisposed)">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
@@ -77,7 +77,7 @@
                     class="file-upload-submit"
                     @onclick="UploadFilesAsync"
                     disabled="@(!CanUpload)">
-                @if (IsUploading)
+                @if (_isUploading)
                 {
                     <i class="fas fa-spinner fa-spin"></i>
                     <span>Uploading...</span>
@@ -88,13 +88,13 @@
                 }
             </button>
 
-            @if (IsUploading)
+            @if (_isUploading)
             {
                 <div class="file-upload-progress">
                     <div class="file-upload-progress-bar"
-                         style="width: @(UploadProgress)%">
+                         style="width: @(_uploadProgress)%">
                     </div>
-                    <span class="file-upload-progress-text">@UploadProgress%</span>
+                    <span class="file-upload-progress-text">@_uploadProgress%</span>
                 </div>
             }
         </div>

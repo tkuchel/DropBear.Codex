@@ -15,26 +15,13 @@ using Microsoft.Extensions.Logging;
 
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
+/// <summary>
+///     A container component for displaying snackbars. It subscribes to snackbar service events
+///     and notification channels, and triggers UI updates accordingly.
+/// </summary>
 public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 {
-    private readonly SemaphoreSlim _renderLock = new(1, 1);
-
-    private readonly List<IDisposable> _subscriptions = new();
-    private bool _isDisposed;
-    [Inject] private ISnackbarService SnackbarService { get; set; } = null!;
-    [Inject] private IAsyncSubscriber<string, Notification> NotificationSubscriber { get; set; } = null!;
-    [Inject] private new ILogger<DropBearSnackbarContainer> Logger { get; set; } = null!;
-
-    [Parameter] public string? ChannelId { get; set; }
-    [Parameter] public SnackbarPosition Position { get; set; } = SnackbarPosition.BottomRight;
-
-    private string PositionClass => Position switch
-    {
-        SnackbarPosition.TopLeft => "top-left",
-        SnackbarPosition.TopRight => "top-right",
-        SnackbarPosition.BottomLeft => "bottom-left",
-        _ => "bottom-right"
-    };
+    #region Lifecycle Methods
 
     protected override void OnInitialized()
     {
@@ -50,13 +37,20 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
     }
 
+    #endregion
+
+    #region Event Subscriptions
+
+    /// <summary>
+    ///     Subscribes to snackbar service events and notification channels.
+    /// </summary>
     private void SubscribeToEvents()
     {
-        // Subscribe to service events
+        // Subscribe to snackbar events.
         SnackbarService.OnShow += HandleSnackbarShow;
         SnackbarService.OnRemove += HandleSnackbarRemove;
 
-        // Subscribe to notification channels
+        // Subscribe to notification channels.
         if (!string.IsNullOrEmpty(ChannelId))
         {
             var channelSubscription = NotificationSubscriber.Subscribe(
@@ -73,6 +67,96 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         Logger.LogDebug("Subscribed to all events and channels");
     }
 
+    #endregion
+
+    #region Disposal
+
+    public override async ValueTask DisposeAsync()
+    {
+        if (_isDisposed)
+        {
+            return;
+        }
+
+
+        _isDisposed = true;
+        try
+        {
+            // Unsubscribe from service events.
+            if (SnackbarService is not null)
+            {
+                SnackbarService.OnShow -= HandleSnackbarShow;
+                SnackbarService.OnRemove -= HandleSnackbarRemove;
+            }
+
+            // Dispose all subscriptions.
+            foreach (var subscription in _subscriptions)
+            {
+                subscription.Dispose();
+            }
+
+            _subscriptions.Clear();
+
+            _renderLock.Dispose();
+
+            Logger.LogDebug("DropBearSnackbarContainer disposed successfully");
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error during DropBearSnackbarContainer disposal");
+        }
+
+
+        await base.DisposeAsync();
+    }
+
+    #endregion
+
+    #region Fields & Constants
+
+    private readonly SemaphoreSlim _renderLock = new(1, 1);
+    private readonly List<IDisposable> _subscriptions = new();
+    private bool _isDisposed;
+
+    [Inject] private ISnackbarService SnackbarService { get; set; } = null!;
+    [Inject] private IAsyncSubscriber<string, Notification> NotificationSubscriber { get; set; } = null!;
+    [Inject] private new ILogger<DropBearSnackbarContainer> Logger { get; set; } = null!;
+
+    #endregion
+
+    #region Parameters
+
+    /// <summary>
+    ///     Optional channel ID used to subscribe to user-specific notifications.
+    /// </summary>
+    [Parameter]
+    public string? ChannelId { get; set; }
+
+    /// <summary>
+    ///     Specifies the position of the snackbar container.
+    /// </summary>
+    [Parameter]
+    public SnackbarPosition Position { get; set; } = SnackbarPosition.BottomRight;
+
+    /// <summary>
+    ///     Gets the CSS class corresponding to the chosen position.
+    /// </summary>
+    private string PositionClass => Position switch
+    {
+        SnackbarPosition.TopLeft => "top-left",
+        SnackbarPosition.TopRight => "top-right",
+        SnackbarPosition.BottomLeft => "bottom-left",
+        _ => "bottom-right"
+    };
+
+    #endregion
+
+    #region Event Handlers
+
+    /// <summary>
+    ///     Handles the snackbar show event by triggering a UI update.
+    /// </summary>
+    /// <param name="snackbar">The snackbar instance to show.</param>
     private async Task HandleSnackbarShow(SnackbarInstance snackbar)
     {
         if (_isDisposed)
@@ -95,6 +179,10 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Handles the snackbar remove event by triggering a UI update.
+    /// </summary>
+    /// <param name="snackbarId">The ID of the snackbar being removed.</param>
     private async Task HandleSnackbarRemove(string snackbarId)
     {
         if (_isDisposed)
@@ -117,6 +205,11 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Handles incoming notifications and, if of type Toast, creates and shows a snackbar.
+    /// </summary>
+    /// <param name="notification">The received notification.</param>
+    /// <param name="token">A cancellation token.</param>
     private async ValueTask HandleNotificationAsync(Notification notification, CancellationToken token)
     {
         if (_isDisposed || notification.Type != NotificationType.Toast)
@@ -136,13 +229,17 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
                 CreatedAt = DateTime.UtcNow
             };
 
-            await SnackbarService.Show(snackbar);
+            await SnackbarService.Show(snackbar, token);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Error handling notification as snackbar");
         }
     }
+
+    #endregion
+
+    #region Helper Methods
 
     private static SnackbarType MapNotificationSeverityToSnackbarType(NotificationSeverity severity)
     {
@@ -175,44 +272,5 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         return severity is NotificationSeverity.Error or NotificationSeverity.Critical;
     }
 
-    protected override async ValueTask DisposeAsync(bool disposing)
-    {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-        if (disposing)
-        {
-            _isDisposed = true;
-
-            try
-            {
-                // Unsubscribe from service events
-                if (SnackbarService != null)
-                {
-                    SnackbarService.OnShow -= HandleSnackbarShow;
-                    SnackbarService.OnRemove -= HandleSnackbarRemove;
-                }
-
-                // Dispose subscriptions
-                foreach (var subscription in _subscriptions)
-                {
-                    subscription.Dispose();
-                }
-
-                _subscriptions.Clear();
-
-                _renderLock.Dispose();
-
-                Logger.LogDebug("DropBearSnackbarContainer disposed successfully");
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Error during DropBearSnackbarContainer disposal");
-            }
-        }
-
-        await base.DisposeAsync(disposing);
-    }
+    #endregion
 }

@@ -74,7 +74,7 @@ public sealed partial class DropBearButton : DropBearComponentBase
 
         try
         {
-            await InvokeStateHasChangedAsync(async () =>
+            await QueueStateHasChangedAsync(async () =>
             {
                 Logger.Debug("Button clicked: {Color} {ButtonStyle} {Size}", Color, ButtonStyle, Size);
                 await OnClick.InvokeAsync(args);

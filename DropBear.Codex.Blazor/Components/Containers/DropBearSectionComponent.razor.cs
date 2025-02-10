@@ -188,7 +188,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
 
         try
         {
-            await InvokeStateHasChangedAsync(async () =>
+            await QueueStateHasChangedAsync(async () =>
                 await OnRenderStateChanged.InvokeAsync(newState));
         }
         catch (Exception ex)

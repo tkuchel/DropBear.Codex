@@ -1,72 +1,84 @@
-﻿#region
-
+﻿using System.Collections.Immutable;
 using System.ComponentModel.DataAnnotations;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using Serilog;
 using ValidationResult = DropBear.Codex.Blazor.Models.ValidationResult;
 
-#endregion
-
 namespace DropBear.Codex.Blazor.Helpers;
 
+/// <summary>
+///     Provides validation helpers optimized for performance and immutability.
+/// </summary>
 public static class ValidationHelper
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(ValidationHelper));
 
-    public static ValidationResult ValidateModel(object model)
+    /// <summary>
+    ///     Validates a model using data annotations.
+    /// </summary>
+    /// <param name="model">The model to validate.</param>
+    /// <param name="validationContextFactory">Optional factory for custom validation context.</param>
+    public static ValidationResult ValidateModel(
+        object model,
+        Func<object, ValidationContext>? validationContextFactory = null)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         try
         {
-            var validationContext = new ValidationContext(model);
-            var validationResults = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
+            var context = validationContextFactory?.Invoke(model) ?? new ValidationContext(model);
+            var results = new List<System.ComponentModel.DataAnnotations.ValidationResult>();
 
-            if (!Validator.TryValidateObject(model, validationContext, validationResults, true))
+            if (Validator.TryValidateObject(model, context, results, validateAllProperties: true))
             {
-                var errors = validationResults
-                    .SelectMany(result => result.MemberNames.DefaultIfEmpty("Model")
-                        .Select(member => new ValidationError(
-                            member,
-                            result.ErrorMessage ?? "Unknown validation error occurred.")))
-                    .ToList();
-
-                return ValidationResult.Failure(
-                    errors,
-                    "Data annotation validation failed");
+                return ValidationResult.Success();
             }
 
-            return ValidationResult.Success();
+            var errors = results
+                .SelectMany(result => GetValidationErrors(result))
+                .ToImmutableArray();
+
+            return errors.IsEmpty
+                ? ValidationResult.Success()
+                : ValidationResult.Failure(
+                    errors,
+                    "Data annotation validation failed"
+                );
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error validating model of type {ModelType}", model.GetType().Name);
+            Logger.Error(ex, "Validation failed for {Type}", model.GetType().Name);
             return ValidationResult.Failure(
                 "Validation",
-                "An unexpected error occurred during validation",
-                ex);
+                $"Validation failed: {ex.Message}",
+                ex
+            );
         }
     }
 
+    /// <summary>
+    ///     Validates a model using both data annotations and custom rules.
+    /// </summary>
+    /// <param name="model">The model to validate.</param>
+    /// <param name="customValidation">Optional custom validation rules.</param>
+    /// <param name="validationContextFactory">Optional factory for custom validation context.</param>
     public static ValidationResult ValidateModelWithCustomRules(
         object model,
-        Action<object, List<ValidationError>>? customValidation = null)
+        Action<object, ICollection<ValidationError>>? customValidation = null,
+        Func<object, ValidationContext>? validationContextFactory = null)
     {
         ArgumentNullException.ThrowIfNull(model);
 
         try
         {
-            // First perform standard validation
-            var result = ValidateModel(model);
-
-            // If there's no custom validation, return the standard validation result
+            var standardResult = ValidateModel(model, validationContextFactory);
             if (customValidation == null)
             {
-                return result;
+                return standardResult;
             }
 
-            // Perform custom validation
             var customErrors = new List<ValidationError>();
             try
             {
@@ -74,27 +86,96 @@ public static class ValidationHelper
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error during custom validation for {ModelType}", model.GetType().Name);
+                Logger.Error(ex, "Custom validation failed for {Type}", model.GetType().Name);
                 return ValidationResult.Failure(
                     "CustomValidation",
-                    $"An error occurred during custom validation: {ex.Message}",
-                    ex);
+                    $"Custom validation failed: {ex.Message}",
+                    ex
+                );
             }
 
-            // Combine standard and custom validation results
-            return ValidationResult.Combine(
-                result,
-                customErrors.Any()
-                    ? ValidationResult.Failure(customErrors, "Custom validation failed")
-                    : ValidationResult.Success());
+            return customErrors.Count == 0
+                ? standardResult
+                : ValidationResult.Combine(new[]
+                {
+                    standardResult,
+                    ValidationResult.Failure(
+                        customErrors.ToImmutableArray(),
+                        "Custom validation failed"
+                    )
+                });
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Unexpected error validating model of type {ModelType}", model.GetType().Name);
+            Logger.Error(ex, "Validation failed for {Type}", model.GetType().Name);
             return ValidationResult.Failure(
                 "Validation",
-                "An unexpected error occurred during validation",
-                ex);
+                $"Validation failed: {ex.Message}",
+                ex
+            );
+        }
+    }
+
+    /// <summary>
+    ///     Validates multiple models in parallel.
+    /// </summary>
+    /// <param name="models">The models to validate.</param>
+    /// <param name="validationContextFactory">Optional factory for custom validation context.</param>
+    public static async Task<ValidationResult> ValidateModelsAsync(
+        IEnumerable<object> models,
+        Func<object, ValidationContext>? validationContextFactory = null)
+    {
+        ArgumentNullException.ThrowIfNull(models);
+
+        try
+        {
+            var modelsList = models.ToList();
+            if (modelsList.Count == 0)
+            {
+                return ValidationResult.Success();
+            }
+
+            var validationTasks = modelsList
+                .Select(model => Task.Run(() => ValidateModel(model, validationContextFactory)))
+                .ToList();
+
+            var results = await Task.WhenAll(validationTasks);
+            return ValidationResult.Combine(results);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Batch validation failed");
+            return ValidationResult.Failure(
+                "BatchValidation",
+                $"Batch validation failed: {ex.Message}",
+                ex
+            );
+        }
+    }
+
+    /// <summary>
+    ///     Converts data annotation validation results to validation errors.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static IEnumerable<ValidationError> GetValidationErrors(
+        System.ComponentModel.DataAnnotations.ValidationResult result)
+    {
+        if (string.IsNullOrEmpty(result.ErrorMessage))
+        {
+            yield break;
+        }
+
+        var members = result.MemberNames;
+        if (members == null || !members.Any())
+        {
+            yield return new ValidationError("Model", result.ErrorMessage);
+            yield break;
+        }
+
+        foreach (var member in members)
+        {
+            if (string.IsNullOrEmpty(member)) continue;
+            yield return new ValidationError(member, result.ErrorMessage);
         }
     }
 }

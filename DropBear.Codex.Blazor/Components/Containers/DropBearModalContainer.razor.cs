@@ -190,6 +190,6 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             ResetToDefaults();
         }
 
-        _ = base.DisposeAsync(disposing);
+        _ = base.DisposeAsync();
     }
 }

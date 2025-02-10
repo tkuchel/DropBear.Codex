@@ -1,85 +1,151 @@
-﻿using DropBear.Codex.Blazor.Components.Bases;
+﻿#region
+
+using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
 
+#endregion
+
 namespace DropBear.Codex.Blazor.Components.Validations;
 
 /// <summary>
-/// A Blazor component for displaying validation errors with a collapsible UI,
-/// refactored to match the "FileUploader" style JS interop pattern.
+///     A Blazor component for displaying validation errors with a collapsible UI.
+///     Optimized for Blazor Server with proper thread safety and state management.
 /// </summary>
 public sealed partial class DropBearValidationErrorsComponent : DropBearComponentBase
 {
-    private IJSObjectReference? _jsModule;
-    private const string JsModuleName = JsModuleNames.ValidationErrors;
-    private bool _isCollapsed;
+    #region Constructor
 
-    // We generate a unique ID from the base class’s ComponentId
-    private readonly string _componentId;
-
-    /// <summary>
-    /// Creates a new validation errors component and initializes its ID.
-    /// </summary>
     public DropBearValidationErrorsComponent()
     {
+        // Create a unique component ID.
         _componentId = $"validation-errors-{ComponentId}";
     }
+
+    #endregion
+
+    #region Cleanup
+
+    /// <inheritdoc />
+    protected override async Task CleanupJavaScriptResourcesAsync()
+    {
+        try
+        {
+            if (_jsModule != null)
+            {
+                await _stateSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
+                try
+                {
+                    // Create a temporary cancellation token with a 5-second timeout.
+                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                    await _jsModule.InvokeVoidAsync(
+                        $"{JsModuleName}API.dispose",
+                        cts.Token,
+                        _componentId);
+                    LogDebug("Validation container cleaned up: {Id}", _componentId);
+                }
+                finally
+                {
+                    _stateSemaphore.Release();
+                }
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to cleanup validation container", ex);
+        }
+        finally
+        {
+            try
+            {
+                _stateSemaphore.Dispose();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Already disposed.
+            }
+
+            _jsModule = null;
+            _isInitialized = false;
+        }
+    }
+
+    #endregion
+
+    #region Private Fields & Constants
+
+    private const string JsModuleName = JsModuleNames.ValidationErrors;
+
+    private readonly string _componentId;
+    private readonly SemaphoreSlim _stateSemaphore = new(1, 1);
+    private volatile bool _isInitialized;
+    private volatile bool _isCollapsed;
+    private IJSObjectReference? _jsModule;
+
+    #endregion
 
     #region Parameters
 
     /// <summary>
-    /// The validation result containing errors to display.
+    ///     The validation result to display.
     /// </summary>
     [Parameter]
     public ValidationResult? ValidationResult { get; set; }
 
     /// <summary>
-    /// If true, the errors panel is initially collapsed.
+    ///     Whether the component is initially collapsed.
     /// </summary>
     [Parameter]
     public bool InitialCollapsed { get; set; }
 
     /// <summary>
-    /// Additional CSS classes for the validation errors container.
+    ///     Optional additional CSS classes.
     /// </summary>
     [Parameter]
     public string? CssClass { get; set; }
 
     #endregion
 
-    #region Computed Properties
+    #region Private Properties
 
     /// <summary>
-    /// Indicates whether there are validation errors to display.
+    ///     Determines if there are any validation errors.
     /// </summary>
     private bool HasErrors => ValidationResult?.HasErrors == true;
 
     /// <summary>
-    /// Gets or sets the current collapse state of the panel.
-    /// Changing this value calls <see cref="UpdateAriaAttributes"/> if the component is not disposed.
+    ///     Gets or sets the collapsed state and triggers ARIA attribute updates when changed.
     /// </summary>
     private bool IsCollapsed
     {
         get => _isCollapsed;
         set
         {
-            if (_isCollapsed == value) return;
+            if (_isCollapsed == value)
+            {
+                return;
+            }
+
             _isCollapsed = value;
-            // Update ARIA attributes if we’re still alive
+
             if (!IsDisposed)
             {
-                _ = UpdateAriaAttributes();
+                // Fire off an update of ARIA attributes without awaiting.
+                _ = UpdateAriaAttributesAsync();
             }
         }
     }
 
     #endregion
 
-    #region Lifecycle
+    #region Lifecycle Methods
 
-    /// <inheritdoc />
     protected override void OnInitialized()
     {
         base.OnInitialized();
@@ -87,125 +153,124 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
         if (HasErrors)
         {
-            LogDebug("Validation component initialized with {Count} errors", ValidationResult!.Errors.Count);
+            LogDebug("Initialized with {Count} errors", ValidationResult!.Errors.Count);
         }
     }
 
     /// <inheritdoc />
-    /// <remarks>
-    /// On first render, load the JS module and create the validation container
-    /// in a manner similar to DropBearFileUploader's approach.
-    /// </remarks>
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task InitializeComponentAsync()
     {
-        await base.OnAfterRenderAsync(firstRender);
-        if (!firstRender || IsDisposed)
+        if (_isInitialized || IsDisposed)
+        {
             return;
+        }
 
         try
         {
-            // 1) Load/cache the module
-            _jsModule = await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
+            await _stateSemaphore.WaitAsync(ComponentToken);
 
-            // 2) Create the container in JS
+            // Load the JavaScript module.
+            _jsModule = await GetJsModuleAsync(JsModuleName);
+
+            // Create the validation container via JS interop.
             await _jsModule.InvokeVoidAsync(
                 $"{JsModuleName}API.createValidationContainer",
-                _componentId
-            );
+                ComponentToken,
+                _componentId);
 
-            // 3) Now update ARIA attributes for the initial collapse state
+            // Update ARIA attributes based on the initial collapsed state.
             await _jsModule.InvokeVoidAsync(
                 $"{JsModuleName}API.updateAriaAttributes",
+                ComponentToken,
                 _componentId,
-                IsCollapsed
-            );
+                _isCollapsed);
 
-            LogDebug("Validation errors JS initialized: {Id}", _componentId);
+            _isInitialized = true;
+            LogDebug("Validation container initialized: {Id}", _componentId);
         }
         catch (Exception ex)
         {
-            LogWarning("Error during first render initialization for {Id}: {Message}", ex, _componentId, ex.Message);
-        }
-    }
-
-    #endregion
-
-    #region Methods
-
-    /// <summary>
-    /// Toggles the collapse state and logs a debug message.
-    /// </summary>
-    private async Task ToggleCollapseState()
-    {
-        IsCollapsed = !IsCollapsed;
-        LogDebug("Validation panel collapsed state: {State}", IsCollapsed);
-
-        // Optionally call UpdateAriaAttributes again explicitly,
-        // though the IsCollapsed setter already does this.
-        // await UpdateAriaAttributes();
-    }
-
-    /// <summary>
-    /// Updates ARIA attributes via JS interop to maintain accessibility state.
-    /// Mimics the "FileUploader" style: we get (or reuse) the module and call the relevant function.
-    /// </summary>
-    private async Task UpdateAriaAttributes()
-    {
-        if (IsDisposed)
-            return;
-
-        try
-        {
-            // If we haven't loaded or lost the module reference, reacquire it
-            _jsModule ??= await GetJsModuleAsync(JsModuleName).ConfigureAwait(false);
-
-            // Then update the ARIA attributes
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.updateAriaAttributes",
-                _componentId,
-                IsCollapsed
-            );
-        }
-        catch (Exception ex)
-        {
-            LogWarning("Error updating ARIA attributes for {Id}: {Message}", ex, _componentId, ex.Message);
-        }
-    }
-
-    #endregion
-
-    #region Disposal
-
-    /// <inheritdoc />
-    /// <remarks>
-    /// Called by the base class to cleanup JS resources. We call 'DropBearValidationErrors.dispose'
-    /// to remove the manager for our unique container ID.
-    /// </remarks>
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        if (_jsModule is null)
-            return;
-
-        try
-        {
-            await _jsModule.InvokeVoidAsync($"{JsModuleName}API.dispose", _componentId);
-            LogDebug("Validation errors JS disposed: {Id}", _componentId);
-        }
-        catch (JSDisconnectedException)
-        {
-            LogWarning("Cleanup skipped: JS runtime disconnected.");
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Cleanup skipped: Operation cancelled.");
-        }
-        catch (Exception ex)
-        {
-            LogWarning("Error disposing validation errors JS for {Id}: {Message}", ex, _componentId, ex.Message);
+            LogError("Failed to initialize validation container", ex);
+            throw;
         }
         finally
         {
-            _jsModule = null;
+            _stateSemaphore.Release();
+        }
+    }
+
+    #endregion
+
+    #region UI Interaction Methods
+
+    /// <summary>
+    ///     Toggles the collapsed state of the validation errors UI.
+    /// </summary>
+    private async Task ToggleCollapseState()
+    {
+        if (!_isInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _stateSemaphore.WaitAsync(ComponentToken);
+
+            // Queue a state update that toggles the collapse state and updates ARIA attributes.
+            await QueueStateHasChangedAsync(async () =>
+            {
+                IsCollapsed = !IsCollapsed;
+                await UpdateAriaAttributesAsync();
+            });
+
+            LogDebug("Collapse state toggled: {State}", IsCollapsed);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to toggle collapse state", ex);
+        }
+        finally
+        {
+            _stateSemaphore.Release();
+        }
+    }
+
+    /// <summary>
+    ///     Updates ARIA attributes via JS interop to reflect the current collapse state.
+    /// </summary>
+    private async Task UpdateAriaAttributesAsync()
+    {
+        if (!_isInitialized || IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _stateSemaphore.WaitAsync(ComponentToken);
+
+            // Ensure the JS module is available.
+            if (_jsModule == null)
+            {
+                await InitializeComponentAsync();
+            }
+
+            await _jsModule!.InvokeVoidAsync(
+                $"{JsModuleName}API.updateAriaAttributes",
+                ComponentToken,
+                _componentId,
+                _isCollapsed);
+
+            LogDebug("ARIA attributes updated: {Id}", _componentId);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to update ARIA attributes", ex);
+        }
+        finally
+        {
+            _stateSemaphore.Release();
         }
     }
 

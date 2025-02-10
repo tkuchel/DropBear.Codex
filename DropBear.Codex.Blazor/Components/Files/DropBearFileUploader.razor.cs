@@ -78,7 +78,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     private async Task QueueStateUpdate()
     {
-        _stateUpdateDebouncer?.Cancel();
+        await _stateUpdateDebouncer?.CancelAsync();
         _stateUpdateDebouncer = new CancellationTokenSource();
 
         try

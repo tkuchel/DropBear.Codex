@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
 
 #endregion
@@ -7,94 +8,207 @@ using DropBear.Codex.Blazor.Enums;
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents a thread-safe state tracking for a single progress step,
-///     including start time, progress percentage, and status.
+///     Thread-safe state tracking for a single progress step.
+///     Optimized for use in Blazor Server.
 /// </summary>
-public sealed class StepProgressState
+public class StepProgressState : IAsyncDisposable
 {
+    private const double MinProgress = 0;
+    private const double MaxProgress = 100;
+    private readonly CancellationTokenSource _disposalCts = new();
+    private readonly SemaphoreSlim _updateLock = new(1, 1);
     private volatile bool _hasStarted;
+
+    private int _isDisposed;
     private double _progress;
+    private DateTimeOffset _startTime;
     private volatile StepStatus _status;
 
-    /// <summary>
-    ///     Creates a new instance of <see cref="StepProgressState" />,
-    ///     initializing <see cref="StartTime" /> to the current UTC date/time.
-    /// </summary>
     public StepProgressState()
     {
-        StartTime = DateTimeOffset.UtcNow;
-        LastUpdateTime = StartTime;
+        _startTime = DateTimeOffset.UtcNow;
+        LastUpdateTime = _startTime;
     }
 
     /// <summary>
-    ///     Gets or sets the current progress percentage (0-100).
-    ///     Values are clamped within this range.
+    ///     Gets the current progress (0-100).
     /// </summary>
-    public double Progress
-    {
-        get => _progress;
-        set => _progress = Math.Clamp(value, 0, 100);
-    }
+    public double Progress => Volatile.Read(ref _progress);
 
     /// <summary>
-    ///     Gets or sets the current status of this step (e.g., NotStarted, InProgress, Completed).
-    ///     When set to <see cref="StepStatus.InProgress" /> for the first time, the <see cref="StartTime" /> is recorded.
+    ///     Gets the current step status.
     /// </summary>
-    public StepStatus Status
-    {
-        get => _status;
-        set
-        {
-            _status = value;
-            if (value == StepStatus.InProgress && !_hasStarted)
-            {
-                _hasStarted = true;
-                StartTime = DateTimeOffset.UtcNow;
-            }
-        }
-    }
+    public StepStatus Status => _status;
 
     /// <summary>
-    ///     Gets the date/time when this step started (UTC).
-    ///     If never started, it's the time this object was constructed.
-    /// </summary>
-    private DateTimeOffset StartTime { get; set; }
-
-    /// <summary>
-    ///     Gets the date/time of the last update to progress or status.
+    ///     Gets the last update timestamp.
     /// </summary>
     public DateTimeOffset LastUpdateTime { get; private set; }
 
     /// <summary>
-    ///     A <see cref="SemaphoreSlim" /> used to synchronize updates in multi-threaded scenarios.
+    ///     Gets whether this state has been disposed.
     /// </summary>
-    public SemaphoreSlim UpdateLock { get; } = new(1, 1);
+    public bool IsDisposed => Volatile.Read(ref _isDisposed) == 1;
 
     /// <summary>
-    ///     Gets how long this step has been actively running (from <see cref="StartTime" /> to now).
-    ///     Returns <see cref="TimeSpan.Zero" /> if <see cref="_hasStarted" /> is false.
+    ///     Gets the active running duration.
     /// </summary>
-    public TimeSpan RunningTime => _hasStarted ? DateTimeOffset.UtcNow - StartTime : TimeSpan.Zero;
+    public TimeSpan RunningTime => _hasStarted
+        ? DateTimeOffset.UtcNow - _startTime
+        : TimeSpan.Zero;
 
-    /// <summary>
-    ///     Updates the progress and status of this step in a thread-safe manner,
-    ///     also refreshing <see cref="LastUpdateTime" />.
-    /// </summary>
-    /// <param name="newProgress">New progress value (0-100).</param>
-    /// <param name="newStatus">New step status (e.g., InProgress, Completed).</param>
-    /// <returns>An awaitable <see cref="Task" /> that completes when the update is done.</returns>
-    public async Task UpdateProgressAsync(double newProgress, StepStatus newStatus)
+    public async ValueTask DisposeAsync()
     {
-        await UpdateLock.WaitAsync().ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
+        {
+            return;
+        }
+
         try
         {
-            Progress = newProgress;
-            Status = newStatus;
+            await _disposalCts.CancelAsync();
+            await _updateLock.WaitAsync(TimeSpan.FromSeconds(5));
+            try
+            {
+                _progress = 0;
+                _status = StepStatus.NotStarted;
+                _hasStarted = false;
+            }
+            finally
+            {
+                _updateLock.Release();
+                _updateLock.Dispose();
+                _disposalCts.Dispose();
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error disposing StepProgressState: {ex}");
+        }
+    }
+
+    /// <summary>
+    ///     Updates progress and status with thread safety.
+    /// </summary>
+    /// <param name="newProgress">Progress value (0-100).</param>
+    /// <param name="newStatus">Step status.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    public async Task UpdateProgressAsync(
+        double newProgress,
+        StepStatus newStatus,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _updateLock.WaitAsync(cts.Token);
+        try
+        {
+            Volatile.Write(ref _progress, Math.Clamp(newProgress, MinProgress, MaxProgress));
+
+            var previousStatus = _status;
+            _status = newStatus;
+
+            if (newStatus == StepStatus.InProgress && !_hasStarted)
+            {
+                _hasStarted = true;
+                _startTime = DateTimeOffset.UtcNow;
+            }
+
             LastUpdateTime = DateTimeOffset.UtcNow;
+
+            if (previousStatus != newStatus)
+            {
+                await OnStatusChanged(previousStatus, newStatus);
+            }
         }
         finally
         {
-            UpdateLock.Release();
+            _updateLock.Release();
+        }
+    }
+
+    /// <summary>
+    ///     Sets progress directly with thread safety.
+    /// </summary>
+    public void SetProgress(double newProgress)
+    {
+        ThrowIfDisposed();
+        Volatile.Write(
+            ref _progress,
+            Math.Clamp(newProgress, MinProgress, MaxProgress)
+        );
+    }
+
+    /// <summary>
+    ///     Sets status directly with thread safety.
+    /// </summary>
+    public void SetStatus(StepStatus newStatus)
+    {
+        ThrowIfDisposed();
+        var previousStatus = _status;
+        _status = newStatus;
+
+        if (newStatus == StepStatus.InProgress && !_hasStarted)
+        {
+            _hasStarted = true;
+            _startTime = DateTimeOffset.UtcNow;
+        }
+
+        OnStatusChanged(previousStatus, newStatus)
+            .ContinueWith(
+                t => Console.WriteLine($"Status change error: {t.Exception}"),
+                TaskContinuationOptions.OnlyOnFaulted
+            );
+    }
+
+    /// <summary>
+    ///     Resets the state to initial values.
+    /// </summary>
+    public async Task ResetAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+
+        await _updateLock.WaitAsync(cts.Token);
+        try
+        {
+            Volatile.Write(ref _progress, MinProgress);
+            _status = StepStatus.NotStarted;
+            _hasStarted = false;
+            _startTime = DateTimeOffset.UtcNow;
+            LastUpdateTime = _startTime;
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+    }
+
+    /// <summary>
+    ///     Override to handle status changes.
+    /// </summary>
+    protected virtual Task OnStatusChanged(StepStatus oldStatus, StepStatus newStatus)
+    {
+        return Task.CompletedTask;
+    }
+
+    private void ThrowIfDisposed([CallerMemberName] string? caller = null)
+    {
+        if (IsDisposed)
+        {
+            throw new ObjectDisposedException(
+                GetType().Name,
+                $"Cannot {caller} on disposed StepProgressState"
+            );
         }
     }
 }

@@ -176,7 +176,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
                 _jsModuleCache[moduleName] = module;
 
-                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName);
+                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName, cancellationToken: cts.Token);
 
                 LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
                 return module;

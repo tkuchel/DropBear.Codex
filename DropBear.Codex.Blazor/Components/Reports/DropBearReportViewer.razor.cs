@@ -22,23 +22,74 @@ namespace DropBear.Codex.Blazor.Components.Reports;
 /// <typeparam name="TItem">The type of data items to display.</typeparam>
 public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase where TItem : class
 {
+    #region Lifecycle Methods
+
+    protected override void OnInitialized()
+    {
+        InitializeColumns();
+    }
+
+    #endregion
+
+    #region Export Functionality
+
+    /// <summary>
+    ///     Exports the currently filtered dataset to Excel.
+    /// </summary>
+    private async Task ExportToExcelAsync()
+    {
+        Logger.Debug("Exporting data to Excel.");
+
+        var dataToExport = FilteredData.ToList();
+        using var ms = _excelExporter.ExportToExcelStream(dataToExport);
+
+        if (ms == null || ms.Length == 0)
+        {
+            Logger.Error("Excel export resulted in an empty file.");
+            return;
+        }
+
+        Logger.Debug("Data exported to Excel successfully.");
+        ms.Position = 0;
+
+        // Use a DotNetStreamReference for JavaScript-based file download.
+        using var streamRef = new DotNetStreamReference(ms);
+        await JsRuntime.InvokeVoidAsync(
+            "downloadFileFromStream",
+            "ExportedData.xlsx",
+            streamRef,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+    }
+
+    #endregion
+
+    #region Private Fields & Dependencies
+
     private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearReportViewer<TItem>>();
     private readonly ExcelExporter<TItem> _excelExporter = new();
     private List<ColumnDefinition<TItem>> _columns = new();
     private ColumnDefinition<TItem>? _currentSortColumn;
     private SortDirection _currentSortDirection = SortDirection.Ascending;
 
+    #endregion
+
+    #region Parameters
+
     /// <summary>
     ///     The dataset to display in the report viewer.
     /// </summary>
     [Parameter]
-    public IEnumerable<TItem> Data { get; set; } = [];
+    public IEnumerable<TItem> Data { get; set; } = Array.Empty<TItem>();
 
     /// <summary>
     ///     Optionally provide specific columns to be rendered; otherwise columns are auto-generated.
     /// </summary>
     [Parameter]
     public List<ColumnDefinition<TItem>>? ColumnDefinitions { get; set; }
+
+    #endregion
+
+    #region Derived Properties
 
     /// <summary>
     ///     The columns used in the report, prioritizing <see cref="ColumnDefinitions" /> over auto-generated ones.
@@ -51,11 +102,9 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     /// </summary>
     private IEnumerable<TItem> FilteredData => ApplySortingAndFiltering();
 
-    /// <inheritdoc />
-    protected override void OnInitialized()
-    {
-        InitializeColumns();
-    }
+    #endregion
+
+    #region Column Initialization
 
     /// <summary>
     ///     Auto-generates columns from the TItem's properties unless <see cref="ColumnDefinitions" /> is provided.
@@ -63,7 +112,6 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private void InitializeColumns()
     {
         Logger.Debug("Initializing columns for type {TItem}.", typeof(TItem).Name);
-
         _columns = typeof(TItem).GetProperties()
             .Select(prop => new ColumnDefinition<TItem>
             {
@@ -82,10 +130,14 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private static Expression<Func<TItem, object>> CreatePropertySelector(PropertyInfo propertyInfo)
     {
         var parameter = Expression.Parameter(typeof(TItem), "x");
-        var property = Expression.Property(parameter, propertyInfo);
-        var convert = Expression.Convert(property, typeof(object));
+        var propertyAccess = Expression.Property(parameter, propertyInfo);
+        var convert = Expression.Convert(propertyAccess, typeof(object));
         return Expression.Lambda<Func<TItem, object>>(convert, parameter);
     }
+
+    #endregion
+
+    #region Sorting & Filtering
 
     /// <summary>
     ///     Toggles sorting direction or sets a new column as the current sort column.
@@ -115,7 +167,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     {
         var query = Data.AsQueryable();
 
-        // Apply filtering
+        // Apply filtering: for each column with a non-empty filter value, add a Where clause.
         foreach (var column in ResolvedColumns.Where(c => !string.IsNullOrWhiteSpace(c.FilterValue)))
         {
             var filterValue = column.FilterValue;
@@ -137,7 +189,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             query = query.Where(lambda);
         }
 
-        // Apply sorting
+        // Apply sorting if a sort column is selected.
         if (_currentSortColumn != null)
         {
             query = _currentSortDirection == SortDirection.Ascending
@@ -147,6 +199,10 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         return query.ToList();
     }
+
+    #endregion
+
+    #region Formatting Helpers
 
     /// <summary>
     ///     Formats a property's value for display, including custom date handling.
@@ -161,13 +217,13 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         if (value is DateTime dateTimeValue)
         {
-            // Format dates in AU format: dd/MM/yyyy
+            // Format dates in AU format: dd/MM/yyyy.
             return dateTimeValue.ToString("dd/MM/yyyy", CultureInfo.InvariantCulture);
         }
 
         if (value is string strValue)
         {
-            // Example special case: mobile numbers
+            // Special handling for mobile numbers: prepend '0' if necessary.
             if (propertySelector.Body is MemberExpression memberExpr &&
                 memberExpr.Member.Name.Contains("MobileNumber") &&
                 !strValue.StartsWith("0") && strValue.Length == 9)
@@ -180,7 +236,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     }
 
     /// <summary>
-    ///     Shows a sort indicator (▲ or ▼) if the column is currently being sorted, otherwise empty.
+    ///     Shows a sort indicator (▲ or ▼) if the column is currently being sorted.
     /// </summary>
     private MarkupString GetSortIndicator(ColumnDefinition<TItem> column)
     {
@@ -193,32 +249,5 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         return new MarkupString($"<span>{indicator}</span>");
     }
 
-    /// <summary>
-    ///     Exports the currently filtered dataset to Excel.
-    /// </summary>
-    private async Task ExportToExcelAsync()
-    {
-        Logger.Debug("Exporting data to Excel.");
-
-        var dataToExport = FilteredData.ToList();
-        using var ms = _excelExporter.ExportToExcelStream(dataToExport);
-
-        if (ms == null || ms.Length == 0)
-        {
-            Logger.Error("Excel export resulted in an empty file.");
-            return;
-        }
-
-        Logger.Debug("Data exported to Excel successfully.");
-
-        ms.Position = 0;
-
-        // Use a DotNetStreamReference for JS-based download
-        using var streamRef = new DotNetStreamReference(ms);
-        await JsRuntime.InvokeVoidAsync(
-            "downloadFileFromStream",
-            "ExportedData.xlsx",
-            streamRef,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    }
+    #endregion
 }

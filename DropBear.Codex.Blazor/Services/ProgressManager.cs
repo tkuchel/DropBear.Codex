@@ -1,319 +1,214 @@
 ﻿#region
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Timers;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using Serilog;
-using Timer = System.Timers.Timer;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Provides progress tracking for various types of operations, including:
-///     - Indeterminate progress (spinners)
-///     - Single-task determinate progress
-///     - Step-based progress with multiple steps.
+///     Thread-safe progress tracking manager optimized for Blazor Server.
 /// </summary>
-public class ProgressManager : IProgressManager
+public sealed class ProgressManager : IProgressManager
 {
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private readonly ILogger _logger;
-    private readonly Timer _progressTimer;
-    private readonly ConcurrentDictionary<string, StepState> _stepStates = new();
-    private readonly ConcurrentDictionary<string, double> _taskProgress = new();
-    private readonly SemaphoreSlim _updateLock = new(1, 1);
+    private const double DefaultTimerIntervalMs = 100;
+    private const double DefaultProgressIncrement = 0.5;
+    private const double MaxProgress = 100;
+    private const int OperationTimeoutMs = 5000;
+    private readonly CancellationTokenSource _disposalCts;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="ProgressManager" /> class.
-    /// </summary>
+    private readonly ILogger _logger;
+    private readonly PeriodicTimer _progressTimer;
+    private readonly object _stateLock = new();
+    private readonly ConcurrentDictionary<string, StepState> _stepStates;
+    private readonly ConcurrentDictionary<string, double> _taskProgress;
+    private readonly SemaphoreSlim _updateLock;
+
+    private int _isDisposed;
+    private volatile bool _isIndeterminate;
+    private string _message = string.Empty;
+    private double _progress;
+    private Task? _timerTask;
+
     public ProgressManager()
     {
-        // Timer used to increment progress in single-task mode if needed
-        _progressTimer = new Timer(100) { AutoReset = true, Enabled = false };
-        _progressTimer.Elapsed += OnTimerElapsed;
-        IsDisposed = false;
         _logger = LoggerFactory.Logger.ForContext<ProgressManager>();
-        _logger.Debug("ProgressManager instance created.");
+        _disposalCts = new CancellationTokenSource();
+        _stepStates = new ConcurrentDictionary<string, StepState>();
+        _taskProgress = new ConcurrentDictionary<string, double>();
+        _updateLock = new SemaphoreSlim(1, 1);
+        _progressTimer = new PeriodicTimer(TimeSpan.FromMilliseconds(DefaultTimerIntervalMs));
+
+        _logger.Debug("Progress manager initialized");
     }
 
-    /// <summary>
-    ///     Indicates whether this instance has been disposed.
-    /// </summary>
-    public bool IsDisposed { get; private set; }
-
-    /// <summary>
-    ///     Occurs when the state changes, allowing consumers to update the UI.
-    /// </summary>
-    public event Action? StateChanged;
-
-    /// <summary>
-    ///     Gets the current list of step states, if running in step-based mode.
-    /// </summary>
-    public IReadOnlyList<StepState> CurrentStepStates => _stepStates.Values.ToList();
-
-    /// <summary>
-    ///     Gets the current progress message.
-    /// </summary>
-    public string Message { get; private set; } = string.Empty;
-
-    /// <summary>
-    ///     Gets the overall progress percentage (0-100).
-    /// </summary>
-    public double Progress { get; private set; }
-
-    /// <summary>
-    ///     Indicates whether the progress is in indeterminate mode.
-    /// </summary>
-    public bool IsIndeterminate { get; private set; }
-
-    /// <summary>
-    ///     Gets the step configurations, if running in stepped mode.
-    /// </summary>
-    public IReadOnlyList<ProgressStepConfig>? Steps { get; private set; }
-
-    /// <summary>
-    ///     Provides a cancellation token that signals when this progress instance is disposed.
-    /// </summary>
-    public CancellationToken CancellationToken => _cancellationTokenSource.Token;
-
-    /// <summary>
-    ///     Disposes the <see cref="ProgressManager" /> instance and its resources.
-    /// </summary>
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        if (IsDisposed)
+        if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
         {
             return;
         }
 
-        IsDisposed = true;
-        StopTimer();
-        _cancellationTokenSource.Cancel();
-        _cancellationTokenSource.Dispose();
-        _updateLock.Dispose();
-        _progressTimer.Dispose();
-
-        // Unsubscribe from step OnStateChanged events
-        foreach (var step in _stepStates.Values)
+        try
         {
-            step.OnStateChanged -= HandleStepStateChanged;
-        }
+            await _disposalCts.CancelAsync();
+            await StopTimerAsync();
 
-        _logger.Debug("ProgressManager instance disposed.");
-    }
-
-    /// <summary>
-    ///     Starts an indeterminate progress operation (e.g., spinner).
-    /// </summary>
-    /// <param name="message">The user-facing message describing the operation.</param>
-    /// <exception cref="ObjectDisposedException">Thrown if the instance has been disposed.</exception>
-    public void StartIndeterminate(string message)
-    {
-        ValidateNotDisposed();
-        Reset();
-        IsIndeterminate = true;
-        Message = message;
-        NotifyStateChanged();
-    }
-
-    /// <summary>
-    ///     Starts a single-task progress operation, enabling a timer-based increment if desired.
-    /// </summary>
-    /// <param name="message">The user-facing message describing the operation.</param>
-    /// <exception cref="ObjectDisposedException">Thrown if the instance has been disposed.</exception>
-    public void StartTask(string message)
-    {
-        ValidateNotDisposed();
-        Reset();
-        IsIndeterminate = false;
-        Message = message;
-        _progressTimer.Start(); // Timer increments progress automatically
-        NotifyStateChanged();
-    }
-
-    /// <summary>
-    ///     Starts a step-based progress operation with a list of step configurations.
-    /// </summary>
-    /// <param name="steps">The list of step configurations.</param>
-    /// <exception cref="ObjectDisposedException">Thrown if the instance has been disposed.</exception>
-    public void StartSteps(List<ProgressStepConfig> steps)
-    {
-        ValidateNotDisposed();
-        if (steps is null || steps.Count == 0)
-        {
-            throw new ArgumentException("Steps cannot be null or empty.", nameof(steps));
-        }
-
-        Reset();
-        Steps = steps;
-
-        // Create step states and subscribe to changes
-        foreach (var step in steps)
-        {
-            var stepState = new StepState(step.Id, step.Name, step.Tooltip ?? string.Empty);
-            stepState.OnStateChanged += HandleStepStateChanged;
-            _stepStates[step.Id] = stepState;
-        }
-
-        // Initialize overall progress
-        UpdateOverallProgress();
-        NotifyStateChanged();
-    }
-
-    /// <summary>
-    ///     Marks the current operation as complete, setting progress to 100%.
-    /// </summary>
-    public void Complete()
-    {
-        StopTimer();
-        Progress = 100;
-        Message = "Completed";
-        NotifyStateChanged();
-    }
-
-    /// <summary>
-    ///     Updates progress for either a single task or a step, depending on whether a step with <paramref name="taskId" />
-    ///     exists.
-    /// </summary>
-    /// <param name="taskId">The identifier for the task or step.</param>
-    /// <param name="progress">The progress percentage (0-100).</param>
-    /// <param name="status">The status of the step, if applicable.</param>
-    /// <param name="message">An optional message to override the current progress message.</param>
-    /// <exception cref="ObjectDisposedException">Thrown if the instance has been disposed.</exception>
-    public async Task UpdateProgressAsync(string taskId, double progress, StepStatus status, string? message = null)
-    {
-        ValidateNotDisposed();
-        if (string.IsNullOrEmpty(taskId))
-        {
-            throw new ArgumentException("Task ID cannot be null or empty.", nameof(taskId));
-        }
-
-        // Check if this is a step update
-        if (_stepStates.TryGetValue(taskId, out var stepState))
-        {
-            // It's a step-based progress update
-            stepState.UpdateProgress(progress, status);
-
-            // Optionally update the main message
-            if (!string.IsNullOrEmpty(message))
-            {
-                Message = message;
-            }
-        }
-        else
-        {
-            // It's a single-task update
-            if (progress < 0 || progress > 100)
-            {
-                throw new ArgumentOutOfRangeException(nameof(progress), "Progress must be between 0 and 100.");
-            }
-
-            // Lock to update concurrent dictionary safely
-            await _updateLock.WaitAsync(CancellationToken).ConfigureAwait(false);
-            try
-            {
-                _taskProgress[taskId] = progress;
-                Progress = _taskProgress.Values.DefaultIfEmpty(0).Average();
-
-                if (!string.IsNullOrEmpty(message))
-                {
-                    Message = message;
-                }
-
-                NotifyStateChanged();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error updating progress: {ex.Message}");
-                _logger.Error(ex, "Error updating single task progress.");
-            }
-            finally
-            {
-                _updateLock.Release();
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Resets the progress manager state, stopping timers, clearing progress, and removing steps.
-    /// </summary>
-    private void Reset()
-    {
-        StopTimer();
-        _taskProgress.Clear();
-        Progress = 0;
-        Message = string.Empty;
-        IsIndeterminate = false;
-
-        // Unsubscribe from step events and clear
-        if (_stepStates.Any())
-        {
             foreach (var step in _stepStates.Values)
             {
                 step.OnStateChanged -= HandleStepStateChanged;
             }
 
             _stepStates.Clear();
+            _taskProgress.Clear();
+            Steps = null;
         }
-
-        Steps = null;
-        NotifyStateChanged();
-    }
-
-    /// <summary>
-    ///     Stops the internal progress timer.
-    /// </summary>
-    private void StopTimer()
-    {
-        _progressTimer.Stop();
-    }
-
-    /// <summary>
-    ///     Handles the timer's elapsed event to increment progress automatically.
-    /// </summary>
-    private async void OnTimerElapsed(object? sender, ElapsedEventArgs e)
-    {
-        try
+        finally
         {
-            // Micro-optimization: store increment in a constant if desired
-            const double timerIncrement = 0.5;
-            await IncrementProgressAsync(timerIncrement).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Timer error: {ex.Message}");
-            _logger.Error(ex, "Timer elapsed error.");
+            _disposalCts.Dispose();
+            _updateLock.Dispose();
+            _progressTimer.Dispose();
+            _logger.Debug("Progress manager disposed");
         }
     }
 
-    /// <summary>
-    ///     Increments the current progress by a specified amount (up to 100).
-    /// </summary>
-    private async Task IncrementProgressAsync(double amount)
-    {
-        await _updateLock.WaitAsync(CancellationToken).ConfigureAwait(false);
-        try
-        {
-            Progress = Math.Min(Progress + amount, 100);
-            NotifyStateChanged();
+    public bool IsDisposed => Volatile.Read(ref _isDisposed) == 1;
+    public IReadOnlyList<StepState> CurrentStepStates => _stepStates.Values.ToList();
+    public string Message { get => _message; private set => _message = value ?? string.Empty; }
+    public double Progress => Volatile.Read(ref _progress);
+    public bool IsIndeterminate => _isIndeterminate;
+    public IReadOnlyList<ProgressStepConfig>? Steps { get; private set; }
 
-            // If we reached 100%, stop timer and call complete
-            if (Progress >= 100)
+    public CancellationToken CancellationToken => _disposalCts.Token;
+
+    public void StartIndeterminate(string message)
+    {
+        ThrowIfDisposed();
+        lock (_stateLock)
+        {
+            Reset();
+            _isIndeterminate = true;
+            Message = message;
+            NotifyStateChangedAsync().FireAndForget(_logger);
+        }
+    }
+
+    public void StartTask(string message)
+    {
+        ThrowIfDisposed();
+        lock (_stateLock)
+        {
+            Reset();
+            _isIndeterminate = false;
+            Message = message;
+            StartTimerAsync().FireAndForget(_logger);
+            NotifyStateChangedAsync().FireAndForget(_logger);
+        }
+    }
+
+    public void StartSteps(List<ProgressStepConfig> steps)
+    {
+        ArgumentNullException.ThrowIfNull(steps);
+        if (steps.Count == 0)
+        {
+            throw new ArgumentException("Steps cannot be empty", nameof(steps));
+        }
+
+        ThrowIfDisposed();
+        lock (_stateLock)
+        {
+            Reset();
+            Steps = steps;
+
+            foreach (var step in steps)
             {
-                StopTimer();
-                Complete();
+                var state = new StepState(step.Id, step.Name, step.Tooltip ?? string.Empty);
+                state.OnStateChanged += HandleStepStateChanged;
+                _stepStates[step.Id] = state;
             }
+
+            UpdateOverallProgress();
+            NotifyStateChangedAsync().FireAndForget(_logger);
         }
-        catch (Exception ex)
+    }
+
+    public void Complete()
+    {
+        ThrowIfDisposed();
+        lock (_stateLock)
         {
-            Debug.WriteLine($"Error incrementing progress: {ex.Message}");
-            _logger.Error(ex, "Error incrementing progress.");
+            StopTimerAsync().FireAndForget(_logger);
+            Volatile.Write(ref _progress, MaxProgress);
+            Message = "Completed";
+            NotifyStateChangedAsync().FireAndForget(_logger);
+        }
+    }
+
+    public event Func<Task>? StateChanged;
+
+    public async Task UpdateProgressAsync(
+        string taskId,
+        double progress,
+        StepStatus status,
+        string? message = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(taskId);
+        ThrowIfDisposed();
+
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
+            _disposalCts.Token,
+            cancellationToken
+        );
+        cts.CancelAfter(OperationTimeoutMs);
+
+        if (_stepStates.TryGetValue(taskId, out var step))
+        {
+            step.UpdateProgress(progress, status);
+            if (!string.IsNullOrEmpty(message))
+            {
+                Message = message;
+            }
+
+            return;
+        }
+
+        await UpdateTaskProgressAsync(taskId, progress, message, cts.Token);
+    }
+
+    private async Task UpdateTaskProgressAsync(
+        string taskId,
+        double progress,
+        string? message,
+        CancellationToken cancellationToken)
+    {
+        if (progress is < 0 or > MaxProgress)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(progress),
+                "Progress must be between 0 and 100"
+            );
+        }
+
+        await _updateLock.WaitAsync(cancellationToken);
+        try
+        {
+            _taskProgress[taskId] = progress;
+            var newProgress = _taskProgress.Values.DefaultIfEmpty(0).Average();
+            Volatile.Write(ref _progress, newProgress);
+
+            if (!string.IsNullOrEmpty(message))
+            {
+                Message = message;
+            }
+
+            await NotifyStateChangedAsync();
         }
         finally
         {
@@ -321,39 +216,137 @@ public class ProgressManager : IProgressManager
         }
     }
 
-    /// <summary>
-    ///     Raises the <see cref="StateChanged" /> event.
-    /// </summary>
-    private void NotifyStateChanged()
+    private async Task StartTimerAsync()
     {
-        StateChanged?.Invoke();
+        await StopTimerAsync();
+        _timerTask = RunTimerAsync();
     }
 
-    /// <summary>
-    ///     Ensures this instance is not disposed before proceeding.
-    /// </summary>
-    private void ValidateNotDisposed()
+    private async Task RunTimerAsync()
     {
-        if (IsDisposed)
+        try
         {
-            throw new ObjectDisposedException(nameof(ProgressManager));
+            while (await _progressTimer.WaitForNextTickAsync(_disposalCts.Token))
+            {
+                await IncrementProgressAsync(DefaultProgressIncrement);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during disposal
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Timer error");
         }
     }
 
-    /// <summary>
-    ///     Handles state changes from individual steps by recalculating overall progress.
-    /// </summary>
-    private void HandleStepStateChanged(StepState stepState)
+    private async Task StopTimerAsync()
     {
-        UpdateOverallProgress();
-        NotifyStateChanged();
+        if (_timerTask == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _timerTask;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.Error(ex, "Error stopping timer");
+        }
+        finally
+        {
+            _timerTask = null;
+        }
     }
 
-    /// <summary>
-    ///     Recalculates overall progress as the average of all step progress or single-task progress.
-    /// </summary>
+    private async Task IncrementProgressAsync(double amount)
+    {
+        await _updateLock.WaitAsync(_disposalCts.Token);
+        try
+        {
+            var currentProgress = Progress;
+            var newProgress = Math.Min(currentProgress + amount, MaxProgress);
+
+            if (Math.Abs(newProgress - currentProgress) > 0.01)
+            {
+                Volatile.Write(ref _progress, newProgress);
+                await NotifyStateChangedAsync();
+
+                if (newProgress >= MaxProgress)
+                {
+                    await StopTimerAsync();
+                    Complete();
+                }
+            }
+        }
+        finally
+        {
+            _updateLock.Release();
+        }
+    }
+
+    private void Reset()
+    {
+        StopTimerAsync().FireAndForget(_logger);
+        _taskProgress.Clear();
+        Volatile.Write(ref _progress, 0);
+        Message = string.Empty;
+        _isIndeterminate = false;
+
+        foreach (var step in _stepStates.Values)
+        {
+            step.OnStateChanged -= HandleStepStateChanged;
+        }
+
+        _stepStates.Clear();
+        Steps = null;
+    }
+
+    private async Task NotifyStateChangedAsync()
+    {
+        if (StateChanged != null)
+        {
+            await StateChanged.Invoke();
+        }
+    }
+
+    private void HandleStepStateChanged(StepState step)
+    {
+        UpdateOverallProgress();
+        NotifyStateChangedAsync().FireAndForget(_logger);
+    }
+
     private void UpdateOverallProgress()
     {
-        Progress = !_stepStates.IsEmpty ? _stepStates.Values.Average(s => s.Progress) : _taskProgress.Values.DefaultIfEmpty(0).Average();
+        var newProgress = !_stepStates.IsEmpty
+            ? _stepStates.Values.Average(s => s.Progress)
+            : _taskProgress.Values.DefaultIfEmpty(0).Average();
+
+        Volatile.Write(ref _progress, newProgress);
+    }
+
+    private void ThrowIfDisposed([CallerMemberName] string? caller = null)
+    {
+        if (IsDisposed)
+        {
+            throw new ObjectDisposedException(
+                GetType().Name,
+                $"Cannot {caller} on disposed ProgressManager"
+            );
+        }
+    }
+}
+
+internal static class TaskExtensions
+{
+    public static void FireAndForget(this Task task, ILogger logger)
+    {
+        task.ContinueWith(
+            t => logger.Error(t.Exception!, "Unhandled task error"),
+            TaskContinuationOptions.OnlyOnFaulted
+        );
     }
 }

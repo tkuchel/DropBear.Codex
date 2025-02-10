@@ -15,13 +15,171 @@ namespace DropBear.Codex.Blazor.Components.Progress;
 /// </summary>
 public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 {
+    #region Lifecycle Methods
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            // If no transition is active and the displayed progress is not at the target,
+            // queue a new transition.
+            if (_transitionQueue.IsEmpty && !IsTransitioning && Math.Abs(DisplayProgress - Progress) > 0.001)
+            {
+                var transition = new ProgressTransition();
+                _transitionQueue.Enqueue(transition);
+                await StartNextTransitionAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBarStep));
+        }
+    }
+
+    #endregion
+
+    #region Transition Management
+
+    /// <summary>
+    ///     Starts the next pending progress transition if one is available.
+    /// </summary>
+    private async Task StartNextTransitionAsync()
+    {
+        await _transitionLock.WaitAsync();
+        try
+        {
+            if (IsTransitioning || _transitionQueue.IsEmpty)
+            {
+                return;
+            }
+
+            if (!_transitionQueue.TryDequeue(out var nextTransition))
+            {
+                return;
+            }
+
+            _currentTransition = nextTransition;
+            IsTransitioning = true;
+
+            var token = nextTransition.CancellationToken;
+            var startProgress = DisplayProgress;
+            var targetProgress = Progress;
+            var duration = TimeSpan.FromMilliseconds(Config.MinimumDisplayTimeMs);
+
+            // Start the transition in a separate task.
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // Generate a sequence of interpolated progress values.
+                    await foreach (var progress in ProgressInterpolation.GenerateProgressSequence(
+                                       startProgress, targetProgress, duration,
+                                       Config.EasingFunction, cancellationToken: token))
+                    {
+                        if (IsDisposed)
+                        {
+                            break;
+                        }
+
+                        // Update the transition and display progress.
+                        nextTransition.UpdateProgress(progress);
+                        DisplayProgress = progress;
+                        await InvokeAsync(StateHasChanged);
+                    }
+
+                    nextTransition.Complete();
+                }
+                catch (OperationCanceledException)
+                {
+                    // Transition was canceled.
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error during progress transition in {ComponentName}",
+                        nameof(DropBearProgressBarStep));
+                    nextTransition.Complete(false);
+                }
+                finally
+                {
+                    // Ensure state updates are synchronized.
+                    await _transitionLock.WaitAsync(token);
+                    try
+                    {
+                        IsTransitioning = false;
+                        if (_currentTransition == nextTransition)
+                        {
+                            _currentTransition = null;
+                        }
+                    }
+                    finally
+                    {
+                        _transitionLock.Release();
+                    }
+
+                    // Recursively start the next transition if queued.
+                    await StartNextTransitionAsync();
+                }
+            }, token);
+        }
+        finally
+        {
+            _transitionLock.Release();
+        }
+    }
+
+    #endregion
+
+    #region Disposal
+
+    /// <inheritdoc />
+    public override async ValueTask DisposeAsync()
+    {
+        // Cancel and dispose the active transition if any.
+        if (_currentTransition != null)
+        {
+            _currentTransition.Dispose();
+            _currentTransition = null;
+        }
+
+        // Dispose any queued transitions.
+        while (_transitionQueue.TryDequeue(out var transition))
+        {
+            transition.Dispose();
+        }
+
+        _transitionLock.Dispose();
+
+
+        await base.DisposeAsync();
+    }
+
+    #endregion
+
+    #region Private Fields
+
+    // Lock used to synchronize transition animations.
     private readonly SemaphoreSlim _transitionLock = new(1, 1);
+
+    // Queue to hold pending progress transitions.
     private readonly ConcurrentQueue<ProgressTransition> _transitionQueue = new();
+
+    // The currently active transition (if any).
     private ProgressTransition? _currentTransition;
 
+    // Tracking variables for step progress and status.
     private bool _hasStarted;
     private DateTimeOffset _startTime = DateTimeOffset.MinValue;
     private StepStatus _status = StepStatus.NotStarted;
+
+    #endregion
+
+    #region Parameters
 
     /// <summary>
     ///     Required configuration defining step details (ID, Name, Tooltip, etc.).
@@ -52,6 +210,7 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 
             _status = value;
 
+            // Record start time when the step transitions into InProgress.
             if (value == StepStatus.InProgress && !_hasStarted)
             {
                 _hasStarted = true;
@@ -65,6 +224,10 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     /// </summary>
     [Parameter]
     public StepPosition Position { get; set; }
+
+    #endregion
+
+    #region Public Properties
 
     /// <summary>
     ///     Indicates whether a transition animation is currently in progress.
@@ -81,135 +244,13 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     /// </summary>
     public TimeSpan RunningTime => _hasStarted ? DateTimeOffset.UtcNow - _startTime : TimeSpan.Zero;
 
-    /// <inheritdoc />
-    protected override async Task OnParametersSetAsync()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
+    #endregion
 
-        try
-        {
-            // If there's no existing transition and the displayed progress isn't the target,
-            // queue a new transition.
-            if (_transitionQueue.IsEmpty && !IsTransitioning && Math.Abs(DisplayProgress - Progress) > 0.001)
-            {
-                var transition = new ProgressTransition();
-                _transitionQueue.Enqueue(transition);
-                await StartNextTransitionAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBarStep));
-        }
-    }
+    #region Helper Methods
 
-    private async Task StartNextTransitionAsync()
-    {
-        await _transitionLock.WaitAsync();
-        try
-        {
-            if (IsTransitioning || _transitionQueue.IsEmpty)
-            {
-                return;
-            }
-
-            if (!_transitionQueue.TryDequeue(out var nextTransition))
-            {
-                return;
-            }
-
-            _currentTransition = nextTransition;
-            IsTransitioning = true;
-
-            var token = nextTransition.CancellationToken;
-            var startProgress = DisplayProgress;
-            var targetProgress = Progress;
-
-            var duration = TimeSpan.FromMilliseconds(Config.MinimumDisplayTimeMs);
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await foreach (var progress in ProgressInterpolation.GenerateProgressSequence(
-                                       startProgress, targetProgress, duration,
-                                       Config.EasingFunction, cancellationToken: token))
-                    {
-                        if (IsDisposed)
-                        {
-                            break;
-                        }
-
-                        nextTransition.UpdateProgress(progress);
-                        DisplayProgress = progress;
-                        await InvokeAsync(StateHasChanged);
-                    }
-
-                    nextTransition.Complete();
-                }
-                catch (OperationCanceledException)
-                {
-                    // Transition was canceled.
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error during progress transition in {ComponentName}",
-                        nameof(DropBearProgressBarStep));
-                    nextTransition.Complete(false);
-                }
-                finally
-                {
-                    await _transitionLock.WaitAsync(token);
-                    try
-                    {
-                        IsTransitioning = false;
-                        if (_currentTransition == nextTransition)
-                        {
-                            _currentTransition = null;
-                        }
-                    }
-                    finally
-                    {
-                        _transitionLock.Release();
-                    }
-
-                    await StartNextTransitionAsync();
-                }
-            }, token);
-        }
-        finally
-        {
-            _transitionLock.Release();
-        }
-    }
-
-    /// <inheritdoc />
-    protected override async ValueTask DisposeAsync(bool disposing)
-    {
-        if (disposing)
-        {
-            // Cancel and dispose any active transition
-            if (_currentTransition != null)
-            {
-                _currentTransition.Dispose();
-                _currentTransition = null;
-            }
-
-            // Clear and dispose queued transitions
-            while (_transitionQueue.TryDequeue(out var transition))
-            {
-                transition.Dispose();
-            }
-
-            _transitionLock.Dispose();
-        }
-
-        await base.DisposeAsync(disposing);
-    }
-
+    /// <summary>
+    ///     Returns the CSS class corresponding to the step's position.
+    /// </summary>
     private string GetPositionClass()
     {
         return Position switch
@@ -221,6 +262,9 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
         };
     }
 
+    /// <summary>
+    ///     Returns the CSS class corresponding to the step's status.
+    /// </summary>
     private string GetStatusClass()
     {
         return Status switch
@@ -234,6 +278,9 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
         };
     }
 
+    /// <summary>
+    ///     Returns a textual description of the step's position.
+    /// </summary>
     private string GetStatusText()
     {
         return Position switch
@@ -244,6 +291,8 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
             _ => string.Empty
         };
     }
+
+    #endregion
 }
 
 /// <summary>
