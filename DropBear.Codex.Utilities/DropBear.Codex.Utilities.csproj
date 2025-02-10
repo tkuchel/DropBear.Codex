@@ -42,7 +42,7 @@
   <ItemGroup>
     <PackageReference Include="ClosedXML" Version="0.104.2" />
     <PackageReference Include="FuzzySharp" Version="2.0.2" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.186">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.187">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
