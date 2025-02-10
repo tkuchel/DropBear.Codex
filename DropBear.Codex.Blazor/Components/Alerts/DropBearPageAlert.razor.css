@@ -2,19 +2,29 @@
   --alert-border-width: 4px;
   --alert-animation-duration: 0.3s;
 
+  /* Initial state for JS animation */
+  display: none;
   border-radius: var(--br-md);
   padding: var(--spacing-sm);
   margin: var(--spacing-sm);
-  display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   box-shadow: var(--shadow-md);
   position: relative;
   overflow: hidden;
-  animation: alertEntry var(--alert-animation-duration) ease-out;
   background-color: var(--clr-background);
   color: var(--clr-text-primary);
   border: 1px solid transparent;
+}
+
+/* Show/Hide states for JS animation */
+.page-alert.show {
+  display: flex;
+  animation: alertEntry var(--alert-animation-duration) ease-out;
+}
+
+.page-alert.hide {
+  display: none;
 }
 
 /* Enhanced focus styles */
@@ -68,6 +78,18 @@
   hyphens: auto;
 }
 
+/* Progress bar required by JS module */
+.page-alert-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  transform-origin: left;
+  background-color: var(--clr-accent);
+  opacity: 0.3;
+}
+
 /* Enhanced close button styles */
 .page-alert-close {
   background: none;
@@ -97,40 +119,45 @@
   opacity: 0.5;
 }
 
-/* Alert type variations */
-.page-alert-information {
+/* Alert type variations - matched to JS module expectations */
+.page-alert.info {
   --clr-accent: var(--clr-information);
   border-color: var(--clr-information);
 }
 
-.page-alert-success {
+.page-alert.success {
   --clr-accent: var(--clr-success);
   border-color: var(--clr-success);
 }
 
-.page-alert-warning {
+.page-alert.warning {
   --clr-accent: var(--clr-warning);
   border-color: var(--clr-warning);
 }
 
-.page-alert-danger {
+.page-alert.error {
   --clr-accent: var(--clr-error);
   border-color: var(--clr-error);
 }
 
-.page-alert-notification {
-  --clr-accent: var(--clr-primary);
-  border-color: var(--clr-primary);
+/* Container for alerts */
+.page-alert-container {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1050;
+  width: 350px;
+  max-width: calc(100vw - 40px);
 }
 
 /* Enhanced animations */
 @keyframes alertEntry {
   from {
-    transform: translateY(-20px);
+    transform: translateX(100%);
     opacity: 0;
   }
   to {
-    transform: translateY(0);
+    transform: translateX(0);
     opacity: 1;
   }
 }

@@ -1,124 +1,156 @@
-﻿/* prompt-card-styles.css */
+﻿.prompt-card-container {
+  --prompt-max-width: calc(20rem * var(--golden-ratio));
+  --prompt-animation-duration: 300ms;
+  --prompt-icon-size: 1.5rem;
 
-.prompt-card-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   justify-content: center;
-  gap: var(--spacing-sm);
-  max-width: calc(75rem * var(--golden-ratio));
-  margin: 0 auto;
-  padding: var(--spacing-sm);
+  padding: var(--spacing-md);
+  z-index: var(--z-index-modal);
+  background-color: rgba(0, 0, 0, 0.5);
+  animation: overlayEntry var(--prompt-animation-duration) ease-out;
 }
 
 .prompt-card-overlay {
   position: relative;
-  max-width: calc(20rem * var(--golden-ratio));
+  width: 100%;
+  max-width: var(--prompt-max-width);
+  margin: auto;
 }
 
 .prompt-card {
-  font-family: "Poppins", sans-serif;
-  font-weight: 500;
+  --card-border-width: 1px;
+
+  position: relative;
   background-color: var(--clr-background);
-  border: none;
   border-radius: var(--br-md);
-  box-shadow: var(--shadow-md);
-  transition: all var(--transition-normal);
-  max-width: calc(15rem * var(--golden-ratio));
-  animation: fadeIn var(--transition-normal) ease-out;
+  box-shadow: var(--shadow-lg);
   overflow: hidden;
+  animation: promptEntry var(--prompt-animation-duration) ease-out;
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(calc(-1 * var(--spacing-md)));
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
+/* Header Styles */
 .card-header {
   display: flex;
   align-items: center;
-  padding: var(--spacing-sm);
-  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-  background-color: rgba(255, 255, 255, 0.05);
-}
+  padding: var(--spacing-md);
+  gap: var(--spacing-sm);
+  border-bottom: var(--card-border-width) solid var(--clr-surface-primary);
 
-.card-header i {
-  font-size: var(--fs-md);
-  margin-right: var(--spacing-sm);
+  & i {
+    flex-shrink: 0;
+    font-size: var(--prompt-icon-size);
+    width: var(--prompt-icon-size);
+    height: var(--prompt-icon-size);
+  }
 }
 
 .card-title {
   margin: 0;
-  font-weight: 600;
-  font-size: var(--fs-sm);
-  color: var(--clr-text-secondary);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-md);
+  color: var(--clr-text-primary);
 }
 
+/* Body Styles */
 .card-body {
-  padding: var(--spacing-sm);
+  padding: var(--spacing-md);
 }
 
 .card-text {
-  color: var(--clr-text-primary);
-  margin-bottom: var(--spacing-sm);
-  font-weight: 300;
+  margin: 0 0 var(--spacing-md);
   font-size: var(--fs-sm);
   line-height: var(--lh-md);
-  word-wrap: break-word;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  color: var(--clr-text-secondary);
 }
 
+/* Button Styles */
 .button-group {
   display: flex;
   justify-content: flex-end;
-  gap: var(--spacing-xs);
+  gap: var(--spacing-sm);
 }
 
 .prompt-btn {
-  border: none;
-  padding: var(--spacing-xs);
-  border-radius: var(--br-sm);
-  transition: all var(--transition-fast);
-  font-family: "Poppins", sans-serif;
-  font-weight: 500;
-  font-size: var(--fs-sm);
+  --btn-height: 2.25rem;
+  --btn-padding: var(--spacing-sm);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: var(--btn-height);
+  padding: 0 var(--btn-padding);
+  border: none;
+  border-radius: var(--br-sm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
   gap: var(--spacing-xs);
   cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  & i {
+    font-size: 1.1em;
+  }
 }
 
-.prompt-btn:hover {
-  transform: scale(1.05);
+/* Prompt Types */
+.prompt-card-success {
+  & .card-header {
+    background-color: var(--clr-success);
+    color: var(--clr-white);
+  }
 }
 
+.prompt-card-warning {
+  & .card-header {
+    background-color: var(--clr-warning);
+    color: var(--clr-black);
+  }
+}
+
+.prompt-card-danger {
+  & .card-header {
+    background-color: var(--clr-error);
+    color: var(--clr-white);
+  }
+}
+
+.prompt-card-information {
+  & .card-header {
+    background-color: var(--clr-information);
+    color: var(--clr-white);
+  }
+}
+
+/* Button Colors */
 .prompt-btn-primary {
   background-color: var(--clr-primary);
-  color: var(--clr-black);
+  color: var(--clr-white);
 }
 
 .prompt-btn-secondary {
   background-color: var(--clr-secondary);
-  color: var(--clr-black);
-}
-
-.prompt-btn-secondary:hover {
-  background-color: rgba(255, 255, 255, 0.2);
+  color: var(--clr-white);
 }
 
 .prompt-btn-success {
   background-color: var(--clr-success);
-  color: var(--clr-black);
+  color: var(--clr-white);
 }
 
 .prompt-btn-warning {
@@ -128,119 +160,67 @@
 
 .prompt-btn-danger {
   background-color: var(--clr-error);
-  color: var(--clr-black);
+  color: var(--clr-white);
 }
 
 .prompt-btn-default {
   background-color: var(--clr-grey-500);
-  color: var(--clr-black);
+  color: var(--clr-white);
 }
 
-/* Subtle variation */
+/* Subtle Variation */
 .prompt-card.subtle {
-  opacity: 0.8;
-  box-shadow: var(--shadow-sm);
+  opacity: 0.9;
+  box-shadow: var(--shadow-md);
+
+  & .card-header {
+    background-color: transparent;
+    border-bottom-color: currentColor;
+  }
 }
 
-.prompt-card.subtle .card-header i,
-.prompt-card.subtle .card-title {
-  font-size: var(--fs-md);
+/* Animations */
+@keyframes overlayEntry {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
-.prompt-card.subtle .card-text {
-  font-size: var(--fs-md);
+@keyframes promptEntry {
+  from {
+    opacity: 0;
+    transform: translateY(-2rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-/* Card Hover Effect */
-.prompt-card {
-  transition: transform var(--transition-normal),
-  box-shadow var(--transition-normal);
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .prompt-card-container,
+  .prompt-card,
+  .prompt-btn {
+    animation: none;
+    transition: none;
+  }
 }
 
-
-/* Prompt Card Styles by Type */
-
-/* Success Card */
-.prompt-card-success {
-  /*background-color: var(--clr-success-light);*/
-  color: var(--clr-success-dark);
-}
-
-.prompt-card-success .card-header {
-  background-color: var(--clr-success);
-  color: var(--clr-background);
-}
-
-/* Warning Card */
-.prompt-card-warning {
-  /*background-color: var(--clr-warning-light);*/
-  color: var(--clr-warning-dark);
-}
-
-.prompt-card-warning .card-header {
-  background-color: var(--clr-warning);
-  color: var(--clr-background);
-}
-
-/* Error Card */
-.prompt-card-danger {
-  /*background-color: var(--clr-error-light);*/
-  color: var(--clr-error-dark);
-}
-
-.prompt-card-danger .card-header {
-  background-color: var(--clr-error);
-  color: var(--clr-background);
-}
-
-/* Information Card */
-.prompt-card-information {
-  /*background-color: var(--clr-information-light);*/
-  color: var(--clr-information-dark);
-}
-
-.prompt-card-information .card-header {
-  background-color: var(--clr-information);
-  color: var(--clr-background);
-}
-
-/* Default Card */
-.prompt-card-default {
-  /*background-color: var(--clr-grey-100);*/
-  color: var(--clr-text-secondary);
-}
-
-.prompt-card-default .card-header {
-  background-color: var(--clr-grey-500);
-  color: var(--clr-text-secondary);
-}
-
-
-/* Responsive adjustments */
+/* Responsive Design */
 @media (max-width: 768px) {
   .prompt-card-container {
-    padding: var(--spacing-md);
-  }
-
-  .prompt-card-overlay {
-    max-width: 100%;
-  }
-
-  .card-header {
-    padding: var(--spacing-sm) var(--spacing-md);
-  }
-
-  .card-body {
-    padding: var(--spacing-md);
+    padding: var(--spacing-sm);
   }
 
   .button-group {
     flex-direction: column;
-    gap: var(--spacing-sm);
   }
 
   .prompt-btn {
     width: 100%;
-    justify-content: center;
   }
 }

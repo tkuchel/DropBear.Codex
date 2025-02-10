@@ -1,24 +1,31 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div class="@CssClass"
+     role="status"
+     tabindex="@(string.IsNullOrEmpty(Tooltip) ? null : "0")"
      @onmouseover="OnTooltipShow"
-     @onmouseout="OnTooltipHide">
-    @* Optional icon *@
+     @onmouseout="OnTooltipHide"
+     @onblur="OnTooltipHide"
+     @attributes="@(new Dictionary<string, object>
+                  {
+                      ["aria-label"] = string.IsNullOrEmpty(Tooltip) ? null : Tooltip
+                  })">
     @if (!string.IsNullOrEmpty(Icon))
     {
-        <i class="@Icon"></i>
+        <i class="@Icon" aria-hidden="true"></i>
     }
 
-    @* Optional text *@
     @if (!string.IsNullOrEmpty(Text))
     {
         <span>@Text</span>
     }
 
-    @* Tooltip container *@
     @if (ShowTooltip && !string.IsNullOrEmpty(Tooltip))
     {
-        <div class="dropbear-badge-tooltip" style="@TooltipStyle">
+        <div class="dropbear-badge-tooltip"
+             role="tooltip"
+             data-show="@ShowTooltip"
+             style="@TooltipStyle">
             @Tooltip
         </div>
     }

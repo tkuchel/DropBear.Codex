@@ -1,28 +1,57 @@
 ﻿.page-alert-container {
+  --alert-container-width: 500px;
+  --alert-container-padding: var(--spacing-md);
+  --alert-container-gap: var(--spacing-md);
+
   position: fixed;
-  top: 0;
+  top: var(--alert-container-padding);
   left: 50%;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-md);
+  align-items: center;
+  gap: var(--alert-container-gap);
   width: 100%;
-  max-width: 500px;
-  z-index: var(--z-index-dropdown);
-  padding: var(--spacing-md);
+  max-width: var(--alert-container-width);
+  z-index: var(--z-index-dropdown, 1050); /* Fallback z-index matches JS module */
+  padding: var(--alert-container-padding);
   pointer-events: none; /* Allow clicking through container */
 }
 
+/* Re-enable pointer events for alerts and maintain width */
 .page-alert-container > * {
-  pointer-events: auto; /* Re-enable for alerts */
+  pointer-events: auto;
+  width: 100%; /* Ensure alerts take full container width */
+}
+
+/* Alert stacking order */
+.page-alert-container :is(.error, .critical) {
+  order: -2;
+}
+
+.page-alert-container .warning {
+  order: -1;
+}
+
+/* Animation container for JS-managed alerts */
+.page-alert-container .page-alert {
+  transform-origin: center top;
+  will-change: transform, opacity;
 }
 
 /* Improved responsive design */
 @media (max-width: 768px) {
   .page-alert-container {
-    max-width: 90%;
+    --alert-container-width: 90%;
+    --alert-container-padding: var(--spacing-sm);
+    --alert-container-gap: var(--spacing-sm);
+
+    top: var(--spacing-sm);
+  }
+
+  /* Adjust alert padding on mobile */
+  .page-alert-container .page-alert {
     padding: var(--spacing-sm);
-    gap: var(--spacing-sm);
   }
 }
 
@@ -32,11 +61,22 @@
     transition: none !important;
     animation: none !important;
   }
+
+  .page-alert-container .page-alert {
+    transform: none !important;
+  }
+}
+
+/* High contrast mode support */
+@media (forced-colors: active) {
+  .page-alert-container .page-alert {
+    border: 2px solid;
+  }
 }
 
 /* Print styles */
 @media print {
   .page-alert-container {
-    display: none;
+    display: none !important;
   }
 }

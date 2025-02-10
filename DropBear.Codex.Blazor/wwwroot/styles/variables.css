@@ -45,6 +45,7 @@
 
   /* Semantic Color Variables */
   --clr-primary: var(--clr-viking);
+  --clr-primary-dark: #4ec7b4; /* Slightly darker than --clr-viking */
   --clr-secondary: var(--clr-rock-blue);
   --clr-tertiary: var(--clr-cornflower-blue);
   --clr-accent: var(--clr-persimmon);
@@ -214,6 +215,7 @@
   --transition-slow: 500ms ease-in-out;
 
   /* Layout */
+  --max-width: 1200px;
   --container-max-width: 1200px; /* Or any other value that suits your design */
 
 }

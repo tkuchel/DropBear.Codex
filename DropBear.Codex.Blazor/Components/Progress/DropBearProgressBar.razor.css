@@ -1,143 +1,214 @@
-﻿/*
-  DropBearProgressBar.razor.css
-
-  This updated stylesheet contains only the parent-level styles,
-  excluding all step-related CSS. Styles that directly relate to
-  .steps-container, .step-box, and their associated animations
-  have been removed.
-*/
-
-/* Variables for theming (if still needed by the parent progress bar) */
-* {
-  --card-bg: #ffffff;
-  --card-border: rgba(0, 0, 0, 0.125);
-  --text-primary: #333333;
-  --text-secondary: #666666;
-  --progress-bg: #f0f0f0;
-  --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  --tooltip-bg: rgba(0, 0, 0, 0.8);
-
-  --progress-height: 16px;
+﻿/* Shared Progress Variables */
+:root {
+  --progress-primary: var(--clr-primary);
+  --progress-bar-height: 16px;
+  --progress-step-height: 8px;
   --progress-radius: 8px;
-  --transition-duration: 0.3s;
-  --step-gap: 16px;
-  --step-box-bg: #f8f8f8;
-  /* Primary informational color for the progress bar */
-  --clr-information: #4ebafd;
-  --clr-information-light: #80ccff;
+  --progress-animation-duration: 300ms;
+  --progress-step-gap: 16px;
+  --progress-icon-size: 20px;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --card-bg: #2d2d2d;
-    --card-border: rgba(255, 255, 255, 0.125);
-    --text-primary: #e0e0e0;
-    --text-secondary: #b0b0b0;
-    --progress-bg: #404040;
-    --box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-    --tooltip-bg: rgba(255, 255, 255, 0.9);
-  }
-}
-
-/* Main container for the progress bar */
+/* Main Progress Bar Component */
 .dropbear-progress-container {
-  background-color: var(--card-bg);
-  border: 1px solid var(--card-border);
-  border-radius: 8px;
-  box-shadow: var(--box-shadow);
-  margin-bottom: 2rem;
+  background-color: var(--clr-surface-primary);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--br-md);
+  box-shadow: var(--shadow-md);
+  margin-bottom: var(--spacing-md);
+  overflow: hidden;
 }
 
-/* Container for the progress steps */
-.steps-container {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: var(--step-gap);
-  margin-top: 2rem;
-}
-
-/* Inner wrapper for spacing/centering */
 .dropbear-progress {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: var(--spacing-lg);
 }
 
-/* Header area containing message and percentage */
+/* Header Section */
 .progress-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
+  margin-bottom: var(--spacing-md);
 }
 
-/* Main progress message text */
 .progress-message {
-  font-size: 1.125rem;
-  color: var(--text-primary);
+  font-size: var(--fs-md);
+  color: var(--clr-text-primary);
 }
 
-/* Displays the current overall progress percentage */
 .progress-step {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
+  font-size: var(--fs-sm);
+  color: var(--clr-text-secondary);
 }
 
-/* Container for the main progress bar */
+/* Main Progress Bar */
 .progress-bar-container {
-  background-color: var(--progress-bg);
+  background-color: var(--clr-surface-dark);
   border-radius: var(--progress-radius);
-  height: var(--progress-height);
+  height: var(--progress-bar-height);
   overflow: hidden;
   position: relative;
 }
 
-/* The main progress bar indicating overall completion percentage */
 .progress-bar {
   height: 100%;
-  background-color: var(--clr-information);
+  background-color: var(--progress-primary);
   border-radius: var(--progress-radius);
-  transition: width var(--transition-duration) ease-in-out;
+  transition: width var(--progress-animation-duration) ease-in-out;
+  transform-origin: left;
+  will-change: transform, width;
 }
 
-/* Indeterminate animation for the progress bar when exact value isn't known */
+/* Steps Container */
+.steps-container {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--progress-step-gap);
+  margin-top: var(--spacing-lg);
+}
+
+/* Estimated Time */
+.estimated-time {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+  font-size: var(--fs-sm);
+  color: var(--clr-text-secondary);
+}
+
+/* Indeterminate State */
 .progress-bar.indeterminate {
   width: 50%;
   background: linear-gradient(
     90deg,
-    var(--clr-information-light) 0%,
-    var(--clr-information) 50%,
-    var(--clr-information-light) 100%
+    var(--clr-primary-alpha) 0%,
+    var(--progress-primary) 50%,
+    var(--clr-primary-alpha) 100%
   );
   animation: indeterminate 2s infinite linear;
+  will-change: transform;
 }
 
-@keyframes indeterminate {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(200%);
-  }
+/* Step Component Styles */
+.step-box {
+  background-color: var(--clr-surface-secondary);
+  border-radius: var(--br-md);
+  padding: var(--spacing-md);
+  transition: transform var(--progress-animation-duration) ease,
+  background-color var(--progress-animation-duration) ease;
+  will-change: transform;
 }
 
-/* Estimated time remaining display */
-.estimated-time {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-top: 0.5rem;
+.step-header {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
 }
 
-/* Reduced motion support */
-@media (prefers-reduced-motion: reduce) {
-  .progress-bar {
-    transition: none;
+.step-icon {
+  width: var(--progress-icon-size);
+  height: var(--progress-icon-size);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: currentColor;
+}
+
+.step-name {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--clr-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-progress {
+  height: var(--progress-step-height);
+  background-color: var(--clr-surface-dark);
+  border-radius: calc(var(--progress-radius) / 2);
+  overflow: hidden;
+  margin: var(--spacing-sm) 0;
+}
+
+/* Step States */
+.step-box[data-status="success"] {
+  --step-color: var(--clr-success);
+}
+
+.step-box[data-status="warning"] {
+  --step-color: var(--clr-warning);
+}
+
+.step-box[data-status="error"] {
+  --step-color: var(--clr-error);
+}
+
+.step-box[data-status="current"] {
+  --step-color: var(--clr-primary);
+}
+
+.step-box[data-status] {
+  .step-icon {
+    color: var(--step-color);
   }
 
-  .progress-bar.indeterminate {
+  .progress-bar {
+    background-color: var(--step-color);
+  }
+}
+
+/* Step Position Animations */
+.step-box.previous-step {
+  transform: translateX(-10px);
+  opacity: 0.8;
+}
+
+.step-box.next-step {
+  transform: translateX(10px);
+  opacity: 0.8;
+}
+
+/* Keyframe Animations */
+@keyframes indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(200%); }
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar,
+  .step-box,
+  .step-box[data-status="current"] .step-icon {
+    transition: none;
     animation: none;
+  }
+}
+
+/* Mobile Optimization */
+@media (max-width: 768px) {
+  .steps-container {
+    grid-template-columns: 1fr;
+    gap: var(--spacing-sm);
+  }
+
+  .step-box {
+    transform: none !important;
+    opacity: 1 !important;
+  }
+
+  .progress-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--spacing-xs);
   }
 }

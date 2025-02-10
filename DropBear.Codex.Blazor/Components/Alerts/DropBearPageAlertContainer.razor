@@ -1,19 +1,22 @@
 ﻿@inject IPageAlertService PageAlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
 @inject ILogger<DropBearPageAlertContainer> Logger
+@using DropBear.Codex.Blazor.Enums
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
 @using MessagePipe
 @using Microsoft.Extensions.Logging
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div id="page-alert-container" class="page-alert-container">
+<div id="page-alert-container" class="page-alert-container @(_activeAlerts.Any() ? "has-alerts" : "")">
     <CascadingValue Value="this" IsFixed="true">
         <ErrorBoundary @ref="_errorBoundary" Context="error">
             <ChildContent>
                 @if (_activeAlerts.Any())
                 {
-                    @foreach (var alert in _activeAlerts.Values.OrderByDescending(a => a.IsPermanent).ThenByDescending(a => a.Type))
+                    @foreach (var alert in _activeAlerts.Values
+                                      .OrderByDescending(a => a.IsPermanent)
+                                      .ThenByDescending(a => GetAlertPriority(a.Type)))
                     {
                         <DropBearPageAlert @key="alert.Id"
                                            AlertId="@alert.Id"
@@ -22,7 +25,7 @@
                                            Type="@alert.Type"
                                            IsPermanent="@alert.IsPermanent"
                                            Duration="@alert.Duration"
-                                           OnClose="@(() => RemoveAlertAsync(alert.Id))" />
+                                           OnClose="@(() => RemoveAlertAsync(alert.Id))"/>
                     }
                 }
             </ChildContent>
@@ -53,4 +56,17 @@
             await InvokeAsync(StateHasChanged);
         }
     }
+
+    private static int GetAlertPriority(PageAlertType type)
+    {
+        return type switch
+        {
+            PageAlertType.Error => 4,
+            PageAlertType.Warning => 3,
+            PageAlertType.Success => 2,
+            PageAlertType.Info => 1,
+            _ => 0
+        };
+    }
+
 }

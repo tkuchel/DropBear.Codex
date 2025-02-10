@@ -1,54 +1,60 @@
-﻿/* Scoped to DropBearSnackbarContainer component */
+﻿.dropbear-snackbar-container {
+  --snackbar-spacing: var(--spacing-md);
+  --snackbar-offset: 20px;
+  --snackbar-max-width: 500px;
+  --snackbar-min-width: 300px;
 
-.dropbear-snackbar-container {
   position: fixed;
-  z-index: 9999;
+  z-index: var(--z-index-sticky, 9999);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--snackbar-spacing);
+  padding: var(--snackbar-spacing);
+  max-width: min(var(--snackbar-max-width), calc(100% - var(--snackbar-spacing) * 2));
+  min-width: min(var(--snackbar-min-width), calc(100% - var(--snackbar-spacing) * 2));
   pointer-events: none;
-  max-width: 100%;
-  padding: 20px;
 }
 
+/* Positioning variants */
 .dropbear-snackbar-container.top-left {
-  top: 20px;
-  left: 20px;
+  top: var(--snackbar-offset);
+  left: var(--snackbar-offset);
 }
 
 .dropbear-snackbar-container.top-right {
-  top: 20px;
-  right: 20px;
+  top: var(--snackbar-offset);
+  right: var(--snackbar-offset);
 }
 
 .dropbear-snackbar-container.bottom-left {
-  bottom: 20px;
-  left: 20px;
+  bottom: var(--snackbar-offset);
+  left: var(--snackbar-offset);
 }
 
 .dropbear-snackbar-container.bottom-right {
-  bottom: 20px;
-  right: 20px;
+  bottom: var(--snackbar-offset);
+  right: var(--snackbar-offset);
 }
 
-/* Mobile styles */
-@media (max-width: 576px) {
+/* Mobile Optimization */
+@media (max-width: 768px) {
   .dropbear-snackbar-container {
-    padding: 12px;
-    width: 100%;
-  }
+    --snackbar-offset: 0;
+    --snackbar-spacing: var(--spacing-sm);
 
-  .dropbear-snackbar-container.bottom-left,
-  .dropbear-snackbar-container.bottom-right {
     left: 0;
     right: 0;
-    bottom: 0;
+    width: 100%;
+    max-width: 100%;
   }
 
   .dropbear-snackbar-container.top-left,
   .dropbear-snackbar-container.top-right {
-    left: 0;
-    right: 0;
     top: 0;
+  }
+
+  .dropbear-snackbar-container.bottom-left,
+  .dropbear-snackbar-container.bottom-right {
+    bottom: 0;
   }
 }

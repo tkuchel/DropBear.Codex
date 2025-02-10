@@ -1,160 +1,158 @@
-﻿/* Custom Card Styles - Updated */
+﻿.card-container {
+  --card-min-width: 300px;
+  --card-padding: var(--spacing-md);
+  --card-header-height: 3.5rem;
+  --card-icon-size: 1.5rem;
 
-.card-container {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: var(--spacing-sm);
-  max-width: 100%;
-  margin: var(--spacing-sm);
+  grid-template-columns: repeat(auto-fit, minmax(var(--card-min-width), 1fr));
+  gap: var(--spacing-md);
+  width: 100%;
+  margin: 0;
+  padding: var(--spacing-sm);
 }
 
 .card {
-  font-family: "Poppins", sans-serif;
-  font-size: calc(var(--fs-md));
+  --card-border-width: 1px;
+  --card-animation-duration: 300ms;
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background-color: var(--clr-surface-dark);
+  border: var(--card-border-width) solid var(--clr-surface-primary);
   border-radius: var(--br-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
-  transition: box-shadow var(--transition-normal);
-  display: flex;
-  flex-direction: column;
-  height: 100%; /* Ensure the card takes full height of its container */
-  animation: fadeIn 0.3s ease-in-out;
-  background-color: var(--clr-surface-dark);
-  border: var(--br-default);
+  transition: box-shadow var(--card-animation-duration) ease,
+  transform var(--card-animation-duration) ease;
+  animation: cardEntry var(--card-animation-duration) ease-out;
 }
 
-.card input.form-control {
-  background-color: var(--clr-grey-400) !important;
-  color: var(--clr-grey-800);
-}
-
-.card select.form-select {
-  background-color: var(--clr-grey-400);
-  color: var(--clr-grey-800);
-}
-
-.card label.form-label {
-  color: var(--clr-grey-400);
-}
-
-/* Header, Body, and Footer Styling */
-.card-header,
-.card-body,
-.card-footer {
-  padding: var(--spacing-md);
-  display: flex;
-  /*align-items: center;*/
-}
-
+/* Header Styles */
 .card-header {
+  display: flex;
+  align-items: center;
+  min-height: var(--card-header-height);
+  padding: var(--card-padding);
   background: var(--header-gradient);
-  border-bottom: 1px solid var(--clr-surface-primary);
+  border-bottom: var(--card-border-width) solid var(--clr-surface-primary);
+  gap: var(--spacing-sm);
+}
+
+.card-icon {
+  flex-shrink: 0;
+  font-size: var(--card-icon-size);
+  width: var(--card-icon-size);
+  height: var(--card-icon-size);
   color: var(--clr-primary);
-  justify-content: left;
-  padding-bottom: var(--spacing-md) !important;
-}
-
-/* Adjustments for cards without icons */
-.card-header:not(:has(.card-icon)) .card-title {
-  margin-left: 0;
-}
-
-.card-header::after,
-.card-footer::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: inherit;
-  z-index: -1;
-  opacity: 0.7;
 }
 
 .card-title {
   margin: 0;
-  font-size: var(--fs-md) !important;
-  font-weight: 500 !important;
-}
-
-.card-icon {
   font-size: var(--fs-md);
-  margin-right: var(--spacing-sm);
+  font-weight: var(--fw-medium);
+  color: var(--clr-primary);
+  line-height: var(--lh-md);
 }
 
-/* Image card styles */
+/* Body Styles */
+.card-body {
+  flex: 1;
+  padding: var(--card-padding);
+  font-size: var(--fs-sm);
+  color: var(--clr-text-primary);
+
+  /* Form control overrides */
+
+  & input.form-control,
+  & select.form-select {
+    background-color: var(--clr-grey-400);
+    color: var(--clr-grey-800);
+  }
+
+  & label.form-label {
+    color: var(--clr-grey-400);
+  }
+
+  & hr {
+    border: none;
+    height: 1px;
+    background-color: var(--clr-grey-400);
+    margin: var(--spacing-md) 0;
+  }
+}
+
+/* Footer Styles */
+.card-footer {
+  padding: var(--card-padding);
+  border-top: var(--card-border-width) solid var(--clr-surface-primary);
+  background: var(--footer-gradient);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-sm);
+}
+
+/* Image Styles */
 .card-img-top {
   width: 100%;
   height: auto;
+  aspect-ratio: 16/9;
   object-fit: cover;
 }
 
-.card-body {
-  padding: var(--spacing-xs) !important;
-  font-size: var(--fs-sm);
-  flex-grow: 1; /* Allow the body to grow and push the footer down */
-  display: flex;
-  flex-direction: column;
-  margin-top: 15px;
-}
-
-.card-body hr
-{
-  border: none;
-  height: 1px;
-  background-color: var(--clr-grey-400);
-}
-
-.card-footer {
-  padding: var(--spacing-sm);
-  padding-top: 10px !important;
-  border-top: 1px solid var(--clr-surface-primary);
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--spacing-xs);
-  margin-top: auto;
-  background: var(--footer-gradient);
-}
-
-/* Add this to reduce space in compact cards */
+/* Compact Mode */
 .compact {
-  justify-content: space-between; /* Distribute space evenly */
+  --card-padding: var(--spacing-sm);
+  --card-header-height: 2.5rem;
+
+  & .card-body {
+    flex: 0 1 auto;
+  }
+
+  & .card-title {
+    font-size: var(--fs-sm);
+  }
 }
 
-/* Compact card styles */
-.compact .card-header {
-  padding: var(--spacing-sm);
-}
-
-.compact .card-body {
-  padding: var(--spacing-md);
-  flex-grow: 0; /* Prevent the body from growing in compact cards */
-}
-
-.compact .card-footer {
-  padding: var(--spacing-sm);
-}
-
+/* Button Styles */
 .btn {
-  padding: var(--spacing-sm);
-  border: none;
-  border-radius: var(--br-sm);
-  font-weight: 500;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  transition: background-color var(--transition-fast),
-  transform var(--transition-fast);
+  --btn-height: 2.25rem;
+  --btn-padding: var(--spacing-sm);
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  height: var(--btn-height);
+  padding: 0 var(--btn-padding);
+  border: none;
+  border-radius: var(--br-sm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
   gap: var(--spacing-xs);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  & i {
+    font-size: 1.1em;
+  }
 }
 
-.btn:hover {
-  transform: scale(1.05);
-}
-
+/* Button Colors */
 .btn-default {
   background-color: var(--clr-primary);
   color: var(--clr-mine-shaft);
@@ -191,7 +189,7 @@
 }
 
 /* Animations */
-@keyframes fadeIn {
+@keyframes cardEntry {
   from {
     opacity: 0;
     transform: translateY(var(--spacing-md));
@@ -202,9 +200,30 @@
   }
 }
 
-/* Responsive adjustments */
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+
+  .btn,
+  .card {
+    transition: none;
+  }
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
   .card-container {
-    grid-template-columns: 1fr;
+    --card-min-width: 100%;
+    padding: var(--spacing-xs);
+  }
+
+  .card-footer {
+    flex-direction: column;
+  }
+
+  .btn {
+    width: 100%;
   }
 }

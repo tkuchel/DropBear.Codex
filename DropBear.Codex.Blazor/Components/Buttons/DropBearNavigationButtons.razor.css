@@ -1,43 +1,119 @@
 ﻿.navigation-buttons {
+  --nav-btn-size: 3rem;
+  --nav-btn-icon-size: 1.25rem;
+  --nav-btn-bg: var(--clr-primary);
+  --nav-btn-hover-bg: var(--clr-button-primary-hover);
+  --nav-btn-shadow: 0 2px 4px rgb(0 0 0 / 0.1);
+  --nav-btn-hover-shadow: 0 4px 6px rgb(0 0 0 / 0.15);
+
   position: fixed;
-  z-index: 110;
+  z-index: var(--z-index-popover, 110);
+  pointer-events: none;
 }
 
 .nav-button {
   position: fixed;
-  background-color: var(--clr-primary);
+  width: var(--nav-btn-size);
+  height: var(--nav-btn-size);
+
+  /* Visual */
+  background-color: var(--nav-btn-bg);
   color: var(--clr-white);
   border: none;
   border-radius: 50%;
-  width: 50px;
-  height: 50px;
-  font-size: 24px;
-  cursor: pointer;
-  box-shadow: var(--shadow-md);
-  transition: background-color var(--transition-fast), transform var(--transition-fast);
+  box-shadow: var(--nav-btn-shadow);
+
+  /* Layout */
   display: flex;
   align-items: center;
   justify-content: center;
+
+  /* Interaction */
+  cursor: pointer;
+  pointer-events: auto;
+
+  /* Animation */
+  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, background-color, box-shadow;
 }
 
-.nav-button:hover {
-  background-color: var(--clr-information);
-  transform: scale(1.1);
+.nav-button i {
+  font-size: var(--nav-btn-icon-size);
+  line-height: 1;
 }
 
+/* Button states */
+.nav-button:hover:not(:active) {
+  background-color: var(--nav-btn-hover-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--nav-btn-hover-shadow);
+}
+
+.nav-button:active {
+  transform: translateY(0);
+  box-shadow: var(--nav-btn-shadow);
+}
+
+.nav-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(var(--nav-btn-bg), 0.4);
+}
+
+/* Scroll to top button */
 .scroll-top-button {
   opacity: 0;
   visibility: hidden;
-  transition: opacity var(--transition-normal), visibility var(--transition-normal);
+  transform: translateY(1rem);
+  transition: opacity 0.3s ease,
+  visibility 0.3s ease,
+  transform 0.3s ease;
 }
 
 .scroll-top-button.visible {
   opacity: 1;
   visibility: visible;
+  transform: translateY(0);
 }
 
+/* Mobile optimization */
+@media (max-width: 768px) {
+  .navigation-buttons {
+    --nav-btn-size: 2.5rem;
+    --nav-btn-icon-size: 1rem;
+  }
+
+  .back-button {
+    left: 1rem !important;
+  }
+
+  .home-button {
+    left: 4rem !important;
+  }
+
+  .scroll-top-button {
+    right: 1rem !important;
+    bottom: 1rem !important;
+  }
+}
+
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  .nav-button {
+  .nav-button,
+  .scroll-top-button {
     transition: none;
+  }
+}
+
+/* High contrast mode */
+@media (forced-colors: active) {
+  .nav-button {
+    border: 2px solid ButtonText;
+  }
+}
+
+/* Print styles */
+@media print {
+  .navigation-buttons {
+    display: none;
   }
 }

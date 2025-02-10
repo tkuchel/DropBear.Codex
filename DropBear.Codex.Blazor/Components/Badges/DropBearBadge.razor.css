@@ -1,25 +1,44 @@
 ﻿.dropbear-badge {
+  --badge-height: 1.5rem;
+  --badge-font-size: var(--fs-xs);
+  --badge-padding: var(--spacing-xs);
+  --badge-icon-size: 1rem;
+  --badge-transition-duration: 0.15s;
+
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: var(--spacing-xs);
-  font-size: var(--fs-xs);
+  height: var(--badge-height);
+  padding: var(--badge-padding);
+  font-size: var(--badge-font-size);
   font-weight: 500;
   line-height: 1;
   text-align: center;
   white-space: nowrap;
   vertical-align: baseline;
   border-radius: var(--br-md);
-  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+  transition: all var(--badge-transition-duration) ease-in-out;
+  user-select: none;
 }
 
-.dropbear-badge-pill,
+/* Badge Shapes */
+.dropbear-badge-pill {
+  border-radius: calc(var(--badge-height) / 2);
+  padding-left: calc(var(--badge-padding) * 2);
+  padding-right: calc(var(--badge-padding) * 2);
+}
+
 .dropbear-badge-icon-only {
-  padding: var(--spacing-xs);
-  border-radius: var(--br-md);
+  width: var(--badge-height);
+  padding: calc(var(--badge-padding) / 2);
+  border-radius: 50%;
 }
 
+/* Icon Styling */
 .dropbear-badge i {
+  font-size: var(--badge-icon-size);
+  line-height: 1;
   margin-right: 0.25em;
 }
 
@@ -27,10 +46,14 @@
   margin-right: 0;
 }
 
-/* Badge Colors */
+/* Badge Colors with Hover States */
 .dropbear-badge-default {
   color: var(--clr-black);
   background-color: var(--clr-grey-500);
+}
+
+.dropbear-badge-default:hover {
+  background-color: var(--clr-grey-600);
 }
 
 .dropbear-badge-secondary {
@@ -38,9 +61,17 @@
   background-color: var(--clr-secondary);
 }
 
+.dropbear-badge-secondary:hover {
+  background-color: color-mix(in srgb, var(--clr-secondary) 90%, black);
+}
+
 .dropbear-badge-success {
   color: var(--clr-black);
   background-color: var(--clr-success);
+}
+
+.dropbear-badge-success:hover {
+  background-color: color-mix(in srgb, var(--clr-success) 90%, black);
 }
 
 .dropbear-badge-information {
@@ -48,9 +79,17 @@
   background-color: var(--clr-information);
 }
 
+.dropbear-badge-information:hover {
+  background-color: color-mix(in srgb, var(--clr-information) 90%, black);
+}
+
 .dropbear-badge-warning {
   color: var(--clr-black);
   background-color: var(--clr-warning);
+}
+
+.dropbear-badge-warning:hover {
+  background-color: color-mix(in srgb, var(--clr-warning) 90%, black);
 }
 
 .dropbear-badge-error {
@@ -58,19 +97,55 @@
   background-color: var(--clr-error);
 }
 
-.badge-pad-left{
-  padding-left: var(--spacing-xs);
+.dropbear-badge-error:hover {
+  background-color: color-mix(in srgb, var(--clr-error) 90%, black);
 }
 
 /* Tooltip */
-.dropbear-tooltip {
+.dropbear-badge-tooltip {
   position: fixed;
+  max-width: 200px;
+  padding: var(--spacing-xs) var(--spacing-sm);
   background-color: var(--clr-background);
   color: var(--clr-white);
-  padding: var(--spacing-xs);
-  border-radius: var(--br-md);
   font-size: var(--fs-sm);
+  line-height: 1.4;
+  border-radius: var(--br-sm);
+  box-shadow: var(--shadow-md);
   z-index: var(--z-index-tooltip);
   pointer-events: none;
-  opacity: 0.9;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Tooltip Animation States */
+.dropbear-badge-tooltip[data-show="true"] {
+  opacity: 0.98;
+  transform: translateY(0);
+}
+
+/* Focus and Keyboard Navigation */
+.dropbear-badge:focus-visible {
+  outline: 2px solid var(--clr-focus);
+  outline-offset: 2px;
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .dropbear-badge,
+  .dropbear-badge-tooltip {
+    transition: none;
+  }
+}
+
+/* Print styles */
+@media print {
+  .dropbear-badge-tooltip {
+    display: none;
+  }
+
+  .dropbear-badge {
+    border: 1px solid currentColor;
+  }
 }

@@ -1,25 +1,84 @@
-﻿/* Base Section Container Styles */
+﻿/* Section Container */
 .section-container {
+  --container-gap: var(--spacing-xs);
+  --container-margin: var(--spacing-md);
+
   display: flex;
   flex-direction: column;
   width: 100%;
-  max-width: var(--max-width, var(--container-max-width));
-  gap: var(--spacing-xs, 0.5rem);
-  margin: 0 auto; /* Center horizontally */
+  max-width: var(--max-width, var(--container-max-width, 100%));
+  gap: var(--container-gap);
+  margin: 0 auto;
+  padding: var(--container-margin);
+
+  /* Optional transition for dynamic width changes */
+  transition: max-width 200ms ease-out;
 }
 
-/* Horizontal Centering */
+/* Alignment Modifiers */
 .section-container.horizontal-centered {
+  justify-content: center;
+  align-items: center;
+}
+
+.section-container.vertical-centered {
+  min-height: 100vh;
   justify-content: center;
 }
 
-/* Vertical Centering */
-.section-container.vertical-centered {
-  align-items: center;
-  min-height: 100vh; /* Full-height for vertical centering */
+/* Nested Sections */
+.section-container .section-component-section {
+  margin-bottom: var(--container-gap);
 }
 
-/* Section Spacing */
-.section-container .section {
-  margin-bottom: var(--spacing-lg, 2rem);
+.section-container .section-component-section:last-child {
+  margin-bottom: 0;
+}
+
+/* Animation */
+@keyframes sectionEntry {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .section-container {
+    --container-margin: var(--spacing-sm);
+    padding: var(--spacing-sm);
+  }
+
+  .section-component-section {
+    padding: var(--spacing-sm);
+  }
+}
+
+/* Print Styles */
+@media print {
+  .section-container {
+    max-width: 100% !important;
+  }
+
+  .section-component-section {
+    break-inside: avoid;
+    border: var(--section-border-width) solid currentColor;
+    box-shadow: none;
+  }
+}
+
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .section-component-section {
+    animation: none;
+  }
+
+  .section-container {
+    transition: none;
+  }
 }

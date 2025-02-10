@@ -1,90 +1,153 @@
 ﻿.file-download-container {
-   max-width: 600px;
-   margin: 0 auto;
+  --download-max-width: 600px;
+  --download-icon-size: 1.5rem;
+  --progress-height: 4px;
+
+  width: 100%;
+  max-width: var(--download-max-width);
+  margin: 0 auto;
 }
 
 .file-download-component {
   display: flex;
   flex-direction: column;
+  background-color: var(--clr-surface-light);
   border-radius: var(--br-md);
-  background-color: var(--clr-surface-light); /* Use surface color for consistent theming */
-  color: var(--clr-text-primary); /* Text color aligned with the current theme */
-  transition: var(--transition-normal);
   box-shadow: var(--shadow-md);
-  margin-bottom: var(--spacing-sm);
   overflow: hidden;
+  transition: box-shadow var(--transition-normal);
 }
 
 .file-info-row {
   display: flex;
   align-items: center;
-  padding: var(--spacing-sm);
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  background-color: var(--clr-surface-primary);
 }
 
 .file-info {
   display: flex;
   align-items: center;
-  flex-grow: 1;
+  gap: var(--spacing-sm);
+  flex: 1;
+  min-width: 0; /* Enable text truncation */
 }
 
 .file-icon {
-  font-size: var(--fs-md);
-  margin-right: var(--spacing-sm);
+  flex-shrink: 0;
+  font-size: var(--download-icon-size);
   color: var(--clr-primary);
+  width: var(--download-icon-size);
+  height: var(--download-icon-size);
 }
 
 .file-name {
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  margin-right: var(--spacing-sm);
+  color: var(--clr-text-primary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .file-size {
+  flex-shrink: 0;
   font-size: var(--fs-sm);
-  color: var(--clr-secondary);
-  margin-right: var(--spacing-sm);
-  white-space: nowrap;
+  color: var(--clr-text-secondary);
+}
+
+.download-button {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--clr-primary);
+  color: var(--clr-white);
+  border: none;
+  border-radius: var(--br-sm);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+
+  &:hover:not(:disabled) {
+    background-color: var(--clr-primary-dark);
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
+  }
+
+  &:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
+  & i {
+    font-size: 1.1em;
+  }
 }
 
 .progress-row {
-  padding: 0 var(--spacing-sm);
+  padding: var(--spacing-sm);
+  background-color: var(--clr-surface-secondary);
 }
 
 .download-progress {
-  height: 4px;
-  background-color: var(--clr-surface-dark); /* Use a surface color for background consistency */
-  border-radius: var(--br-md);
+  position: relative;
+  height: var(--progress-height);
+  background-color: var(--clr-surface-dark);
+  border-radius: calc(var(--progress-height) / 2);
   overflow: hidden;
 }
 
 .progress-bar {
-  width: 0;
+  position: absolute;
+  left: 0;
+  top: 0;
   height: 100%;
   background-color: var(--clr-primary);
   transition: width var(--transition-normal);
 }
 
-.download-button {
-  padding: var(--spacing-xs);
-  border: none;
-  border-radius: var(--br-md);
-  background-color: var(--clr-primary);
-  color: var(--clr-background);
-  font-weight: var(--fw-medium);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  transition: var(--transition-fast);
-  white-space: nowrap;
+/* Accessibility */
+@media (prefers-reduced-motion: reduce) {
+  .file-download-component,
+  .download-button,
+  .progress-bar {
+    transition: none;
+  }
 }
 
-.download-button:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  .download-button {
+    border: 1px solid ButtonText;
+  }
+
+  .progress-bar {
+    background-color: Highlight;
+  }
 }
 
-.download-button:hover:not(:disabled) {
-  background-color: var(--clr-information);
+/* Mobile Optimization */
+@media (max-width: 768px) {
+  .file-info-row {
+    flex-wrap: wrap;
+    gap: var(--spacing-sm);
+  }
+
+  .download-button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .file-size {
+    width: 100%;
+    text-align: left;
+    order: 2;
+  }
 }

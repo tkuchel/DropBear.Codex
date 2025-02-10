@@ -1,10 +1,17 @@
-﻿.section-component-section {
+﻿/* Section Component */
+.section-component-section {
+  --section-border-width: 1px;
+  --section-border-color: var(--clr-border, rgba(0, 0, 0, 0.1));
+
   display: block;
   width: 100%;
-  padding: var(--spacing-md, 1rem);
-  background-color: var(--clr-surface-primary, var(--clr-seasalt));
-  border: var(--br-default, 1px solid var(--clr-border));
-  border-radius: var(--br-md, 0.5rem);
-  margin-bottom: var(--spacing-md, 1rem);
+  padding: var(--spacing-md);
+  background-color: var(--clr-surface-primary);
+  border: var(--section-border-width) solid var(--section-border-color);
+  border-radius: var(--br-md);
+  margin-bottom: var(--spacing-md);
   overflow: hidden;
+
+  /* Animation */
+  animation: sectionEntry 300ms ease-out;
 }

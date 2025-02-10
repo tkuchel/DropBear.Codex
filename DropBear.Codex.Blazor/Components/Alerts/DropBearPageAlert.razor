@@ -1,18 +1,25 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div id="@AlertId" class="page-alert @AlertTypeCssClass">
-    <div class="page-alert-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            @((MarkupString)GetIconPath())
-        </svg>
-    </div>
     <div class="page-alert-content">
-        <strong>@Title</strong>
-        <p>@Message</p>
+        <div class="page-alert-header">
+            <div class="page-alert-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    @((MarkupString)GetIconPath())
+                </svg>
+            </div>
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <div class="page-alert-title">@Title</div>
+            }
+        </div>
+        <div class="page-alert-message">@((MarkupString)Message)</div>
     </div>
     @if (!IsPermanent)
     {
         <div class="page-alert-progress-bar"></div>
+        <button class="page-alert-close" type="button" aria-label="Close" @onclick="RequestClose">
+            <span aria-hidden="true">&times;</span>
+        </button>
     }
-    <button class="page-alert-close" @onclick="RequestClose">×</button>
 </div>
