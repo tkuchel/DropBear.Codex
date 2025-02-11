@@ -64,7 +64,7 @@ public class Result
 
     /// <summary>
     ///     A collection of exceptions if multiple errors occurred. Typically empty unless
-    ///     <see cref="Failure(IEnumerable{Exception})" /> was used.
+    ///     <see cref="Failure(IEnumerable&lt;Exception&gt;)" /> was used.
     /// </summary>
     protected ReadOnlyCollection<Exception> Exceptions { get; init; }
 

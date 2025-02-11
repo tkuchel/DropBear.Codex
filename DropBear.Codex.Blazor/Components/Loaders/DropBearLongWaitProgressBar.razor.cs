@@ -103,7 +103,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
     #region Disposal
 
     /// <inheritdoc />
-    public void Dispose()
+    public override async ValueTask DisposeAsync()
     {
         // Dispose of timer and cancellation resources.
         _timer?.Dispose();
@@ -111,7 +111,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
         _cts.Dispose();
 
         // Trigger any asynchronous disposal in the base class.
-        _ = DisposeAsync();
+        await base.DisposeAsync();
     }
 
     #endregion

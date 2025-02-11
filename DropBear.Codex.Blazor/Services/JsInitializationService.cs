@@ -222,11 +222,11 @@ public sealed class JsInitializationService : IJsInitializationService
         public SemaphoreSlim InitializeLock { get; }
         public int InitializationAttempts => _initializationAttempts;
 
-        public async ValueTask DisposeAsync()
+        public ValueTask DisposeAsync()
         {
             if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
             {
-                return;
+                return ValueTask.CompletedTask;
             }
 
             try
@@ -241,6 +241,8 @@ public sealed class JsInitializationService : IJsInitializationService
                     _moduleName
                 );
             }
+
+            return ValueTask.CompletedTask;
         }
 
         public void IncrementInitializationAttempts()

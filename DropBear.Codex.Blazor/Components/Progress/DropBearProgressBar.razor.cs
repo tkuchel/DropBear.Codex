@@ -182,7 +182,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
                 if (status is StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped)
                 {
-                    await MoveToNextStepAsync(cts.Token);
+                    await MoveToNextStepAsync();
                 }
 
                 await RequestRenderAsync();
@@ -198,7 +198,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         }
     }
 
-    private async Task MoveToNextStepAsync(CancellationToken cancellationToken)
+    private async Task MoveToNextStepAsync()
     {
         if (_currentSteps == null || _currentStepIndex >= _currentSteps.Count - 1)
         {

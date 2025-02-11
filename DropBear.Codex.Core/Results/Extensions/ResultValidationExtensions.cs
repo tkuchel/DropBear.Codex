@@ -65,23 +65,31 @@ public static class ResultValidationExtensions
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var result = await validator(current).ConfigureAwait(false);
-            if (!result.IsSuccess)
+            if (current != null)
             {
-                if (result.Error is not null)
+                var result = await validator(current).ConfigureAwait(false);
+                if (!result.IsSuccess)
                 {
-                    errors.Add(result.Error);
+                    if (result.Error is not null)
+                    {
+                        errors.Add(result.Error);
+                    }
                 }
-            }
-            else
-            {
-                current = result.Value;
+                else
+                {
+                    current = result.Value;
+                }
             }
         }
 
-        return errors.Count == 0
-            ? Result<T, ValidationError>.Success(current)
-            : Result<T, ValidationError>.Failure(errors.Combine());
+        if (current != null)
+        {
+            return errors.Count == 0
+                ? Result<T, ValidationError>.Success(current)
+                : Result<T, ValidationError>.Failure(errors.Combine());
+        }
+
+        return Result<T, ValidationError>.Failure(new ValidationError("Value cannot be null"));
     }
 
     #endregion
@@ -109,7 +117,7 @@ public static class ResultValidationExtensions
 
         try
         {
-            return predicate(result.Value)
+            return result.Value != null && predicate(result.Value)
                 ? result
                 : Result<T, ValidationError>.Failure(new ValidationError(field, message));
         }
@@ -144,7 +152,7 @@ public static class ResultValidationExtensions
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            return await predicate(result.Value).ConfigureAwait(false)
+            return result.Value != null && await predicate(result.Value).ConfigureAwait(false)
                 ? result
                 : Result<T, ValidationError>.Failure(new ValidationError(field, message));
         }

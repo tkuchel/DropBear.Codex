@@ -83,7 +83,7 @@ public sealed partial class DropBearCard : DropBearComponentBase
 
         if (CompactMode)
         {
-            cssClasses.Add("dropbear-card-compact");
+            cssClasses.Add("compact");
         }
 
         if (!string.IsNullOrEmpty(ImageSource))

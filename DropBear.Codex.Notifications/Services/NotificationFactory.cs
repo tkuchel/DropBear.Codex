@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Notifications.Enums;
+using DropBear.Codex.Notifications.Interfaces;
 using DropBear.Codex.Notifications.Models;
 
 #endregion

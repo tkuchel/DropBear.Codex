@@ -114,10 +114,17 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
         }
 
         // Create a progress object that safely updates UI
-        var progress = new Progress<int>(async percent =>
+        var progress = new Progress<int>(async void (percent) =>
         {
-            await QueueStateHasChangedAsync(() => _downloadProgress = percent);
-            LogDebug("Download progress: {Progress}%", percent);
+            try
+            {
+                await QueueStateHasChangedAsync(() => _downloadProgress = percent);
+                LogDebug("Download progress: {Progress}%", percent);
+            }
+            catch (Exception e)
+            {
+                LogError("Failed to update download progress", e);
+            }
         });
 
         // Get the file stream

@@ -204,9 +204,9 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         }
     }
 
-    private static bool IsElementRemovedError(Exception ex)
+    private static bool IsElementRemovedError(Exception? ex)
     {
-        return ex.Message is not null &&
+        return ex is not null &&
                ex.Message.Contains("removeChild") &&
                ex.Message.Contains("parentNode is null");
     }

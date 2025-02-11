@@ -306,11 +306,14 @@ public sealed partial class DropBearContextMenu : DropBearComponentBase
 
             // Retrieve contextual data if provided.
             var context = GetContext?.Invoke();
-            LogDebug("Item clicked: {Text} with context: {Context}", item.Text, context);
-
-            if (OnItemClicked.HasDelegate)
+            if (context != null)
             {
-                await OnItemClicked.InvokeAsync((item, context));
+                LogDebug("Item clicked: {Text} with context: {Context}", item.Text, context);
+
+                if (OnItemClicked.HasDelegate)
+                {
+                    await OnItemClicked.InvokeAsync((item, context));
+                }
             }
         }
         catch (Exception ex)

@@ -32,7 +32,7 @@ public sealed class ProgressManager : IProgressManager
 
     private int _isDisposed;
     private volatile bool _isIndeterminate;
-    private string _message = string.Empty;
+    private string? _message = string.Empty;
     private double _progress;
     private Task? _timerTask;
 
@@ -80,14 +80,14 @@ public sealed class ProgressManager : IProgressManager
 
     public bool IsDisposed => Volatile.Read(ref _isDisposed) == 1;
     public IReadOnlyList<StepState> CurrentStepStates => _stepStates.Values.ToList();
-    public string Message { get => _message; private set => _message = value ?? string.Empty; }
+    public string? Message { get => _message; private set => _message = value ?? string.Empty; }
     public double Progress => Volatile.Read(ref _progress);
     public bool IsIndeterminate => _isIndeterminate;
     public IReadOnlyList<ProgressStepConfig>? Steps { get; private set; }
 
     public CancellationToken CancellationToken => _disposalCts.Token;
 
-    public void StartIndeterminate(string message)
+    public void StartIndeterminate(string? message)
     {
         ThrowIfDisposed();
         lock (_stateLock)
@@ -99,7 +99,7 @@ public sealed class ProgressManager : IProgressManager
         }
     }
 
-    public void StartTask(string message)
+    public void StartTask(string? message)
     {
         ThrowIfDisposed();
         lock (_stateLock)

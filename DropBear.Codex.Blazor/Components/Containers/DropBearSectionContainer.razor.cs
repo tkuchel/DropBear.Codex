@@ -15,7 +15,7 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 ///     A container that dynamically adjusts its width and can optionally center its content.
 ///     Optimized for Blazor Server with proper thread safety and state management.
 /// </summary>
-public sealed partial class DropBearSectionContainer : DropBearComponentBase
+public  partial class DropBearSectionContainer : DropBearComponentBase
 {
     private const string DEFAULT_MAX_WIDTH = "100%";
     private const string JsModuleName = JsModuleNames.ResizeManager;

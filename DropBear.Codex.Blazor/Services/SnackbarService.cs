@@ -1,4 +1,6 @@
-﻿using System.Collections.Concurrent;
+﻿#region
+
+using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Exceptions;
@@ -6,6 +8,8 @@ using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Results.Base;
 using Microsoft.Extensions.Logging;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Services;
 
@@ -21,10 +25,10 @@ public sealed class SnackbarService : ISnackbarService
     private const int OperationTimeoutMs = 5000;
 
     private readonly ConcurrentDictionary<string, SnackbarInstance> _activeSnackbars;
-    private readonly SemaphoreSlim _operationLock;
-    private readonly ILogger<SnackbarService> _logger;
     private readonly CancellationTokenSource _disposalCts;
-    private  int _isDisposed;
+    private readonly ILogger<SnackbarService> _logger;
+    private readonly SemaphoreSlim _operationLock;
+    private int _isDisposed;
 
     public SnackbarService(ILogger<SnackbarService> logger)
     {
@@ -200,7 +204,9 @@ public sealed class SnackbarService : ISnackbarService
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
+        {
             return;
+        }
 
         try
         {
@@ -247,7 +253,9 @@ public sealed class SnackbarService : ISnackbarService
         CancellationToken cancellationToken)
     {
         if (_activeSnackbars.Count < MaxSnackbars)
+        {
             return;
+        }
 
         if (newType != SnackbarType.Error)
         {
@@ -277,6 +285,10 @@ public sealed class SnackbarService : ISnackbarService
         {
             try
             {
+                // Check the token before invoking the event
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Notify listeners that a snackbar has been shown
                 await OnShow.Invoke(snackbar);
             }
             catch (Exception ex)
@@ -298,6 +310,10 @@ public sealed class SnackbarService : ISnackbarService
         {
             try
             {
+                // Check the token before invoking the event
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Notify listeners that a snackbar has been removed
                 await OnRemove.Invoke(id);
             }
             catch (Exception ex)

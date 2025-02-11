@@ -1,11 +1,9 @@
 ﻿@inject IPageAlertService PageAlertService
 @inject IAsyncSubscriber<string, Notification> NotificationSubscriber
-@inject ILogger<DropBearPageAlertContainer> Logger
 @using DropBear.Codex.Blazor.Enums
 @using DropBear.Codex.Blazor.Interfaces
 @using DropBear.Codex.Notifications.Models
 @using MessagePipe
-@using Microsoft.Extensions.Logging
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div id="page-alert-container" class="page-alert-container @(_activeAlerts.Any() ? "has-alerts" : "")">
@@ -31,7 +29,7 @@
             </ChildContent>
             <ErrorContent>
                 @{
-                    Logger.LogError(error, "Error in alert container");
+                    Logger.Error(error, "Error in alert container");
                 }
                 <div class="alert alert-danger" role="alert">
                     An error occurred displaying alerts. Please try refreshing the page.

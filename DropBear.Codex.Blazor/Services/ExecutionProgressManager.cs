@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Runtime.Versioning;
 using DropBear.Codex.Blazor.Components.Progress;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Exceptions;
@@ -113,6 +114,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// </summary>
     /// <param name="message">Message displayed to the user.</param>
     /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
+    [UnsupportedOSPlatform("browser")]
     public Result<Unit, ProgressManagerError> SetIndeterminateMode(string message)
     {
         ThrowIfDisposed();
@@ -155,6 +157,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     ///     Sets the progress bar to normal (determinate) mode without discrete steps.
     /// </summary>
     /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
+    [UnsupportedOSPlatform("browser")]
     public Result<Unit, ProgressManagerError> SetNormalMode()
     {
         ThrowIfDisposed();
@@ -197,6 +200,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// </summary>
     /// <param name="steps">A read-only list of step configurations.</param>
     /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
+    [UnsupportedOSPlatform("browser")]
     public Result<Unit, ProgressManagerError> SetSteppedMode(IReadOnlyList<ProgressStepConfig> steps)
     {
         ThrowIfDisposed();

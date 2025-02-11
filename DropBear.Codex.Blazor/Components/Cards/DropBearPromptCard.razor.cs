@@ -85,7 +85,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     /// <summary>
     ///     Returns the appropriate CSS class for a button.
     /// </summary>
-    private string GetButtonClass(ButtonConfig button)
+    private string GetButtonClass(ButtonConfig? button)
     {
         if (button is null)
         {
@@ -163,11 +163,11 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
 
         foreach (var button in Buttons)
         {
-            if (string.IsNullOrWhiteSpace(button.Id) ||
+            if (string.IsNullOrWhiteSpace(button?.Id) ||
                 string.IsNullOrWhiteSpace(button.Text))
             {
                 Logger.Warning("Button configuration missing required properties: {ButtonId}",
-                    button.Id ?? "null");
+                    button?.Id ?? "null");
             }
         }
     }
@@ -202,7 +202,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     ///     The collection of button configurations to display in the prompt's footer.
     /// </summary>
     [Parameter]
-    public IReadOnlyCollection<ButtonConfig> Buttons { get; set; } = Array.Empty<ButtonConfig>();
+    public IReadOnlyCollection<ButtonConfig?> Buttons { get; set; } = Array.Empty<ButtonConfig>();
 
     /// <summary>
     ///     Event callback for when a button is clicked in the prompt.

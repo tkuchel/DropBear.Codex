@@ -21,7 +21,7 @@ public sealed class SnackbarInstance
     }
 
     /// <summary>
-    ///     Gets the unique identifier for this snackbar instance (e.g. "snackbar-<guid>").
+    ///     Gets the unique identifier for this snackbar instance (e.g. "snackbar-&lt;guid&gt;").
     /// </summary>
     public string Id { get; }
 

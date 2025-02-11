@@ -47,8 +47,11 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     private void SubscribeToEvents()
     {
         // Subscribe to snackbar events.
-        SnackbarService.OnShow += HandleSnackbarShow;
-        SnackbarService.OnRemove += HandleSnackbarRemove;
+        if (SnackbarService != null)
+        {
+            SnackbarService.OnShow += HandleSnackbarShow;
+            SnackbarService.OnRemove += HandleSnackbarRemove;
+        }
 
         // Subscribe to notification channels.
         if (!string.IsNullOrEmpty(ChannelId))
@@ -118,7 +121,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     private readonly List<IDisposable> _subscriptions = new();
     private bool _isDisposed;
 
-    [Inject] private ISnackbarService SnackbarService { get; set; } = null!;
+    [Inject] private ISnackbarService? SnackbarService { get; set; }
     [Inject] private IAsyncSubscriber<string, Notification> NotificationSubscriber { get; set; } = null!;
     [Inject] private new ILogger<DropBearSnackbarContainer> Logger { get; set; } = null!;
 
@@ -229,7 +232,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
                 CreatedAt = DateTime.UtcNow
             };
 
-            await SnackbarService.Show(snackbar, token);
+            await SnackbarService?.Show(snackbar, token)!;
         }
         catch (Exception ex)
         {

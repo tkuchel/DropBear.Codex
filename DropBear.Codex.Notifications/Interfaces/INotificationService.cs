@@ -16,6 +16,7 @@ public interface INotificationService
     ///     Publishes a notification to a specific channel.
     /// </summary>
     /// <param name="notification">The notification to publish.</param>
+    /// <param name="isSensitive">Flag for marking the notification as sensitive</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A result indicating success or failure.</returns>
     Task<Result> PublishNotificationAsync(
@@ -27,6 +28,7 @@ public interface INotificationService
     ///     Publishes a notification to the global channel.
     /// </summary>
     /// <param name="notification">The notification to publish.</param>
+    /// <param name="isSensitive">Flag for marking the notification as sensitive</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A result indicating success or failure.</returns>
     Task<Result> PublishGlobalNotificationAsync(

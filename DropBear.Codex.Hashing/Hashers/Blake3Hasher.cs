@@ -129,7 +129,7 @@ public class Blake3Hasher : IHasher
         }
     }
 
-    /// <inheritdoc />
+
     public IHasher WithHashSize(int size)
     {
         // Blake3 has a fixed or variable output, but we treat it as fixed for interface compliance

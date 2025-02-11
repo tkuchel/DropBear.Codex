@@ -39,7 +39,7 @@ public sealed class ExtendedBlake3Hasher : Blake3Hasher
                 if (segment is null)
                 {
                     Logger.Error("Data segment cannot be null.");
-                    throw new ArgumentNullException(nameof(segment), "Data segment cannot be null.");
+                    throw new ArgumentNullException(nameof(dataSegments), "Data segment cannot be null.");
                 }
 
                 hasher.Update(segment);

@@ -43,7 +43,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         var dataToExport = FilteredData.ToList();
         using var ms = _excelExporter.ExportToExcelStream(dataToExport);
 
-        if (ms == null || ms.Length == 0)
+        if (ms.Length == 0)
         {
             Logger.Error("Excel export resulted in an empty file.");
             return;
@@ -210,10 +210,6 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private string GetFormattedValue(TItem item, Expression<Func<TItem, object>> propertySelector)
     {
         var value = propertySelector.Compile()(item);
-        if (value == null)
-        {
-            return string.Empty;
-        }
 
         if (value is DateTime dateTimeValue)
         {

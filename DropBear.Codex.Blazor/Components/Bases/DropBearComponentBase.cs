@@ -178,12 +178,20 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 
                 await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName, cancellationToken: cts.Token);
 
-                LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
+                if (caller != null)
+                {
+                    LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
+                }
+
                 return module;
             }
             catch (Exception ex)
             {
-                LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
+                if (caller != null)
+                {
+                    LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
+                }
+
                 throw new InvalidOperationException($"Failed to load JS module: {moduleName}", ex);
             }
         }
@@ -321,11 +329,19 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         if (ex is JSDisconnectedException or TaskCanceledException)
         {
             IsConnected = false;
-            LogWarning("JS operation interrupted: {Operation} (called from {Caller})", identifier, caller);
+            if (caller != null)
+            {
+                LogWarning("JS operation interrupted: {Operation} (called from {Caller})", identifier, caller);
+            }
+
             return true;
         }
 
-        LogError("JS operation failed: {Operation} (called from {Caller})", ex, identifier, caller);
+        if (caller != null)
+        {
+            LogError("JS operation failed: {Operation} (called from {Caller})", ex, identifier, caller);
+        }
+
         return false;
     }
 

@@ -11,7 +11,7 @@ public interface IProgressManager : IAsyncDisposable
     /// <summary>
     ///     Gets the current progress message.
     /// </summary>
-    string Message { get; }
+    string? Message { get; }
 
     /// <summary>
     ///     Gets the current progress value (0-100).
@@ -59,14 +59,14 @@ public interface IProgressManager : IAsyncDisposable
     /// </summary>
     /// <param name="message">Progress message.</param>
     /// <exception cref="ObjectDisposedException">If manager is disposed.</exception>
-    void StartIndeterminate(string message);
+    void StartIndeterminate(string? message);
 
     /// <summary>
     ///     Starts a determinate progress task.
     /// </summary>
     /// <param name="message">Progress message.</param>
     /// <exception cref="ObjectDisposedException">If manager is disposed.</exception>
-    void StartTask(string message);
+    void StartTask(string? message);
 
     /// <summary>
     ///     Starts a stepped progress indicator.

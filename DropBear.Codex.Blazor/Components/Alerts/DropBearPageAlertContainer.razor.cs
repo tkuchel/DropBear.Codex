@@ -35,7 +35,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     private const string JsModuleName = JsModuleNames.PageAlerts;
     private const int MaxQueueSize = 100;
     private const int BatchUpdateIntervalMs = 100;
-    private const int MaxActiveAlerts = 5;
     private readonly ConcurrentDictionary<string, PageAlertInstance> _activeAlerts = new();
 
     // Cancellation and synchronization
@@ -44,7 +43,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
     // Thread-safe collections for alert management
     private readonly ConcurrentQueue<PageAlertInstance> _pendingAlerts = new();
-    private bool _batchUpdateScheduled;
     private Task? _batchUpdateTask;
 
     // Event subscriptions and JS module

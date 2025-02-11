@@ -6,7 +6,7 @@ using DropBear.Codex.Notifications.Models;
 
 #endregion
 
-namespace DropBear.Codex.Notifications.Services;
+namespace DropBear.Codex.Notifications.Interfaces;
 
 /// <summary>
 ///     Defines methods for creating notifications.

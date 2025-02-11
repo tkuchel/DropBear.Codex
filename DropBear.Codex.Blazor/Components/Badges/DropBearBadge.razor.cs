@@ -15,13 +15,12 @@ namespace DropBear.Codex.Blazor.Components.Badges;
 ///     A Blazor component for displaying badges with optional tooltips.
 ///     Optimized for Blazor Server with efficient state management and UI updates.
 /// </summary>
-public sealed partial class DropBearBadge : DropBearComponentBase
+public partial class DropBearBadge : DropBearComponentBase
 {
     private const int TOOLTIP_MARGIN = 10;
     private const int TOOLTIP_MAX_WIDTH = 200;
     private const int TOOLTIP_HEIGHT = 50;
     private const string JsModuleName = JsModuleNames.Utils;
-    private const int DEBOUNCE_DELAY_MS = 16; // ~1 frame @ 60fps
     private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(1);
     private readonly CancellationTokenSource _tooltipCts = new();
     private readonly SemaphoreSlim _tooltipSemaphore = new(1, 1);

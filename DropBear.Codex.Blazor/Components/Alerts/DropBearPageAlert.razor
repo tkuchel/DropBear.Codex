@@ -13,7 +13,12 @@
                 <div class="page-alert-title">@Title</div>
             }
         </div>
-        <div class="page-alert-message">@((MarkupString)Message)</div>
+        <div class="page-alert-message">
+            @if (Message != null)
+            {
+                @((MarkupString)Message)
+            }
+        </div>
     </div>
     @if (!IsPermanent)
     {

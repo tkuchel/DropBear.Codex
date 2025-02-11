@@ -166,13 +166,14 @@ public static class ValidationHelper
         }
 
         var members = result.MemberNames;
-        if (members == null || !members.Any())
+        var enumerable = members.ToList();
+        if (!enumerable.Any())
         {
             yield return new ValidationError("Model", result.ErrorMessage);
             yield break;
         }
 
-        foreach (var member in members)
+        foreach (var member in enumerable)
         {
             if (string.IsNullOrEmpty(member)) continue;
             yield return new ValidationError(member, result.ErrorMessage);

@@ -22,12 +22,12 @@
             <div class="card-body">
                 <p class="card-text" id="@($"{Id}-message")">@Message</p>
 
-                @if (Buttons != null && Buttons.Any())
+                @if (Buttons.Any())
                 {
                     <div class="button-group">
                         @foreach (var button in Buttons)
                         {
-                            if (string.IsNullOrWhiteSpace(button.Id) ||
+                            if (string.IsNullOrWhiteSpace(button?.Id) ||
                                 string.IsNullOrWhiteSpace(button.Text))
                             {
                                 // Log or skip, as needed

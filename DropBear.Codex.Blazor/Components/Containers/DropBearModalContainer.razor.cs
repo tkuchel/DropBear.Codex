@@ -111,7 +111,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
     private string GetParameterValue(string key, string defaultValue)
     {
         return ModalService.CurrentParameters?.TryGetValue(key, out var value) == true
-            ? value?.ToString() ?? defaultValue
+            ? value.ToString() ?? defaultValue
             : defaultValue;
     }
 
@@ -176,9 +176,9 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
     ///     Disposes of the component, cleaning up any resources.
     ///     This method is called by the Blazor framework when the component is removed from the UI.
     /// </summary>
-    private void Dispose(bool disposing)
+    public override ValueTask DisposeAsync()
     {
-        if (disposing && !IsDisposed)
+        if (!IsDisposed)
         {
             if (_isSubscribed)
             {
@@ -191,5 +191,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         }
 
         _ = base.DisposeAsync();
+
+        return ValueTask.CompletedTask;
     }
 }

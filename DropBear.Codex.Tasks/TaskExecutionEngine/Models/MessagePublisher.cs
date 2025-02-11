@@ -5,7 +5,6 @@
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using MessagePipe;
-using Microsoft.Extensions.ObjectPool;
 using Serilog;
 
 #endregion
@@ -13,7 +12,6 @@ using Serilog;
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 #endregion
-
 
 /// <summary>
 ///     Manages message publishing and queuing for the execution engine.
@@ -74,7 +72,8 @@ public sealed class MessagePublisher : IAsyncDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error(ex, "Failed to publish message during disposal. MessageType: {MessageType}", message.MessageType);
+                    _logger.Error(ex, "Failed to publish message during disposal. MessageType: {MessageType}",
+                        message.MessageType);
                 }
             }
         }
@@ -157,19 +156,23 @@ public sealed class MessagePublisher : IAsyncDisposable
     {
         if (messageType == typeof(TaskProgressMessage))
         {
-            await _progressPublisher.PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token).ConfigureAwait(false);
+            await _progressPublisher.PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token)
+                .ConfigureAwait(false);
         }
         else if (messageType == typeof(TaskStartedMessage))
         {
-            await _startedPublisher.PublishAsync(channelId, (TaskStartedMessage)message, _publisherCts.Token).ConfigureAwait(false);
+            await _startedPublisher.PublishAsync(channelId, (TaskStartedMessage)message, _publisherCts.Token)
+                .ConfigureAwait(false);
         }
         else if (messageType == typeof(TaskCompletedMessage))
         {
-            await _completedPublisher.PublishAsync(channelId, (TaskCompletedMessage)message, _publisherCts.Token).ConfigureAwait(false);
+            await _completedPublisher.PublishAsync(channelId, (TaskCompletedMessage)message, _publisherCts.Token)
+                .ConfigureAwait(false);
         }
         else if (messageType == typeof(TaskFailedMessage))
         {
-            await _failedPublisher.PublishAsync(channelId, (TaskFailedMessage)message, _publisherCts.Token).ConfigureAwait(false);
+            await _failedPublisher.PublishAsync(channelId, (TaskFailedMessage)message, _publisherCts.Token)
+                .ConfigureAwait(false);
         }
     }
 }
