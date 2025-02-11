@@ -40,7 +40,7 @@
 
 .datagrid-header h2 {
   margin: 0;
-  font-size: var(--fs-lg);
+  font-size: var(--fs-md);
   font-weight: var(--fw-medium);
   color: var(--clr-text-primary);
 }

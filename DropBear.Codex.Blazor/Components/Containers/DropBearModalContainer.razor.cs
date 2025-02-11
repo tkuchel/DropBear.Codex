@@ -15,6 +15,14 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
     private const string DEFAULT_DIMENSION = "auto";
     private const string ENTER_TRANSITION_CLASS = "enter";
 
+    /// <summary>
+    ///     The keys we want to remove from the child parameters dictionary
+    ///     (because these belong to the container, not the child).
+    /// </summary>
+    private static readonly string[] ContainerKeys = { "CustomWidth", "CustomHeight", "TransitionDuration" };
+
+    public IDictionary<string, object>? ChildParameters => FilterOutModalParams(ModalService.CurrentParameters);
+
     private readonly string _modalTransitionClass = ENTER_TRANSITION_CLASS;
     private string _customHeight = DEFAULT_DIMENSION;
     private string _customWidth = DEFAULT_DIMENSION;
@@ -113,6 +121,27 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         return ModalService.CurrentParameters?.TryGetValue(key, out var value) == true
             ? value.ToString() ?? defaultValue
             : defaultValue;
+    }
+
+    /// <summary>
+    ///     Creates a copy of <paramref name="originalParams" /> with modal-specific
+    ///     keys removed, so they won't be passed to child components.
+    /// </summary>
+    private IDictionary<string, object>? FilterOutModalParams(IDictionary<string, object>? originalParams)
+    {
+        if (originalParams is null)
+        {
+            return null;
+        }
+
+        var filtered = new Dictionary<string, object>(originalParams);
+        foreach (var key in ContainerKeys)
+        {
+            // Remove the key if present
+            filtered.Remove(key);
+        }
+
+        return filtered;
     }
 
     /// <summary>
