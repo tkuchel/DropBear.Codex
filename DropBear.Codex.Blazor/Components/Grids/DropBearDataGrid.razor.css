@@ -87,6 +87,44 @@
   animation: pulse 1.5s infinite;
 }
 
+/* Buttons */
+.btn-search,
+.btn-primary {
+  background-color: var(--clr-primary);
+  color: var(--clr-white); /* Ensure button text is legible */
+  border: none;
+  padding: var(--spacing-sm);
+  border-radius: var(--br-sm);
+  cursor: pointer;
+  transition: background-color var(--datagrid-transition), color var(--datagrid-transition);
+}
+
+.btn-search:hover,
+.btn-primary:hover {
+  background-color: var(--clr-secondary);
+  color: var(--clr-white); /* Maintain contrast on hover */
+}
+
+.btn-secondary {
+  background-color: var(--clr-secondary);
+  color: var(--clr-white); /* Ensure button text is legible */
+  border: none;
+  padding: var(--spacing-sm);
+  border-radius: var(--br-sm);
+  cursor: pointer;
+  transition: background-color var(--datagrid-transition), color var(--datagrid-transition);
+}
+
+.btn-secondary:hover {
+  background-color: var(--clr-tertiary);
+  color: var(--clr-white); /* Maintain contrast on hover */
+}
+
+.badge-pad-left{
+  padding-left: var(--spacing-xs);
+}
+
+
 /* Table Structure */
 .datagrid-table-wrapper {
   position: relative;
