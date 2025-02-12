@@ -143,13 +143,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
 
         try
         {
-            if (_jsModule == null)
-            {
-                throw new InvalidOperationException("JS module not initialized");
-            }
+            // Get the Utils module instead of trying to use the context menu module
+            var utilsModule = await GetJsModuleAsync(JsModuleNames.Utils);
 
-            _cachedDimensions = await _jsModule.InvokeAsync<WindowDimensions>(
-                $"{ModuleName}API.getWindowDimensions",
+            _cachedDimensions = await utilsModule.InvokeAsync<WindowDimensions>(
+                $"{JsModuleNames.Utils}API.getWindowDimensions",
                 ComponentToken
             );
             _lastDimensionsCheck = DateTime.UtcNow;
