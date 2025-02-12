@@ -90,6 +90,18 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             // Debouncing in action, ignore
         }
+        catch (NullReferenceException nullReferenceException)
+        {
+            LogWarning("Failed to queue state update", nullReferenceException);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Component disposed, ignore
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to queue state update", ex);
+        }
         finally
         {
             _stateUpdateDebouncer?.Dispose();

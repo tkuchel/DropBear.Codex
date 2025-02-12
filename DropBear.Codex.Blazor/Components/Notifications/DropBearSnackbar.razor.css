@@ -51,7 +51,7 @@
 
 .dropbear-snackbar-title {
   margin: 0 0 var(--spacing-xs) 0;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   line-height: var(--lh-md);
   color: var(--snackbar-text);
@@ -60,7 +60,7 @@
 .dropbear-snackbar-message {
   margin: 0;
   font-size: var(--fs-sm);
-  line-height: var(--lh-md);
+  line-height: var(--lh-sm);
   color: var(--clr-text-secondary);
 }
 

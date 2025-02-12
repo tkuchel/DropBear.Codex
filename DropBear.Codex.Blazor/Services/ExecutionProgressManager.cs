@@ -366,7 +366,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 {
                     _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
                     await ExecuteWithTimeoutAsync(
-                        () => _progressBar?.SetNormalProgressAsync(_currentProgress, _currentMessage) ?? throw new InvalidOperationException(),
+                        () => _progressBar?.SetNormalProgressAsync(_currentProgress, _currentMessage) ??
+                              throw new InvalidOperationException(),
                         ProgressBarOperationTimeout,
                         "SetNormalProgressAsync").ConfigureAwait(false);
                 }
@@ -722,14 +723,26 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// <exception cref="TimeoutException">Thrown if the operation times out.</exception>
     private async Task ExecuteWithTimeoutAsync(Func<Task> operation, TimeSpan timeout, string operationName)
     {
-        var task = operation();
-        var delayTask = Task.Delay(timeout);
-        if (await Task.WhenAny(task, delayTask).ConfigureAwait(false) == delayTask)
+        try
         {
-            throw new TimeoutException($"{operationName} timed out after {timeout.TotalSeconds} seconds.");
-        }
+            var task = operation();
+            var delayTask = Task.Delay(timeout);
+            if (await Task.WhenAny(task, delayTask).ConfigureAwait(false) == delayTask)
+            {
+                throw new TimeoutException($"{operationName} timed out after {timeout.TotalSeconds} seconds.");
+            }
 
-        await task.ConfigureAwait(false);
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception ex)when (ex is TaskCanceledException)
+        {
+            // Ignore TaskCanceledException (thrown by Task.WhenAny)
+            _logger.Debug(ex, $"{operationName} was canceled.");
+        }
+        catch (Exception e)
+        {
+            _logger.Error(e, $"{operationName} failed or timed out.");
+        }
     }
 
     /// <summary>
