@@ -28,6 +28,13 @@
   visibility var(--menu-animation-duration) ease-out;
 }
 
+.context-menu-trigger {
+  /* No display/visibility properties that would affect children */
+  position: relative; /* For proper context menu positioning */
+  width: 100%;
+  height: 100%;
+}
+
 /* Active State */
 .context-menu.active {
   opacity: 1;

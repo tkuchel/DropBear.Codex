@@ -4,9 +4,11 @@
      id="@_contextMenuId"
      @oncontextmenu="ShowContextMenuAsync"
      @oncontextmenu:preventDefault>
+    @* Child content should always be visible *@
     @ChildContent
 </div>
 
+@* Context menu portal rendered separately *@
 @if (_isVisible)
 {
     <div class="context-menu active" style="left:@($"{_left}px"); top:@($"{_top}px");">
