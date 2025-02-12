@@ -78,11 +78,15 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     private async Task QueueStateUpdate()
     {
-        await _stateUpdateDebouncer?.CancelAsync()!;
-        _stateUpdateDebouncer = new CancellationTokenSource();
+
+        if (_stateUpdateDebouncer is not null)
+        {
+            await _stateUpdateDebouncer?.CancelAsync()!;
+        }
 
         try
         {
+            _stateUpdateDebouncer = new CancellationTokenSource();
             await Task.Delay(StateUpdateDebounceMs, _stateUpdateDebouncer.Token);
             await InvokeAsync(StateHasChanged);
         }
