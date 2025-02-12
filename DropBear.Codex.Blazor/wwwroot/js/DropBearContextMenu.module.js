@@ -11,7 +11,6 @@ const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30
 let isInitialized = false;
 const moduleName = 'DropBearContextMenu';
 
-
 /**
  * Manager for context menu behavior and positioning.
  * @implements {IContextMenuManager}
@@ -54,6 +53,14 @@ class ContextMenuManager {
       throw new TypeError('Invalid element provided to ContextMenuManager');
     }
 
+    // Initialize element styles
+    DOMOperationQueue.add(() => {
+      this.element.style.position = 'fixed';
+      this.element.style.visibility = 'hidden';
+      this.element.style.display = 'none';
+      this.element.style.zIndex = '1000';
+    });
+
     this._setupEventListeners();
 
     EventEmitter.emit(
@@ -88,6 +95,16 @@ class ContextMenuManager {
       }
     };
 
+    // Window resize handler
+    this.resizeHandler = DropBearUtils.throttle(() => {
+      if (this.isVisible) {
+        const position = this._getOptimalPosition(this.lastPosition.x, this.lastPosition.y);
+        this._updatePosition(position);
+      }
+    }, 100);
+
+    window.addEventListener('resize', this.resizeHandler);
+
     logger.debug('Event listeners initialized');
   }
 
@@ -103,29 +120,73 @@ class ContextMenuManager {
     document.addEventListener('click', this.clickOutsideHandler);
     document.addEventListener('keydown', this.keyboardHandler);
 
-    await this.show(e.pageX, e.pageY);
+    await this.show(e.clientX, e.clientY);
   }
 
   /**
-   * Calculate menu position considering viewport boundaries
+   * Check if menu would be clipped at position
    * @private
-   * @param {number} x - Initial X coordinate
-   * @param {number} y - Initial Y coordinate
-   * @returns {{x: number, y: number}} Adjusted coordinates
+   * @param {number} x - X coordinate
+   * @param {number} y - Y coordinate
+   * @returns {boolean} True if menu would be clipped
    */
-  _calculatePosition(x, y) {
+  _isMenuClipped(x, y) {
     const rect = this.element.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // Ensure menu stays within viewport
-    const adjustedX = Math.min(x, viewportWidth - rect.width);
-    const adjustedY = Math.min(y, viewportHeight - rect.height);
+    return (
+      x + rect.width > viewportWidth ||
+      y + rect.height > viewportHeight ||
+      x < 0 ||
+      y < 0
+    );
+  }
 
-    return {
-      x: Math.max(0, adjustedX),
-      y: Math.max(0, adjustedY)
-    };
+  /**
+   * Get optimal position for menu
+   * @private
+   * @param {number} x - Initial X coordinate
+   * @param {number} y - Initial Y coordinate
+   * @returns {{x: number, y: number}} Optimal position
+   */
+  _getOptimalPosition(x, y) {
+    const rect = this.element.getBoundingClientRect();
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const margin = 10;
+
+    let optimalX = x;
+    let optimalY = y;
+
+    // If menu would extend beyond right edge, align to right
+    if (x + rect.width > viewportWidth) {
+      optimalX = viewportWidth - rect.width - margin;
+    }
+
+    // If menu would extend beyond bottom edge, show above click
+    if (y + rect.height > viewportHeight) {
+      optimalY = viewportHeight - rect.height - margin;
+    }
+
+    // Ensure minimum margins
+    optimalX = Math.max(margin, optimalX);
+    optimalY = Math.max(margin, optimalY);
+
+    return { x: optimalX, y: optimalY };
+  }
+
+  /**
+   * Update menu position
+   * @private
+   * @param {{x: number, y: number}} position - New position
+   */
+  _updatePosition(position) {
+    DOMOperationQueue.add(() => {
+      this.element.style.left = `${position.x}px`;
+      this.element.style.top = `${position.y}px`;
+    });
+    this.lastPosition = position;
   }
 
   /**
@@ -143,16 +204,20 @@ class ContextMenuManager {
         this.dotNetRef.invokeMethodAsync('Show', x, y)
       );
 
-      const position = this._calculatePosition(x, y);
-      this.lastPosition = position;
-
       DOMOperationQueue.add(() => {
-        this.element.style.left = `${position.x}px`;
-        this.element.style.top = `${position.y}px`;
+        // Set initial position for measurement
+        this.element.style.visibility = 'hidden';
+        this.element.style.display = 'block';
+
+        // Calculate optimal position
+        const position = this._getOptimalPosition(x, y);
+        this._updatePosition(position);
+
+        // Show menu
         this.element.style.visibility = 'visible';
         this.element.classList.add('show');
 
-        // Focus first focusable element for accessibility
+        // Focus first focusable element
         const firstFocusable = this.element.querySelector(
           'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
         );
@@ -168,7 +233,7 @@ class ContextMenuManager {
         DropBearUtils.createEvent(this.id, 'shown', {position: this.lastPosition})
       );
 
-      logger.debug(`Context menu shown at position: ${position.x}, ${position.y}`);
+      logger.debug(`Context menu shown at position: ${x}, ${y}`);
     } catch (error) {
       logger.error('Error showing context menu:', error);
       throw error;
@@ -193,6 +258,7 @@ class ContextMenuManager {
       DOMOperationQueue.add(() => {
         this.element.classList.remove('show');
         this.element.style.visibility = 'hidden';
+        this.element.style.display = 'none';
       });
 
       this.isVisible = false;
@@ -262,6 +328,7 @@ class ContextMenuManager {
     this.element.removeEventListener('contextmenu', this.handleContextMenu);
     document.removeEventListener('click', this.clickOutsideHandler);
     document.removeEventListener('keydown', this.keyboardHandler);
+    window.removeEventListener('resize', this.resizeHandler);
 
     this.dotNetRef = null;
 
