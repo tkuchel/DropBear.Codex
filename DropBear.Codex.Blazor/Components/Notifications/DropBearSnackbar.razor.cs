@@ -181,7 +181,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
                 }
             }
         }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
         {
             LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
         }

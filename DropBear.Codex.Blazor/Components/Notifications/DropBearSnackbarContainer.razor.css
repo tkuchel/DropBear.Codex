@@ -1,6 +1,6 @@
 ﻿.dropbear-snackbar-container {
   --snackbar-spacing: var(--spacing-md);
-  --snackbar-offset: 20px;
+  --snackbar-offset: 75px;
   --snackbar-max-width: 500px;
   --snackbar-min-width: 300px;
 

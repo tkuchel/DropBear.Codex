@@ -159,7 +159,7 @@ public partial class DropBearBadge : DropBearComponentBase
             await base.CleanupJavaScriptResourcesAsync();
             LogDebug("DropBearBadge resources cleaned up");
         }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
         {
             LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
         }
