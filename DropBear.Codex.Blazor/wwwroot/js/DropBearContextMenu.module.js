@@ -55,10 +55,12 @@ class ContextMenuManager {
 
     // Initialize element styles
     DOMOperationQueue.add(() => {
-      this.element.style.position = 'fixed';
-      this.element.style.visibility = 'hidden';
-      this.element.style.display = 'none';
-      this.element.style.zIndex = '1000';
+      const menuContainer = document.getElementById(this.id);
+      if (menuContainer) {
+        menuContainer.style.position = 'fixed';
+        menuContainer.style.visibility = 'hidden';
+        menuContainer.style.display = 'none';
+      }
     });
 
     this._setupEventListeners();

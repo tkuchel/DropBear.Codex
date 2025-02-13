@@ -8,9 +8,27 @@
   --menu-border: var(--clr-border);
 }
 
+/* Content container - should always be visible */
+.context-menu-content {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+/* Menu container - only for the popup menu */
+.context-menu-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none; /* Allow clicks to pass through when menu is hidden */
+  z-index: var(--z-index-dropdown, 1000);
+}
+
 /* Menu Container */
 .context-menu {
   position: fixed;
+  pointer-events: auto; /* Re-enable clicks for the menu itself */
   min-width: var(--menu-min-width);
   max-width: var(--menu-max-width);
   background: var(--menu-bg);
