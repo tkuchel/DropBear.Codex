@@ -13,7 +13,8 @@
 
     @if (_isVisible)
     {
-        <div class="context-menu active" style="left:@($"{_left}px"); top:@($"{_top}px");">
+        <div class="context-menu @(_isVisible ? "active" : "")" style="left:@($"{_left}px"); top:@($"{_top}px");">
+
             @foreach (var item in MenuItems)
             {
                 @if (item.IsSeparator)

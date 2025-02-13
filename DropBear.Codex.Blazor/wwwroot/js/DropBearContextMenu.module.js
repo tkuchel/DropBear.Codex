@@ -81,7 +81,8 @@ class ContextMenuManager {
   _setupEventListeners() {
     // Context menu handler
     this.handleContextMenu = this._handleContextMenu.bind(this);
-    this.element.addEventListener('contextmenu', this.handleContextMenu);
+    const triggerElement = document.querySelector(`[id='${this.id}']`).previousElementSibling;
+    triggerElement.addEventListener('contextmenu', this.handleContextMenu);
 
     // Click outside handler
     this.clickOutsideHandler = event => {
@@ -137,12 +138,10 @@ class ContextMenuManager {
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    return (
-      x + rect.width > viewportWidth ||
+    return x + rect.width > viewportWidth ||
       y + rect.height > viewportHeight ||
       x < 0 ||
-      y < 0
-    );
+      y < 0;
   }
 
   /**
@@ -175,7 +174,7 @@ class ContextMenuManager {
     optimalX = Math.max(margin, optimalX);
     optimalY = Math.max(margin, optimalY);
 
-    return { x: optimalX, y: optimalY };
+    return {x: optimalX, y: optimalY};
   }
 
   /**
@@ -206,25 +205,21 @@ class ContextMenuManager {
         this.dotNetRef.invokeMethodAsync('Show', x, y)
       );
 
+      // Show menu container first
       DOMOperationQueue.add(() => {
-        // Set initial position for measurement
-        this.element.style.visibility = 'hidden';
-        this.element.style.display = 'block';
-
-        // Calculate optimal position
-        const position = this._getOptimalPosition(x, y);
-        this._updatePosition(position);
-
-        // Show menu
         this.element.style.visibility = 'visible';
-        this.element.classList.add('show');
+        this.element.style.display = 'block';
+      });
 
-        // Focus first focusable element
-        const firstFocusable = this.element.querySelector(
-          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-        );
-        if (firstFocusable) {
-          firstFocusable.focus();
+      const position = this._calculatePosition(x, y);
+      this.lastPosition = position;
+
+      DOMOperationQueue.add(() => {
+        const menuElement = this.element.querySelector('.context-menu');
+        if (menuElement) {
+          menuElement.style.left = `${position.x}px`;
+          menuElement.style.top = `${position.y}px`;
+          menuElement.classList.add('active');
         }
       });
 
@@ -249,16 +244,13 @@ class ContextMenuManager {
   async hide() {
     if (this.isDisposed) return;
 
+
     try {
-      document.removeEventListener('click', this.clickOutsideHandler);
-      document.removeEventListener('keydown', this.keyboardHandler);
-
-      await circuitBreaker.execute(() =>
-        this.dotNetRef.invokeMethodAsync('Hide')
-      );
-
       DOMOperationQueue.add(() => {
-        this.element.classList.remove('show');
+        const menuElement = this.element.querySelector('.context-menu');
+        if (menuElement) {
+          menuElement.classList.remove('active');
+        }
         this.element.style.visibility = 'hidden';
         this.element.style.display = 'none';
       });
@@ -473,7 +465,7 @@ export const DropBearContextMenuAPI = {
    * @param {string} menuId - The ID of the menu element.
    * @returns {Promise<void>}
    */
-  hide: async (menuId) => window[moduleName].hide(menuId),
+  hide: async menuId => window[moduleName].hide(menuId),
 
   /**
    * Update the menu items.
@@ -501,7 +493,7 @@ export const DropBearContextMenuAPI = {
    * @param {string} menuId - The ID of the menu element.
    * @returns {Promise<void>}
    */
-  dispose: async (menuId) => window[moduleName].dispose(menuId),
+  dispose: async menuId => window[moduleName].dispose(menuId),
 
   /**
    * Dispose all context menu instances.
@@ -511,5 +503,5 @@ export const DropBearContextMenuAPI = {
 };
 
 // Also export the ContextMenuManager class if needed
-export { ContextMenuManager };
+export {ContextMenuManager};
 
