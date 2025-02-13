@@ -211,7 +211,7 @@ class ContextMenuManager {
         this.element.style.display = 'block';
       });
 
-      const position = this._calculatePosition(x, y);
+      const position = this._getOptimalPosition(x, y);
       this.lastPosition = position;
 
       DOMOperationQueue.add(() => {
