@@ -159,6 +159,14 @@ else
                                                     <i class="fas fa-edit"></i>
                                                 </button>
                                             }
+                                            @if (AllowDownload)
+                                            {
+                                                <button class="btn-icon"
+                                                        @onclick:stopPropagation="true"
+                                                        @onclick="@(() => DownloadItemAsync(item))">
+                                                    <i class="fas fa-download"></i>
+                                                </button>
+                                            }
                                             @if (AllowDelete)
                                             {
                                                 <button class="btn-icon"

@@ -289,6 +289,10 @@ public partial class DropBearContextMenu : DropBearComponentBase
                 e.ClientY
             );
         }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            LogWarning("Failed to show context menu: {Reason}", ex.GetType().Name);
+        }
         catch (Exception ex)
         {
             LogError("Failed to show context menu", ex);
@@ -323,6 +327,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
             {
                 await Hide();
             }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
+        {
+            LogWarning("Error handling menu item click: {Reason}", ex.GetType().Name);
+            await Hide();
         }
         catch (Exception ex)
         {

@@ -65,12 +65,15 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     [Parameter] public bool AllowAdd { get; set; } = true;
     [Parameter] public bool AllowEdit { get; set; } = true;
     [Parameter] public bool AllowDelete { get; set; } = true;
+    [Parameter] public bool AllowDownload { get; set; } = false;
     [Parameter] public bool AllowExport { get; set; }
     [Parameter] public bool EnableDebugMode { get; set; }
     [Parameter] public EventCallback OnExportData { get; set; }
     [Parameter] public EventCallback OnAddItem { get; set; }
     [Parameter] public EventCallback<TItem> OnEditItem { get; set; }
     [Parameter] public EventCallback<TItem> OnDeleteItem { get; set; }
+
+    [Parameter] public EventCallback<TItem> OnDownloadItem { get; set; }
     [Parameter] public EventCallback<List<TItem>> OnSelectionChanged { get; set; }
     [Parameter] public EventCallback<TItem> OnRowClicked { get; set; }
     [Parameter] public EventCallback<TItem> OnRowDoubleClicked { get; set; }
@@ -557,6 +560,11 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     private async Task DeleteItemAsync(TItem item)
     {
         await OnDeleteItem.InvokeAsync(item);
+    }
+
+    private async Task DownloadItemAsync(TItem item)
+    {
+        await OnDownloadItem.InvokeAsync(item);
     }
 
     private async Task HandleRowClickAsync(TItem item)
