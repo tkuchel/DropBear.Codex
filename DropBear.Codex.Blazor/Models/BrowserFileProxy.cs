@@ -10,12 +10,16 @@ namespace DropBear.Codex.Blazor.Models;
 public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 {
     private readonly string _contentType;
-    private readonly IJSObjectReference _jsFileReference;
+    private readonly string? _fileKey; // Indicates the proxy was created from a file key.
+    private readonly IJSObjectReference _jsModuleOrFileRef;
     private readonly DateTimeOffset _lastModified;
     private readonly string _name;
     private readonly long _size;
     private bool _disposed;
 
+    /// <summary>
+    ///     Constructor for proxies created from a JS file reference (e.g. via InputFile).
+    /// </summary>
     public BrowserFileProxy(
         IJSObjectReference jsFileReference,
         string name,
@@ -23,7 +27,21 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         string contentType,
         DateTimeOffset lastModified)
     {
-        _jsFileReference = jsFileReference ?? throw new ArgumentNullException(nameof(jsFileReference));
+        _jsModuleOrFileRef = jsFileReference ?? throw new ArgumentNullException(nameof(jsFileReference));
+        _name = name;
+        _size = size;
+        _contentType = contentType;
+        _lastModified = lastModified;
+    }
+
+    /// <summary>
+    ///     Private constructor used for creating a proxy from a file key.
+    /// </summary>
+    private BrowserFileProxy(string fileKey, IJSObjectReference jsModule, string name, long size, string contentType,
+        DateTimeOffset lastModified)
+    {
+        _fileKey = fileKey;
+        _jsModuleOrFileRef = jsModule ?? throw new ArgumentNullException(nameof(jsModule));
         _name = name;
         _size = size;
         _contentType = contentType;
@@ -39,7 +57,13 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
         try
         {
-            await _jsFileReference.DisposeAsync();
+            // If the proxy was created from a JS file reference (not from a file key),
+            // dispose it. If it was created via a file key, _jsModuleOrFileRef is the shared JS module;
+            // in that case, do not dispose it here.
+            if (_fileKey is null)
+            {
+                await _jsModuleOrFileRef.DisposeAsync();
+            }
         }
         finally
         {
@@ -63,6 +87,9 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         ? throw new ObjectDisposedException(nameof(BrowserFileProxy))
         : _contentType;
 
+    /// <summary>
+    ///     Opens a read stream for the file.
+    /// </summary>
     public Stream OpenReadStream(
         long maxAllowedSize = 512000,
         CancellationToken cancellationToken = default)
@@ -88,49 +115,10 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         );
     }
 
-    private async Task<byte[]> ReadFileChunkAsync(long offset, int count, CancellationToken ct)
-    {
-        if (_disposed)
-        {
-            throw new ObjectDisposedException(nameof(BrowserFileProxy));
-        }
-
-        return await _jsFileReference.InvokeAsync<byte[]>(
-            "readFileChunk",
-            ct,
-            offset,
-            count
-        ).ConfigureAwait(false);
-    }
-
-    /// <summary>
-    ///     Creates a new BrowserFileProxy from a JavaScript file reference.
-    /// </summary>
-    public static async Task<BrowserFileProxy> CreateAsync(IJSObjectReference jsFileReference)
-    {
-        ArgumentNullException.ThrowIfNull(jsFileReference);
-
-        try
-        {
-            var fileInfo = await jsFileReference.InvokeAsync<FileInfoJson>("getFileInfo");
-            return new BrowserFileProxy(
-                jsFileReference,
-                fileInfo.Name,
-                fileInfo.Size,
-                fileInfo.Type,
-                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified)
-            );
-        }
-        catch (JSException ex)
-        {
-            await jsFileReference.DisposeAsync();
-            throw new InvalidOperationException("Failed to create BrowserFileProxy", ex);
-        }
-    }
-
     /// <summary>
     ///     Creates a new BrowserFileProxy from a file key.
-    ///     This method uses the provided JS module to retrieve file information and a JS file reference.
+    ///     This method uses the provided JS module (the FileReaderHelpers module) to retrieve file information
+    ///     and later to read file chunks.
     /// </summary>
     /// <param name="fileKey">The key referencing the stored file.</param>
     /// <param name="jsModule">The JS module reference (should be the FileReaderHelpers module).</param>
@@ -143,22 +131,48 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
         try
         {
-            // Retrieve file info by key. Your JS module must expose "getFileInfoByKey".
+            // Retrieve file info by key.
             var fileInfo = await jsModule.InvokeAsync<FileInfoJson>("getFileInfoByKey", fileKey);
-            // Retrieve the JS file reference using the key.
-            var jsFileReference = await jsModule.InvokeAsync<IJSObjectReference>("getDroppedFileByKey", fileKey);
-            return new BrowserFileProxy(
-                jsFileReference,
-                fileInfo.Name,
-                fileInfo.Size,
-                fileInfo.Type,
-                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified)
-            );
+            // Instead of trying to get a JS file reference (which caused the error),
+            // we store the file key and use the JS module for further interop calls.
+            return new BrowserFileProxy(fileKey, jsModule, fileInfo.Name, fileInfo.Size, fileInfo.Type,
+                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified));
         }
         catch (JSException ex)
         {
             throw new InvalidOperationException("Failed to create BrowserFileProxy from file key", ex);
         }
+    }
+
+    /// <summary>
+    ///     Reads a chunk of the file.
+    /// </summary>
+    private async Task<byte[]> ReadFileChunkAsync(long offset, int count, CancellationToken ct)
+    {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(BrowserFileProxy));
+        }
+
+        // If the proxy was created from a file key, call a JS function that reads the chunk by key.
+        if (_fileKey is not null)
+        {
+            return await _jsModuleOrFileRef.InvokeAsync<byte[]>(
+                "readFileChunkByKey",
+                ct,
+                _fileKey,
+                offset,
+                count
+            ).ConfigureAwait(false);
+        }
+
+        // Otherwise, use the existing function that reads from a JS file reference.
+        return await _jsModuleOrFileRef.InvokeAsync<byte[]>(
+            "readFileChunk",
+            ct,
+            offset,
+            count
+        ).ConfigureAwait(false);
     }
 
     private sealed record FileInfoJson(

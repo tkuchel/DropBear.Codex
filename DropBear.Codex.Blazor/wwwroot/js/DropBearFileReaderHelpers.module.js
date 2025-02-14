@@ -208,6 +208,23 @@ const FileReaderHelpers = {
   },
 
   /**
+   * Reads a chunk from a stored file identified by key.
+   * @param {string} key - The key referencing the file.
+   * @param {number} offset - The starting byte index.
+   * @param {number} count - The number of bytes to read.
+   * @returns {Promise<ArrayBuffer>} The file chunk.
+   */
+  async readFileChunkByKey(key, offset, count) {
+    const file = droppedFileStore.get(key);
+    if (!file) {
+      throw new Error("File not found for key: " + key);
+    }
+    const blob = file.slice(offset, offset + count);
+    return await blob.arrayBuffer();
+  },
+
+
+  /**
    * Retrieve a dropped File object by its key.
    * @param {string} key - The key referencing the file.
    * @returns {File|null} The File associated with the key, or null if not found.
@@ -285,7 +302,8 @@ export const DropBearFileReaderHelpersAPI = {
   getDroppedFiles: (...args) => window[moduleName].getDroppedFiles(...args),
   getDroppedFileKeys: (...args) => window[moduleName].getDroppedFileKeys(...args),
   getDroppedFileByKey: (...args) => window[moduleName].getDroppedFileByKey(...args),
-  getFileInfoByKey: (...args) => getFileInfoByKey(...args),
+  getFileInfoByKey: (...args) => window[moduleName].getFileInfoByKey(...args),
+  readFileChunkByKey: (...args) => window[moduleName].readFileChunkByKey(...args),
   initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
   isInitialized: () => window[moduleName].isInitialized(),
   dispose: async () => window[moduleName].dispose()
