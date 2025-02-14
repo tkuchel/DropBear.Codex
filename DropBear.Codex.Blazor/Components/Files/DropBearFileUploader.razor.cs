@@ -57,9 +57,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             _jsModule ??= await GetJsModuleAsync(ModuleName);
 
             // Ensure FileReaderHelpers is initialized
-            await _jsModule.InvokeVoidAsync("DropBearFileReaderHelpersAPI.initialize");
+            await _jsModule.InvokeVoidAsync($"{ModuleName}API.initialize");
             // Enable global drop prevention
-            await _jsModule.InvokeVoidAsync("DropBearFileReaderHelpersAPI.initGlobalDropPrevention");
+            await _jsModule.InvokeVoidAsync($"{ModuleName}API.initGlobalDropPrevention");
         }
     }
 

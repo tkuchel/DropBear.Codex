@@ -1,152 +1,502 @@
 ﻿/**
- * @fileoverview Provides helper functions for reading files in a browser context
- * @module file-reader-helpers
+ * @fileoverview File uploader module for handling file uploads with chunking support
+ * @module file-uploader
  */
 
-import { DropBearUtils } from './DropBearUtils.module.js';
+import {CircuitBreaker, DOMOperationQueue, EventEmitter} from './DropBearCore.module.js';
+import {DropBearUtils} from './DropBearUtils.module.js';
 
-const logger = DropBearUtils.createLogger('DropBearFileReaderHelpers');
+const logger = DropBearUtils.createLogger('DropBearFileUploader');
+const circuitBreaker = new CircuitBreaker({failureThreshold: 3, resetTimeout: 30000});
 let isInitialized = false;
-const moduleName = 'DropBearFileReaderHelpers';
+const moduleName = 'DropBearFileUploader';
 
-/** @type {Object} Reader configuration constants */
-const READER_CONFIG = {
-  MAX_CHUNK_SIZE: 1024 * 1024 * 10, // 10MB max chunk size
-  DEFAULT_CHUNK_SIZE: 1024 * 1024,    // 1MB default chunk size
-  READ_TIMEOUT: 30000                 // 30 second timeout for read operations
+/** @type {Object} Upload configuration constants */
+const UPLOAD_CONFIG = {
+  CHUNK_SIZE: 1024 * 1024, // 1MB chunks
+  MAX_CONCURRENT_CHUNKS: 3,
+  RETRY_ATTEMPTS: 3,
+  RETRY_DELAY: 1000 // 1 second
 };
 
 /**
- * Helper functions for file operations
+ * Class to manage chunked file upload operations
+ * @implements {IChunkUploader}
  */
-const FileReaderHelpers = {
+class ChunkUploader {
   /**
-   * Get file info from a File object
-   * @param {File} file - The file to get info from
-   * @returns {{name: string, size: number, type: string, lastModified: number}}
-   * @throws {TypeError} If invalid file is provided
+   * @param {File} file - The file to upload
+   * @param {number} [chunkSize=UPLOAD_CONFIG.CHUNK_SIZE] - Size of each chunk in bytes
    */
-  getFileInfo(file) {
-    if (!(file instanceof File)) {
-      logger.error('Invalid file object provided to getFileInfo');
-      throw new TypeError('Input must be a File object');
-    }
+  constructor(file, chunkSize = UPLOAD_CONFIG.CHUNK_SIZE) {
+    /** @type {File} */
+    this.file = file;
 
-    try {
-      const info = {
-        name: file.name,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-        lastModified: file.lastModified
-      };
+    /** @type {number} */
+    this.chunkSize = chunkSize;
 
-      logger.debug('File info retrieved:', info);
-      return info;
-    } catch (error) {
-      logger.error('Error getting file info:', error);
-      throw error;
-    }
-  },
+    /** @type {number} */
+    this.totalChunks = Math.ceil(file.size / chunkSize);
 
-  /**
-   * Read a portion (chunk) of a File object
-   * @param {File} file - The file to read from
-   * @param {number} offset - Starting byte index
-   * @param {number} count - Number of bytes to read
-   * @returns {Promise<Uint8Array>} The file chunk as a Uint8Array
-   */
-  async readFileChunk(file, offset, count) {
-    if (!(file instanceof File)) {
-      logger.error('Invalid file object provided to readFileChunk');
-      throw new TypeError('Input must be a File object');
-    }
+    /** @type {number} */
+    this.currentChunk = 0;
 
-    try {
-      // Validate chunk parameters
-      if (typeof offset !== 'number' || offset < 0) {
-        throw new TypeError('Offset must be a non-negative number');
-      }
-      if (typeof count !== 'number' || count <= 0) {
-        throw new TypeError('Count must be a positive number');
-      }
-      if (count > READER_CONFIG.MAX_CHUNK_SIZE) {
-        throw new Error(`Chunk size cannot exceed ${READER_CONFIG.MAX_CHUNK_SIZE} bytes`);
-      }
+    /** @type {boolean} */
+    this.aborted = false;
 
-      const blob = file.slice(offset, offset + count);
-      const arrayBuffer = await blob.arrayBuffer();
-      const chunk = new Uint8Array(arrayBuffer);
+    /** @type {boolean} */
+    this.isDisposed = false;
 
-      logger.debug('File chunk read:', {
-        fileName: file.name,
-        offset,
-        count,
-        actualSize: chunk.length
-      });
+    /** @type {Set<number>} */
+    this.uploadedChunks = new Set();
 
-      return chunk;
-    } catch (error) {
-      logger.error('Error reading file chunk:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Retrieve dropped files from a DataTransfer object
-   * @param {DataTransfer} dataTransfer - DataTransfer object from a drop event
-   * @returns {File[]} An array of File objects
-   */
-  getDroppedFiles(dataTransfer) {
-    if (!dataTransfer) {
-      logger.error('Invalid DataTransfer object provided');
-      throw new TypeError('Invalid DataTransfer object');
-    }
-
-    try {
-      // Prefer items if available; otherwise, use files.
-      const source = dataTransfer.items
-        ? Array.from(dataTransfer.items)
-        : Array.from(dataTransfer.files);
-
-      // When using items, filter on kind === 'file' and call getAsFile(); otherwise, assume each is a File.
-      const files = source
-        .filter(item => dataTransfer.items ? item.kind === 'file' : item instanceof File)
-        .map(item => (dataTransfer.items ? item.getAsFile() : item))
-        .filter(file => file !== null);
-
-      logger.debug('Dropped files retrieved:', {
-        count: files.length,
-        fileNames: files.map(f => f.name)
-      });
-
-      return files;
-    } catch (error) {
-      logger.error('Error getting dropped files:', error);
-      throw error;
-    }
-  },
-
-  /**
-   * Initialize global event listeners to prevent default browser behavior on dragover and drop events.
-   * This prevents files from being opened by the browser when dropped anywhere.
-   */
-  initGlobalDropPrevention() {
-    document.addEventListener('dragover', (e) => {
-      e.preventDefault();
-    }, false);
-
-    document.addEventListener('drop', (e) => {
-      e.preventDefault();
-    }, false);
-
-    logger.debug('Global drop prevention enabled.');
+    logger.debug('ChunkUploader created:', {
+      fileName: file.name,
+      fileSize: file.size,
+      chunkSize: this.chunkSize,
+      totalChunks: this.totalChunks
+    });
   }
-};
+
+  /**
+   * Get the next chunk of data for upload
+   * @returns {Blob|null} Next chunk or null if complete
+   */
+  getNextChunk() {
+    if (this.isDisposed || this.aborted || this.currentChunk >= this.totalChunks) {
+      return null;
+    }
+
+    const start = this.currentChunk * this.chunkSize;
+    const end = Math.min(start + this.chunkSize, this.file.size);
+    const chunk = this.file.slice(start, end);
+    this.currentChunk++;
+
+    logger.debug('Getting next chunk:', {
+      currentChunk: this.currentChunk,
+      startByte: start,
+      endByte: end,
+      chunkSize: chunk.size
+    });
+
+    return chunk;
+  }
+
+  /**
+   * Get upload progress as a percentage
+   * @returns {number} Progress percentage
+   */
+  getProgress() {
+    const progress = (this.uploadedChunks.size / this.totalChunks) * 100;
+    return Math.round(progress * 100) / 100; // Round to 2 decimal places
+  }
+
+  /**
+   * Mark a chunk as successfully uploaded
+   * @param {number} chunkIndex - The index of the uploaded chunk
+   */
+  markChunkUploaded(chunkIndex) {
+    this.uploadedChunks.add(chunkIndex);
+    logger.debug('Chunk marked as uploaded:', {
+      chunkIndex,
+      progress: this.getProgress()
+    });
+  }
+
+  /**
+   * Reset the uploader to its initial state
+   */
+  reset() {
+    this.currentChunk = 0;
+    this.aborted = false;
+    this.uploadedChunks.clear();
+    logger.debug('ChunkUploader reset');
+  }
+
+  /**
+   * Abort the upload
+   */
+  abort() {
+    this.aborted = true;
+    logger.debug('ChunkUploader aborted');
+  }
+
+  /**
+   * Dispose of the chunk uploader
+   */
+  dispose() {
+    if (this.isDisposed) return;
+
+    this.isDisposed = true;
+    this.aborted = true;
+    this.uploadedChunks.clear();
+    logger.debug('ChunkUploader disposed');
+  }
+}
+
+/**
+ * Manager for file upload operations
+ * @implements {IFileUploadManager}
+ */
+class FileUploadManager {
+  /**
+   * @param {string} id - The ID of the upload container element
+   * @param {Object} dotNetRef - .NET reference for Blazor interop
+   */
+  constructor(id, dotNetRef) {
+    DropBearUtils.validateArgs([id, dotNetRef], ['string', 'object'], 'FileUploadManager');
+
+    /** @type {string} */
+    this.id = id;
+
+    /** @type {HTMLElement|null} */
+    this.element = document.getElementById(id);
+
+    /** @type {Object|null} */
+    this.dotNetRef = dotNetRef;
+
+    /** @type {boolean} */
+    this.isDisposed = false;
+
+    /** @type {Map<string, ChunkUploader>} */
+    this.activeUploads = new Map();
+
+    /** @type {number} */
+    this.dragCounter = 0;
+
+    if (!DropBearUtils.isElement(this.element)) {
+      throw new TypeError('Invalid element provided to FileUploadManager');
+    }
+
+    this._setupEventListeners();
+
+    EventEmitter.emit(
+      this.element,
+      'created',
+      DropBearUtils.createEvent(this.id, 'created', null)
+    );
+
+    logger.debug('FileUploadManager created:', {id});
+  }
+
+  /**
+   * Set up drag and drop event listeners
+   * @private
+   */
+  _setupEventListeners() {
+    const handlers = {
+      dragenter: e => this._handleDragEnter(e),
+      dragover: e => this._handleDragOver(e),
+      dragleave: e => this._handleDragLeave(e),
+      drop: e => this._handleDrop(e)
+    };
+
+    Object.entries(handlers).forEach(([event, handler]) => this.element.addEventListener(event, handler.bind(this)));
+
+    // Store references for cleanup
+    this.handlers = handlers;
+    logger.debug('Event listeners initialized');
+  }
+
+  /**
+   * Handle dragenter event
+   * @private
+   * @param {DragEvent} e - Drag event
+   */
+  _handleDragEnter(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.dragCounter++;
+
+    if (this.dragCounter === 1) {
+      DOMOperationQueue.add(() => this.element.classList.add('dragover'));
+
+      EventEmitter.emit(
+        this.element,
+        'dragenter',
+        DropBearUtils.createEvent(this.id, 'dragenter', null)
+      );
+    }
+  }
+
+  /**
+   * Handle dragover event
+   * @private
+   * @param {DragEvent} e - Drag event
+   */
+  _handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  /**
+   * Handle dragleave event
+   * @private
+   * @param {DragEvent} e - Drag event
+   */
+  _handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.dragCounter--;
+
+    if (this.dragCounter === 0) {
+      DOMOperationQueue.add(() => this.element.classList.remove('dragover'));
+
+      EventEmitter.emit(
+        this.element,
+        'dragleave',
+        DropBearUtils.createEvent(this.id, 'dragleave', null)
+      );
+    }
+  }
+
+  /**
+   * Handle drop event
+   * @private
+   * @param {DragEvent} e - Drop event
+   */
+  async _handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.dragCounter = 0;
+
+    DOMOperationQueue.add(() => this.element.classList.remove('dragover'));
+
+    const files = Array.from(e.dataTransfer.files);
+
+    EventEmitter.emit(
+      this.element,
+      'drop',
+      DropBearUtils.createEvent(this.id, 'drop', {fileCount: files.length})
+    );
+
+    await this.uploadFiles(files);
+  }
+
+  /**
+   * Upload multiple files
+   * @param {File[]} files - An array of File objects to upload
+   * @returns {Promise<void>}
+   */
+  async uploadFiles(files) {
+    if (this.isDisposed) return;
+
+    try {
+      logger.debug('Starting upload of multiple files:', {count: files.length});
+      const uploadPromises = files.map(file => this.uploadFile(file));
+      await Promise.all(uploadPromises);
+      logger.debug('All files uploaded successfully');
+    } catch (error) {
+      logger.error('Error uploading files:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Upload a single file
+   * @param {File} file - The file to upload
+   * @returns {Promise<void>}
+   */
+  async uploadFile(file) {
+    if (this.isDisposed) return;
+
+    const uploadId = crypto.randomUUID();
+
+    try {
+      logger.debug('Starting single file upload:', {
+        uploadId,
+        fileName: file.name,
+        fileSize: file.size
+      });
+
+      // Notify upload start
+      await circuitBreaker.execute(() =>
+        this.dotNetRef.invokeMethodAsync('OnUploadStart', {
+          id: uploadId,
+          fileName: file.name,
+          size: file.size,
+          type: file.type
+        })
+      );
+
+      const uploader = new ChunkUploader(file);
+      this.activeUploads.set(uploadId, uploader);
+
+      await this._processChunks(uploadId, uploader);
+
+      // Notify completion
+      await circuitBreaker.execute(() =>
+        this.dotNetRef.invokeMethodAsync('OnUploadComplete', uploadId)
+      );
+
+      EventEmitter.emit(
+        this.element,
+        'upload-complete',
+        DropBearUtils.createEvent(this.id, 'upload-complete', {
+          uploadId,
+          fileName: file.name
+        })
+      );
+
+      logger.debug('File upload completed:', {uploadId, fileName: file.name});
+    } catch (error) {
+      logger.error(`Error uploading file ${file.name}:`, error);
+
+      await circuitBreaker.execute(() =>
+        this.dotNetRef.invokeMethodAsync('OnUploadError', uploadId, error.message)
+      );
+
+      throw error;
+    } finally {
+      this.activeUploads.delete(uploadId);
+    }
+  }
+
+  /**
+   * Process file chunks with retry logic
+   * @private
+   * @param {string} uploadId - Unique upload identifier
+   * @param {ChunkUploader} uploader - The ChunkUploader instance
+   * @returns {Promise<void>}
+   */
+  async _processChunks(uploadId, uploader) {
+    let chunk;
+    let retryCount = 0;
+
+    while ((chunk = uploader.getNextChunk()) !== null && !uploader.aborted) {
+      try {
+        const chunkIndex = uploader.currentChunk - 1;
+        const chunkData = await this._readChunk(chunk);
+
+        await circuitBreaker.execute(() =>
+          this.dotNetRef.invokeMethodAsync('OnChunkUpload', uploadId, {
+            data: chunkData,
+            index: chunkIndex,
+            total: uploader.totalChunks
+          })
+        );
+
+        uploader.markChunkUploaded(chunkIndex);
+
+        // Update progress
+        await circuitBreaker.execute(() =>
+          this.dotNetRef.invokeMethodAsync('OnUploadProgress', uploadId, uploader.getProgress())
+        );
+
+        retryCount = 0;
+      } catch (error) {
+        if (retryCount < UPLOAD_CONFIG.RETRY_ATTEMPTS) {
+          retryCount++;
+          logger.warn('Retrying chunk upload:', {
+            uploadId,
+            chunkIndex: uploader.currentChunk - 1,
+            attempt: retryCount
+          });
+
+          // Move back one chunk to retry
+          uploader.currentChunk--;
+          await new Promise(resolve => setTimeout(resolve, UPLOAD_CONFIG.RETRY_DELAY));
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    if (uploader.aborted) {
+      throw new Error('Upload aborted');
+    }
+  }
+
+  /**
+   * Read chunk data as ArrayBuffer
+   * @private
+   * @param {Blob} chunk - The chunk to read
+   * @returns {Promise<ArrayBuffer>}
+   */
+  async _readChunk(chunk) {
+    try {
+      return await chunk.arrayBuffer();
+    } catch (error) {
+      logger.error('Error reading chunk:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancel an active upload
+   * @param {string} uploadId - Unique identifier of the upload
+   */
+  cancelUpload(uploadId) {
+    const uploader = this.activeUploads.get(uploadId);
+    if (uploader) {
+      uploader.abort();
+      uploader.dispose();
+      this.activeUploads.delete(uploadId);
+
+      EventEmitter.emit(
+        this.element,
+        'upload-cancelled',
+        DropBearUtils.createEvent(this.id, 'upload-cancelled', {uploadId})
+      );
+
+      logger.debug('Upload cancelled:', {uploadId});
+    }
+  }
+
+  /**
+   * Cancel all active uploads
+   */
+  cancelAllUploads() {
+    Array.from(this.activeUploads.keys()).forEach(uploadId => this.cancelUpload(uploadId));
+    logger.debug('All uploads cancelled');
+  }
+
+  /**
+   * Get current upload status
+   * @returns {{ activeUploads: number, totalProgress: number }}
+   */
+  getUploadStatus() {
+    const activeUploads = this.activeUploads.size;
+    let totalProgress = 0;
+
+    if (activeUploads > 0) {
+      const progressSum = Array.from(this.activeUploads.values())
+        .reduce((sum, uploader) => sum + uploader.getProgress(), 0);
+      totalProgress = progressSum / activeUploads;
+    }
+
+    return {activeUploads, totalProgress};
+  }
+
+  /**
+   * Dispose of the file upload manager
+   */
+  dispose() {
+    if (this.isDisposed) return;
+
+    logger.debug(`Disposing file upload manager ${this.id}`);
+    this.isDisposed = true;
+
+    // Cancel any active uploads
+    this.cancelAllUploads();
+
+    // Remove event listeners
+    Object.entries(this.handlers).forEach(([event, handler]) => this.element.removeEventListener(event, handler));
+
+    this.dotNetRef = null;
+
+    EventEmitter.emit(
+      this.element,
+      'disposed',
+      DropBearUtils.createEvent(this.id, 'disposed', null)
+    );
+  }
+}
 
 // Attach to window first
 window[moduleName] = {
   __initialized: false,
-  ...FileReaderHelpers,
+  uploaders: new Map(),
 
   initialize: async () => {
     if (isInitialized) {
@@ -154,29 +504,84 @@ window[moduleName] = {
     }
 
     try {
-      logger.debug('File reader helpers module initializing');
+      logger.debug('File uploader module initializing');
 
-      // Initialize dependencies
+      // Initialize dependencies first
       await window.DropBearUtils.initialize();
+      await window.DropBearCore.initialize();
 
       isInitialized = true;
       window[moduleName].__initialized = true;
 
-      logger.debug('File reader helpers module initialized');
+      logger.debug('File uploader module initialized');
     } catch (error) {
-      logger.error('File reader helpers initialization failed:', error);
+      logger.error('File uploader initialization failed:', error);
       throw error;
     }
   },
 
+  createUploader: (elementId, dotNetRef) => {
+    try {
+      if (!isInitialized) {
+        throw new Error('Module not initialized');
+      }
+
+      if (window[moduleName].uploaders.has(elementId)) {
+        logger.warn(`Uploader already exists for ${elementId}, disposing old instance`);
+        window[moduleName].dispose(elementId);
+      }
+
+      const manager = new FileUploadManager(elementId, dotNetRef);
+      window[moduleName].uploaders.set(elementId, manager);
+      logger.debug(`File uploader created for ID: ${elementId}`);
+    } catch (error) {
+      logger.error('File uploader creation error:', error);
+      throw error;
+    }
+  },
+
+  uploadFiles: async (elementId, files) => {
+    const manager = window[moduleName].uploaders.get(elementId);
+    if (!manager) {
+      const error = new Error(`Uploader not found for ID: ${elementId}`);
+      logger.error('Upload error:', error);
+      throw error;
+    }
+    return manager.uploadFiles(files);
+  },
+
+  cancelUpload: (elementId, uploadId) => {
+    const manager = window[moduleName].uploaders.get(elementId);
+    if (manager) {
+      manager.cancelUpload(uploadId);
+      logger.debug(`Upload cancelled: ${uploadId}`);
+    }
+  },
+
+  getUploadStatus: elementId => {
+    const manager = window[moduleName].uploaders.get(elementId);
+    return manager ? manager.getUploadStatus() : null;
+  },
+
   isInitialized: () => isInitialized,
 
-  dispose: () => {
+  dispose: elementId => {
+    const manager = window[moduleName].uploaders.get(elementId);
+    if (manager) {
+      manager.dispose();
+      window[moduleName].uploaders.delete(elementId);
+      logger.debug(`Uploader disposed for ID: ${elementId}`);
+    }
+  },
+
+  disposeAll: () => {
+    Array.from(window[moduleName].uploaders.keys()).forEach(id =>
+      window[moduleName].dispose(id)
+    );
+    window[moduleName].uploaders.clear();
     isInitialized = false;
     window[moduleName].__initialized = false;
-    logger.debug('File reader helpers module disposed');
-    // Optionally, to free memory, you could remove the module from window:
-    // delete window[moduleName];
+    logger.debug('All uploaders disposed');
   }
 };
 
@@ -186,60 +591,72 @@ window.DropBearModuleManager.register(
   {
     initialize: () => window[moduleName].initialize(),
     isInitialized: () => window[moduleName].isInitialized(),
-    dispose: () => window[moduleName].dispose()
+    dispose: () => window[moduleName].disposeAll()
   },
-  ['DropBearUtils']
+  ['DropBearUtils', 'DropBearCore']
 );
 
-// Export the helper functions under a unique namespace for dynamic import.
-// This prevents conflicts with similar function names from other modules.
-export const DropBearFileReaderHelpersAPI = {
+// Export API functions under a unique namespace for the file uploader module.
+export const DropBearFileUploaderAPI = {
   /**
-   * Initializes the File Reader Helpers module.
+   * Initializes the file uploader module.
    * @returns {Promise<void>}
    */
   initialize: async () => window[moduleName].initialize(),
 
   /**
-   * Retrieves file information from a File object.
-   * @param {File} file - The file to inspect.
-   * @returns {{name: string, size: number, type: string, lastModified: number}}
+   * Creates a new uploader instance for the specified element.
+   * @param {string} elementId - The ID of the upload container element.
+   * @param {Object} dotNetRef - The .NET reference for Blazor interop.
+   * @returns {Promise<void>}
    */
-  getFileInfo: (...args) => window[moduleName].getFileInfo(...args),
+  createUploader: async (elementId, dotNetRef) =>
+    window[moduleName].createUploader(elementId, dotNetRef),
 
   /**
-   * Reads a chunk from a File object.
-   * @param {File} file - The file to read from.
-   * @param {number} offset - The starting byte index.
-   * @param {number} count - The number of bytes to read.
-   * @returns {Promise<Uint8Array>}
+   * Uploads files using the uploader instance identified by the element ID.
+   * @param {string} elementId - The ID of the upload container element.
+   * @param {File[]} files - An array of File objects to upload.
+   * @returns {Promise<void>}
    */
-  readFileChunk: async (...args) => window[moduleName].readFileChunk(...args),
+  uploadFiles: async (elementId, files) =>
+    window[moduleName].uploadFiles(elementId, files),
 
   /**
-   * Retrieves files from a DataTransfer object.
-   * @param {DataTransfer} dataTransfer - The drop event's DataTransfer object.
-   * @returns {File[]}
+   * Cancels a specific upload.
+   * @param {string} elementId - The ID of the uploader.
+   * @param {string} uploadId - The unique identifier of the upload.
    */
-  getDroppedFiles: (...args) => window[moduleName].getDroppedFiles(...args),
+  cancelUpload: async (elementId, uploadId) =>
+    window[moduleName].cancelUpload(elementId, uploadId),
 
   /**
-   * Enables global drop prevention to disable default file opening.
+   * Gets the current upload status of the uploader identified by elementId.
+   * @param {string} elementId - The ID of the uploader.
+   * @returns {object|null} The current upload status.
    */
-  initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
+  getUploadStatus: (elementId) => window[moduleName].getUploadStatus(elementId),
 
   /**
-   * Checks whether the module is initialized.
+   * Checks whether the file uploader module is initialized.
    * @returns {boolean}
    */
   isInitialized: () => window[moduleName].isInitialized(),
 
   /**
-   * Disposes the File Reader Helpers module.
+   * Disposes of a specific uploader instance.
+   * @param {string} elementId - The ID of the uploader.
    * @returns {Promise<void>}
    */
-  dispose: async () => window[moduleName].dispose()
+  dispose: async (elementId) => window[moduleName].dispose(elementId),
+
+  /**
+   * Disposes all uploader instances.
+   * @returns {Promise<void>}
+   */
+  disposeAll: async () => window[moduleName].disposeAll()
 };
 
-// Also export helper functions
-export const { getFileInfo, readFileChunk, getDroppedFiles, initGlobalDropPrevention } = FileReaderHelpers;
+// Also export the FileUploadManager and ChunkUploader classes if direct access is needed.
+export { FileUploadManager, ChunkUploader };
+

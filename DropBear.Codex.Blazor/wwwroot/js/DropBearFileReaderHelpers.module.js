@@ -124,6 +124,22 @@ const FileReaderHelpers = {
       logger.error('Error getting dropped files:', error);
       throw error;
     }
+  },
+
+  /**
+   * Initialize global event listeners to prevent default browser behavior on dragover and drop events.
+   * This prevents files from being opened by the browser when dropped anywhere.
+   */
+  initGlobalDropPrevention() {
+    document.addEventListener('dragover', (e) => {
+      e.preventDefault();
+    }, false);
+
+    document.addEventListener('drop', (e) => {
+      e.preventDefault();
+    }, false);
+
+    logger.debug('Global drop prevention enabled.');
   }
 };
 
@@ -208,6 +224,11 @@ export const DropBearFileReaderHelpersAPI = {
   getDroppedFiles: (...args) => window[moduleName].getDroppedFiles(...args),
 
   /**
+   * Enables global drop prevention to disable default file opening.
+   */
+  initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
+
+  /**
    * Checks whether the module is initialized.
    * @returns {boolean}
    */
@@ -220,5 +241,5 @@ export const DropBearFileReaderHelpersAPI = {
   dispose: async () => window[moduleName].dispose()
 };
 
-// Export helper functions
-export const { getFileInfo, readFileChunk, getDroppedFiles } = FileReaderHelpers;
+// Also export helper functions
+export const { getFileInfo, readFileChunk, getDroppedFiles, initGlobalDropPrevention } = FileReaderHelpers;
