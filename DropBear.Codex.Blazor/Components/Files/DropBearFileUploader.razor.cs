@@ -23,13 +23,14 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private const long BytesPerMb = 1024 * 1024;
     private const int StateUpdateDebounceMs = 100;
     private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
-    private int _dragCounter = 0;
 
     private readonly ConcurrentDictionary<string, UploadFile> _selectedFiles = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _uploadCancellationTokens = new();
     private readonly ConcurrentQueue<UploadFile> _uploadedFiles = new();
     private readonly SemaphoreSlim _uploadSemaphore = new(1, 1);
+    private int _dragCounter;
     private volatile bool _isDragOver;
+
 
     private volatile bool _isInitialized;
     private volatile bool _isUploading;
@@ -49,6 +50,20 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private IReadOnlyDictionary<string, UploadFile> SelectedFiles => _selectedFiles;
     private IEnumerable<UploadFile> UploadedFiles => _uploadedFiles.ToArray();
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsModule ??= await GetJsModuleAsync(ModuleName);
+
+            // Ensure FileReaderHelpers is initialized
+            await _jsModule.InvokeVoidAsync("DropBearFileReaderHelpersAPI.initialize");
+            // Enable global drop prevention
+            await _jsModule.InvokeVoidAsync("DropBearFileReaderHelpersAPI.initGlobalDropPrevention");
+        }
+    }
+
+
     protected override async Task InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
@@ -60,8 +75,10 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             await _uploadSemaphore.WaitAsync(ComponentToken);
 
-            _jsModule = await GetJsModuleAsync(ModuleName);
-            _jsUtilsModule = await GetJsModuleAsync(JsModuleNames.Utils);
+            _jsModule ??= await GetJsModuleAsync(ModuleName);
+
+            _jsUtilsModule ??= await GetJsModuleAsync(JsModuleNames.Utils);
+
 
             _isInitialized = true;
             LogDebug("File uploader initialized");
@@ -79,7 +96,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     private async Task QueueStateUpdate()
     {
-
         if (_stateUpdateDebouncer is not null)
         {
             await _stateUpdateDebouncer?.CancelAsync()!;
@@ -115,7 +131,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     /// <summary>
-    /// Handles the dragenter event and updates the drag state.
+    ///     Handles the dragenter event and updates the drag state.
     /// </summary>
     /// <param name="e">The drag event args.</param>
     private void HandleDragEnter(DragEventArgs e)
@@ -131,7 +147,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     /// <summary>
-    /// Handles the dragleave event and updates the drag state.
+    ///     Handles the dragleave event and updates the drag state.
     /// </summary>
     /// <param name="e">The drag event args.</param>
     private void HandleDragLeave(DragEventArgs e)
@@ -147,6 +163,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             _isDragOver = false;
             _dragCounter = 0; // Reset counter if below zero.
         }
+
         _ = QueueStateUpdate();
     }
 
