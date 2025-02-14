@@ -189,13 +189,33 @@ const FileReaderHelpers = {
   },
 
   /**
+   * Retrieve file info for a stored file referenced by its key.
+   * Returns a serializable object with properties: Name, Size, Type, LastModified.
+   * @param {string} key - The key referencing the file.
+   * @returns {{Name: string, Size: number, Type: string, LastModified: number}}
+   */
+  getFileInfoByKey(key) {
+    const file = droppedFileStore.get(key);
+    if (!file) {
+      throw new Error("File not found for key: " + key);
+    }
+    return {
+      Name: file.name,
+      Size: file.size,
+      Type: file.type || 'application/octet-stream',
+      LastModified: file.lastModified
+    };
+  },
+
+  /**
    * Retrieve a dropped File object by its key.
    * @param {string} key - The key referencing the file.
    * @returns {File|null} The File associated with the key, or null if not found.
    */
   getDroppedFileByKey(key) {
     return droppedFileStore.get(key) || null;
-  },
+  }
+  ,
 
   /**
    * (Optional) Clear the dropped file store.
@@ -203,7 +223,8 @@ const FileReaderHelpers = {
    */
   clearDroppedFileStore() {
     droppedFileStore.clear();
-  },
+  }
+  ,
 
   /**
    * Initialize global event listeners to prevent default browser behavior on dragover and drop events.
@@ -258,66 +279,26 @@ window.DropBearModuleManager.register(
 
 // Export the helper functions under a unique namespace for dynamic import.
 export const DropBearFileReaderHelpersAPI = {
-  /**
-   * Initializes the File Reader Helpers module.
-   * @returns {Promise<void>}
-   */
   initialize: async () => window[moduleName].initialize(),
-  /**
-   * Retrieves file information from a File object.
-   * @param {File} file - The file to inspect.
-   * @returns {{name: string, size: number, type: string, lastModified: number}}
-   */
   getFileInfo: (...args) => window[moduleName].getFileInfo(...args),
-  /**
-   * Reads a chunk from a File object.
-   * @param {File} file - The file to read from.
-   * @param {number} offset - The starting byte index.
-   * @param {number} count - The number of bytes to read.
-   * @returns {Promise<Uint8Array>}
-   */
   readFileChunk: async (...args) => window[moduleName].readFileChunk(...args),
-  /**
-   * Retrieves files from a DataTransfer object.
-   * @param {DataTransfer} dataTransfer - The drop event's DataTransfer object.
-   * @returns {File[]}
-   */
   getDroppedFiles: (...args) => window[moduleName].getDroppedFiles(...args),
-  /**
-   * Retrieves dropped file keys from a DataTransfer object.
-   * @param {DataTransfer} dataTransfer - The drop event's DataTransfer object.
-   * @returns {string[]}
-   */
   getDroppedFileKeys: (...args) => window[moduleName].getDroppedFileKeys(...args),
-  /**
-   * Retrieves a dropped File object by its key.
-   * @param {string} key - The key referencing the file.
-   * @returns {File|null}
-   */
   getDroppedFileByKey: (...args) => window[moduleName].getDroppedFileByKey(...args),
-  /**
-   * Enables global drop prevention to disable default file opening.
-   */
+  getFileInfoByKey: (...args) => getFileInfoByKey(...args),
   initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
-  /**
-   * Checks whether the module is initialized.
-   * @returns {boolean}
-   */
   isInitialized: () => window[moduleName].isInitialized(),
-  /**
-   * Disposes the File Reader Helpers module.
-   * @returns {Promise<void>}
-   */
   dispose: async () => window[moduleName].dispose()
 };
 
-// Also export helper functions
 export const {
   getFileInfo,
   readFileChunk,
   getDroppedFiles,
   getDroppedFileKeys,
   getDroppedFileByKey,
+  getFileInfoByKey,
   initGlobalDropPrevention,
   clearDroppedFileStore
 } = FileReaderHelpers;
+
