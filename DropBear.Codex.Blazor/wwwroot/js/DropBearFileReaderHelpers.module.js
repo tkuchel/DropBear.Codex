@@ -191,6 +191,7 @@ const FileReaderHelpers = {
   /**
    * Retrieve file info for a stored file referenced by its key.
    * Returns a serializable object with properties: Name, Size, Type, LastModified.
+   * If file.name is missing, fallback to using the key as the Name.
    * @param {string} key - The key referencing the file.
    * @returns {{Name: string, Size: number, Type: string, LastModified: number}}
    */
@@ -200,7 +201,7 @@ const FileReaderHelpers = {
       throw new Error("File not found for key: " + key);
     }
     return {
-      Name: file.name,
+      Name: file.name || key,  // Use the key as a fallback if file.name is null/undefined.
       Size: file.size,
       Type: file.type || 'application/octet-stream',
       LastModified: file.lastModified
