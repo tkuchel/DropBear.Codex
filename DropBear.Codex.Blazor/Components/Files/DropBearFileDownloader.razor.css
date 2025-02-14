@@ -15,7 +15,7 @@
   border-radius: var(--br-md);
   box-shadow: var(--shadow-md);
   overflow: hidden;
-  transition: box-shadow var(--transition-normal);
+  transition: box-shadow var(--transition-medium);
 }
 
 .file-info-row {
@@ -23,7 +23,7 @@
   align-items: center;
   gap: var(--spacing-md);
   padding: var(--spacing-md);
-  background-color: var(--clr-surface-primary);
+  background-color: var(--clr-surface-dark);
 }
 
 .file-info {
@@ -110,7 +110,7 @@
   top: 0;
   height: 100%;
   background-color: var(--clr-primary);
-  transition: width var(--transition-normal);
+  transition: width var(--transition-medium);
 }
 
 /* Accessibility */

@@ -28,7 +28,7 @@
   border: 2px dashed var(--clr-border);
   border-radius: var(--br-md);
   background-color: var(--clr-surface-secondary);
-  transition: all var(--transition-normal);
+  transition: all var(--transition-medium);
   cursor: pointer;
 
   &.dragover {
@@ -124,7 +124,7 @@
   top: 0;
   height: 100%;
   background-color: var(--clr-primary);
-  transition: width var(--transition-normal);
+  transition: width var(--transition-medium);
 }
 
 .file-upload-progress-text {

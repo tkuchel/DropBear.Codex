@@ -23,6 +23,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private const long BytesPerMb = 1024 * 1024;
     private const int StateUpdateDebounceMs = 100;
     private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
+    private int _dragCounter = 0;
 
     private readonly ConcurrentDictionary<string, UploadFile> _selectedFiles = new();
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _uploadCancellationTokens = new();
@@ -113,25 +114,39 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
-    private void HandleDragEnter()
+    /// <summary>
+    /// Handles the dragenter event and updates the drag state.
+    /// </summary>
+    /// <param name="e">The drag event args.</param>
+    private void HandleDragEnter(DragEventArgs e)
     {
         if (_isUploading || IsDisposed)
         {
             return;
         }
 
+        _dragCounter++; // Increment drag counter.
         _isDragOver = true;
         _ = QueueStateUpdate();
     }
 
-    private void HandleDragLeave()
+    /// <summary>
+    /// Handles the dragleave event and updates the drag state.
+    /// </summary>
+    /// <param name="e">The drag event args.</param>
+    private void HandleDragLeave(DragEventArgs e)
     {
         if (_isUploading || IsDisposed)
         {
             return;
         }
 
-        _isDragOver = false;
+        _dragCounter--; // Decrement drag counter.
+        if (_dragCounter <= 0)
+        {
+            _isDragOver = false;
+            _dragCounter = 0; // Reset counter if below zero.
+        }
         _ = QueueStateUpdate();
     }
 

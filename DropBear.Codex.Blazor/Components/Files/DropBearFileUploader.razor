@@ -12,16 +12,16 @@
              tabindex="0"
              @ondragenter="HandleDragEnter"
              @ondragleave="HandleDragLeave"
-             @ondragover:preventDefault
+             @ondragover:preventDefault="true"
+             @ondrop:preventDefault="true"
              @ondrop="HandleDrop">
-
             <i class="fas fa-cloud-upload-alt fa-2x file-upload-icon"></i>
             <p class="file-upload-text">@(_isDragOver ? "Release to upload" : "Drag & Drop files here or")</p>
 
             <InputFile OnChange="HandleFileSelectionAsync"
                        multiple
                        id="@($"{ComponentId}-file-input")"
-                       class="file-upload-input"/>
+                       class="file-upload-input" />
 
             <button type="button"
                     @onclick="OpenFileDialog"
@@ -30,6 +30,7 @@
                 Choose Files
             </button>
         </div>
+
 
         <!-- Selected Files List -->
         @if (SelectedFiles.Any())
