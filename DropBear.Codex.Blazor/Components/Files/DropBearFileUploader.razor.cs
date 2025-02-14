@@ -31,7 +31,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private int _dragCounter;
     private volatile bool _isDragOver;
 
-
     private volatile bool _isInitialized;
     private volatile bool _isUploading;
     private IJSObjectReference? _jsModule;
@@ -63,7 +62,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
-
     protected override async Task InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
@@ -76,9 +74,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             await _uploadSemaphore.WaitAsync(ComponentToken);
 
             _jsModule ??= await GetJsModuleAsync(ModuleName);
-
             _jsUtilsModule ??= await GetJsModuleAsync(JsModuleNames.Utils);
-
 
             _isInitialized = true;
             LogDebug("File uploader initialized");
@@ -98,7 +94,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     {
         if (_stateUpdateDebouncer is not null)
         {
-            await _stateUpdateDebouncer?.CancelAsync()!;
+            await _stateUpdateDebouncer.CancelAsync();
         }
 
         try
@@ -185,24 +181,27 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
                 await InitializeComponentAsync();
             }
 
-            var jsFiles = await _jsModule!.InvokeAsync<IJSObjectReference[]>(
-                $"{ModuleName}API.getDroppedFiles",
+            // Instead of retrieving JS file objects, we now get an array of file keys.
+            var fileKeys = await _jsModule!.InvokeAsync<string[]>(
+                $"{ModuleName}API.getDroppedFileKeys",
                 ComponentToken,
                 e.DataTransfer
             );
 
             var browserFiles = new List<IBrowserFile>();
-            foreach (var jsFile in jsFiles)
+            foreach (var key in fileKeys)
             {
                 try
                 {
-                    var proxy = await BrowserFileProxy.CreateAsync(jsFile);
+                    // Create the file proxy from the key. Pass _jsModule so the proxy can
+                    // use the new JS functions (e.g. getFileInfoByKey).
+                    var proxy = await BrowserFileProxy.CreateAsync(key, _jsModule);
                     browserFiles.Add(proxy);
                 }
                 catch (Exception ex)
                 {
                     LogError("Failed to create file proxy", ex);
-                    await jsFile.DisposeAsync();
+                    // Optionally, log and continue.
                 }
             }
 
@@ -343,10 +342,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
 
             _uploadCancellationTokens.Clear();
-
             _isUploading = false;
             _uploadProgress = 0;
-
             _uploadSemaphore.Release();
             await QueueStateUpdate();
         }

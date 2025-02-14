@@ -77,7 +77,6 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
             throw new IOException($"File size {_size} bytes exceeds maximum allowed size {maxAllowedSize} bytes");
         }
 
-        // Create an adapter stream that handles async operations and uses the buffer correctly
         return new BrowserFileProxyStream(
             async (buffer, offset, count, ct) =>
             {
@@ -89,13 +88,6 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         );
     }
 
-    /// <summary>
-    ///     Reads a chunk of the file from JavaScript
-    /// </summary>
-    /// <param name="offset">The starting position in the file</param>
-    /// <param name="count">The number of bytes to read</param>
-    /// <param name="ct">Cancellation token</param>
-    /// <returns>The bytes read from the file</returns>
     private async Task<byte[]> ReadFileChunkAsync(long offset, int count, CancellationToken ct)
     {
         if (_disposed)
@@ -112,7 +104,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Creates a new BrowserFileProxy from a JavaScript file reference
+    ///     Creates a new BrowserFileProxy from a JavaScript file reference.
     /// </summary>
     public static async Task<BrowserFileProxy> CreateAsync(IJSObjectReference jsFileReference)
     {
@@ -126,7 +118,8 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
                 fileInfo.Name,
                 fileInfo.Size,
                 fileInfo.Type,
-                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified));
+                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified)
+            );
         }
         catch (JSException ex)
         {
@@ -136,8 +129,45 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
     }
 
     /// <summary>
-    ///     Custom stream implementation that bridges sync/async operations
+    ///     Creates a new BrowserFileProxy from a file key.
+    ///     This method uses the provided JS module to retrieve file information and a JS file reference.
     /// </summary>
+    /// <param name="fileKey">The key referencing the stored file.</param>
+    /// <param name="jsModule">The JS module reference (should be the FileReaderHelpers module).</param>
+    public static async Task<BrowserFileProxy> CreateAsync(string fileKey, IJSObjectReference jsModule)
+    {
+        if (string.IsNullOrEmpty(fileKey))
+        {
+            throw new ArgumentException("Invalid file key", nameof(fileKey));
+        }
+
+        try
+        {
+            // Retrieve file info by key. Your JS module must expose "getFileInfoByKey".
+            var fileInfo = await jsModule.InvokeAsync<FileInfoJson>("getFileInfoByKey", fileKey);
+            // Retrieve the JS file reference using the key.
+            var jsFileReference = await jsModule.InvokeAsync<IJSObjectReference>("getDroppedFileByKey", fileKey);
+            return new BrowserFileProxy(
+                jsFileReference,
+                fileInfo.Name,
+                fileInfo.Size,
+                fileInfo.Type,
+                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified)
+            );
+        }
+        catch (JSException ex)
+        {
+            throw new InvalidOperationException("Failed to create BrowserFileProxy from file key", ex);
+        }
+    }
+
+    private sealed record FileInfoJson(
+        string Name,
+        long Size,
+        string Type,
+        long LastModified
+    );
+
     private sealed class BrowserFileProxyStream : Stream
     {
         private readonly Func<byte[], int, int, CancellationToken, Task<int>> _readAsync;
@@ -197,7 +227,6 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
             return bytesRead;
         }
 
-        // Other required overrides (throw NotSupportedException)
         public override void Flush()
         {
             throw new NotSupportedException();
@@ -223,10 +252,4 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
             throw new NotSupportedException();
         }
     }
-
-    private sealed record FileInfoJson(
-        string Name,
-        long Size,
-        string Type,
-        long LastModified);
 }
