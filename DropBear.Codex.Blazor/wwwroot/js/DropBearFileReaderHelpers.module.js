@@ -103,28 +103,34 @@ const FileReaderHelpers = {
     }
 
     try {
-      // Prefer items if available; otherwise, use files.
-      const source = dataTransfer.items
-        ? Array.from(dataTransfer.items)
-        : Array.from(dataTransfer.files);
+      // If items are available, use them. Otherwise, fallback to files.
+      if (dataTransfer.items) {
+        const items = Array.from(dataTransfer.items);
+        // Only use items that are files and support getAsFile
+        const files = items
+          .filter(item => item.kind === 'file' && typeof item.getAsFile === 'function')
+          .map(item => item.getAsFile())
+          .filter(file => file !== null);
 
-      // When using items, filter on kind === 'file' and call getAsFile(); otherwise, assume each is a File.
-      const files = source
-        .filter(item => dataTransfer.items ? item.kind === 'file' : item instanceof File)
-        .map(item => (dataTransfer.items ? item.getAsFile() : item))
-        .filter(file => file !== null);
-
-      logger.debug('Dropped files retrieved:', {
-        count: files.length,
-        fileNames: files.map(f => f.name)
-      });
-
-      return files;
+        logger.debug('Dropped files retrieved (from items):', {
+          count: files.length,
+          fileNames: files.map(f => f.name)
+        });
+        return files;
+      } else {
+        const files = Array.from(dataTransfer.files);
+        logger.debug('Dropped files retrieved (from files):', {
+          count: files.length,
+          fileNames: files.map(f => f.name)
+        });
+        return files;
+      }
     } catch (error) {
       logger.error('Error getting dropped files:', error);
       throw error;
     }
   },
+
 
   /**
    * Initialize global event listeners to prevent default browser behavior on dragover and drop events.
