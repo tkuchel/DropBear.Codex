@@ -10,6 +10,7 @@ namespace DropBear.Codex.Blazor.Models;
 public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 {
     private readonly string _contentType;
+    private readonly string _extension;
     private readonly string? _fileKey; // Indicates the proxy was created from a file key.
     private readonly IJSObjectReference _jsModuleOrFileRef;
     private readonly DateTimeOffset _lastModified;
@@ -32,13 +33,20 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         _size = size;
         _contentType = contentType;
         _lastModified = lastModified;
+        _extension = Path.GetExtension(name).TrimStart('.').ToLowerInvariant();
     }
 
     /// <summary>
     ///     Private constructor used for creating a proxy from a file key.
     /// </summary>
-    private BrowserFileProxy(string fileKey, IJSObjectReference jsModule, string name, long size, string contentType,
-        DateTimeOffset lastModified)
+    private BrowserFileProxy(
+        string fileKey,
+        IJSObjectReference jsModule,
+        string name,
+        long size,
+        string contentType,
+        DateTimeOffset lastModified,
+        string extension)
     {
         _fileKey = fileKey;
         _jsModuleOrFileRef = jsModule ?? throw new ArgumentNullException(nameof(jsModule));
@@ -46,7 +54,12 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         _size = size;
         _contentType = contentType;
         _lastModified = lastModified;
+        _extension = extension ?? "";
     }
+
+    public string Extension => _disposed
+        ? throw new ObjectDisposedException(nameof(BrowserFileProxy))
+        : _extension;
 
     public async ValueTask DisposeAsync()
     {
@@ -131,18 +144,23 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
         try
         {
-            // Retrieve file info by key.
             var fileInfo = await jsModule.InvokeAsync<FileInfoJson>("getFileInfoByKey", fileKey);
-            // Instead of trying to get a JS file reference (which caused the error),
-            // we store the file key and use the JS module for further interop calls.
-            return new BrowserFileProxy(fileKey, jsModule, fileInfo.Name, fileInfo.Size, fileInfo.Type,
-                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified));
+            return new BrowserFileProxy(
+                fileKey,
+                jsModule,
+                fileInfo.Name,
+                fileInfo.Size,
+                fileInfo.Type,
+                DateTimeOffset.FromUnixTimeMilliseconds(fileInfo.LastModified),
+                fileInfo.Extension
+            );
         }
         catch (JSException ex)
         {
             throw new InvalidOperationException("Failed to create BrowserFileProxy from file key", ex);
         }
     }
+
 
     /// <summary>
     ///     Reads a chunk of the file.
@@ -177,10 +195,12 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
     private sealed record FileInfoJson(
         string Name,
+        string Extension,
         long Size,
         string Type,
         long LastModified
     );
+
 
     private sealed class BrowserFileProxyStream : Stream
     {

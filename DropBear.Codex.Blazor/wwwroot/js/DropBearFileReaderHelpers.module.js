@@ -190,18 +190,29 @@ const FileReaderHelpers = {
 
   /**
    * Retrieve file info for a stored file referenced by its key.
-   * Returns a serializable object with properties: Name, Size, Type, LastModified.
-   * If file.name is missing, fallback to using the key as the Name.
+   * Returns a serializable object with properties: Name, Extension, Size, Type, LastModified.
    * @param {string} key - The key referencing the file.
-   * @returns {{Name: string, Size: number, Type: string, LastModified: number}}
+   * @returns {{Name: string, Extension: string, Size: number, Type: string, LastModified: number}}
    */
   getFileInfoByKey(key) {
     const file = droppedFileStore.get(key);
     if (!file) {
       throw new Error("File not found for key: " + key);
     }
+
+    // Fall back to the key if the file name is missing.
+    const name = file.name || key;
+
+    // Extract the extension from the file name (everything after the last dot).
+    let extension = '';
+    const dotIndex = name.lastIndexOf('.');
+    if (dotIndex > -1 && dotIndex < name.length - 1) {
+      extension = name.substring(dotIndex + 1).toLowerCase();
+    }
+
     return {
-      Name: file.name || key,  // Use the key as a fallback if file.name is null/undefined.
+      Name: name,
+      Extension: extension,
       Size: file.size,
       Type: file.type || 'application/octet-stream',
       LastModified: file.lastModified
