@@ -103,28 +103,39 @@ const FileReaderHelpers = {
     }
 
     try {
-      // If items are available, use them. Otherwise, fallback to files.
-      if (dataTransfer.items) {
-        const items = Array.from(dataTransfer.items);
-        // Only use items that are files and support getAsFile
-        const files = items
-          .filter(item => item.kind === 'file' && typeof item.getAsFile === 'function')
-          .map(item => item.getAsFile())
-          .filter(file => file !== null);
+      // Log some debug info for troubleshooting.
+      logger.debug('DataTransfer details:', {
+        itemsCount: dataTransfer.items ? dataTransfer.items.length : 'N/A',
+        filesCount: dataTransfer.files ? dataTransfer.files.length : 'N/A'
+      });
 
-        logger.debug('Dropped files retrieved (from items):', {
-          count: files.length,
-          fileNames: files.map(f => f.name)
-        });
-        return files;
-      } else {
-        const files = Array.from(dataTransfer.files);
-        logger.debug('Dropped files retrieved (from files):', {
-          count: files.length,
-          fileNames: files.map(f => f.name)
-        });
-        return files;
+      let files = [];
+
+      if (dataTransfer.items && dataTransfer.items.length > 0) {
+        // Filter items that are files and support getAsFile.
+        const items = Array.from(dataTransfer.items);
+        const fileItems = items.filter(
+          item => item.kind === 'file' && typeof item.getAsFile === 'function'
+        );
+
+        if (fileItems.length > 0) {
+          files = fileItems
+            .map(item => item.getAsFile())
+            .filter(file => file !== null);
+        }
       }
+
+      // If no files were found using items, fall back to dataTransfer.files.
+      if (files.length === 0 && dataTransfer.files && dataTransfer.files.length > 0) {
+        files = Array.from(dataTransfer.files);
+      }
+
+      logger.debug('Dropped files retrieved:', {
+        count: files.length,
+        fileNames: files.map(f => f.name)
+      });
+
+      return files;
     } catch (error) {
       logger.error('Error getting dropped files:', error);
       throw error;
