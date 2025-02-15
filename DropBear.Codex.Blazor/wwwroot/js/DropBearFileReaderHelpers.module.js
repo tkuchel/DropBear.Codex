@@ -235,7 +235,6 @@ const FileReaderHelpers = {
     return await blob.arrayBuffer();
   },
 
-
   /**
    * Retrieve a dropped File object by its key.
    * @param {string} key - The key referencing the file.
@@ -243,17 +242,15 @@ const FileReaderHelpers = {
    */
   getDroppedFileByKey(key) {
     return droppedFileStore.get(key) || null;
-  }
-  ,
+  },
 
   /**
-   * (Optional) Clear the dropped file store.
+   * Clear the dropped file store.
    * Call this after processing files to avoid memory buildup.
    */
   clearDroppedFileStore() {
     droppedFileStore.clear();
-  }
-  ,
+  },
 
   /**
    * Initialize global event listeners to prevent default browser behavior on dragover and drop events.
@@ -266,7 +263,7 @@ const FileReaderHelpers = {
   }
 };
 
-// Attach to window first
+// Attach to window first with complete method exposure
 window[moduleName] = {
   __initialized: false,
   ...FileReaderHelpers,
@@ -290,8 +287,6 @@ window[moduleName] = {
     isInitialized = false;
     window[moduleName].__initialized = false;
     logger.debug('File reader helpers module disposed');
-    // Optionally, remove the module from window if needed:
-    // delete window[moduleName];
   }
 };
 
@@ -306,7 +301,7 @@ window.DropBearModuleManager.register(
   ['DropBearUtils']
 );
 
-// Export the helper functions under a unique namespace for dynamic import.
+// Export the helper functions under a unique namespace with all methods properly exposed
 export const DropBearFileReaderHelpersAPI = {
   initialize: async () => window[moduleName].initialize(),
   getFileInfo: (...args) => window[moduleName].getFileInfo(...args),
@@ -315,12 +310,14 @@ export const DropBearFileReaderHelpersAPI = {
   getDroppedFileKeys: (...args) => window[moduleName].getDroppedFileKeys(...args),
   getDroppedFileByKey: (...args) => window[moduleName].getDroppedFileByKey(...args),
   getFileInfoByKey: (...args) => window[moduleName].getFileInfoByKey(...args),
-  readFileChunkByKey: (...args) => window[moduleName].readFileChunkByKey(...args),
+  readFileChunkByKey: async (...args) => window[moduleName].readFileChunkByKey(...args),
+  clearDroppedFileStore: () => window[moduleName].clearDroppedFileStore(),
   initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
   isInitialized: () => window[moduleName].isInitialized(),
   dispose: async () => window[moduleName].dispose()
 };
 
+// Individual exports for direct imports if needed
 export const {
   getFileInfo,
   readFileChunk,
@@ -328,7 +325,7 @@ export const {
   getDroppedFileKeys,
   getDroppedFileByKey,
   getFileInfoByKey,
-  initGlobalDropPrevention,
-  clearDroppedFileStore
+  readFileChunkByKey,
+  clearDroppedFileStore,
+  initGlobalDropPrevention
 } = FileReaderHelpers;
-
