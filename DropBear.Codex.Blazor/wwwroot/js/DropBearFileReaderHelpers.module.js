@@ -42,21 +42,36 @@ function generateUUID() {
  */
 function extractFiles(dataTransfer) {
   let files = [];
-  if (dataTransfer.items && dataTransfer.items.length > 0) {
-    const items = Array.from(dataTransfer.items);
-    const fileItems = items.filter(
-      item => item.kind === 'file' && typeof item.getAsFile === 'function'
-    );
-    if (fileItems.length > 0) {
-      files = fileItems
+
+  try {
+    // First try to get files from the items (preferred method)
+    if (dataTransfer.items) {
+      files = Array.from(dataTransfer.items)
+        .filter(item => item.kind === 'file')
         .map(item => item.getAsFile())
         .filter(file => file !== null);
+
+      logger.debug('Extracted files from items:', files);
     }
+
+    // If no files found from items, try the files property
+    if (files.length === 0 && dataTransfer.files) {
+      files = Array.from(dataTransfer.files);
+      logger.debug('Extracted files from files property:', files);
+    }
+
+    // Validate that we actually got File objects
+    files = files.filter(file => file instanceof File);
+
+    if (files.length === 0) {
+      logger.warn('No valid files found in DataTransfer object');
+    }
+
+    return files;
+  } catch (error) {
+    logger.error('Error extracting files:', error);
+    return [];
   }
-  if (files.length === 0 && dataTransfer.files && dataTransfer.files.length > 0) {
-    files = Array.from(dataTransfer.files);
-  }
-  return files;
 }
 
 /**
@@ -166,6 +181,7 @@ const FileReaderHelpers = {
       logger.error('Invalid DataTransfer object provided');
       throw new TypeError('Invalid DataTransfer object');
     }
+
     try {
       logger.debug('DataTransfer details:', {
         itemsCount: dataTransfer.items ? dataTransfer.items.length : 'N/A',
@@ -174,37 +190,38 @@ const FileReaderHelpers = {
 
       const files = extractFiles(dataTransfer);
 
-      // Add detailed logging for each file
-      files.forEach(file => {
-        logger.debug('Extracted file:', {
+      // Validate each file before storing
+      const keys = files.map(file => {
+        if (!(file instanceof File)) {
+          logger.error('Invalid file object:', file);
+          throw new TypeError('Expected File object');
+        }
+
+        logger.debug('Processing file:', {
           name: file.name,
           size: file.size,
           type: file.type,
           lastModified: file.lastModified
         });
-      });
 
-      const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
 
-        // Log what we're storing
-        logger.debug('Storing file with key:', {
+        // Verify the stored file
+        const storedFile = droppedFileStore.get(key);
+        logger.debug('Stored file verification:', {
           key,
-          storedFile: droppedFileStore.get(key)
+          name: storedFile.name,
+          size: storedFile.size,
+          type: storedFile.type
         });
 
         return key;
       });
 
-      logger.debug('Dropped file keys retrieved:', {
-        count: keys.length,
-        keys
-      });
-
       return keys;
     } catch (error) {
-      logger.error('Error getting dropped file keys:', error);
+      logger.error('Error processing dropped files:', error);
       throw error;
     }
   },
