@@ -181,27 +181,28 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
                 await InitializeComponentAsync();
             }
 
-            // Instead of retrieving JS file objects, we now get an array of file keys.
-            var fileKeys = await _jsModule!.InvokeAsync<string[]>(
+            // Instead of passing the entire DataTransfer object, pass just the data we need
+            var fileData = await _jsModule!.InvokeAsync<string[]>(
                 $"{ModuleName}API.getDroppedFileKeys",
                 ComponentToken,
-                e.DataTransfer
+                new
+                {
+                    files = e.DataTransfer.Files,
+                    items = e.DataTransfer.Items
+                }
             );
 
             var browserFiles = new List<IBrowserFile>();
-            foreach (var key in fileKeys)
+            foreach (var key in fileData)
             {
                 try
                 {
-                    // Create the file proxy from the key. Pass _jsModule so the proxy can
-                    // use the new JS functions (e.g. getFileInfoByKey).
                     var proxy = await BrowserFileProxy.CreateAsync(key, _jsModule);
                     browserFiles.Add(proxy);
                 }
                 catch (Exception ex)
                 {
                     LogError("Failed to create file proxy", ex);
-                    // Optionally, log and continue.
                 }
             }
 

@@ -44,20 +44,47 @@ function extractFiles(dataTransfer) {
   let files = [];
 
   try {
-    // First try to get files from the items (preferred method)
-    if (dataTransfer.items) {
-      files = Array.from(dataTransfer.items)
-        .filter(item => item.kind === 'file')
-        .map(item => item.getAsFile())
-        .filter(file => file !== null);
-
-      logger.debug('Extracted files from items:', files);
+    // First try to get files directly from the files property
+    if (dataTransfer.files && dataTransfer.files.length > 0) {
+      files = Array.from(dataTransfer.files);
+      logger.debug('Extracted files from files property:', {
+        count: files.length,
+        files: files.map(f => ({
+          name: f.name,
+          size: f.size,
+          type: f.type
+        }))
+      });
     }
 
-    // If no files found from items, try the files property
-    if (files.length === 0 && dataTransfer.files) {
-      files = Array.from(dataTransfer.files);
-      logger.debug('Extracted files from files property:', files);
+    // If no files found and items are available, try items as fallback
+    if (files.length === 0 && dataTransfer.items) {
+      const items = Array.from(dataTransfer.items);
+
+      for (const item of items) {
+        if (item.kind === 'file') {
+          try {
+            const file = item.getAsFile();
+            if (file) {
+              files.push(file);
+            }
+          } catch (itemError) {
+            logger.warn('Error getting file from item:', itemError);
+            continue;
+          }
+        }
+      }
+
+      if (files.length > 0) {
+        logger.debug('Extracted files from items:', {
+          count: files.length,
+          files: files.map(f => ({
+            name: f.name,
+            size: f.size,
+            type: f.type
+          }))
+        });
+      }
     }
 
     // Validate that we actually got File objects
@@ -170,59 +197,55 @@ const FileReaderHelpers = {
   },
 
   /**
-   * Retrieve dropped file keys from a DataTransfer object.
-   * The actual File objects are stored in a global dictionary,
-   * and an array of keys is returned so they can be retrieved later.
-   * @param {DataTransfer} dataTransfer - DataTransfer object from a drop event.
+   * Retrieve dropped file keys from a Blazor DataTransfer object.
+   * @param {Object} blazorDataTransfer - The DataTransfer object from Blazor
    * @returns {string[]} An array of keys referencing the dropped files.
    */
-  getDroppedFileKeys(dataTransfer) {
-    if (!dataTransfer) {
+  getDroppedFileKeys(blazorDataTransfer) {
+    if (!blazorDataTransfer) {
       logger.error('Invalid DataTransfer object provided');
       throw new TypeError('Invalid DataTransfer object');
     }
 
     try {
-      logger.debug('DataTransfer details:', {
-        itemsCount: dataTransfer.items ? dataTransfer.items.length : 'N/A',
-        filesCount: dataTransfer.files ? dataTransfer.files.length : 'N/A'
-      });
+      logger.debug('Blazor DataTransfer details:', blazorDataTransfer);
 
-      const files = extractFiles(dataTransfer);
+      const files = [];
 
-      // Validate each file before storing
-      const keys = files.map(file => {
-        if (!(file instanceof File)) {
-          logger.error('Invalid file object:', file);
-          throw new TypeError('Expected File object');
+      // Handle Files array from Blazor
+      if (blazorDataTransfer.files) {
+        for (let i = 0; i < blazorDataTransfer.files.length; i++) {
+          const file = blazorDataTransfer.files[i];
+          if (file instanceof File) {
+            files.push(file);
+          }
         }
+      }
+
+      const keys = files.map(file => {
+        const key = generateUUID();
 
         logger.debug('Processing file:', {
+          key,
           name: file.name,
           size: file.size,
           type: file.type,
           lastModified: file.lastModified
         });
 
-        const key = generateUUID();
         droppedFileStore.set(key, file);
-
-        // Verify the stored file
-        const storedFile = droppedFileStore.get(key);
-        logger.debug('Stored file verification:', {
-          key,
-          name: storedFile.name,
-          size: storedFile.size,
-          type: storedFile.type
-        });
-
         return key;
+      });
+
+      logger.debug('Generated file keys:', {
+        count: keys.length,
+        keys
       });
 
       return keys;
     } catch (error) {
       logger.error('Error processing dropped files:', error);
-      throw error;
+      return [];
     }
   },
 
@@ -235,41 +258,25 @@ const FileReaderHelpers = {
   getFileInfoByKey(key) {
     const file = droppedFileStore.get(key);
     if (!file) {
-      throw new Error("File not found for key: " + key);
+      logger.error('File not found for key:', key);
+      throw new Error(`File not found for key: ${key}`);
     }
 
-    // Add detailed logging
     logger.debug('Retrieved file from store:', {
       key,
-      file,
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      lastModified: file.lastModified
+      fileName: file.name,
+      fileSize: file.size,
+      fileType: file.type
     });
 
-    // Fall back to the key if the file name is missing.
-    const name = file.name || key;
-
-    // Extract the extension from the file name (everything after the last dot).
-    let extension = '';
-    const dotIndex = name.lastIndexOf('.');
-    if (dotIndex > -1 && dotIndex < name.length - 1) {
-      extension = name.substring(dotIndex + 1).toLowerCase();
-    }
-
-    const fileInfo = {
-      Name: name,
-      Extension: extension,
-      Size: file.size,
+    // Ensure we return an object structure that Blazor can deserialize
+    return {
+      Name: file.name,
+      Extension: file.name ? file.name.split('.').pop() || '' : '',
+      Size: file.size || 0,
       Type: file.type || 'application/octet-stream',
-      LastModified: file.lastModified
+      LastModified: file.lastModified || Date.now()
     };
-
-    // Log the returned info
-    logger.debug('Returning file info:', fileInfo);
-
-    return fileInfo;
   },
 
   /**
