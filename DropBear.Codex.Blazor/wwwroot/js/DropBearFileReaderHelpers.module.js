@@ -171,16 +171,37 @@ const FileReaderHelpers = {
         itemsCount: dataTransfer.items ? dataTransfer.items.length : 'N/A',
         filesCount: dataTransfer.files ? dataTransfer.files.length : 'N/A'
       });
+
       const files = extractFiles(dataTransfer);
+
+      // Add detailed logging for each file
+      files.forEach(file => {
+        logger.debug('Extracted file:', {
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          lastModified: file.lastModified
+        });
+      });
+
       const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
+
+        // Log what we're storing
+        logger.debug('Storing file with key:', {
+          key,
+          storedFile: droppedFileStore.get(key)
+        });
+
         return key;
       });
+
       logger.debug('Dropped file keys retrieved:', {
         count: keys.length,
         keys
       });
+
       return keys;
     } catch (error) {
       logger.error('Error getting dropped file keys:', error);
@@ -200,6 +221,16 @@ const FileReaderHelpers = {
       throw new Error("File not found for key: " + key);
     }
 
+    // Add detailed logging
+    logger.debug('Retrieved file from store:', {
+      key,
+      file,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified
+    });
+
     // Fall back to the key if the file name is missing.
     const name = file.name || key;
 
@@ -210,13 +241,18 @@ const FileReaderHelpers = {
       extension = name.substring(dotIndex + 1).toLowerCase();
     }
 
-    return {
+    const fileInfo = {
       Name: name,
       Extension: extension,
       Size: file.size,
       Type: file.type || 'application/octet-stream',
       LastModified: file.lastModified
     };
+
+    // Log the returned info
+    logger.debug('Returning file info:', fileInfo);
+
+    return fileInfo;
   },
 
   /**
