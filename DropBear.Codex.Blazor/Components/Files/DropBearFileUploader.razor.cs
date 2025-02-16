@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Text.Json;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -164,60 +165,79 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     private async Task HandleDrop(DragEventArgs e)
+{
+    if (_isUploading || IsDisposed)
     {
-        if (_isUploading || IsDisposed)
-        {
-            return;
-        }
-
-        _isDragOver = false;
-
-        try
-        {
-            await _fileSemaphore.WaitAsync(ComponentToken);
-
-            if (!_isInitialized)
-            {
-                await InitializeComponentAsync();
-            }
-
-            // Instead of passing the entire DataTransfer object, pass just the data we need
-            var fileData = await _jsModule!.InvokeAsync<string[]>(
-                $"{ModuleName}API.getDroppedFileKeys",
-                ComponentToken,
-                new
-                {
-                    files = e.DataTransfer.Files,
-                    items = e.DataTransfer.Items
-                }
-            );
-
-            var browserFiles = new List<IBrowserFile>();
-            foreach (var key in fileData)
-            {
-                try
-                {
-                    var proxy = await BrowserFileProxy.CreateAsync(key, _jsModule);
-                    browserFiles.Add(proxy);
-                }
-                catch (Exception ex)
-                {
-                    LogError("Failed to create file proxy", ex);
-                }
-            }
-
-            await ProcessSelectedFiles(browserFiles);
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to handle dropped files", ex);
-        }
-        finally
-        {
-            _fileSemaphore.Release();
-            await QueueStateUpdate();
-        }
+        return;
     }
+
+    _isDragOver = false;
+
+    try
+    {
+        await _fileSemaphore.WaitAsync(ComponentToken);
+
+        if (!_isInitialized)
+        {
+            await InitializeComponentAsync();
+        }
+
+        // Log what we have
+        LogDebug("Files array length: {Length}", e.DataTransfer.Files.Length);
+        LogDebug("Files: {Files}", string.Join(", ", e.DataTransfer.Files));
+        LogDebug("Items count: {Count}", e.DataTransfer.Items.Length);
+        foreach (var item in e.DataTransfer.Items)
+        {
+            LogDebug("Item - Kind: {Kind}, Type: {Type}", item.Kind, item.Type);
+        }
+
+        // Create the transfer data structure
+        var fileData = new
+        {
+            fileNames = e.DataTransfer.Files,
+            fileTypes = e.DataTransfer.Items
+                .Where(item => item.Kind == "file")
+                .Select(item => item.Type)
+                .ToArray()
+        };
+
+        LogDebug("Sending to JS: {FileData}",
+            System.Text.Json.JsonSerializer.Serialize(fileData));
+
+        var fileKeys = await _jsModule!.InvokeAsync<string[]>(
+            $"{ModuleName}API.getDroppedFileKeys",
+            ComponentToken,
+            fileData
+        );
+
+        LogDebug("Received keys: {Keys}", string.Join(", ", fileKeys));
+
+        var browserFiles = new List<IBrowserFile>();
+        foreach (var key in fileKeys)
+        {
+            try
+            {
+                var proxy = await BrowserFileProxy.CreateAsync(key, _jsModule);
+                browserFiles.Add(proxy);
+            }
+            catch (Exception ex)
+            {
+                LogError("Failed to create file proxy", ex);
+            }
+        }
+
+        await ProcessSelectedFiles(browserFiles);
+    }
+    catch (Exception ex)
+    {
+        LogError("Failed to handle dropped files", ex);
+    }
+    finally
+    {
+        _fileSemaphore.Release();
+        await QueueStateUpdate();
+    }
+}
 
     private async Task HandleFileSelectionAsync(InputFileChangeEventArgs e)
     {

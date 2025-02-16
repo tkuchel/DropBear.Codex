@@ -201,39 +201,38 @@ const FileReaderHelpers = {
    * @param {Object} blazorDataTransfer - The DataTransfer object from Blazor
    * @returns {string[]} An array of keys referencing the dropped files.
    */
-  getDroppedFileKeys(blazorDataTransfer) {
-    if (!blazorDataTransfer) {
-      logger.error('Invalid DataTransfer object provided');
-      throw new TypeError('Invalid DataTransfer object');
+  getDroppedFileKeys(blazorTransfer) {
+    if (!blazorTransfer || !blazorTransfer.fileNames || !blazorTransfer.fileTypes) {
+      logger.error('Invalid transfer data provided');
+      throw new TypeError('Invalid transfer data');
     }
 
     try {
-      logger.debug('Blazor DataTransfer details:', blazorDataTransfer);
+      logger.debug('Processing Blazor transfer data:', blazorTransfer);
 
       const files = [];
 
-      // Handle Files array from Blazor
-      if (blazorDataTransfer.files) {
-        for (let i = 0; i < blazorDataTransfer.files.length; i++) {
-          const file = blazorDataTransfer.files[i];
-          if (file instanceof File) {
-            files.push(file);
-          }
-        }
+      // Combine filenames with their types
+      for (let i = 0; i < blazorTransfer.fileNames.length; i++) {
+        const fileName = blazorTransfer.fileNames[i];
+        const fileType = blazorTransfer.fileTypes[i] || 'application/octet-stream';
+
+        // Create a file-like object
+        const fileObject = {
+          name: fileName,
+          type: fileType,
+          size: 0, // We'll need to get this another way
+          lastModified: Date.now()
+        };
+
+        logger.debug('Created file object:', fileObject);
+        files.push(fileObject);
       }
 
       const keys = files.map(file => {
         const key = generateUUID();
-
-        logger.debug('Processing file:', {
-          key,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          lastModified: file.lastModified
-        });
-
         droppedFileStore.set(key, file);
+        logger.debug('Stored file with key:', { key, file });
         return key;
       });
 
@@ -244,8 +243,8 @@ const FileReaderHelpers = {
 
       return keys;
     } catch (error) {
-      logger.error('Error processing dropped files:', error);
-      return [];
+      logger.error('Error processing files:', error);
+      throw error;
     }
   },
 
