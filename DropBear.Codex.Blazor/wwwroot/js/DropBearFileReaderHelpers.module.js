@@ -70,7 +70,7 @@ function extractFiles(dataTransfer) {
             }
           } catch (itemError) {
             logger.warn('Error getting file from item:', itemError);
-            continue;
+
           }
         }
       }
@@ -210,19 +210,31 @@ const FileReaderHelpers = {
     try {
       logger.debug('Processing Blazor transfer data:', blazorTransfer);
 
+      // Get the actual files from the document's drag event
+      const dataTransfer = document.querySelector('.file-upload-dropzone').dropData;
+      if (!dataTransfer) {
+        throw new Error('No drop data available');
+      }
+
+      const actualFiles = Array.from(dataTransfer.files);
+      logger.debug('Actual files from drop:', actualFiles);
+
       const files = [];
 
-      // Combine filenames with their types
+      // Combine filenames with their types and actual file data
       for (let i = 0; i < blazorTransfer.fileNames.length; i++) {
         const fileName = blazorTransfer.fileNames[i];
         const fileType = blazorTransfer.fileTypes[i] || 'application/octet-stream';
+
+        // Find the matching actual file to get its size
+        const actualFile = actualFiles.find(f => f.name === fileName);
 
         // Create a file-like object
         const fileObject = {
           name: fileName,
           type: fileType,
-          size: 0, // We'll need to get this another way
-          lastModified: Date.now()
+          size: actualFile ? actualFile.size : 0,
+          lastModified: actualFile ? actualFile.lastModified : Date.now()
         };
 
         logger.debug('Created file object:', fileObject);
@@ -232,7 +244,7 @@ const FileReaderHelpers = {
       const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
-        logger.debug('Stored file with key:', { key, file });
+        logger.debug('Stored file with key:', {key, file});
         return key;
       });
 
@@ -304,6 +316,17 @@ const FileReaderHelpers = {
   },
 
   /**
+   * Captures the drop data from a drag and drop event.
+   * @param {DataTransfer} dataTransfer - The DataTransfer object from the drop event.
+   */
+  captureDropData(dataTransfer) {
+    const dropzone = document.querySelector('.file-upload-dropzone');
+    if (dropzone) {
+      dropzone.dropData = dataTransfer;
+    }
+  },
+
+  /**
    * Clear the dropped file store.
    * Call this after processing files to avoid memory buildup.
    */
@@ -372,6 +395,7 @@ export const DropBearFileReaderHelpersAPI = {
   readFileChunkByKey: async (...args) => window[moduleName].readFileChunkByKey(...args),
   clearDroppedFileStore: () => window[moduleName].clearDroppedFileStore(),
   initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
+  captureDropData: dataTransfer => window[moduleName].captureDropData(dataTransfer),
   isInitialized: () => window[moduleName].isInitialized(),
   dispose: async () => window[moduleName].dispose()
 };
@@ -386,5 +410,6 @@ export const {
   getFileInfoByKey,
   readFileChunkByKey,
   clearDroppedFileStore,
-  initGlobalDropPrevention
+  initGlobalDropPrevention,
+  captureDropData
 } = FileReaderHelpers;
