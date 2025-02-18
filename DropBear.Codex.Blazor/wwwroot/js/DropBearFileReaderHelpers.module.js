@@ -211,13 +211,21 @@ const FileReaderHelpers = {
       logger.debug('Processing Blazor transfer data:', blazorTransfer);
 
       // Get the actual files from the document's drag event
-      const dataTransfer = document.querySelector('.file-upload-dropzone').dropData;
-      if (!dataTransfer) {
+      const dropzone = document.querySelector('.file-upload-dropzone');
+      if (!dropzone || !dropzone.dropData || !dropzone.dropData.files) {
+        logger.error('No drop data available or missing files');
         throw new Error('No drop data available');
       }
 
-      const actualFiles = Array.from(dataTransfer.files);
-      logger.debug('Actual files from drop:', actualFiles);
+      logger.debug('Drop data:', dropzone.dropData);
+
+      // Get actual File objects
+      const actualFiles = Array.from(dropzone.dropData.files);
+      logger.debug('Actual files from drop:', actualFiles.map(f => ({
+        name: f.name,
+        size: f.size,
+        type: f.type
+      })));
 
       const files = [];
 
@@ -229,12 +237,25 @@ const FileReaderHelpers = {
         // Find the matching actual file to get its size
         const actualFile = actualFiles.find(f => f.name === fileName);
 
-        // Create a file-like object
-        const fileObject = {
+        if (actualFile) {
+          logger.debug('Found matching file:', {
+            name: actualFile.name,
+            size: actualFile.size,
+            type: actualFile.type
+          });
+        }
+
+        // Create a file-like object with the actual file data
+        const fileObject = actualFile ? {
+          name: actualFile.name,
+          type: actualFile.type,
+          size: actualFile.size,
+          lastModified: actualFile.lastModified
+        } : {
           name: fileName,
           type: fileType,
-          size: actualFile ? actualFile.size : 0,
-          lastModified: actualFile ? actualFile.lastModified : Date.now()
+          size: 0,
+          lastModified: Date.now()
         };
 
         logger.debug('Created file object:', fileObject);
@@ -244,7 +265,7 @@ const FileReaderHelpers = {
       const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
-        logger.debug('Stored file with key:', {key, file});
+        logger.debug('Stored file with key:', { key, file });
         return key;
       });
 
@@ -320,9 +341,13 @@ const FileReaderHelpers = {
    * @param {DataTransfer} dataTransfer - The DataTransfer object from the drop event.
    */
   captureDropData(dataTransfer) {
+    logger.debug('Capturing drop data:', dataTransfer);
     const dropzone = document.querySelector('.file-upload-dropzone');
     if (dropzone) {
       dropzone.dropData = dataTransfer;
+      logger.debug('Stored drop data:', dropzone.dropData);
+    } else {
+      logger.error('No dropzone found');
     }
   },
 

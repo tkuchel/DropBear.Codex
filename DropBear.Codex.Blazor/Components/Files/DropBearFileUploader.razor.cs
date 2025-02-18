@@ -241,9 +241,17 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     private async Task OnDropCapture(DragEventArgs e)
     {
-        if (_jsModule != null)
+        try
         {
-            await _jsModule.InvokeVoidAsync("captureDropData", e.DataTransfer);
+            if (_jsModule != null)
+            {
+                LogDebug("Capturing drop data");
+                await _jsModule.InvokeVoidAsync($"{ModuleName}API.captureDropData", e.DataTransfer);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to capture drop data", ex);
         }
     }
 
