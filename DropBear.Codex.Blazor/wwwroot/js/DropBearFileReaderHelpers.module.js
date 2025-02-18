@@ -212,71 +212,64 @@ const FileReaderHelpers = {
 
       // Get the actual files from the document's drag event
       const dropzone = document.querySelector('.file-upload-dropzone');
-      if (!dropzone || !dropzone.dropData || !dropzone.dropData.files) {
-        logger.error('No drop data available or missing files');
+      if (!dropzone || !dropzone.dropData) {
+        logger.error('No drop data available');
         throw new Error('No drop data available');
       }
 
-      logger.debug('Drop data:', dropzone.dropData);
+      // Detailed logging of the dropData
+      logger.debug('Dropzone dropData:', {
+        files: dropzone.dropData.files,
+        filesLength: dropzone.dropData.files?.length,
+        filesIsArray: Array.isArray(dropzone.dropData.files),
+        filesList: Array.from(dropzone.dropData.files || []).map(f => ({
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          isFile: f instanceof File,
+          constructor: f.constructor.name
+        }))
+      });
 
-      // Get actual File objects
-      const actualFiles = Array.from(dropzone.dropData.files);
-      logger.debug('Actual files from drop:', actualFiles.map(f => ({
-        name: f.name,
-        size: f.size,
-        type: f.type
-      })));
-
+      // Try to get files using FileReader
       const files = [];
+      for (const fileName of blazorTransfer.fileNames) {
+        const reader = new FileReader();
+        const file = dropzone.dropData.files[0]; // Assuming it's the first file for now
 
-      // Combine filenames with their types and actual file data
-      for (let i = 0; i < blazorTransfer.fileNames.length; i++) {
-        const fileName = blazorTransfer.fileNames[i];
-        const fileType = blazorTransfer.fileTypes[i] || 'application/octet-stream';
+        logger.debug('Reading file:', {
+          fileName,
+          fileObject: file,
+          isFile: file instanceof File,
+          properties: Object.keys(file),
+          prototype: Object.getPrototypeOf(file)
+        });
 
-        // Find the matching actual file to get its size
-        const actualFile = actualFiles.find(f => f.name === fileName);
-
-        if (actualFile) {
-          logger.debug('Found matching file:', {
-            name: actualFile.name,
-            size: actualFile.size,
-            type: actualFile.type
-          });
-        }
-
-        // Create a file-like object with the actual file data
-        const fileObject = actualFile ? {
-          name: actualFile.name,
-          type: actualFile.type,
-          size: actualFile.size,
-          lastModified: actualFile.lastModified
-        } : {
+        const fileObject = {
           name: fileName,
-          type: fileType,
-          size: 0,
-          lastModified: Date.now()
+          type: blazorTransfer.fileTypes[0] || 'application/octet-stream',
+          size: file?.size || 0,
+          lastModified: file?.lastModified || Date.now()
         };
 
-        logger.debug('Created file object:', fileObject);
         files.push(fileObject);
       }
 
       const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
-        logger.debug('Stored file with key:', { key, file });
+        logger.debug('Stored file with key:', {
+          key,
+          file,
+          storedFile: droppedFileStore.get(key)
+        });
         return key;
-      });
-
-      logger.debug('Generated file keys:', {
-        count: keys.length,
-        keys
       });
 
       return keys;
     } catch (error) {
       logger.error('Error processing files:', error);
+      logger.error('Error stack:', error.stack);
       throw error;
     }
   },

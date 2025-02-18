@@ -245,7 +245,11 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             if (_jsModule != null)
             {
-                LogDebug("Capturing drop data");
+                LogDebug("Capturing drop data with files count: {Count}", e.DataTransfer.Files.Length);
+                foreach (var file in e.DataTransfer.Files)
+                {
+                    LogDebug("File in DataTransfer: {File}", file);
+                }
                 await _jsModule.InvokeVoidAsync($"{ModuleName}API.captureDropData", e.DataTransfer);
             }
         }
