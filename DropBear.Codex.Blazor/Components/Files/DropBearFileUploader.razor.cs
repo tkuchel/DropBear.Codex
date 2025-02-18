@@ -38,6 +38,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private IJSObjectReference? _jsUtilsModule;
     private CancellationTokenSource? _stateUpdateDebouncer;
     private volatile int _uploadProgress;
+    private ElementReference DropZoneElement;
 
     [Parameter] public int MaxFileSize { get; set; } = (int)(10 * BytesPerMb);
     [Parameter] public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
@@ -60,6 +61,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             await _jsModule.InvokeVoidAsync($"{ModuleName}API.initialize");
             // Enable global drop prevention
             await _jsModule.InvokeVoidAsync($"{ModuleName}API.initGlobalDropPrevention");
+            // Initialize the drop zone
+            await _jsModule!.InvokeVoidAsync($"{ModuleName}API.initializeDropZone", DropZoneElement);
         }
     }
 
@@ -258,6 +261,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             LogError("Failed to capture drop data", ex);
         }
     }
+
+
 
     private async Task HandleFileSelectionAsync(InputFileChangeEventArgs e)
     {

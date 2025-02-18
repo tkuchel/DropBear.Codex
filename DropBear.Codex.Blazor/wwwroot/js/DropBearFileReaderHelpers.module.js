@@ -106,6 +106,28 @@ function extractFiles(dataTransfer) {
  */
 const FileReaderHelpers = {
   /**
+   * Initializes a drop zone with direct file capture.
+   * @param {HTMLElement} element - The drop zone element.
+   */
+  initializeDropZone(element) {
+    if (!element) {
+      logger.error('No element provided to initialize drop zone');
+      return;
+    }
+
+    element.addEventListener('drop', e => {
+      e.preventDefault();
+      const files = Array.from(e.dataTransfer.files);
+      element._actualFiles = files;
+
+      logger.debug('Captured files directly:', files.map(f => ({
+        name: f.name,
+        size: f.size,
+        type: f.type
+      })));
+    });
+  },
+  /**
    * Get file info from a File object.
    * @param {File} file - The file to get info from.
    * @returns {{name: string, size: number, type: string, lastModified: number}}
@@ -210,67 +232,38 @@ const FileReaderHelpers = {
     try {
       logger.debug('Processing Blazor transfer data:', blazorTransfer);
 
-      // Get the actual files from the document's drag event
       const dropzone = document.querySelector('.file-upload-dropzone');
-      if (!dropzone || !dropzone.dropData) {
-        logger.error('No drop data available');
-        throw new Error('No drop data available');
-      }
+      const actualFiles = dropzone._actualFiles || [];
 
-      // Detailed logging of the dropData
-      logger.debug('Dropzone dropData:', {
-        files: dropzone.dropData.files,
-        filesLength: dropzone.dropData.files?.length,
-        filesIsArray: Array.isArray(dropzone.dropData.files),
-        filesList: Array.from(dropzone.dropData.files || []).map(f => ({
-          name: f.name,
-          size: f.size,
-          type: f.type,
-          isFile: f instanceof File,
-          constructor: f.constructor.name
-        }))
-      });
+      logger.debug('Retrieved actual files:', actualFiles.map(f => ({
+        name: f.name,
+        size: f.size,
+        type: f.type
+      })));
 
-      // Try to get files using FileReader
-      const files = [];
-      for (const fileName of blazorTransfer.fileNames) {
-        const reader = new FileReader();
-        const file = dropzone.dropData.files[0]; // Assuming it's the first file for now
+      const files = blazorTransfer.fileNames.map((fileName, index) => {
+        const actualFile = actualFiles.find(f => f.name === fileName);
+        const fileType = blazorTransfer.fileTypes[index] || 'application/octet-stream';
 
-        logger.debug('Reading file:', {
-          fileName,
-          fileObject: file,
-          isFile: file instanceof File,
-          properties: Object.keys(file),
-          prototype: Object.getPrototypeOf(file)
-        });
-
-        const fileObject = {
+        return {
           name: fileName,
-          type: blazorTransfer.fileTypes[0] || 'application/octet-stream',
-          size: file?.size || 0,
-          lastModified: file?.lastModified || Date.now()
+          type: fileType,
+          size: actualFile ? actualFile.size : 0,
+          lastModified: actualFile ? actualFile.lastModified : Date.now()
         };
-
-        files.push(fileObject);
-      }
+      });
 
       const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
-        logger.debug('Stored file with key:', {
-          key,
-          file,
-          storedFile: droppedFileStore.get(key)
-        });
+        logger.debug('Stored file with key:', {key, file});
         return key;
       });
 
       return keys;
     } catch (error) {
       logger.error('Error processing files:', error);
-      logger.error('Error stack:', error.stack);
-      throw error;
+      return [];
     }
   },
 
@@ -413,6 +406,7 @@ export const DropBearFileReaderHelpersAPI = {
   readFileChunkByKey: async (...args) => window[moduleName].readFileChunkByKey(...args),
   clearDroppedFileStore: () => window[moduleName].clearDroppedFileStore(),
   initGlobalDropPrevention: () => window[moduleName].initGlobalDropPrevention(),
+  initializeDropZone: element => window[moduleName].initializeDropZone(element),
   captureDropData: dataTransfer => window[moduleName].captureDropData(dataTransfer),
   isInitialized: () => window[moduleName].isInitialized(),
   dispose: async () => window[moduleName].dispose()
@@ -429,5 +423,6 @@ export const {
   readFileChunkByKey,
   clearDroppedFileStore,
   initGlobalDropPrevention,
-  captureDropData
+  captureDropData,
+  initializeDropZone
 } = FileReaderHelpers;

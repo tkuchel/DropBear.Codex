@@ -14,7 +14,8 @@
              @ondragleave="HandleDragLeave"
              @ondragover:preventDefault="true"
              @ondrop:preventDefault="true"
-             @ondrop="async (e) => { await OnDropCapture(e); await HandleDrop(e); }">
+             @ondrop="HandleDrop"
+             @ref="DropZoneElement">
             <i class="fas fa-cloud-upload-alt fa-2x file-upload-icon"></i>
             <p class="file-upload-text">@(_isDragOver ? "Release to upload" : "Drag & Drop files here or")</p>
 
