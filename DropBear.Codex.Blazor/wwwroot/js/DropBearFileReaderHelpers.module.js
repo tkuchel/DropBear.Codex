@@ -305,15 +305,32 @@ const FileReaderHelpers = {
    * @param {string} key - The key referencing the file.
    * @param {number} offset - The starting byte index.
    * @param {number} count - The number of bytes to read.
-   * @returns {Promise<ArrayBuffer>} The file chunk.
+   * @returns {Promise<Uint8Array>} The file chunk.
    */
   async readFileChunkByKey(key, offset, count) {
     const file = droppedFileStore.get(key);
     if (!file) {
       throw new Error("File not found for key: " + key);
     }
-    const blob = file.slice(offset, offset + count);
-    return await blob.arrayBuffer();
+
+    try {
+      logger.debug('Reading chunk:', {key, offset, count});
+
+      const blob = file.slice(offset, offset + count);
+      const arrayBuffer = await blob.arrayBuffer();
+      const chunk = new Uint8Array(arrayBuffer);
+
+      logger.debug('Chunk read:', {
+        size: chunk.length,
+        offset,
+        count
+      });
+
+      return Array.from(chunk); // Convert to regular array for serialization
+    } catch (error) {
+      logger.error('Error reading chunk:', error);
+      throw error;
+    }
   },
 
   /**
