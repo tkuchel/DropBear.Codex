@@ -243,20 +243,23 @@ const FileReaderHelpers = {
 
       const files = blazorTransfer.fileNames.map((fileName, index) => {
         const actualFile = actualFiles.find(f => f.name === fileName);
-        const fileType = blazorTransfer.fileTypes[index] || 'application/octet-stream';
-
-        return {
-          name: fileName,
-          type: fileType,
-          size: actualFile ? actualFile.size : 0,
-          lastModified: actualFile ? actualFile.lastModified : Date.now()
-        };
-      });
+        if (!actualFile) {
+          logger.warn(`No actual file found for ${fileName}`);
+          return null;
+        }
+        return actualFile; // Store the actual File object instead of just metadata
+      }).filter(f => f !== null);
 
       const keys = files.map(file => {
         const key = generateUUID();
         droppedFileStore.set(key, file);
-        logger.debug('Stored file with key:', {key, file});
+        logger.debug('Stored file with key:', {
+          key,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          hasSlice: typeof file.slice === 'function'
+        });
         return key;
       });
 
