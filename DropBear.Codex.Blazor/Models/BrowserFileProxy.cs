@@ -175,13 +175,15 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
         // If the proxy was created from a file key, call a JS function that reads the chunk by key.
         if (_fileKey is not null)
         {
-            return await _jsModuleOrFileRef.InvokeAsync<byte[]>(
+            var base64String = await _jsModuleOrFileRef.InvokeAsync<string>(
                 "readFileChunkByKey",
                 ct,
                 _fileKey,
                 offset,
                 count
             ).ConfigureAwait(false);
+
+            return Convert.FromBase64String(base64String);
         }
 
         // Otherwise, use the existing function that reads from a JS file reference.

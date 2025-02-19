@@ -305,7 +305,7 @@ const FileReaderHelpers = {
    * @param {string} key - The key referencing the file.
    * @param {number} offset - The starting byte index.
    * @param {number} count - The number of bytes to read.
-   * @returns {Promise<Uint8Array>} The file chunk.
+   * @returns {Promise<string>} The file chunk as a base64 string.
    */
   async readFileChunkByKey(key, offset, count) {
     const file = droppedFileStore.get(key);
@@ -314,19 +314,23 @@ const FileReaderHelpers = {
     }
 
     try {
-      logger.debug('Reading chunk:', {key, offset, count});
+      logger.debug('Reading chunk:', { key, offset, count });
 
       const blob = file.slice(offset, offset + count);
-      const arrayBuffer = await blob.arrayBuffer();
-      const chunk = new Uint8Array(arrayBuffer);
+      const buffer = await blob.arrayBuffer();
+      const base64 = btoa(
+        new Uint8Array(buffer)
+          .reduce((data, byte) => data + String.fromCharCode(byte), '')
+      );
 
       logger.debug('Chunk read:', {
-        size: chunk.length,
+        size: buffer.byteLength,
         offset,
-        count
+        count,
+        base64Length: base64.length
       });
 
-      return Array.from(chunk); // Convert to regular array for serialization
+      return base64;
     } catch (error) {
       logger.error('Error reading chunk:', error);
       throw error;
