@@ -15,9 +15,9 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 ///     A container that dynamically adjusts its width and can optionally center its content.
 ///     Optimized for Blazor Server with proper thread safety and state management.
 /// </summary>
-public  partial class DropBearSectionContainer : DropBearComponentBase
+public partial class DropBearSectionContainer : DropBearComponentBase
 {
-    private const string DEFAULT_MAX_WIDTH = "100%";
+    private const string DefaultMaxWidth = "100%";
     private const string JsModuleName = JsModuleNames.ResizeManager;
     private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(1);
 
@@ -28,7 +28,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
     private volatile bool _isInitialized;
     private DateTime _lastDimensionsCheck = DateTime.MinValue;
     private string? _maxWidth;
-    private string _maxWidthStyle = DEFAULT_MAX_WIDTH;
+    private string _maxWidthStyle = DefaultMaxWidth;
 
     private IJSObjectReference? _module;
     private CancellationTokenSource? _resizeDebouncer;
@@ -149,7 +149,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
         catch (Exception ex)
         {
             LogError("Error updating max width", ex);
-            _maxWidthStyle = DEFAULT_MAX_WIDTH;
+            _maxWidthStyle = DefaultMaxWidth;
         }
         finally
         {
@@ -175,10 +175,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
 
         try
         {
-            if (_module == null)
-            {
-                _module = await GetJsModuleAsync(JsModuleName);
-            }
+            _module ??= await GetJsModuleAsync(JsModuleName);
 
             _cachedDimensions = await _module.InvokeAsync<WindowDimensions>(
                 $"{JsModuleName}API.getDimensions",
@@ -206,7 +203,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
     {
         if (string.IsNullOrEmpty(MaxWidth))
         {
-            return DEFAULT_MAX_WIDTH;
+            return DefaultMaxWidth;
         }
 
         if (MaxWidth.EndsWith("%"))
@@ -218,7 +215,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
             }
 
             LogWarning("Invalid MaxWidth percentage: {MaxWidth}", MaxWidth);
-            return DEFAULT_MAX_WIDTH;
+            return DefaultMaxWidth;
         }
 
         return MaxWidth;
@@ -228,7 +225,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
     {
         try
         {
-            _resizeDebouncer?.Cancel();
+            await _resizeDebouncer?.CancelAsync();
 
             if (_module != null)
             {
@@ -245,7 +242,7 @@ public  partial class DropBearSectionContainer : DropBearComponentBase
                 }
             }
         }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
         {
             LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
         }

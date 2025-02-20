@@ -220,8 +220,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             await _jsModule.InvokeVoidAsync($"{ModuleName}API.initialize");
             await _jsModule.InvokeVoidAsync($"{ModuleName}API.initGlobalDropPrevention");
             await _jsModule.InvokeVoidAsync($"{ModuleName}API.initializeDropZone", _dropZoneElement);
-
-            await RegisterCircuitHandler();
         }
     }
 
@@ -264,6 +262,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             _ = CancelAllUploads();
         }
+
+        _isCircuitConnected = isConnected;
     }
 
     /// <summary>
@@ -769,29 +769,6 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     #endregion
 
     #region Circuit and State Management
-
-    /// <summary>
-    ///     Registers a handler for circuit disconnections.
-    /// </summary>
-    private async Task RegisterCircuitHandler()
-    {
-        if (_jsModule != null)
-        {
-            await _jsModule.InvokeVoidAsync(
-                "blazor.registerCircuitHandler",
-                DotNetObjectReference.Create(this));
-        }
-    }
-
-    /// <summary>
-    ///     Handles circuit disconnection events.
-    /// </summary>
-    [JSInvokable]
-    public void OnCircuitClose()
-    {
-        _isCircuitConnected = false;
-        _ = CancelAllUploads();
-    }
 
     /// <summary>
     ///     Cancels all active uploads.
