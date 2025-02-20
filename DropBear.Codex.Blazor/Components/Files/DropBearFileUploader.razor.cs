@@ -617,7 +617,10 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             }
             finally
             {
-                _concurrentUploadsSemaphore.Release();
+                if (_concurrentUploadsSemaphore != null)
+                {
+                    _concurrentUploadsSemaphore.Release();
+                }
             }
         }
         catch (OperationCanceledException)

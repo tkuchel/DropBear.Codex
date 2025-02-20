@@ -225,7 +225,10 @@ public partial class DropBearSectionContainer : DropBearComponentBase
     {
         try
         {
-            await _resizeDebouncer?.CancelAsync();
+            if (_resizeDebouncer != null)
+            {
+                await _resizeDebouncer.CancelAsync();
+            }
 
             if (_module != null)
             {

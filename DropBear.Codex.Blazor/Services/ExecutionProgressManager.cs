@@ -734,10 +734,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
             await task.ConfigureAwait(false);
         }
-        catch (Exception ex)when (ex is TaskCanceledException)
+        catch (Exception ex)when (ex is TaskCanceledException or ObjectDisposedException)
         {
             // Ignore TaskCanceledException (thrown by Task.WhenAny)
-            _logger.Debug(ex, $"{operationName} was canceled.");
+            _logger.Debug(ex, $"{operationName} was canceled or object was already disposed.");
         }
         catch (Exception e)
         {
