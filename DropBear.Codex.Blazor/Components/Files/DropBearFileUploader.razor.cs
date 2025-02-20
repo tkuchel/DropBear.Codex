@@ -36,12 +36,19 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     #region Cleanup and Disposal
 
+    public override async ValueTask DisposeAsync()
+    {
+        CircuitStateChanged -= HandleCircuitStateChanged;
+        await CleanupJavaScriptResourcesAsync();
+        await base.DisposeAsync();
+    }
+
     /// <inheritdoc />
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
-            _progressUpdateTimer.Dispose();
+            await _progressUpdateTimer.DisposeAsync();
             _concurrentUploadsSemaphore.Dispose();
 
             await CancelAllUploads();
@@ -121,7 +128,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private readonly Queue<int> _progressUpdates = new();
 
     private readonly Timer _progressUpdateTimer;
-    private readonly string[] _blockedExtensions = { ".exe", ".dll", ".bat", ".cmd", ".msi", ".sh", ".app" };
+    private readonly string[] _blockedExtensions = [".exe", ".dll", ".bat", ".cmd", ".msi", ".sh", ".app"];
 
     private int _dragCounter;
     private volatile bool _isDragOver;
@@ -192,6 +199,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
                 await RestoreStateAsync();
             }
 
+            CircuitStateChanged += HandleCircuitStateChanged;
+
             await base.OnInitializedAsync();
         }
         catch (Exception ex)
@@ -248,6 +257,14 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     #endregion
 
     #region Event Handlers
+
+    private void HandleCircuitStateChanged(object? sender, bool isConnected)
+    {
+        if (!isConnected)
+        {
+            _ = CancelAllUploads();
+        }
+    }
 
     /// <summary>
     ///     Handles the dragenter event and updates the drag state.
@@ -338,8 +355,15 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             {
                 try
                 {
-                    var proxy = await BrowserFileProxy.CreateAsync(key, _jsModule);
-                    browserFiles.Add(proxy);
+                    if (_jsModule != null)
+                    {
+                        var proxy = await BrowserFileProxy.CreateAsync(key, _jsModule);
+                        browserFiles.Add(proxy);
+                    }
+                    else
+                    {
+                        LogError("JS Module is null", new Exception("JS Module is null"));
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -855,7 +879,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// </summary>
     private static string FormatFileSize(long bytes)
     {
-        string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+        string[] sizes = ["B", "KB", "MB", "GB", "TB"];
         var order = 0;
         double len = bytes;
 

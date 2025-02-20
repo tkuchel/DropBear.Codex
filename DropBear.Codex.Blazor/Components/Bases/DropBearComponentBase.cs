@@ -18,11 +18,12 @@ namespace DropBear.Codex.Blazor.Components.Bases;
 /// </summary>
 public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
 {
-    private const int JS_OPERATION_TIMEOUT_SECONDS = 5;
+    private const int JsOperationTimeoutSeconds = 5;
     private readonly CancellationTokenSource _circuitCts = new();
     private readonly ConcurrentDictionary<string, IJSObjectReference> _jsModuleCache = new();
     private readonly AsyncLock _moduleCacheLock = new();
     private readonly SemaphoreSlim _stateChangeSemaphore = new(1, 1);
+    private EventHandler<bool>? _circuitStateChanged;
     private TaskCompletionSource<bool>? _initializationTcs;
     private int _isDisposed;
     private volatile bool _isStateChangeQueued;
@@ -50,6 +51,18 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     [Inject] protected IJSRuntime JsRuntime { get; set; } = null!;
     [Inject] protected ILogger Logger { get; set; } = null!;
     [Inject] protected IJsInitializationService JsInitializationService { get; set; } = null!;
+
+    protected event EventHandler<bool> CircuitStateChanged
+    {
+        add
+        {
+            if (_circuitStateChanged == null || !_circuitStateChanged.GetInvocationList().Contains(value))
+            {
+                _circuitStateChanged += value;
+            }
+        }
+        remove => _circuitStateChanged -= value;
+    }
 
     #region Lifecycle Management
 
@@ -125,7 +138,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             );
 
             // Use timeout to prevent hanging
-            await Task.WhenAny(cleanupTask, Task.Delay(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS), ComponentToken));
+            await Task.WhenAny(cleanupTask,
+                Task.Delay(TimeSpan.FromSeconds(JsOperationTimeoutSeconds), ComponentToken));
         }
         catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
         {
@@ -166,7 +180,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             try
             {
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-                cts.CancelAfter(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS));
+                cts.CancelAfter(TimeSpan.FromSeconds(JsOperationTimeoutSeconds));
 
                 var module = await JsRuntime
                     .InvokeAsync<IJSObjectReference>(
@@ -207,7 +221,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS));
+            cts.CancelAfter(TimeSpan.FromSeconds(JsOperationTimeoutSeconds));
 
             return await JsRuntime.InvokeAsync<T>(identifier, cts.Token, args);
         }
@@ -227,7 +241,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-            cts.CancelAfter(TimeSpan.FromSeconds(JS_OPERATION_TIMEOUT_SECONDS));
+            cts.CancelAfter(TimeSpan.FromSeconds(JsOperationTimeoutSeconds));
 
             await JsRuntime.InvokeVoidAsync(identifier, cts.Token, args);
         }
@@ -328,7 +342,12 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     {
         if (ex is JSDisconnectedException or TaskCanceledException)
         {
-            IsConnected = false;
+            if (IsConnected)
+            {
+                IsConnected = false;
+                _circuitStateChanged?.Invoke(this, false);
+            }
+
             if (caller != null)
             {
                 LogWarning("JS operation interrupted: {Operation} (called from {Caller})", identifier, caller);
@@ -343,6 +362,12 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         }
 
         return false;
+    }
+
+    protected virtual void OnCircuitReconnected()
+    {
+        IsConnected = true;
+        _circuitStateChanged?.Invoke(this, true);
     }
 
     protected void LogError(string message, Exception ex, params object[] args)
