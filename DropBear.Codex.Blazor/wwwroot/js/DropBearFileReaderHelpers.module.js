@@ -380,6 +380,67 @@ const FileReaderHelpers = {
   }
 };
 
+/**
+ * Helper functions for state persistence.
+ */
+const StateHelpers = {
+  /**
+   * Save state to local storage with a time-to-live.
+   * @param {string} key - The key to store the state under.
+   * @param {string} state - JSON string representing the state.
+   */
+  saveState(key, state) {
+    if (!key || typeof key !== 'string') {
+      logger.error('Invalid key provided to saveState');
+      return;
+    }
+
+    try {
+      const stateData = {
+        timestamp: Date.now(),
+        data: state
+      };
+      localStorage.setItem(`dropbear_state_${key}`, JSON.stringify(stateData));
+      logger.debug('State saved:', { key });
+    } catch (error) {
+      logger.error('Error saving state:', error);
+    }
+  },
+
+  /**
+   * Retrieve state from local storage if it exists and hasn't expired.
+   * @param {string} key - The key to retrieve the state for.
+   * @returns {string|null} The stored state or null if not found/expired.
+   */
+  getStoredState(key) {
+    if (!key || typeof key !== 'string') {
+      logger.error('Invalid key provided to getStoredState');
+      return null;
+    }
+
+    try {
+      const storedData = localStorage.getItem(`dropbear_state_${key}`);
+      if (!storedData) {
+        return null;
+      }
+
+      const { timestamp, data } = JSON.parse(storedData);
+
+      // Check if state is older than 24 hours
+      if (Date.now() - timestamp > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(`dropbear_state_${key}`);
+        return null;
+      }
+
+      logger.debug('State retrieved:', { key });
+      return data;
+    } catch (error) {
+      logger.error('Error retrieving state:', error);
+      return null;
+    }
+  }
+};
+
 // Attach to window first with complete method exposure
 window[moduleName] = {
   __initialized: false,
@@ -433,6 +494,8 @@ export const DropBearFileReaderHelpersAPI = {
   initializeDropZone: element => window[moduleName].initializeDropZone(element),
   captureDropData: dataTransfer => window[moduleName].captureDropData(dataTransfer),
   isInitialized: () => window[moduleName].isInitialized(),
+  saveState: (...args) => window[moduleName].saveState(...args),
+  getStoredState: (...args) => window[moduleName].getStoredState(...args),
   dispose: async () => window[moduleName].dispose()
 };
 
@@ -448,5 +511,7 @@ export const {
   clearDroppedFileStore,
   initGlobalDropPrevention,
   captureDropData,
-  initializeDropZone
+  initializeDropZone,
+  saveState,
+  getStoredState
 } = FileReaderHelpers;
