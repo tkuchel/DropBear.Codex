@@ -64,6 +64,8 @@ class DownloadManager {
       );
 
       logger.debug('Download completed:', { fileName, downloadId });
+      return true; // Explicitly return true on success
+
     } catch (error) {
       logger.error('Download failed:', { fileName, error, downloadId });
 

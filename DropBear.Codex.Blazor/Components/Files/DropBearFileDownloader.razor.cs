@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Text.Json;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
@@ -45,7 +46,20 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
             await _downloadSemaphore.WaitAsync(ComponentToken);
 
             _module = await GetJsModuleAsync(JsModuleName);
-            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", ComponentToken);
+
+            // Check if module is initialized
+            var isInitialized = await _module.InvokeAsync<bool>($"{JsModuleName}API.isInitialized");
+            if (!isInitialized)
+            {
+                await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", ComponentToken);
+
+                // Verify initialization
+                isInitialized = await _module.InvokeAsync<bool>($"{JsModuleName}API.isInitialized");
+                if (!isInitialized)
+                {
+                    throw new InvalidOperationException("Failed to initialize JS module");
+                }
+            }
 
             _isInitialized = true;
             LogDebug("File downloader initialized");
@@ -135,17 +149,32 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
 
         // Create stream reference and invoke JS download
         using var streamRef = new DotNetStreamReference(resultStream);
-        var success = await _module.InvokeAsync<bool>(
-            $"{JsModuleName}API.downloadFileFromStream",
-            timeoutCts.Token,
-            FileName,
-            streamRef,
-            ContentType
-        );
 
-        if (!success)
+        try
         {
-            throw new InvalidOperationException("JS download failed");
+            var success = await _module.InvokeAsync<bool>(
+                $"{JsModuleName}API.downloadFileFromStream",
+                timeoutCts.Token,
+                FileName,
+                streamRef,
+                ContentType
+            );
+
+            if (!success)
+            {
+                LogWarning("JS download returned false");
+                throw new InvalidOperationException("JS download failed");
+            }
+        }
+        catch (JSException ex) when (ex.InnerException is JsonException)
+        {
+            LogError("JS download failed with JSON conversion error", ex);
+            throw new InvalidOperationException("JS download failed due to invalid response", ex);
+        }
+        catch (Exception ex)
+        {
+            LogError("JS download failed with unexpected error", ex);
+            throw;
         }
     }
 
