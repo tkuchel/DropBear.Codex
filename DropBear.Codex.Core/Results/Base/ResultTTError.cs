@@ -1,28 +1,52 @@
 ﻿#region
 
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
+using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Errors;
+using Microsoft.Extensions.ObjectPool;
 
 #endregion
 
 namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
-///     A concrete result type that can contain both a <typeparamref name="T" /> value (if successful)
-///     and an error of type <typeparamref name="TError" />.
-///     Implements <see cref="IResult{T,TError}" />.
+///     A concrete result type that can contain both a value and an error.
 /// </summary>
 /// <typeparam name="T">The type of the successful value.</typeparam>
-/// <typeparam name="TError">A type inheriting from <see cref="ResultError" /> representing the error.</typeparam>
+/// <typeparam name="TError">A type inheriting from ResultError.</typeparam>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
+[JsonConverter(typeof(ResultTTErrorJsonConverter<,>))]
 public class Result<T, TError> : Result<TError>, IResult<T, TError>
     where TError : ResultError
 {
+    private static readonly ConcurrentDictionary<Type, DefaultObjectPool<Result<T, TError>>> ResultPool = new();
+
     private readonly Lazy<T> _lazyValue;
+
+    private sealed class ResultPooledObjectPolicy : IPooledObjectPolicy<Result<T, TError>>
+    {
+        public Result<T, TError> Create()
+        {
+            return new Result<T, TError>(new Lazy<T>(() => default!), ResultState.Success);
+        }
+
+        public bool Return(Result<T, TError> obj)
+        {
+            obj.Initialize(ResultState.Success);
+            return true;
+        }
+    }
 
     #region Properties
 
     /// <summary>
-    ///     Gets the value if the result is successful. Otherwise, returns default(<typeparamref name="T" />).
+    ///     Gets the value if the result is successful.
     /// </summary>
     public T? Value => IsSuccess ? _lazyValue.Value : default;
 
@@ -30,10 +54,6 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #region Operators
 
-    /// <summary>
-    ///     Implicitly converts a <typeparamref name="T" /> value to a Success <see cref="Result{T, TError}" />.
-    /// </summary>
-    /// <param name="value">The value to be wrapped in a success result.</param>
     public static implicit operator Result<T, TError>(T value)
     {
         return Success(value);
@@ -41,9 +61,19 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #endregion
 
+    #region Private Methods
+
+    private static DefaultObjectPool<Result<T, TError>> GetOrCreatePool(Type type)
+    {
+        return ResultPool.GetOrAdd(type, _ =>
+            new DefaultObjectPool<Result<T, TError>>(new ResultPooledObjectPolicy()));
+    }
+
+    #endregion
+
     #region Constructors
 
-    private Result(
+    protected Result(
         Lazy<T> lazyValue,
         ResultState state,
         TError? error = null,
@@ -53,27 +83,12 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         _lazyValue = lazyValue;
     }
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="Result{T, TError}" /> class
-    ///     using a concrete <typeparamref name="T" /> value.
-    /// </summary>
-    /// <param name="value">The value to store (if the result is successful).</param>
-    /// <param name="state">The <see cref="ResultState" /> (e.g., Success, Failure, etc.).</param>
-    /// <param name="error">The error object if not successful.</param>
-    /// <param name="exception">An optional exception for additional context.</param>
+
     protected Result(T value, ResultState state, TError? error = null, Exception? exception = null)
         : this(new Lazy<T>(() => value), state, error, exception)
     {
     }
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="Result{T, TError}" /> class
-    ///     with a deferred <typeparamref name="T" /> value via a <paramref name="valueFactory" />.
-    /// </summary>
-    /// <param name="valueFactory">A <see cref="Func{T}" /> that produces the value on-demand.</param>
-    /// <param name="state">The <see cref="ResultState" /> (e.g., Success, Failure, etc.).</param>
-    /// <param name="error">The error object if not successful.</param>
-    /// <param name="exception">An optional exception for additional context.</param>
     protected Result(Func<T> valueFactory, ResultState state, TError? error = null, Exception? exception = null)
         : this(new Lazy<T>(valueFactory), state, error, exception)
     {
@@ -84,21 +99,17 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     #region Public Methods
 
     /// <summary>
-    ///     Returns the <see cref="Value" /> if successful, otherwise <paramref name="defaultValue" />.
+    ///     Returns the Value if successful, otherwise defaultValue.
     /// </summary>
-    /// <param name="defaultValue">A fallback value for unsuccessful results.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T ValueOrDefault(T defaultValue = default!)
     {
         return IsSuccess ? Value! : defaultValue;
     }
 
     /// <summary>
-    ///     Returns the <see cref="Value" /> if successful, otherwise throws an <see cref="InvalidOperationException" />.
+    ///     Returns the Value if successful, otherwise throws.
     /// </summary>
-    /// <param name="errorMessage">
-    ///     An optional error message for the exception if the result is not successful.
-    /// </param>
-    /// <exception cref="InvalidOperationException">Thrown if the result is not successful.</exception>
     public T ValueOrThrow(string? errorMessage = null)
     {
         if (IsSuccess)
@@ -106,15 +117,12 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
             return Value!;
         }
 
-        throw new InvalidOperationException(errorMessage ?? Error?.Message ?? "Operation failed");
+        throw new ResultException(errorMessage ?? Error?.Message ?? "Operation failed");
     }
 
     /// <summary>
-    ///     Transforms the success value with a given <paramref name="mapper" /> if successful.
-    ///     If the result is not successful, returns a new <see cref="Failure" /> result with the same error.
+    ///     Transforms the success value if successful.
     /// </summary>
-    /// <typeparam name="TNew">The type of the mapped value.</typeparam>
-    /// <param name="mapper">A function to map the existing value to <typeparamref name="TNew" />.</param>
     public Result<TNew, TError> Map<TNew>(Func<T, TNew> mapper)
     {
         if (!IsSuccess)
@@ -130,17 +138,14 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         catch (Exception ex)
         {
             Logger.Error(ex, "Exception during map operation");
+            Telemetry.TrackException(ex, State, GetType());
             return Result<TNew, TError>.Failure(Error!, ex);
         }
     }
 
     /// <summary>
-    ///     Asynchronously transforms the success value with a given <paramref name="mapper" /> if successful.
-    ///     If the result is not successful, returns a new <see cref="Failure" /> result with the same error.
+    ///     Asynchronously transforms the success value if successful.
     /// </summary>
-    /// <typeparam name="TNew">The type of the mapped value.</typeparam>
-    /// <param name="mapper">A function to map the existing value to <typeparamref name="TNew" /> asynchronously.</param>
-    /// <param name="cancellationToken">A token to cancel the async operation if desired.</param>
     public async ValueTask<Result<TNew, TError>> MapAsync<TNew>(
         Func<T, ValueTask<TNew>> mapper,
         CancellationToken cancellationToken = default)
@@ -159,16 +164,14 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.Error(ex, "Exception during async map operation");
+            Telemetry.TrackException(ex, State, GetType());
             return Result<TNew, TError>.Failure(Error!, ex);
         }
     }
 
     /// <summary>
-    ///     Transforms this result into another result via a <paramref name="binder" /> function,
-    ///     effectively chaining two operations.
+    ///     Transforms this result into another result.
     /// </summary>
-    /// <typeparam name="TNew">The type of the new success value.</typeparam>
-    /// <param name="binder">A function that takes the current value and returns a new <see cref="Result{TNew, TError}" />.</param>
     public Result<TNew, TError> Bind<TNew>(Func<T, Result<TNew, TError>> binder)
     {
         if (!IsSuccess)
@@ -183,19 +186,17 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         catch (Exception ex)
         {
             Logger.Error(ex, "Exception during bind operation");
+            Telemetry.TrackException(ex, State, GetType());
             return Result<TNew, TError>.Failure(Error!, ex);
         }
     }
 
     /// <summary>
-    ///     Asynchronously transforms this result into another result via a <paramref name="binder" /> function.
+    ///     Asynchronously transforms this result into another result.
     /// </summary>
-    /// <typeparam name="TNew">The type of the new success value.</typeparam>
-    /// <param name="binder">
-    ///     An async function that takes the current value and returns a <see cref="Result{TNew, TError}" />.
-    /// </param>
     public async ValueTask<Result<TNew, TError>> BindAsync<TNew>(
-        Func<T, ValueTask<Result<TNew, TError>>> binder)
+        Func<T, ValueTask<Result<TNew, TError>>> binder,
+        CancellationToken cancellationToken = default)
     {
         if (!IsSuccess)
         {
@@ -204,21 +205,20 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return await binder(Value!).ConfigureAwait(false);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.Error(ex, "Exception during async bind operation");
+            Telemetry.TrackException(ex, State, GetType());
             return Result<TNew, TError>.Failure(Error!, ex);
         }
     }
 
     /// <summary>
-    ///     Maps the current error <typeparamref name="TError" /> to a new error type <typeparamref name="TNewError" />.
-    ///     If the result is successful, this is effectively a no-op on the value.
+    ///     Maps the current error to a new error type.
     /// </summary>
-    /// <typeparam name="TNewError">The type of the new error, also inheriting from <see cref="ResultError" />.</typeparam>
-    /// <param name="errorMapper">A function that converts <typeparamref name="TError" /> to <typeparamref name="TNewError" />.</param>
     public Result<T, TNewError> MapError<TNewError>(Func<TError, TNewError> errorMapper)
         where TNewError : ResultError
     {
@@ -228,12 +228,8 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     /// <summary>
-    ///     Ensures a specified condition is met on the current <see cref="Value" />.
-    ///     If the condition fails, returns a <see cref="Failure" /> result.
+    ///     Ensures a specified condition is met on the current Value.
     /// </summary>
-    /// <param name="predicate">A function that returns <c>true</c> if <see cref="Value" /> passes validation.</param>
-    /// <param name="error">The <typeparamref name="TError" /> to use if the condition fails.</param>
-    /// <returns>This result if already failed or if the condition passes; otherwise a new Failure result.</returns>
     public IResult<T, TError> Ensure(Func<T, bool> predicate, TError error)
     {
         if (!IsSuccess)
@@ -248,6 +244,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         catch (Exception ex)
         {
             Logger.Error(ex, "Exception during ensure operation");
+            Telemetry.TrackException(ex, State, GetType());
             return Failure(error, ex);
         }
     }
@@ -257,86 +254,95 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     #region Factory Methods
 
     /// <summary>
-    ///     Creates a Success <see cref="Result{T, TError}" /> containing <paramref name="value" />.
+    ///     Creates a Success Result containing value.
     /// </summary>
-    /// <param name="value">The value to wrap in a success result.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Success(T value)
     {
-        return new Result<T, TError>(value, ResultState.Success);
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Success);
+        return result;
     }
 
+
     /// <summary>
-    ///     Creates a Success <see cref="Result{T, TError}" /> that defers <paramref name="valueFactory" /> execution
-    ///     until <see cref="Value" /> is accessed.
+    ///     Creates a Success Result that defers value factory execution.
     /// </summary>
-    /// <param name="valueFactory">A function producing the value on demand.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> LazySuccess(Func<T> valueFactory)
     {
-        return new Result<T, TError>(valueFactory, ResultState.Success);
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(valueFactory, ResultState.Success);
+        return result;
     }
 
     /// <summary>
-    ///     Creates a Failure <see cref="Result{T, TError}" /> with the specified <paramref name="error" />
-    ///     and an optional <paramref name="exception" />.
+    ///     Creates a Failure Result.
     /// </summary>
-    /// <param name="error">The <typeparamref name="TError" /> describing the failure.</param>
-    /// <param name="exception">An optional <see cref="Exception" /> for additional context.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public new static Result<T, TError> Failure(TError error, Exception? exception = null)
     {
-        return new Result<T, TError>(
-            new Lazy<T>(() => default!),
-            ResultState.Failure,
-            error,
-            exception);
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.Failure, error, exception);
+        return result;
     }
 
     /// <summary>
-    ///     Creates a PartialSuccess <see cref="Result{T, TError}" /> with <paramref name="value" />
-    ///     and an <paramref name="error" /> describing the partial success condition.
+    ///     Creates a PartialSuccess Result.
     /// </summary>
-    /// <param name="value">The value indicating partial success.</param>
-    /// <param name="error">A <typeparamref name="TError" /> for details on partial failure.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> PartialSuccess(T value, TError error)
     {
-        return new Result<T, TError>(value, ResultState.PartialSuccess, error);
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.PartialSuccess, error);
+        return result;
+    }
+
+    #endregion
+
+    #region Protected Methods
+
+    protected override void Initialize(ResultState state, TError? error = null, Exception? exception = null)
+    {
+        base.Initialize(state, error, exception);
+        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(this, new Lazy<T>(() => default!));
+    }
+
+    protected void Initialize(T value, ResultState state, TError? error = null, Exception? exception = null)
+    {
+        base.Initialize(state, error, exception);
+        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(this, new Lazy<T>(() => value));
+    }
+
+    protected void Initialize(Func<T> valueFactory, ResultState state, TError? error = null, Exception? exception = null)
+    {
+        base.Initialize(state, error, exception);
+        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(this, new Lazy<T>(valueFactory));
     }
 
     #endregion
 
     #region Equality Members
 
-    /// <inheritdoc />
     public override bool Equals(object? obj)
     {
-        if (obj is null)
-        {
-            return false;
-        }
-
-        if (ReferenceEquals(this, obj))
-        {
-            return true;
-        }
-
-        if (obj.GetType() != GetType())
-        {
-            return false;
-        }
-
         if (!base.Equals(obj))
         {
             return false;
         }
 
         var other = (Result<T, TError>)obj;
-
-        // If both are failures, base.Equals already checked error equality.
-        // If at least one is success, compare the Value.
         return !IsSuccess || !other.IsSuccess ||
                EqualityComparer<T>.Default.Equals(Value, other.Value);
     }
 
-    /// <inheritdoc />
     public override int GetHashCode()
     {
         unchecked
@@ -350,6 +356,25 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
             return hashCode;
         }
     }
+
+    #endregion
+
+    #region Debugging Support
+
+    private string DebuggerDisplay =>
+        $"State = {State}, Value = {Value?.ToString() ?? "null"}, Error = {Error?.Message ?? "None"}";
+
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private Dictionary<string, object?> DebugView =>
+        new(StringComparer.Ordinal)
+        {
+            { "State", State },
+            { "IsSuccess", IsSuccess },
+            { "Value", Value },
+            { "Error", Error?.Message },
+            { "Exception", Exception?.Message },
+            { "ExceptionCount", Exceptions.Count }
+        };
 
     #endregion
 }

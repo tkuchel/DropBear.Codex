@@ -1,179 +1,252 @@
 ﻿#region
 
-using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Retry;
-using Serilog;
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 
 #endregion
 
-namespace DropBear.Codex.Core.Results.Extensions;
+namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
-///     Provides miscellaneous extension methods for <see cref="Result{T,TError}" /> operations,
-///     including success callbacks and retry functionality.
+///     Provides extension methods for working with Result types.
 /// </summary>
 public static class ResultExtensions
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<Result<ResultError>>();
-
-    #region Private Helper Methods
-
-    private static Result<T, TError> CreateFailureFromExceptions<T, TError>(
-        RetryPolicy policy,
-        IReadOnlyCollection<Exception> exceptions)
-        where TError : ResultError
-    {
-        var aggregateException = exceptions.Count == 1
-            ? exceptions.First()
-            : new AggregateException("Multiple exceptions occurred during retry", exceptions);
-
-        return Result<T, TError>.Failure(
-            (TError)policy.ErrorMapper(aggregateException));
-    }
-
-    #endregion
-
-    #region Success Callbacks
-
     /// <summary>
-    ///     Invokes an action if the <paramref name="result" /> is successful, ignoring any exceptions thrown by the action.
+    ///     Combines multiple results into a single result.
     /// </summary>
-    public static Result<T, TError> OnSuccess<T, TError>(
-        this Result<T, TError> result,
-        Action<T> action)
+    public static Result<IReadOnlyList<T>, TError> Combine<T, TError>(
+        this IEnumerable<Result<T, TError>> results,
+        Func<IEnumerable<TError>, TError> errorAggregator)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(result);
-        ArgumentNullException.ThrowIfNull(action);
+        var successValues = new List<T>();
+        var errors = new List<TError>();
 
-        if (result.IsSuccess)
+        foreach (var result in results)
         {
-            try
+            if (result.IsSuccess)
             {
-                action(result.Value!);
+                successValues.Add(result.Value!);
             }
-            catch (Exception ex)
+            else
             {
-                Logger.Error(ex, "Exception in OnSuccess callback");
+                errors.Add(result.Error!);
             }
         }
 
-        return result;
-    }
-
-    /// <summary>
-    ///     Invokes an asynchronous callback if the <paramref name="result" /> is successful, ignoring any exceptions thrown by
-    ///     the callback.
-    /// </summary>
-    public static async ValueTask<Result<T, TError>> OnSuccessAsync<T, TError>(
-        this Result<T, TError> result,
-        Func<T, ValueTask> action,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(result);
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (result.IsSuccess)
+        if (errors.Count == 0)
         {
-            try
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                await action(result.Value!).ConfigureAwait(false);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                Logger.Error(ex, "Exception in OnSuccessAsync callback");
-            }
+            return Result<IReadOnlyList<T>, TError>.Success(successValues);
         }
 
-        return result;
+        return errors.Count == results.Count()
+            ? Result<IReadOnlyList<T>, TError>.Failure(errorAggregator(errors))
+            : Result<IReadOnlyList<T>, TError>.PartialSuccess(successValues, errorAggregator(errors));
     }
 
-    #endregion
-
-    #region Retry Operations
+    /// <summary>
+    ///     Combines multiple results asynchronously into a single result.
+    /// </summary>
+    public static async ValueTask<Result<IReadOnlyList<T>, TError>> CombineAsync<T, TError>(
+        this IEnumerable<Task<Result<T, TError>>> results,
+        Func<IEnumerable<TError>, TError> errorAggregator)
+        where TError : ResultError
+    {
+        var completedResults = await Task.WhenAll(results).ConfigureAwait(false);
+        return completedResults.Combine(errorAggregator);
+    }
 
     /// <summary>
-    ///     Retries an asynchronous operation according to a specified <see cref="RetryPolicy" />,
-    ///     returning the first successful <see cref="Result{T, TError}" /> or a failure if all attempts fail.
+    ///     Executes an async operation for each item in parallel, with a maximum degree of parallelism.
     /// </summary>
-    public static async ValueTask<Result<T, TError>> RetryAsync<T, TError>(
-        this Func<CancellationToken, ValueTask<Result<T, TError>>> operation,
-        RetryPolicy policy,
+    public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> ParallelForEachAsync<T, TResult, TError>(
+        this IEnumerable<T> source,
+        Func<T, CancellationToken, ValueTask<Result<TResult, TError>>> operation,
+        int maxDegreeOfParallelism,
         CancellationToken cancellationToken = default)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(operation);
-        ArgumentNullException.ThrowIfNull(policy);
+        var items = source.ToList();
+        var results = new ConcurrentBag<Result<TResult, TError>>();
+        var exceptions = new ConcurrentBag<Exception>();
 
-        var exceptions = new List<Exception>();
-        var attemptNumber = 0;
-
-        while (attemptNumber < policy.MaxAttempts)
+        async ValueTask ProcessItem(T item)
         {
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-
-                var result = await operation(cancellationToken).ConfigureAwait(false);
-                if (result.IsSuccess || attemptNumber == policy.MaxAttempts - 1)
-                {
-                    return result;
-                }
-
-                if (result.Error is not null)
-                {
-                    Logger.Warning(
-                        "Attempt {AttemptNumber} failed: {ErrorMessage}",
-                        attemptNumber + 1,
-                        result.Error.Message);
-                }
+                var result = await operation(item, cancellationToken).ConfigureAwait(false);
+                results.Add(result);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 exceptions.Add(ex);
-                Logger.Warning(ex, "Attempt {AttemptNumber} threw exception", attemptNumber + 1);
-
-                if (attemptNumber == policy.MaxAttempts - 1)
-                {
-                    return CreateFailureFromExceptions<T, TError>(policy, exceptions);
-                }
             }
-
-            if (attemptNumber < policy.MaxAttempts - 1)
-            {
-                var delay = policy.DelayStrategy(attemptNumber);
-                await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
-            }
-
-            attemptNumber++;
         }
 
-        return CreateFailureFromExceptions<T, TError>(policy, exceptions);
+        var tasks = new List<Task>();
+        var semaphore = new SemaphoreSlim(maxDegreeOfParallelism);
+
+        foreach (var item in items)
+        {
+            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+            tasks.Add(Task.Run(async () =>
+            {
+                try
+                {
+                    await ProcessItem(item).ConfigureAwait(false);
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            }, cancellationToken));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
+
+        if (exceptions.Any())
+        {
+            var aggregateException = new AggregateException(exceptions);
+            return Result<IReadOnlyList<TResult>, TError>.Failure(
+                CreateError<TError>("Parallel operation failed with multiple exceptions", aggregateException));
+        }
+
+        return results.ToList().Combine(errors =>
+            CreateError<TError>($"Parallel operation completed with {errors.Count()} errors"));
     }
 
     /// <summary>
-    ///     A convenience method for retrying an asynchronous operation using exponential backoff.
+    ///     Executes an async operation for each batch of items in parallel.
     /// </summary>
-    public static ValueTask<Result<T, TError>> RetryWithExponentialBackoffAsync<T, TError>(
-        this Func<CancellationToken, ValueTask<Result<T, TError>>> operation,
-        int maxAttempts,
-        TimeSpan initialDelay,
-        Func<Exception, TError> errorMapper,
-        double backoffFactor = 2.0,
+    public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> ParallelBatchAsync<T, TResult, TError>(
+        this IEnumerable<T> source,
+        int batchSize,
+        Func<IReadOnlyList<T>, CancellationToken, ValueTask<Result<IReadOnlyList<TResult>, TError>>> batchOperation,
         CancellationToken cancellationToken = default)
         where TError : ResultError
     {
-        var policy = RetryPolicy.Create(
-            maxAttempts,
-            attempt => TimeSpan.FromTicks(
-                (long)(initialDelay.Ticks * Math.Pow(backoffFactor, attempt))),
-            errorMapper);
+        var batches = new List<List<T>>();
+        var currentBatch = new List<T>(batchSize);
 
-        return operation.RetryAsync(policy, cancellationToken);
+        foreach (var item in source)
+        {
+            currentBatch.Add(item);
+            if (currentBatch.Count == batchSize)
+            {
+                batches.Add(currentBatch);
+                currentBatch = new List<T>(batchSize);
+            }
+        }
+
+        if (currentBatch.Any())
+        {
+            batches.Add(currentBatch);
+        }
+
+        var results = await Task.WhenAll(batches.Select(async batch =>
+        {
+            try
+            {
+                return await batchOperation(batch, cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                return Result<IReadOnlyList<TResult>, TError>.Failure(
+                    CreateError<TError>($"Batch operation failed: {ex.Message}", ex));
+            }
+        })).ConfigureAwait(false);
+
+        return results.SelectMany(r => r.IsSuccess ? r.Value! : Array.Empty<TResult>())
+            .ToList()
+            .AsReadOnly()
+            .ToResult<IReadOnlyList<TResult>, TError>();
     }
 
-    #endregion
+    /// <summary>
+    ///     Converts a value to a Success result.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> ToResult<T, TError>(this T value)
+        where TError : ResultError
+    {
+        return Result<T, TError>.Success(value);
+    }
+
+    /// <summary>
+    ///     Converts a nullable value to a Result.
+    /// </summary>
+    public static Result<T, TError> ToResult<T, TError>(
+        this T? value,
+        Func<TError> onNull)
+        where T : class
+        where TError : ResultError
+    {
+        return value != null
+            ? Result<T, TError>.Success(value)
+            : Result<T, TError>.Failure(onNull());
+    }
+
+    /// <summary>
+    ///     Converts a ValueTask to a Result.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> ToResult<T, TError>(
+        this ValueTask<T> task,
+        Func<Exception, TError> onError)
+        where TError : ResultError
+    {
+        try
+        {
+            var result = await task.ConfigureAwait(false);
+            return Result<T, TError>.Success(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, TError>.Failure(onError(ex), ex);
+        }
+    }
+
+    /// <summary>
+    ///     Safely executes an operation that might throw, converting the result to a Result type.
+    /// </summary>
+    public static Result<T, TError> Try<T, TError>(
+        Func<T> operation,
+        Func<Exception, TError> onError)
+        where TError : ResultError
+    {
+        try
+        {
+            var result = operation();
+            return Result<T, TError>.Success(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, TError>.Failure(onError(ex), ex);
+        }
+    }
+
+    /// <summary>
+    ///     Safely executes an async operation that might throw, converting the result to a Result type.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> TryAsync<T, TError>(
+        Func<ValueTask<T>> operation,
+        Func<Exception, TError> onError)
+        where TError : ResultError
+    {
+        try
+        {
+            var result = await operation().ConfigureAwait(false);
+            return Result<T, TError>.Success(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, TError>.Failure(onError(ex), ex);
+        }
+    }
+
+    private static TError CreateError<TError>(string message, Exception? exception = null) where TError : ResultError
+    {
+        return (TError)Activator.CreateInstance(typeof(TError), message)!;
+    }
 }

@@ -1,177 +1,352 @@
-# DropBear Codex Core
+# DropBear.Codex Result Types
 
-![Nuget](https://img.shields.io/nuget/v/DropBear.Codex.Core?style=flat-square)
-![Build](https://img.shields.io/github/actions/workflow/status/tkuchel/DropBear.Codex/core.yml?branch=main&style=flat-square)
-![License](https://img.shields.io/github/license/tkuchel/DropBear.Codex?style=flat-square)
-![.NET](https://img.shields.io/badge/.NET-8.0-512BD4?style=flat-square)
+A comprehensive set of result types for handling success, failure, and validation scenarios in a functional way.
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Result Types](#result-types)
+  - [Base Result Types](#base-result-types)
+  - [Specialized Result Types](#specialized-result-types)
+  - [Legacy Result Types](#legacy-result-types)
+- [Usage Examples](#usage-examples)
+- [Best Practices](#best-practices)
+- [Advanced Scenarios](#advanced-scenarios)
 
 ## Overview
 
-**DropBear Codex Core** is a modern .NET library providing a comprehensive and type-safe Result handling system. Built with functional programming principles, it offers robust tools for managing operation outcomes, error handling, and validation in a composable and maintainable way.
+The Result types provide a robust way to handle operation outcomes without relying on exceptions for control flow. They offer:
 
-## Key Features
+- Type-safe error handling
+- Rich error context
+- Functional programming patterns
+- Async operation support
+- Object pooling for performance
+- Comprehensive debugging support
 
-### Result Types
-- 🛡️ **Type-safe Results**: Generic `Result<TError>` and `Result<T, TError>` with strong typing
-- 🔄 **Specialized Results**: `ResultWithPayload<T>` for compression and validation
-- 📦 **Comprehensive Errors**: Built-in `ValidationError`, `DatabaseError`, and `TimeoutError`
-- 🔗 **Backwards Compatibility**: Legacy support via `Result` and `Result<T>`
+## Result Types
 
-### Functional Operations
-- 🔄 **Monadic Methods**
-    - `Map` for transforming success values
-    - `Bind` for chaining operations
-    - `MapError` for error transformation
-- 🔍 **LINQ Integration**
-    - Full query syntax support
-    - Parallel processing capabilities
-    - Collection operations
-- 🎯 **Pattern Matching**
-    - Comprehensive `Match` methods
-    - State-specific handling
-    - Custom matching patterns
+### Base Result Types
 
-### Error Handling & Validation
-- ✅ **Validation Pipeline**
-    - Fluent validation API
-    - Async validation support
-    - Composable validators
-- 🔄 **Retry Mechanisms**
-    - Configurable retry policies
-    - Exponential backoff
-    - Timeout handling
-- 📊 **Error Composition**
-    - Error aggregation
-    - Error transformation
-    - Custom error types
+#### `Result<TError>` - Base Generic Error Result
 
-## Installation
-
-```bash
-# Package Manager
-Install-Package DropBear.Codex.Core
-
-# .NET CLI
-dotnet add package DropBear.Codex.Core
-
-# PackageReference
-<PackageReference Include="DropBear.Codex.Core" Version="1.0.0" />
-```
-
-## Usage Examples
-
-### Basic Result Handling
 ```csharp
-public Result<User, ValidationError> ValidateUser(UserInput input)
+// Define a custom error type
+public record CustomError : ResultError
 {
-    return input.Email.Contains("@")
-        ? Result<User, ValidationError>.Success(new User(input.Email))
-        : Result<User, ValidationError>.Failure(
-            new ValidationError("email", "Invalid email format"));
+    public CustomError(string message) : base(message) { }
+    public string ErrorCode { get; init; }
+}
+
+// Using the base result type
+public Result<CustomError> ProcessOperation()
+{
+    try
+    {
+        // Operation logic
+        return Result<CustomError>.Success();
+    }
+    catch (Exception ex)
+    {
+        return Result<CustomError>.Failure(
+            new CustomError("Operation failed")
+            {
+                ErrorCode = "ERR001"
+            }, 
+            ex);
+    }
 }
 ```
 
-### Async Operations
-```csharp
-public async Task<Result<User, DatabaseError>> CreateUserAsync(UserInput input)
-{
-    // Validate and create user
-    var result = await ValidateUser(input)
-        .BindAsync(SaveUserAsync)
-        .OnSuccess(user => Logger.Info("User created: {Id}", user.Id))
-        .MapError(error => new DatabaseError(
-            "CreateUser",
-            error.Message,
-            error.Code));
+#### `Result<T, TError>` - Generic Value and Error Result
 
-    return result;
+```csharp
+// Processing with value and error handling
+public Result<int, CustomError> Calculate(int value)
+{
+    if (value < 0)
+    {
+        return Result<int, CustomError>.Failure(
+            new CustomError("Value must be positive")
+            {
+                ErrorCode = "VAL001"
+            });
+    }
+
+    return Result<int, CustomError>.Success(value * 2);
+}
+
+// Using functional methods
+var result = Calculate(10)
+    .Map(x => x.ToString())  // Transform success value
+    .Bind(str => ValidateString(str))  // Chain operations
+    .MapError(err => new DifferentError(err.Message));  // Transform error type
+```
+
+### Specialized Result Types
+
+#### `ValidationResult` - For Validation Scenarios
+
+```csharp
+public ValidationResult ValidateUser(User user)
+{
+    // Simple validation
+    if (string.IsNullOrEmpty(user.Name))
+    {
+        return ValidationResult.PropertyFailed(
+            "Name", 
+            "Name is required",
+            user.Name);
+    }
+
+    // Complex validation
+    var emailResult = await ValidateEmailAsync(user.Email);
+    if (!emailResult.IsValid)
+    {
+        return emailResult;
+    }
+
+    // Rule-based validation
+    if (user.Age < 18)
+    {
+        return ValidationResult.RuleFailed(
+            "AgeRequirement",
+            "User must be 18 or older",
+            user.Age);
+    }
+
+    return ValidationResult.Success;
+}
+
+// Combining multiple validation results
+var results = new[]
+{
+    ValidateUser(user),
+    ValidateAddress(address),
+    ValidatePayment(payment)
+};
+
+var combinedResult = ValidationResult.Combine(results);
+```
+
+#### `UploadResult` - For File Upload Operations
+
+```csharp
+public async Task<UploadResult> UploadFileAsync(Stream fileStream)
+{
+    try
+    {
+        // Upload logic
+        return new UploadResult(UploadStatus.Success, "File uploaded successfully");
+    }
+    catch (Exception ex)
+    {
+        return new UploadResult(UploadStatus.Failure, ex.Message);
+    }
 }
 ```
 
-### Validation Chains
+### Legacy Result Types
+
+These types provide backwards compatibility while leveraging the new implementation:
+
 ```csharp
-public async Task<Result<UserProfile, ValidationError>> ValidateProfile(UserProfileInput input)
+// Old style - string-based errors
+public Result ProcessLegacy()
 {
-    return await input.Validate(
-        profile => ValidateBasicInfo(profile),
-        profile => ValidateContactInfo(profile),
-        async profile => await ValidateUniqueEmail(profile)
-    );
+    try
+    {
+        return Result.Success();
+    }
+    catch (Exception ex)
+    {
+        return Result.Failure("Operation failed", ex);
+    }
 }
-```
 
-### Working with Collections
-```csharp
-public async Task<Result<IReadOnlyList<User>, ValidationError>> ProcessUsers(IEnumerable<UserInput> inputs)
+// Old style with value
+public Result<int> ProcessLegacyWithValue()
 {
-    return await inputs
-        .Select(ValidateUser)           // Validate each user
-        .Traverse()                     // Combine results
-        .BindAsync(SaveUsersAsync)      // Save if all valid
-        .OnSuccess(users => 
-            Logger.Info("Processed {Count} users", users.Count));
-}
-```
-
-### Payload Handling
-```csharp
-public async Task<Result<UserData, PayloadError>> ProcessUserData(UserData data)
-{
-    var result = await ResultWithPayload<UserData>
-        .CreateAsync(data)
-        .BindAsync(async payload => 
-        {
-            if (!payload.IsValid)
-                return Result<UserData, PayloadError>.Failure(
-                    new PayloadError("Invalid payload hash"));
-
-            return await payload
-                .DecompressAndDeserializeAsync<UserData>()
-                .BindAsync(SaveUserDataAsync);
-        });
-
-    return result;
+    return Result<int>.Success(42);
 }
 ```
 
 ## Best Practices
 
-### Error Handling
-- Create specific error types for different scenarios
-- Use `Match` for exhaustive pattern matching
-- Handle both success and failure cases explicitly
-- Leverage async methods where appropriate
+### 1. Choose the Right Result Type
 
-### Validation
-- Validate early in the operation chain
-- Combine multiple validations using `Validate`
-- Use field-specific validation errors
-- Consider async validation when needed
+- Use `Result<TError>` when you only need error information
+- Use `Result<T, TError>` when you need to return a value
+- Use `ValidationResult` for validation scenarios
+- Use legacy types only for backwards compatibility
 
-### Performance
-- Use `ValueTask` for better async performance
-- Leverage parallel processing for collections
-- Consider lazy evaluation for expensive operations
-- Use appropriate buffer sizes for payload handling
+### 2. Error Handling
 
-## Contributing
+```csharp
+// Define specific error types for different scenarios
+public record NotFoundError : ResultError
+{
+    public NotFoundError(string message) : base(message) { }
+    public string ResourceType { get; init; }
+}
 
-We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for details on:
-- Code of Conduct
-- Development workflow
-- Pull request process
-- Coding standards
+public record ValidationError : ResultError
+{
+    public ValidationError(string message) : base(message) { }
+    public string PropertyName { get; init; }
+    public object AttemptedValue { get; init; }
+}
 
-## License
+// Use pattern matching for handling different states
+result.Match(
+    onSuccess: () => Console.WriteLine("Success"),
+    onFailure: (error, ex) => LogError(error, ex),
+    onPartialSuccess: error => HandlePartial(error)
+);
+```
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+### 3. Async Operations
 
-## Support
+```csharp
+public async ValueTask<Result<Data, ApiError>> FetchDataAsync(
+    string id,
+    CancellationToken cancellationToken = default)
+{
+    try
+    {
+        var data = await _api.GetDataAsync(id, cancellationToken);
+        return Result<Data, ApiError>.Success(data);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        return Result<Data, ApiError>.Failure(
+            new ApiError("Failed to fetch data"), 
+            ex);
+    }
+}
+```
 
-- 📚 [Documentation](https://docs.dropbear.codex.core)
-- 💬 [Discussions](https://github.com/tkuchel/DropBear.Codex/discussions)
-- 🐛 [Issue Tracker](https://github.com/tkuchel/DropBear.Codex/issues)
+### 4. Composition and Chaining
 
----
+```csharp
+public async Task<Result<OrderConfirmation, OrderError>> ProcessOrderAsync(Order order)
+{
+    return await ValidateOrder(order)  // Returns Result<Order, OrderError>
+        .MapAsync(async validated => 
+            await CalculateTotals(validated))  // Transform to new value
+        .BindAsync(async totals => 
+            await ProcessPayment(totals))  // Chain another result
+        .MapAsync(async payment => 
+            await CreateConfirmation(payment));  // Final transformation
+}
+```
 
-© 2024 Terrence Kuchel (DropBear). All rights reserved.
+### 5. Performance Considerations
+
+- Use object pooling for high-frequency operations
+- Leverage lazy evaluation when appropriate
+- Consider using ValueTask for short-running async operations
+
+```csharp
+// Object pooling is handled automatically by the Result types
+public Result<int, ProcessError> ProcessValue(int value)
+{
+    // The Result will be retrieved from the pool
+    return Result<int, ProcessError>.Success(value);
+}  // The Result will be returned to the pool when disposed
+
+// Lazy evaluation
+public Result<ExpensiveData, DataError> GetData()
+{
+    return Result<ExpensiveData, DataError>.LazySuccess(
+        () => ComputeExpensiveData());
+}
+```
+
+## Advanced Scenarios
+
+### Custom Result Types
+
+```csharp
+public class ApiResult<T> : Result<T, ApiError>
+{
+    private ApiResult(T value, ResultState state, ApiError? error = null)
+        : base(value, state, error)
+    {
+        StatusCode = error?.StatusCode ?? 200;
+    }
+
+    public int StatusCode { get; }
+
+    public static ApiResult<T> Ok(T value)
+        => new(value, ResultState.Success);
+
+    public static ApiResult<T> NotFound(string message)
+        => new(default!, ResultState.Failure, 
+            new ApiError(message) { StatusCode = 404 });
+}
+```
+
+### Integration with Dependency Injection
+
+```csharp
+public interface IResultFactory
+{
+    Result<T, TError> Create<T, TError>(T value)
+        where TError : ResultError;
+    
+    ValidationResult CreateValidation();
+}
+
+public class ResultFactory : IResultFactory
+{
+    public Result<T, TError> Create<T, TError>(T value)
+        where TError : ResultError
+        => Result<T, TError>.Success(value);
+    
+    public ValidationResult CreateValidation()
+        => ValidationResult.Success;
+}
+
+// In your startup:
+services.AddSingleton<IResultFactory, ResultFactory>();
+```
+
+### Testing
+
+```csharp
+[Fact]
+public void Success_Result_Should_Have_Value()
+{
+    // Arrange
+    var value = 42;
+    
+    // Act
+    var result = Result<int, TestError>.Success(value);
+    
+    // Assert
+    Assert.True(result.IsSuccess);
+    Assert.Equal(value, result.Value);
+    Assert.Null(result.Error);
+}
+
+[Fact]
+public void Validation_Should_Combine_Results()
+{
+    // Arrange
+    var results = new[]
+    {
+        ValidationResult.Failed("Error 1"),
+        ValidationResult.Success,
+        ValidationResult.Failed("Error 2")
+    };
+    
+    // Act
+    var combined = ValidationResult.Combine(results);
+    
+    // Assert
+    Assert.False(combined.IsValid);
+    Assert.Contains("Error 1", combined.ErrorMessage);
+    Assert.Contains("Error 2", combined.ErrorMessage);
+}
+```
