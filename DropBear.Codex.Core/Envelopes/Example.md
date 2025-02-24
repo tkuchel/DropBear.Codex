@@ -1,240 +1,117 @@
-﻿```csharp
-#region Usage Example
+﻿# DropBear.Codex.Core.Envelopes
 
-	#region Domain-Specific Example: Payment
+## Overview
 
-	/// <summary>
-	/// Represents payment data.
-	/// </summary>
-	public class PaymentData
-	{
-		/// <summary>
-		/// Gets or sets the payment amount.
-		/// </summary>
-		public decimal Amount { get; set; }
+The Envelope class provides a robust, secure, and flexible mechanism for encapsulating and managing payloads with comprehensive validation, serialization, and state management capabilities.
 
-		/// <summary>
-		/// Gets or sets the currency code (e.g. "USD").
-		/// </summary>
-		public string Currency { get; set; }
+## Key Features
 
-		/// <summary>
-		/// Initializes a new instance of the <see cref="PaymentData"/> class.
-		/// </summary>
-		/// <param name="amount">The payment amount.</param>
-		/// <param name="currency">The currency code.</param>
-		public PaymentData(decimal amount, string currency)
-		{
-			Amount = amount;
-			Currency = currency;
-		}
-	}
+- Payload Encapsulation
+- Thread-Safe Operations
+- Comprehensive Validation
+- Cryptographic Signature Support
+- Payload Encryption
+- Result-Based Error Handling
+- Telemetry and Diagnostics
 
-	/// <summary>
-	/// A specialized envelope for payment data that enforces domain-specific validations.
-	/// </summary>
-	public class PaymentEnvelope : Envelope<PaymentData>
-	{
-		/// <summary>
-		/// Initializes a new instance of the <see cref="PaymentEnvelope"/> class.
-		/// </summary>
-		/// <param name="paymentData">The payment data payload.</param>
-		/// <param name="headers">Optional headers.</param>
-		public PaymentEnvelope(PaymentData paymentData, IDictionary<string, object> headers = null)
-			: base(paymentData, headers)
-		{
-			// Register a domain-specific payload validator.
-			RegisterPayloadValidator(pd =>
-			{
-				if (pd == null)
-					return new ValidationResult(false, "Payment data cannot be null.");
-				if (pd.Amount <= 0)
-					return new ValidationResult(false, "Payment amount must be greater than zero.");
-				if (string.IsNullOrWhiteSpace(pd.Currency))
-					return new ValidationResult(false, "Currency must be provided.");
-				return ValidationResult.Success;
-			});
-		}
-	}
+## Usage Example
 
-	/// <summary>
-	/// A sample handler for processing payment envelopes.
-	/// </summary>
-	public class PaymentHandler
-	{
-		/// <summary>
-		/// Processes the payment envelope by sealing, optionally encrypting, and then logging details.
-		/// </summary>
-		/// <param name="envelope">The payment envelope to process.</param>
-		public void Handle(Envelope<PaymentData> envelope)
-		{
-			// Seal the envelope if it isn't already sealed.
-			if (!envelope.IsSealed)
-			{
-				// Use a fixed key for demonstration; in production, retrieve securely.
-				byte[] key = Encoding.UTF8.GetBytes("SuperSecretKey123!");
-				envelope.Seal(key);
-			}
+### Creating an Envelope
 
-			// Optionally encrypt the payload.
-			// Uncomment the following lines if encryption is desired.
-			// byte[] encryptionKey = Encoding.UTF8.GetBytes("EncryptionKey1234"); // Must be 16/24/32 bytes for AES.
-			// envelope.EncryptPayload(encryptionKey);
+```csharp
+// Create a simple envelope with a payload
+var payload = new PaymentData(100.00m, "USD");
+var envelope = new Envelope<PaymentData>(payload);
 
-			// Process the payment.
-			Console.WriteLine($"Processing payment of {envelope.Payload.Amount} {envelope.Payload.Currency}");
-			Console.WriteLine($"Envelope created at: {envelope.CreatedDate:o}");
-			if (envelope.SealedDate.HasValue)
-			{
-				Console.WriteLine($"Envelope sealed at: {envelope.SealedDate:o}");
-			}
-			if (!string.IsNullOrEmpty(envelope.Signature))
-			{
-				Console.WriteLine($"Envelope signature: {envelope.Signature}");
-			}
-		}
-	}
-
-	#endregion
-
-	/// <summary>
-	/// Demonstrates encryption and decryption of the envelope payload.
-	/// </summary>
-	public class EncryptionTest
-	{
-		/// <summary>
-		/// Runs the encryption test.
-		/// </summary>
-		public static void Run()
-		{
-			try
-			{
-				// Create sample payment data.
-				PaymentData payment = new PaymentData(amount: 150.00m, currency: "USD");
-
-				// Create initial headers.
-				var headers = new Dictionary<string, object>
-				{
-					{ "TransactionID", Guid.NewGuid() },
-					{ "SourceSystem", "CheckoutService" }
-				};
-
-				// Create a PaymentEnvelope with the given payment and headers.
-				PaymentEnvelope envelope = new PaymentEnvelope(payment, headers);
-				envelope.AddHeader("InitiatedBy", "EncryptionTest");
-
-				// Seal the envelope (using a key for HMAC signature, if desired).
-				// Note: The key used for signing here is for demonstration purposes.
-				byte[] signingKey = Encoding.UTF8.GetBytes("1234567890123456"); // 16-byte key for AES/HMAC demonstration.
-				envelope.Seal(signingKey);
-
-				// --- Activate Encryption ---
-				// Use a symmetric key for encryption. Ensure the key is 16, 24, or 32 bytes for AES.
-				byte[] encryptionKey = Encoding.UTF8.GetBytes("abcdefghijklmnop"); // 16-byte key
-				envelope.EncryptPayload(encryptionKey);
-				Console.WriteLine("Payload has been encrypted.");
-
-				// Attempting to access the payload while it is encrypted will throw an exception.
-				try
-				{
-					var payload = envelope.Payload;
-				}
-				catch (Exception ex)
-				{
-					Console.WriteLine("Expected error accessing encrypted payload: " + ex.Message);
-				}
-
-				// --- Decrypt the Payload ---
-				envelope.DecryptPayload(encryptionKey);
-				Console.WriteLine("Payload has been decrypted.");
-				Console.WriteLine($"Decrypted Payload: {envelope.Payload.Amount} {envelope.Payload.Currency}");
-			}
-			catch (Exception ex)
-			{
-				Console.Error.WriteLine($"Encryption test failed: {ex.Message}");
-			}
-		}
-	}
-
-	/// <summary>
-	/// Demonstrates usage of the upgraded envelope library.
-	/// </summary>
-	public class Program
-	{
-		public static void Main()
-		{
-			try
-			{
-				// Create payment data.
-				PaymentData payment = new PaymentData(amount: 150.00m, currency: "USD");
-
-				// Initial headers.
-				var headers = new Dictionary<string, object>
-				{
-					{ "TransactionID", Guid.NewGuid() },
-					{ "SourceSystem", "CheckoutService" }
-				};
-
-				// Optional: Add a header validator to enforce that header keys start with an uppercase letter.
-				Func<string, object, ValidationResult> headerValidator = (key, value) =>
-					char.IsUpper(key[0])
-						? ValidationResult.Success
-						: new ValidationResult(false, "Header key must start with an uppercase letter.");
-
-				// Create a PaymentEnvelope with the header validator.
-				PaymentEnvelope envelope = new PaymentEnvelope(payment, headers);
-				envelope.RegisterHeaderValidator(headerValidator);
-
-				// Optionally, add another header.
-				envelope.AddHeader("InitiatedBy", "OnlinePortal");
-
-				// Subscribe to events.
-				envelope.Sealed += (sender, args) => Console.WriteLine("Envelope sealed event fired.");
-				envelope.Unsealed += (sender, args) => Console.WriteLine("Envelope unsealed event fired.");
-				envelope.PayloadModified += (sender, args) => Console.WriteLine("Envelope payload modified event fired.");
-
-				// Process the envelope with the handler.
-				PaymentHandler handler = new PaymentHandler();
-				handler.Handle(envelope);
-
-				// Serialize the envelope.
-				string serialized = envelope.ToSerializedString();
-				Console.WriteLine("\nSerialized Envelope:");
-				Console.WriteLine(serialized);
-
-				// Deserialize the envelope.
-				Envelope<PaymentData> deserialized = Envelope<PaymentData>.FromSerializedString(serialized);
-				Console.WriteLine("\nDeserialized Envelope:");
-				Console.WriteLine($"Payload: {deserialized.Payload.Amount} {deserialized.Payload.Currency}");
-				Console.WriteLine($"Is Sealed: {deserialized.IsSealed}");
-				Console.WriteLine($"Signature: {deserialized.Signature}");
-
-				// Demonstrate cloning.
-				var clonedEnvelope = envelope.Clone();
-				Console.WriteLine("\nCloned Envelope (unsealed):");
-				Console.WriteLine($"Payload: {clonedEnvelope.Payload.Amount} {clonedEnvelope.Payload.Currency}");
-				Console.WriteLine($"Is Sealed: {clonedEnvelope.IsSealed}");
-
-				// Demonstrate composite envelope for batch processing.
-				var payments = new List<PaymentData>
-				{
-					new PaymentData(100.00m, "USD"),
-					new PaymentData(200.00m, "EUR")
-				};
-				CompositeEnvelope<PaymentData> compositeEnvelope = new CompositeEnvelope<PaymentData>(payments);
-				Console.WriteLine("\nComposite Envelope created with {0} payment(s).", compositeEnvelope.Payload.Count);
-
-
-				// Run the encryption test.
-				EncryptionTest.Run();
-			}
-			catch (Exception ex)
-			{
-				// Log errors appropriately.
-				Console.Error.WriteLine($"An error occurred: {ex.Message}");
-			}
-		}
-	}
-
-	#endregion
+// Add domain-specific validators
+envelope.RegisterPayloadValidator(payment => 
+{
+    if (payment.Amount <= 0)
+        return ValidationResult.Failed("Amount must be positive");
+    return ValidationResult.Success;
+});
 ```
+
+## Payload Validation
+
+Envelopes support comprehensive payload validation through:
+- Payload validators
+- Sealed/Unsealed state management
+- Encryption state checks
+
+## Sealing and Encryption
+
+```csharp
+// Seal the envelope with a cryptographic key
+byte[] signingKey = GetSecureKey();
+envelope.Seal(signingKey);
+
+// Encrypt the payload
+byte[] encryptionKey = GetSecureEncryptionKey();
+envelope.EncryptPayload(encryptionKey);
+```
+
+## Serialization
+
+```csharp
+// Serialize the envelope
+string serializedEnvelope = envelope.Serialize();
+
+// Deserialize the envelope
+var deserializedEnvelope = Envelope<PaymentData>.Deserialize(serializedEnvelope);
+```
+
+## Error Handling
+
+All operations return Result types with comprehensive error information:
+
+```csharp
+var result = envelope.AddHeader("TransactionId", Guid.NewGuid());
+if (!result.IsSuccess)
+{
+    Console.WriteLine(result.Error.Message);
+}
+```
+
+## Thread Safety
+
+- Uses `ReaderWriterLockSlim` for efficient concurrent access
+- Supports multi-threaded scenarios
+- Prevents race conditions during payload and header modifications
+
+## Performance Considerations
+
+- Minimal overhead for validation and state tracking
+- Efficient locking mechanisms
+- Lazy initialization of components
+- Telemetry tracking with minimal performance impact
+
+## Security Features
+
+- Cryptographic payload signatures
+- Payload encryption
+- Comprehensive validation
+- Immutable state after sealing
+
+## Diagnostics and Telemetry
+
+- Tracks result creation and transformations
+- Captures exception details
+- Provides diagnostic information about envelope state
+
+## Limitations and Considerations
+
+- Payload must be serializable
+- Encryption requires secure key management
+- Performance overhead for frequent validation
+
+## Best Practices
+
+- Always validate payloads before sealing
+- Use secure, randomly generated keys for signing and encryption
+- Implement proper key rotation and management
+- Consider performance implications of extensive validators
+
+## License
+
+Part of the DropBear.Codex.Core library. See project license for details.
