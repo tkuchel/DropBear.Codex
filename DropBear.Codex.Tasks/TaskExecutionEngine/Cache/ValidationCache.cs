@@ -14,15 +14,18 @@ using Serilog;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Cache;
 
+/// <summary>
+///     Caches validation results for tasks to avoid repeating expensive checks.
+///     Periodically cleans up expired entries and enforces a maximum cache size.
+/// </summary>
 public sealed class ValidationCache : IDisposable
 {
     private const int DefaultMaxSize = 10000;
     private const int CleanupThreshold = 1000;
     private static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
+
     private readonly ConcurrentDictionary<string, CacheEntry> _cache;
     private readonly SemaphoreSlim _cleanupLock;
-
-    // ReSharper disable once NotAccessedField.Local
     private readonly Task _cleanupTask;
     private readonly PeriodicTimer _cleanupTimer;
     private readonly TimeSpan _defaultExpiration;
@@ -30,6 +33,12 @@ public sealed class ValidationCache : IDisposable
     private readonly int _maxCacheSize;
     private volatile bool _disposed;
 
+    /// <summary>
+    ///     Creates a new instance of <see cref="ValidationCache" />.
+    /// </summary>
+    /// <param name="logger">Logger for diagnostic messages.</param>
+    /// <param name="defaultExpiration">Default expiration time for cached validations.</param>
+    /// <param name="maxCacheSize">Max number of entries allowed.</param>
     public ValidationCache(
         ILogger logger,
         TimeSpan? defaultExpiration = null,
@@ -40,10 +49,14 @@ public sealed class ValidationCache : IDisposable
         _maxCacheSize = maxCacheSize ?? DefaultMaxSize;
         _cache = new ConcurrentDictionary<string, CacheEntry>(StringComparer.Ordinal);
         _cleanupLock = new SemaphoreSlim(1, 1);
+
         _cleanupTimer = new PeriodicTimer(CleanupInterval);
-        _cleanupTask = RunCleanupAsync();
+        _cleanupTask = RunCleanupAsync(); // starts in background
     }
 
+    /// <summary>
+    ///     Disposes the cache, stopping cleanup and removing all entries.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -52,12 +65,16 @@ public sealed class ValidationCache : IDisposable
         }
 
         _disposed = true;
-
         _cleanupTimer.Dispose();
         _cleanupLock.Dispose();
+
         _cache.Clear();
     }
 
+    /// <summary>
+    ///     Validates a task, using cached results if available and not expired.
+    ///     Otherwise, performs validation and stores the result in the cache.
+    /// </summary>
     public async Task<Result<Unit, TaskExecutionError>> ValidateTaskAsync(
         ITask task,
         TaskExecutionScope scope,
@@ -71,12 +88,12 @@ public sealed class ValidationCache : IDisposable
             return entry.ValidationResult;
         }
 
+        // Enforce cache size limit
         await EnsureCacheSizeAsync().ConfigureAwait(false);
 
         try
         {
-            var result = await ValidateTaskInternalAsync(task, scope, cancellationToken)
-                .ConfigureAwait(false);
+            var result = await ValidateTaskInternalAsync(task, scope, cancellationToken).ConfigureAwait(false);
 
             var cacheEntry = new CacheEntry(
                 result,
@@ -94,6 +111,8 @@ public sealed class ValidationCache : IDisposable
         }
     }
 
+    // *** CHANGE ***  We keep the rest the same, just refine comments and inlining.
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string GenerateCacheKey(ITask task)
     {
@@ -108,7 +127,7 @@ public sealed class ValidationCache : IDisposable
             hasher.AppendData(Encoding.UTF8.GetBytes(dep));
         }
 
-        // Add metadata affecting validation
+        // Add metadata affecting validation (keys starting with "Validate")
         var validationMetadata = task.Metadata
             .Where(m => m.Key.StartsWith("Validate", StringComparison.OrdinalIgnoreCase))
             .OrderBy(m => m.Key, StringComparer.Ordinal);
@@ -116,7 +135,7 @@ public sealed class ValidationCache : IDisposable
         foreach (var meta in validationMetadata)
         {
             hasher.AppendData(Encoding.UTF8.GetBytes(meta.Key));
-            hasher.AppendData(Encoding.UTF8.GetBytes(meta.Value.ToString() ?? string.Empty));
+            hasher.AppendData(Encoding.UTF8.GetBytes(meta.Value?.ToString() ?? string.Empty));
         }
 
         return Convert.ToHexString(hasher.GetCurrentHash());
@@ -127,16 +146,15 @@ public sealed class ValidationCache : IDisposable
         TaskExecutionScope scope,
         CancellationToken cancellationToken)
     {
-        // Check sync validation
+        // Synchronous check
         if (!task.Validate())
         {
             return Result<Unit, TaskExecutionError>.Failure(
                 new TaskExecutionError($"Sync validation failed for task {task.Name}", task.Name));
         }
 
-        // Check async validation
-        var asyncValidatable = task as IAsyncValidatable;
-        if (asyncValidatable != null)
+        // Async check
+        if (task is IAsyncValidatable asyncValidatable)
         {
             try
             {
@@ -162,7 +180,7 @@ public sealed class ValidationCache : IDisposable
             }
         }
 
-        // Check conditions
+        // Condition check
         if (task.Condition != null && !task.Condition(scope.Context))
         {
             return Result<Unit, TaskExecutionError>.PartialSuccess(
@@ -173,6 +191,9 @@ public sealed class ValidationCache : IDisposable
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
 
+    /// <summary>
+    ///     Ensures the cache does not exceed its maximum size, removing old entries if necessary.
+    /// </summary>
     private async Task EnsureCacheSizeAsync()
     {
         if (_cache.Count >= _maxCacheSize - CleanupThreshold)
@@ -196,6 +217,9 @@ public sealed class ValidationCache : IDisposable
         }
     }
 
+    /// <summary>
+    ///     Periodically removes expired entries from the cache.
+    /// </summary>
     private async Task RunCleanupAsync()
     {
         try
@@ -233,7 +257,7 @@ public sealed class ValidationCache : IDisposable
             return TimeSpan.FromMinutes(5);
         }
 
-        // Tasks with dependencies might need more frequent validation
+        // Tasks with dependencies might need moderately frequent validation
         if (task.Dependencies.Any())
         {
             return TimeSpan.FromMinutes(15);
@@ -244,8 +268,6 @@ public sealed class ValidationCache : IDisposable
 
     private void RemoveExpiredEntries()
     {
-        // ReSharper disable once UnusedVariable
-        var now = DateTime.UtcNow;
         var expiredKeys = _cache
             .Where(kvp => kvp.Value.IsExpired)
             .Select(kvp => kvp.Key)

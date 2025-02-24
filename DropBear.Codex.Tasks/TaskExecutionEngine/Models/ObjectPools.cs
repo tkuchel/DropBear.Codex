@@ -10,7 +10,8 @@ using IResettable = DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces.IResetta
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-///     Enhanced object pool with factory support
+///     A generic static pool for objects of type <typeparamref name="T" /> using a <see cref="ConcurrentQueue{T}" />.
+///     Optionally uses a factory method and calls <see cref="IResettable.Reset" /> when returning an object.
 /// </summary>
 internal static class ObjectPools<T> where T : class, new()
 {
@@ -19,6 +20,9 @@ internal static class ObjectPools<T> where T : class, new()
     private static int _count;
     private static Func<T>? _factory;
 
+    /// <summary>
+    ///     Creates a <see cref="DefaultObjectPool{T}" /> using the specified factory for new objects.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ObjectPool<T> CreateWithFactory(Func<T> factory)
     {
@@ -26,6 +30,9 @@ internal static class ObjectPools<T> where T : class, new()
         return new DefaultObjectPool<T>(new PooledObjectPolicy());
     }
 
+    /// <summary>
+    ///     Gets (or "rents") an instance from the pool, or creates a new one if the pool is empty.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Rent()
     {
@@ -38,6 +45,9 @@ internal static class ObjectPools<T> where T : class, new()
         return _factory?.Invoke() ?? new T();
     }
 
+    /// <summary>
+    ///     Returns an instance to the pool, resetting it if it implements <see cref="IResettable" />.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Return(T? item)
     {

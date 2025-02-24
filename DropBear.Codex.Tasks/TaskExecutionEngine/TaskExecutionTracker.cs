@@ -9,6 +9,9 @@ using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
+/// <summary>
+///     Tracks execution progress, durations, and statuses of tasks in an execution engine.
+/// </summary>
 public sealed class TaskExecutionTracker
 {
     private readonly ConcurrentDictionary<string, double> _progressCache;
@@ -35,6 +38,11 @@ public sealed class TaskExecutionTracker
         _progressCache.AddOrUpdate(taskName, progress, (_, _) => progress);
     }
 
+    /// <summary>
+    ///     Marks a task as started and begins timing its execution.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <param name="task">The <see cref="Task" /> object representing the running task.</param>
     public void StartTask(string taskName, Task task)
     {
         ArgumentNullException.ThrowIfNull(task);
@@ -46,13 +54,17 @@ public sealed class TaskExecutionTracker
         }
     }
 
+    /// <summary>
+    ///     Marks a task as complete, recording its success/failure status and duration.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <param name="success">True if the task completed successfully, otherwise false.</param>
     public void CompleteTask(string taskName, bool success)
     {
         if (_taskExecutions.TryRemove(taskName, out var execution))
         {
             execution.Complete(success);
             var duration = execution.GetDuration();
-
             _stats.TaskDurations.TryAdd(taskName, duration);
 
             if (success)
@@ -64,14 +76,23 @@ public sealed class TaskExecutionTracker
                 _stats.IncrementFailedTasks();
             }
         }
+        // *** CHANGE *** Optional: If a task is completed more than once, or never started
+        // we might log or track it. But no break in the public API.
     }
 
+    /// <summary>
+    ///     Retrieves a snapshot of the current task execution statistics.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskExecutionStats GetStats()
     {
         return _stats.Clone();
     }
 
+    /// <summary>
+    ///     Sets the total number of tasks to be executed.
+    ///     Must be called before any tasks are started.
+    /// </summary>
     public void SetTotalTaskCount(int count)
     {
         if (count < 0)
@@ -88,6 +109,9 @@ public sealed class TaskExecutionTracker
         _stats.TotalTasks = count;
     }
 
+    /// <summary>
+    ///     Resets all tracking data, discarding progress or durations for any tasks.
+    /// </summary>
     public void Reset()
     {
         _progressCache.Clear();
@@ -96,6 +120,11 @@ public sealed class TaskExecutionTracker
         _totalTaskCount = 0;
     }
 
+    /// <summary>
+    ///     Waits for all currently tracked tasks to complete, or until the timeout elapses.
+    /// </summary>
+    /// <param name="timeout">The maximum time to wait.</param>
+    /// <returns>True if all tasks completed, false if the wait timed out.</returns>
     public async Task<bool> WaitForAllTasksToCompleteAsync(TimeSpan timeout)
     {
         var tasks = _taskExecutions.Values.Select(e => e.Task).ToArray();
@@ -116,18 +145,27 @@ public sealed class TaskExecutionTracker
         }
     }
 
+    /// <summary>
+    ///     Retrieves whether the task succeeded/failed, or <c>null</c> if not found or not completed yet.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool? GetTaskStatus(string taskName)
     {
         return _taskExecutions.TryGetValue(taskName, out var execution) ? execution.Success : null;
     }
 
+    /// <summary>
+    ///     Retrieves the elapsed time for a completed task, or zero if not found.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TimeSpan GetTaskDuration(string taskName)
     {
         return _stats.TaskDurations.TryGetValue(taskName, out var duration) ? duration : TimeSpan.Zero;
     }
 
+    /// <summary>
+    ///     Represents an individual task execution, tracking success/failure and elapsed time.
+    /// </summary>
     private sealed class TaskExecution
     {
         private readonly Stopwatch _stopwatch;
@@ -135,7 +173,7 @@ public sealed class TaskExecutionTracker
 
         public TaskExecution(Task task)
         {
-            Task = task;
+            Task = task ?? throw new ArgumentNullException(nameof(task));
             _stopwatch = new Stopwatch();
         }
 

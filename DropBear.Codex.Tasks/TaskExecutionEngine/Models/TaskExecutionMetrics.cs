@@ -1,5 +1,8 @@
 ﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
+/// <summary>
+///     Holds metrics about a single task's execution, such as the number of successes/failures and average duration.
+/// </summary>
 public class TaskExecutionMetrics
 {
     private readonly object _lock = new();
@@ -25,6 +28,9 @@ public class TaskExecutionMetrics
         }
     }
 
+    /// <summary>
+    ///     Retrieves success/failure counts and average duration.
+    /// </summary>
     public (int SuccessCount, int FailureCount, TimeSpan AverageDuration) GetMetrics()
     {
         lock (_lock)
@@ -33,6 +39,7 @@ public class TaskExecutionMetrics
             var avgDuration = totalCount > 0
                 ? TimeSpan.FromTicks(_totalDurationTicks / totalCount)
                 : TimeSpan.Zero;
+
             return (_successCount, _failureCount, avgDuration);
         }
     }

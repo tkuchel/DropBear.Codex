@@ -1,7 +1,5 @@
 ﻿#region
 
-#region
-
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DropBear.Codex.Core.Logging;
@@ -13,10 +11,8 @@ using Serilog;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
-#endregion
-
 /// <summary>
-///     Manages message publishing and queuing for the execution engine.
+///     Manages message publishing for tasks, using a channel and an internal background loop to process messages.
 /// </summary>
 public sealed class MessagePublisher : IAsyncDisposable
 {
@@ -51,6 +47,7 @@ public sealed class MessagePublisher : IAsyncDisposable
             SingleReader = true, SingleWriter = false
         });
 
+        // Start background processing
         _publisherTask = ProcessMessagesAsync();
     }
 
@@ -65,8 +62,8 @@ public sealed class MessagePublisher : IAsyncDisposable
 
         try
         {
+            // Complete channel and cancel any pending operations
             _channel.Writer.Complete();
-
             await _publisherCts.CancelAsync().ConfigureAwait(false);
 
             try
@@ -75,7 +72,7 @@ public sealed class MessagePublisher : IAsyncDisposable
             }
             catch (OperationCanceledException)
             {
-                // Expected during shutdown
+                // Expected on shutdown
             }
 
             _publisherCts.Dispose();
@@ -87,6 +84,10 @@ public sealed class MessagePublisher : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Queues a message for asynchronous publishing.
+    /// </summary>
+    /// <typeparam name="T">The message type (e.g., <see cref="TaskProgressMessage" />)</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ValueTask QueueMessage<T>(Guid channelId, T message)
     {
@@ -134,26 +135,22 @@ public sealed class MessagePublisher : IAsyncDisposable
         {
             if (messageType == typeof(TaskProgressMessage))
             {
-                await _progressPublisher
-                    .PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token)
+                await _progressPublisher.PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token)
                     .ConfigureAwait(false);
             }
             else if (messageType == typeof(TaskStartedMessage))
             {
-                await _startedPublisher
-                    .PublishAsync(channelId, (TaskStartedMessage)message, _publisherCts.Token)
+                await _startedPublisher.PublishAsync(channelId, (TaskStartedMessage)message, _publisherCts.Token)
                     .ConfigureAwait(false);
             }
             else if (messageType == typeof(TaskCompletedMessage))
             {
-                await _completedPublisher
-                    .PublishAsync(channelId, (TaskCompletedMessage)message, _publisherCts.Token)
+                await _completedPublisher.PublishAsync(channelId, (TaskCompletedMessage)message, _publisherCts.Token)
                     .ConfigureAwait(false);
             }
             else if (messageType == typeof(TaskFailedMessage))
             {
-                await _failedPublisher
-                    .PublishAsync(channelId, (TaskFailedMessage)message, _publisherCts.Token)
+                await _failedPublisher.PublishAsync(channelId, (TaskFailedMessage)message, _publisherCts.Token)
                     .ConfigureAwait(false);
             }
         }

@@ -12,49 +12,88 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 /// </summary>
 public interface ITask
 {
+    /// <summary>
+    ///     Gets the name of the task.
+    /// </summary>
     string Name { get; }
-    Func<ExecutionContext, bool>? Condition { get; set; }
-    int MaxRetryCount { get; set; }
-    TimeSpan RetryDelay { get; set; }
-    bool ContinueOnFailure { get; set; }
-    IReadOnlyList<string> Dependencies { get; }
-    TimeSpan EstimatedDuration { get; }
-    TimeSpan Timeout { get; set; }
-    TaskPriority Priority { get; }
-
-    Func<ExecutionContext, CancellationToken, Task>?
-        CompensationActionAsync { get; set; } // Updated for cancellation support
 
     /// <summary>
-    ///     Gets or sets metadata for the task, providing additional configuration or information.
+    ///     A predicate function indicating whether the task should run under the current context.
     /// </summary>
-    IDictionary<string, object> Metadata { get;  } // New extensibility point
+    Func<ExecutionContext, bool>? Condition { get; set; }
 
+    /// <summary>
+    ///     Maximum number of retries allowed if the task fails.
+    /// </summary>
+    int MaxRetryCount { get; set; }
+
+    /// <summary>
+    ///     Delay between retries.
+    /// </summary>
+    TimeSpan RetryDelay { get; set; }
+
+    /// <summary>
+    ///     If <c>true</c>, this task does not block subsequent tasks from running on failure.
+    /// </summary>
+    bool ContinueOnFailure { get; set; }
+
+    /// <summary>
+    ///     List of tasks that must be completed successfully before this task can run.
+    /// </summary>
+    IReadOnlyList<string> Dependencies { get; }
+
+    /// <summary>
+    ///     Estimated execution duration for informational or scheduling purposes.
+    /// </summary>
+    TimeSpan EstimatedDuration { get; }
+
+    /// <summary>
+    ///     The maximum time allowed for this task to run before timing out.
+    /// </summary>
+    TimeSpan Timeout { get; set; }
+
+    /// <summary>
+    ///     Priority level of the task.
+    /// </summary>
+    TaskPriority Priority { get; }
+
+    /// <summary>
+    ///     An optional compensation action that runs if the task fails and needs to roll back.
+    /// </summary>
+    Func<ExecutionContext, CancellationToken, Task>? CompensationActionAsync { get; set; }
+
+    /// <summary>
+    ///     A dictionary for storing extended metadata about the task.
+    /// </summary>
+    IDictionary<string, object> Metadata { get; }
+
+    /// <summary>
+    ///     Validates whether the task's configuration/state is valid.
+    /// </summary>
     bool Validate();
+
+    /// <summary>
+    ///     Executes the task logic using the given <paramref name="context" />.
+    /// </summary>
     Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken);
 
     /// <summary>
     ///     Adds a dependency to this task.
     /// </summary>
-    /// <param name="dependency">The name of the task that this task depends on.</param>
     void AddDependency(string dependency);
 
     /// <summary>
     ///     Sets the dependencies for this task, replacing any existing dependencies.
     /// </summary>
-    /// <param name="dependencies">An enumerable of task names that this task depends on.</param>
     void SetDependencies(IEnumerable<string> dependencies);
 
     /// <summary>
     ///     Removes a dependency from this task.
     /// </summary>
-    /// <param name="dependency">The name of the dependency to remove.</param>
-    void RemoveDependency(string dependency); // New method
+    void RemoveDependency(string dependency);
 
     /// <summary>
     ///     Checks if the task has a specific dependency.
     /// </summary>
-    /// <param name="dependency">The name of the dependency to check.</param>
-    /// <returns>True if the dependency exists; otherwise, false.</returns>
-    bool HasDependency(string dependency); // New method
+    bool HasDependency(string dependency);
 }

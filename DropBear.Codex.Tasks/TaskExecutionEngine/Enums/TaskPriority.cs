@@ -1,5 +1,8 @@
 ﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 
+/// <summary>
+///     Represents the priority level of a task in the execution engine.
+/// </summary>
 public enum TaskPriority
 {
     Low = 0,

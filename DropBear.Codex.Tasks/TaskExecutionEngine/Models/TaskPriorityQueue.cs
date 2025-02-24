@@ -10,6 +10,10 @@ using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
+/// <summary>
+///     A priority-based queue for <see cref="ITask" />, using multiple <see cref="ConcurrentQueue{ITask}" />.
+///     Tasks are dequeued from the highest priority first.
+/// </summary>
 public sealed class TaskPriorityQueue
 {
     private readonly TaskPriority[] _priorityLevels;
@@ -22,21 +26,30 @@ public sealed class TaskPriorityQueue
         _priorityQueues = new ConcurrentDictionary<TaskPriority, ConcurrentQueue<ITask>>();
         _taskPriorities = new ConcurrentDictionary<string, TaskPriority>(StringComparer.Ordinal);
 
-        // Get and sort priority levels
+        // Sort priorities descending
         _priorityLevels = Enum.GetValues<TaskPriority>()
             .OrderByDescending(p => (int)p)
             .ToArray();
 
-        // Initialize queues for all priority levels
         foreach (var priority in _priorityLevels)
         {
             _priorityQueues[priority] = new ConcurrentQueue<ITask>();
         }
     }
 
+    /// <summary>
+    ///     Current total count of tasks in all queues.
+    /// </summary>
     public long Count => Interlocked.Read(ref _count);
+
+    /// <summary>
+    ///     Indicates whether there are any tasks in the queue.
+    /// </summary>
     public bool IsEmpty => Count == 0;
 
+    /// <summary>
+    ///     Enqueues a task according to its priority.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Enqueue(ITask task)
     {
@@ -47,10 +60,12 @@ public sealed class TaskPriorityQueue
         Interlocked.Increment(ref _count);
     }
 
+    /// <summary>
+    ///     Dequeues the highest priority task available, or returns false if empty.
+    /// </summary>
     public bool TryDequeue([NotNullWhen(true)] out ITask? task)
     {
         task = null;
-
         foreach (var priority in _priorityLevels)
         {
             var queue = _priorityQueues[priority];
@@ -65,10 +80,12 @@ public sealed class TaskPriorityQueue
         return false;
     }
 
+    /// <summary>
+    ///     Peeks at the highest priority task, without removing it. Returns false if empty.
+    /// </summary>
     public bool TryPeek([NotNullWhen(true)] out ITask? task)
     {
         task = null;
-
         foreach (var priority in _priorityLevels)
         {
             var queue = _priorityQueues[priority];
@@ -81,6 +98,9 @@ public sealed class TaskPriorityQueue
         return false;
     }
 
+    /// <summary>
+    ///     Clears all tasks from all priority queues.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Clear()
     {
@@ -93,6 +113,9 @@ public sealed class TaskPriorityQueue
         Interlocked.Exchange(ref _count, 0);
     }
 
+    /// <summary>
+    ///     Returns the number of tasks in the queue for a specific <paramref name="priority" />.
+    /// </summary>
     public int GetQueueLength(TaskPriority priority)
     {
         return _priorityQueues.TryGetValue(priority, out var queue)
@@ -100,6 +123,9 @@ public sealed class TaskPriorityQueue
             : 0;
     }
 
+    /// <summary>
+    ///     Returns a dictionary of queue lengths keyed by priority level.
+    /// </summary>
     public IDictionary<TaskPriority, int> GetQueueLengths()
     {
         var lengths = new Dictionary<TaskPriority, int>();

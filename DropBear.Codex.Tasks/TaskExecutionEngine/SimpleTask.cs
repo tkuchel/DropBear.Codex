@@ -11,6 +11,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
 /// <summary>
 ///     Represents a simple task that can be executed within the execution engine.
+///     Holds minimal state and optional dependencies, plus a synchronous or asynchronous delegate.
 /// </summary>
 public sealed class SimpleTask : ITask
 {
@@ -57,9 +58,9 @@ public sealed class SimpleTask : ITask
         ArgumentNullException.ThrowIfNull(dependencies);
 
         _dependencies.Clear();
-        foreach (var dependency in dependencies.Where(d => !string.IsNullOrWhiteSpace(d)))
+        foreach (var dep in dependencies.Where(d => !string.IsNullOrWhiteSpace(d)))
         {
-            _dependencies.Add(dependency);
+            _dependencies.Add(dep);
         }
     }
 
@@ -125,11 +126,11 @@ public sealed class SimpleTask : ITask
     private static Func<ExecutionContext, CancellationToken, Task> WrapSyncExecution(Action<ExecutionContext> execute)
     {
         ArgumentNullException.ThrowIfNull(execute);
-        return (context, cancellationToken) =>
+        return async (context, cancellationToken) =>
         {
             cancellationToken.ThrowIfCancellationRequested();
             execute(context);
-            return Task.CompletedTask;
+            await Task.CompletedTask;
         };
     }
 }

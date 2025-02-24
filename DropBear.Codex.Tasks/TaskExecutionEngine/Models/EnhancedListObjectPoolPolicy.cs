@@ -1,7 +1,6 @@
 ﻿#region
 
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using Microsoft.Extensions.ObjectPool;
 
 #endregion
@@ -9,7 +8,7 @@ using Microsoft.Extensions.ObjectPool;
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-/// Enhanced pool policy for List{T} with size tracking and optimized reuse
+///     Enhanced pool policy for <see cref="List{T}" /> with size tracking and optimized reuse.
 /// </summary>
 internal sealed class EnhancedListObjectPoolPolicy<T> : PooledObjectPolicy<List<T>>
 {
@@ -37,7 +36,7 @@ internal sealed class EnhancedListObjectPoolPolicy<T> : PooledObjectPolicy<List<
         {
             obj.Clear();
 
-            // Resize if necessary based on tracked size
+            // If we have a recorded "ideal capacity," set it back.
             if (_sizes.TryGetValue(obj, out var sizeObj) &&
                 sizeObj is int size &&
                 obj.Capacity != size)

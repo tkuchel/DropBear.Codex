@@ -11,7 +11,7 @@ using Serilog;
 namespace DropBear.Codex.Tasks.Caching;
 
 /// <summary>
-///     Provides thread-safe caching services with region-based cache management and background refresh capabilities
+///     Provides thread-safe caching services with region-based cache management and background refresh capabilities.
 /// </summary>
 public class CacheService : ICacheService
 {
@@ -22,10 +22,10 @@ public class CacheService : ICacheService
     private CancellationTokenSource? _cleanupCancellationTokenSource;
 
     /// <summary>
-    ///     Initializes a new instance of the CacheService
+    ///     Initializes a new instance of the <see cref="CacheService" /> class.
     /// </summary>
-    /// <param name="cache">The memory cache implementation to use</param>
-    /// <exception cref="ArgumentNullException">Thrown when cache is null</exception>
+    /// <param name="cache">The memory cache implementation to use.</param>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="cache" /> is null.</exception>
     public CacheService(IMemoryCache cache)
     {
         _cache = cache ?? throw new ArgumentNullException(nameof(cache));
@@ -40,15 +40,7 @@ public class CacheService : ICacheService
         _ = StartPeriodicCleanupAsync(_cleanupCancellationTokenSource.Token);
     }
 
-    /// <summary>
-    ///     Gets a value from the cache or sets it using the provided factory if it doesn't exist
-    /// </summary>
-    /// <typeparam name="T">The type of value being cached</typeparam>
-    /// <param name="key">The cache key</param>
-    /// <param name="factory">A factory function to create the value if it's not in the cache</param>
-    /// <param name="options">Optional cache entry configuration</param>
-    /// <param name="cancellationToken">A token to cancel the operation</param>
-    /// <returns>A result containing either the cached value or an error</returns>
+    /// <inheritdoc />
     public async ValueTask<Result<T, CacheError>> GetOrSetAsync<T>(
         string key,
         Func<CancellationToken, Task<T>> factory,
@@ -64,46 +56,48 @@ public class CacheService : ICacheService
             {
                 metrics.LogCacheHit(key);
 
-                // Check if entry is expired but within stale window
-                if (cachedEntry != null && IsStale(cachedEntry, options) && !cachedEntry.IsRefreshing)
-                {
-                    // Trigger background refresh with error handling
-                    _ = RefreshCacheInBackgroundAsync(key, factory, options, cachedEntry)
-                        .ContinueWith(t =>
-                        {
-                            if (t.IsFaulted)
-                            {
-                                _logger.Error(t.Exception, "Background refresh failed for key: {Key}", key);
-                            }
-                        }, TaskScheduler.Default);
-                }
-
+                // *** CHANGE *** Quick null check for cachedEntry
                 if (cachedEntry != null)
                 {
+                    // Check if entry is expired but within stale window
+                    if (IsStale(cachedEntry, options) && !cachedEntry.IsRefreshing)
+                    {
+                        // Trigger background refresh with error handling
+                        _ = RefreshCacheInBackgroundAsync(key, factory, options, cachedEntry)
+                            .ContinueWith(t =>
+                            {
+                                if (t.IsFaulted)
+                                {
+                                    _logger.Error(t.Exception, "Background refresh failed for key: {Key}", key);
+                                }
+                            }, TaskScheduler.Default);
+                    }
+
+                    // Return the stale-or-fresh data
                     return Result<T, CacheError>.Success(cachedEntry.Value);
                 }
             }
+            else
+            {
+                metrics.LogCacheMiss(key);
+            }
 
-            metrics.LogCacheMiss(key);
+            // Acquire a lock to ensure only one thread runs the factory
             var lockObj = GetOrCreateLock(key);
-
             await lockObj.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                // Double-check pattern
-                if (_cache.TryGetValue(key, out cachedEntry))
+                // Double-check pattern after acquiring lock
+                if (_cache.TryGetValue<CacheEntry<T>>(key, out cachedEntry) && cachedEntry != null)
                 {
                     metrics.LogCacheHit(key);
-                    if (cachedEntry != null)
-                    {
-                        return Result<T, CacheError>.Success(cachedEntry.Value);
-                    }
+                    return Result<T, CacheError>.Success(cachedEntry.Value);
                 }
 
                 // Execute the factory method to get the value
                 var factoryMetrics = new CacheMetrics($"Factory<{typeof(T).Name}>");
                 var value = await factory(cancellationToken).ConfigureAwait(false);
-                factoryMetrics.LogCacheMiss(key);
+                factoryMetrics.LogCacheMiss(key); // 'Miss' in the sense we had to build a new item
 
                 var entry = new CacheEntry<T>
                 {
@@ -134,11 +128,7 @@ public class CacheService : ICacheService
         }
     }
 
-    /// <summary>
-    ///     Removes an item from the cache by key
-    /// </summary>
-    /// <param name="key">The cache key</param>
-    /// <returns>A result indicating success or failure</returns>
+    /// <inheritdoc />
     public ValueTask<Result<Unit, CacheError>> RemoveAsync(string key)
     {
         try
@@ -151,17 +141,13 @@ public class CacheService : ICacheService
         catch (Exception ex)
         {
             _logger.Error(ex, "Error removing cache entry: {Key}", key);
-            return ValueTask.FromResult(Result<Unit, CacheError>.Failure(
-                CacheError.OperationFailed($"Failed to remove key: {key}"),
-                ex));
+            return ValueTask.FromResult(
+                Result<Unit, CacheError>.Failure(CacheError.OperationFailed($"Failed to remove key: {key}"), ex)
+            );
         }
     }
 
-    /// <summary>
-    ///     Removes all items from the cache that belong to the specified region
-    /// </summary>
-    /// <param name="region">The region to clear</param>
-    /// <returns>A result indicating success or failure</returns>
+    /// <inheritdoc />
     public async ValueTask<Result<Unit, CacheError>> RemoveByRegionAsync(string region)
     {
         try
@@ -169,10 +155,11 @@ public class CacheService : ICacheService
             _logger.Information("Invalidating cache region: {Region}", region);
             if (!_regionKeys.TryGetValue(region, out var keys))
             {
+                // If region doesn't exist, we consider it a no-op success
                 return Result<Unit, CacheError>.Success(Unit.Value);
             }
 
-            // Create a copy of keys to avoid modification during enumeration
+            // Make a copy of keys to avoid modification during enumeration
             var keysToRemove = keys.ToList();
             foreach (var key in keysToRemove)
             {
@@ -180,7 +167,7 @@ public class CacheService : ICacheService
                 await RemoveAsync(key).ConfigureAwait(false);
             }
 
-            // Try to remove the region itself if it's empty
+            // Attempt to remove the region if it is now empty
             if (_regionKeys.TryGetValue(region, out var remainingKeys) && remainingKeys.Count == 0)
             {
                 _regionKeys.TryRemove(region, out _);
@@ -193,14 +180,12 @@ public class CacheService : ICacheService
             _logger.Error(ex, "Error removing cache entries for region: {Region}", region);
             return Result<Unit, CacheError>.Failure(
                 CacheError.OperationFailed($"Failed to remove region: {region}"),
-                ex);
+                ex
+            );
         }
     }
 
-    /// <summary>
-    ///     Clears all items from the cache
-    /// </summary>
-    /// <returns>A result indicating success or failure</returns>
+    /// <inheritdoc />
     public ValueTask<Result<Unit, CacheError>> ClearAsync()
     {
         try
@@ -221,14 +206,14 @@ public class CacheService : ICacheService
         catch (Exception ex)
         {
             _logger.Error(ex, "Error clearing cache");
-            return ValueTask.FromResult(Result<Unit, CacheError>.Failure(
-                CacheError.OperationFailed("Failed to clear cache"),
-                ex));
+            return ValueTask.FromResult(
+                Result<Unit, CacheError>.Failure(CacheError.OperationFailed("Failed to clear cache"), ex)
+            );
         }
     }
 
     /// <summary>
-    ///     Disposes the cache service and releases all resources
+    ///     Disposes the cache service and releases all resources.
     /// </summary>
     public void Dispose()
     {
@@ -248,7 +233,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Starts the periodic cleanup process
+    ///     Starts the periodic cleanup process running in the background.
     /// </summary>
     private async Task StartPeriodicCleanupAsync(CancellationToken cancellationToken)
     {
@@ -275,7 +260,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Executes a single cleanup operation
+    ///     Executes a single cleanup operation, removing unused locks/regions and compacting the memory cache.
     /// </summary>
     private Task PerformPeriodicCleanupAsync()
     {
@@ -306,7 +291,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Cleans up all resources used by the cache
+    ///     Cleans up all resources used by the cache (locks, region keys, etc.).
     /// </summary>
     private void CleanupAllResources()
     {
@@ -325,7 +310,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Removes unused locks from the locks dictionary
+    ///     Removes unused locks from the locks dictionary if the corresponding cache entry no longer exists.
     /// </summary>
     private void CleanupUnusedLocks()
     {
@@ -343,7 +328,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Removes empty regions from the region tracking dictionary
+    ///     Removes empty regions from the region tracking dictionary.
     /// </summary>
     private void CleanupEmptyRegions()
     {
@@ -360,7 +345,8 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Gets or creates a lock object for the specified key
+    ///     Gets or creates a lock object for the specified key, ensuring only one thread can produce or refresh the same cache
+    ///     key at a time.
     /// </summary>
     private SemaphoreSlim GetOrCreateLock(string key)
     {
@@ -368,7 +354,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Removes and disposes of a lock for the specified key
+    ///     Removes and disposes of a lock for the specified key, if present.
     /// </summary>
     private void CleanupLock(string key)
     {
@@ -380,10 +366,12 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Checks if a cache entry is stale based on its options
+    ///     Checks if a cache entry is stale based on the specified options
+    ///     and the entry's <see cref="CacheEntry{T}.LastRefreshed" /> timestamp.
     /// </summary>
     private static bool IsStale<T>(CacheEntry<T> entry, CacheEntryOptions? options)
     {
+        // If no StaleWhileRevalidate or no known LastRefreshed time, we cannot consider it stale
         if (options?.StaleWhileRevalidate == null || entry.LastRefreshed == null)
         {
             return false;
@@ -392,11 +380,14 @@ public class CacheService : ICacheService
         var staleness = DateTime.UtcNow - entry.LastRefreshed.Value;
         var totalAllowedStaleness = options.SlidingExpiration + options.StaleWhileRevalidate;
 
+        // If staleness is strictly greater than the sliding expiration
+        // but within the extended stale-while-revalidate window,
+        // we consider it "stale" but still serve it while we refresh in the background.
         return staleness > options.SlidingExpiration && staleness <= totalAllowedStaleness;
     }
 
     /// <summary>
-    ///     Refreshes a cache entry in the background
+    ///     Refreshes a cache entry in the background, marking it as refreshing and updating on success.
     /// </summary>
     private async Task RefreshCacheInBackgroundAsync<T>(
         string key,
@@ -449,7 +440,7 @@ public class CacheService : ICacheService
             _logger.Error(ex, "Error refreshing cache in background for key: {Key}", key);
             existingEntry.IsRefreshing = false;
 
-            // Consider removing the entry if refresh failed
+            // *** CHANGE *** Optionally remove the stale entry if refresh fails:
             try
             {
                 await RemoveAsync(key).ConfigureAwait(false);
@@ -463,7 +454,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Associates a cache key with a region for grouped operations
+    ///     Associates a cache key with a region for grouped operations (e.g., <see cref="RemoveByRegionAsync" />).
     /// </summary>
     private void TrackKeyInRegion(string region, string key)
     {
@@ -472,7 +463,7 @@ public class CacheService : ICacheService
             _ => new HashSet<string>(StringComparer.Ordinal) { key },
             (_, keys) =>
             {
-                lock (keys)
+                lock (keys) // *** CHANGE *** ensure thread-safe insertion
                 {
                     keys.Add(key);
                     return keys;
@@ -483,7 +474,7 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Configures cache entry options based on provided settings with sensible defaults
+    ///     Configures cache entry options based on provided settings with sensible defaults.
     /// </summary>
     private static MemoryCacheEntryOptions ConfigureCacheEntry(CacheEntryOptions? options)
     {
@@ -498,33 +489,18 @@ public class CacheService : ICacheService
     }
 
     /// <summary>
-    ///     Default cache configuration settings
+    ///     Default cache configuration settings.
     /// </summary>
     private static class CacheDefaults
     {
-        /// <summary>
-        ///     Default size for cache entries when not specified
-        /// </summary>
-        public const long DefaultSize = 1;
+        public const long DefaultSize = 1; // *** CHANGE *** doc comment moved inline
 
-        /// <summary>
-        ///     Default sliding expiration time for cache entries
-        /// </summary>
         public static readonly TimeSpan SlidingExpiration = TimeSpan.FromMinutes(30);
 
-        /// <summary>
-        ///     Default absolute expiration time for cache entries
-        /// </summary>
         public static readonly TimeSpan AbsoluteExpiration = TimeSpan.FromHours(24);
 
-        /// <summary>
-        ///     Default timeout for background refresh operations
-        /// </summary>
         public static readonly TimeSpan RefreshTimeout = TimeSpan.FromSeconds(30);
 
-        /// <summary>
-        ///     Interval for automated cleanup operations
-        /// </summary>
         public static readonly TimeSpan CleanupInterval = TimeSpan.FromMinutes(5);
     }
 }

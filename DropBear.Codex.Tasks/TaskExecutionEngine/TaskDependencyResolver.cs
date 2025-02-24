@@ -9,26 +9,41 @@ using Microsoft.Extensions.ObjectPool;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
+/// <summary>
+///     Resolves task dependencies and provides a topological order of tasks for execution.
+/// </summary>
 public sealed class TaskDependencyResolver
 {
     private readonly Dictionary<string, HashSet<string>> _graph;
     private readonly Dictionary<string, int> _inDegree;
-    private readonly ObjectPool<List<ITask>> _ListPool;
+    private readonly ObjectPool<List<ITask>> _listPool;
     private readonly ObjectPool<HashSet<string>> _setPool;
 
-    public TaskDependencyResolver(ObjectPool<HashSet<string>> setPool, ObjectPool<List<ITask>> ListPool)
+    public TaskDependencyResolver(ObjectPool<HashSet<string>> setPool, ObjectPool<List<ITask>> listPool)
     {
         _graph = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
         _inDegree = new Dictionary<string, int>(StringComparer.Ordinal);
         _setPool = setPool;
-        _ListPool = ListPool;
+        _listPool = listPool;
     }
 
+    /// <summary>
+    ///     Attempts to resolve dependencies among tasks, returning them in a valid execution order.
+    /// </summary>
+    /// <param name="tasks">All tasks keyed by name.</param>
+    /// <param name="sortedTasks">If successful, a list of tasks in topologically sorted order.</param>
+    /// <returns>A success or failure result with a relevant <see cref="TaskExecutionError" />.</returns>
     public Result<Unit, TaskExecutionError> ResolveDependencies(
         IReadOnlyDictionary<string, ITask> tasks,
         out List<ITask>? sortedTasks)
     {
-        sortedTasks = _ListPool.Get(); // Initialize the out parameter
+        sortedTasks = _listPool.Get(); // Initialize the out parameter
+
+        // *** CHANGE *** Short-circuit if no tasks
+        if (tasks.Count == 0)
+        {
+            return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+        }
 
         try
         {
@@ -47,7 +62,7 @@ public sealed class TaskDependencyResolver
         }
         catch (Exception ex)
         {
-            _ListPool.Return(sortedTasks); // Return the List to pool on failure
+            _listPool.Return(sortedTasks);
             sortedTasks = new List<ITask>(); // Ensure out parameter is assigned
 
             return Result<Unit, TaskExecutionError>.Failure(
@@ -116,7 +131,6 @@ public sealed class TaskDependencyResolver
 
         return result;
     }
-
 
     private void ClearGraph()
     {

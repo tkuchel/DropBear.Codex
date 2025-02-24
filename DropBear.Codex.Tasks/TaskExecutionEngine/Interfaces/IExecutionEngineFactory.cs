@@ -8,7 +8,7 @@ using DropBear.Codex.Tasks.Errors;
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
 /// <summary>
-///     Interface for the execution engine factory, providing a flexible method for creating execution engines.
+///     Interface for creating new <see cref="ExecutionEngine" /> instances.
 /// </summary>
 public interface IExecutionEngineFactory
 {

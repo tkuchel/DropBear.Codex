@@ -12,7 +12,9 @@ using Serilog;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
-
+/// <summary>
+///     Schedules and executes tasks in parallel, respecting a maximum degree of parallelism.
+/// </summary>
 public sealed class ParallelTaskScheduler : IDisposable
 {
     private readonly ILogger _logger;
@@ -22,6 +24,9 @@ public sealed class ParallelTaskScheduler : IDisposable
     private readonly SemaphoreSlim _throttle;
     private bool _disposed;
 
+    /// <summary>
+    ///     Creates a new <see cref="ParallelTaskScheduler" /> with the specified concurrency limit.
+    /// </summary>
     public ParallelTaskScheduler(
         int maxDegreeOfParallelism,
         TaskExecutionStats stats,
@@ -34,6 +39,9 @@ public sealed class ParallelTaskScheduler : IDisposable
         _throttle = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
     }
 
+    /// <summary>
+    ///     Disposes the scheduler, releasing any resources.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -45,26 +53,38 @@ public sealed class ParallelTaskScheduler : IDisposable
         _throttle.Dispose();
     }
 
+    /// <summary>
+    ///     Executes tasks in <paramref name="taskQueue" /> until empty or cancellation is requested.
+    ///     Returns a result indicating success or partial success if some tasks failed.
+    /// </summary>
     public async Task<Result<Unit, TaskExecutionError>> ExecuteTasksAsync(
         TaskPriorityQueue taskQueue,
         TaskExecutionScope scope,
         CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(ParallelTaskScheduler));
+        }
+
         var failedTasks = new ConcurrentBag<(string Name, Exception Exception)>();
         var executionTasks = new List<Task>();
         var activeTaskCount = 0;
 
         try
         {
+            // Loop until no tasks left OR cancellation is triggered
             while (!cancellationToken.IsCancellationRequested &&
                    (!taskQueue.IsEmpty || activeTaskCount > 0))
             {
+                // If queue is non-empty, attempt to start a new task
                 if (!taskQueue.IsEmpty)
                 {
                     await _throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                     if (taskQueue.TryDequeue(out var task))
                     {
+                        // If the task depends on a failed task, skip
                         if (HasFailedDependencies(task, failedTasks))
                         {
                             _throttle.Release();
@@ -73,6 +93,7 @@ public sealed class ParallelTaskScheduler : IDisposable
                         }
 
                         Interlocked.Increment(ref activeTaskCount);
+                        // Launch the task in a separate worker
                         executionTasks.Add(Task.Run(async () =>
                         {
                             try
@@ -94,17 +115,21 @@ public sealed class ParallelTaskScheduler : IDisposable
                     }
                     else
                     {
+                        // If we failed to dequeue for some reason
                         _throttle.Release();
                     }
                 }
                 else
                 {
+                    // Wait briefly to avoid busy-waiting
                     await Task.Delay(10, cancellationToken).ConfigureAwait(false);
                 }
             }
 
+            // Wait for all tasks to finish
             await Task.WhenAll(executionTasks).ConfigureAwait(false);
 
+            // If no tasks failed, success
             return failedTasks.IsEmpty
                 ? Result<Unit, TaskExecutionError>.Success(Unit.Value)
                 : CreatePartialSuccessResult(failedTasks);
@@ -123,7 +148,7 @@ public sealed class ParallelTaskScheduler : IDisposable
         CancellationToken cancellationToken)
     {
         var metrics = _metrics.GetOrAdd(task.Name, _ => new TaskExecutionMetrics());
-        var taskMetrics = new ActivityScope($"Task_{task.Name}");
+        using var taskMetrics = new ActivityScope($"Task_{task.Name}");
 
         try
         {
@@ -150,6 +175,7 @@ public sealed class ParallelTaskScheduler : IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasFailedDependencies(ITask task, ConcurrentBag<(string Name, Exception Exception)> failedTasks)
     {
+        // If any dependency of 'task' matches a name in 'failedTasks', skip
         return task.Dependencies.Any(dep => failedTasks.Any(f => string.Equals(f.Name, dep, StringComparison.Ordinal)));
     }
 
@@ -158,7 +184,6 @@ public sealed class ParallelTaskScheduler : IDisposable
     {
         var errors = failedTasks.Select(f => f.Exception).ToList();
         var message = $"Some tasks failed: {string.Join(", ", failedTasks.Select(f => f.Name))}";
-
         return Result<Unit, TaskExecutionError>.PartialSuccess(
             Unit.Value,
             new TaskExecutionError(message, null, new AggregateException(errors)));

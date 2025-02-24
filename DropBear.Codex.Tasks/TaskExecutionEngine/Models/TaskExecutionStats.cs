@@ -6,6 +6,9 @@ using System.Collections.Concurrent;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
+/// <summary>
+///     Tracks high-level statistics of task execution, such as counts of completed, failed, or skipped tasks.
+/// </summary>
 public sealed class TaskExecutionStats
 {
     private int _completedTasks;
@@ -30,8 +33,14 @@ public sealed class TaskExecutionStats
         init => _skippedTasks = value;
     }
 
+    /// <summary>
+    ///     Total tasks planned for execution.
+    /// </summary>
     public int TotalTasks { get; set; }
 
+    /// <summary>
+    ///     Stores individual task durations by name.
+    /// </summary>
     public ConcurrentDictionary<string, TimeSpan> TaskDurations { get; init; } =
         new(StringComparer.Ordinal);
 
@@ -50,6 +59,9 @@ public sealed class TaskExecutionStats
         Interlocked.Increment(ref _skippedTasks);
     }
 
+    /// <summary>
+    ///     Resets all statistics to zero/empty.
+    /// </summary>
     public void Reset()
     {
         _completedTasks = 0;
@@ -59,6 +71,9 @@ public sealed class TaskExecutionStats
         TaskDurations.Clear();
     }
 
+    /// <summary>
+    ///     Creates a shallow copy of the stats, including a clone of <see cref="TaskDurations" />.
+    /// </summary>
     public TaskExecutionStats Clone()
     {
         return new TaskExecutionStats

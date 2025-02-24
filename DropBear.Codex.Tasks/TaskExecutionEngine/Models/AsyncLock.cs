@@ -1,7 +1,8 @@
 ﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-///     Custom async lock implementation for more granular locking
+///     A lightweight async lock implementation wrapping a <see cref="SemaphoreSlim" />.
+///     Call <see cref="LockAsync" /> to acquire, and then dispose the returned object to release.
 /// </summary>
 public sealed class AsyncLock : IDisposable
 {
@@ -11,6 +12,7 @@ public sealed class AsyncLock : IDisposable
 
     public AsyncLock()
     {
+        // Preallocate a releaser so we don't allocate a new one on every lock acquisition
         _releaser = Task.FromResult<IDisposable>(new Releaser(this));
     }
 
@@ -25,6 +27,10 @@ public sealed class AsyncLock : IDisposable
         _semaphore.Dispose();
     }
 
+    /// <summary>
+    ///     Acquires the lock asynchronously. The returned <see cref="IDisposable" /> must be disposed to release.
+    /// </summary>
+    /// <exception cref="ObjectDisposedException">Thrown if the lock has been disposed.</exception>
     public Task<IDisposable> LockAsync(CancellationToken cancellationToken = default)
     {
         if (_isDisposed)
@@ -32,12 +38,11 @@ public sealed class AsyncLock : IDisposable
             throw new ObjectDisposedException(nameof(AsyncLock));
         }
 
-        var wait = _semaphore.WaitAsync(cancellationToken);
-
-        return wait.IsCompleted
+        var waitTask = _semaphore.WaitAsync(cancellationToken);
+        return waitTask.IsCompleted
             ? _releaser
-            : wait.ContinueWith<IDisposable>(
-                (_, state) => new Releaser((AsyncLock)state!),
+            : waitTask.ContinueWith(
+                (_, state) => (IDisposable)new Releaser((AsyncLock)state!),
                 this,
                 cancellationToken,
                 TaskContinuationOptions.ExecuteSynchronously,

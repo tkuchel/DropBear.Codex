@@ -8,7 +8,8 @@ using Microsoft.Extensions.ObjectPool;
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-///     Enhanced pool policy for Dictionary<TKey, TValue> with size tracking and custom comparer support
+///     Enhanced pool policy for <see cref="Dictionary{TKey, TValue}" />
+///     with optional custom comparer. Clears on return.
 /// </summary>
 internal sealed class EnhancedDictionaryPoolPolicy<TKey, TValue> : PooledObjectPolicy<Dictionary<TKey, TValue>>
     where TKey : notnull
@@ -43,7 +44,12 @@ internal sealed class EnhancedDictionaryPoolPolicy<TKey, TValue> : PooledObjectP
         {
             obj.Clear();
 
-            // Future optimization: Consider implementing TrimExcess if size is significantly smaller
+            // *** CHANGE *** Potential approach to shrink dictionary if it's too big (requires .NET 7+):
+            // if (obj.Count == 0 && obj.EnsureCapacity(...) > DesiredCapacity)
+            // {
+            //     obj.TrimExcess(DesiredCapacity);
+            // }
+
             return true;
         }
         catch

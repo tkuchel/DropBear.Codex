@@ -109,11 +109,11 @@ public sealed class TaskBuilder
     {
         ArgumentNullException.ThrowIfNull(dependencies);
 
-        foreach (var dependency in dependencies)
+        foreach (var dep in dependencies)
         {
-            if (!string.IsNullOrWhiteSpace(dependency))
+            if (!string.IsNullOrWhiteSpace(dep))
             {
-                _dependencies.Add(dependency);
+                _dependencies.Add(dep);
             }
         }
 
@@ -156,14 +156,16 @@ public sealed class TaskBuilder
     {
         if (estimatedDuration < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(estimatedDuration),
-                "Estimated duration cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(estimatedDuration), "Estimated duration cannot be negative.");
         }
 
         _estimatedDuration = estimatedDuration;
         return this;
     }
 
+    /// <summary>
+    ///     Builds the <see cref="SimpleTask" /> with the configured properties.
+    /// </summary>
     public ITask Build()
     {
         ValidateConfiguration();

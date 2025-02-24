@@ -19,6 +19,9 @@ using TaskStatus = DropBear.Codex.Tasks.TaskExecutionEngine.Enums.TaskStatus;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
+/// <summary>
+///     Orchestrates the execution of tasks with dependency resolution, concurrency control, and status tracking.
+/// </summary>
 public sealed class ExecutionEngine : IAsyncDisposable
 {
     private readonly BatchingProgressReporter _batchingReporter;
@@ -37,6 +40,9 @@ public sealed class ExecutionEngine : IAsyncDisposable
     private bool _disposed;
     private int _isExecuting;
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="ExecutionEngine" /> class.
+    /// </summary>
     public ExecutionEngine(
         Guid channelId,
         IOptions<ExecutionOptions>? options,
@@ -50,7 +56,6 @@ public sealed class ExecutionEngine : IAsyncDisposable
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = LoggerFactory.Logger.ForContext<ExecutionEngine>();
 
-        // Initialize core components
         _tasks = new ConcurrentDictionary<string, ITask>(StringComparer.Ordinal);
         _executionLock = new AsyncLock();
         _disposalCts = new CancellationTokenSource();
@@ -82,10 +87,22 @@ public sealed class ExecutionEngine : IAsyncDisposable
         _logger.Debug("ExecutionEngine initialized with Channel ID: {ChannelId}", channelId);
     }
 
+    /// <summary>
+    ///     Indicates whether the engine is currently executing tasks.
+    /// </summary>
     public bool IsExecuting => Interlocked.CompareExchange(ref _isExecuting, 0, 0) == 1;
+
+    /// <summary>
+    ///     Provides read-only access to the tasks managed by this engine.
+    /// </summary>
     public IReadOnlyDictionary<string, ITask> Tasks => _tasks;
+
+    /// <summary>
+    ///     Tracks execution progress, durations, and statuses of tasks.
+    /// </summary>
     public TaskExecutionTracker Tracker { get; }
 
+    /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         if (_disposed)
@@ -105,9 +122,10 @@ public sealed class ExecutionEngine : IAsyncDisposable
 
         try
         {
+            // Stop any ongoing operations
             await _disposalCts.CancelAsync().ConfigureAwait(false);
 
-            // Ensure all tasks complete within the allowed timeframe
+            // Give tasks up to 10 seconds to finish
             var trackerTask = Tracker.WaitForAllTasksToCompleteAsync(TimeSpan.FromSeconds(10));
             var messagePublisherTask = _messagePublisher.DisposeAsync().AsTask();
             var batchingReporterTask = _batchingReporter.DisposeAsync().AsTask();
@@ -130,6 +148,9 @@ public sealed class ExecutionEngine : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Adds a task to the engine, provided execution has not started yet.
+    /// </summary>
     public Result<Unit, TaskExecutionError> AddTask(ITask task)
     {
         ArgumentNullException.ThrowIfNull(task);
@@ -187,6 +208,9 @@ public sealed class ExecutionEngine : IAsyncDisposable
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
 
+    /// <summary>
+    ///     Resolves dependencies and executes all tasks in the engine asynchronously.
+    /// </summary>
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
@@ -194,13 +218,13 @@ public sealed class ExecutionEngine : IAsyncDisposable
 
         using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
-            _disposalCts.Token
-        );
+            _disposalCts.Token);
 
         try
         {
             using (await _executionLock.LockAsync(cancellationToken).ConfigureAwait(false))
             {
+                // Ensure we don't start executing twice
                 if (Interlocked.Exchange(ref _isExecuting, 1) == 1)
                 {
                     return Result<Unit, TaskExecutionError>.Failure(
@@ -224,7 +248,7 @@ public sealed class ExecutionEngine : IAsyncDisposable
 
                     // Initialize execution context
                     using var rootScope = _scopeFactory.CreateScope();
-                    var executionContext = new ExecutionContext( _options, _scopeFactory)
+                    var executionContext = new ExecutionContext(_options, _scopeFactory)
                     {
                         TotalTaskCount = _tasks.Count
                     };
@@ -237,7 +261,7 @@ public sealed class ExecutionEngine : IAsyncDisposable
                         executionContext,
                         _logger);
 
-                    // Execute tasks
+                    // Execute tasks with parallel scheduler
                     var result = await _taskScheduler.ExecuteTasksAsync(
                         _taskQueue,
                         executionScope,
@@ -267,6 +291,9 @@ public sealed class ExecutionEngine : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    ///     Removes all tasks from the engine, provided execution is not in progress.
+    /// </summary>
     public Result<Unit, TaskExecutionError> ClearTasks()
     {
         if (IsExecuting)
@@ -281,6 +308,10 @@ public sealed class ExecutionEngine : IAsyncDisposable
         return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
 
+    /// <summary>
+    ///     Reports progress for a specific task (if the engine is currently executing).
+    ///     This enqueues the progress update into the <see cref="BatchingProgressReporter" />.
+    /// </summary>
     public Task ReportProgressAsync(
         string taskName,
         double progress,

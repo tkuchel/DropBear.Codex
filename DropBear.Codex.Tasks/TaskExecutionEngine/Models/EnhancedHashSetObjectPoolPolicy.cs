@@ -8,7 +8,7 @@ using Microsoft.Extensions.ObjectPool;
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-///     Enhanced pool policy for HashSet<T> with size tracking and custom comparer support
+///     Enhanced pool policy for <see cref="HashSet{T}" />, clearing on return.
 /// </summary>
 internal sealed class EnhancedHashSetObjectPoolPolicy<T> : PooledObjectPolicy<HashSet<T>>
 {
@@ -26,7 +26,9 @@ internal sealed class EnhancedHashSetObjectPoolPolicy<T> : PooledObjectPolicy<Ha
 
     public override HashSet<T> Create()
     {
-        return _comparer != null ? new HashSet<T>(DefaultCapacity, _comparer) : new HashSet<T>(DefaultCapacity);
+        return _comparer != null
+            ? new HashSet<T>(DefaultCapacity, _comparer)
+            : new HashSet<T>(DefaultCapacity);
     }
 
     public override bool Return(HashSet<T>? obj)
@@ -39,8 +41,7 @@ internal sealed class EnhancedHashSetObjectPoolPolicy<T> : PooledObjectPolicy<Ha
         try
         {
             obj.Clear();
-
-            // Future optimization: Consider implementing TrimExcess if size is significantly smaller
+            // Optionally trim or reset capacity in .NET 7 using obj.TrimExcess(DesiredCapacity);
             return true;
         }
         catch

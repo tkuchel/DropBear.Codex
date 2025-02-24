@@ -28,16 +28,6 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
     private readonly IAsyncPublisher<Guid, TaskFailedMessage> _taskFailedPublisher;
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _taskStartedPublisher;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="ExecutionEngineFactory" /> class.
-    /// </summary>
-    /// <param name="options">The execution options.</param>
-    /// <param name="scopeFactory">The scope factory.</param>
-    /// <param name="progressPublisher">The progress publisher.</param>
-    /// <param name="taskStartedPublisher">The task started publisher.</param>
-    /// <param name="taskCompletedPublisher">The task completed publisher.</param>
-    /// <param name="taskFailedPublisher">The task failed publisher.</param>
-    /// <exception cref="ArgumentNullException">Thrown when any required dependency is null.</exception>
     public ExecutionEngineFactory(
         IOptions<ExecutionOptions>? options,
         IServiceScopeFactory scopeFactory,
@@ -60,8 +50,6 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
     /// <summary>
     ///     Creates a new instance of <see cref="ExecutionEngine" /> with the specified channel ID.
     /// </summary>
-    /// <param name="channelId">The channel ID for keyed pub/sub.</param>
-    /// <returns>A result containing the execution engine or an error if creation fails.</returns>
     public Result<ExecutionEngine, ExecutionEngineError> CreateExecutionEngine(Guid channelId)
     {
         var validationResult = ValidateParameters(channelId);
@@ -74,11 +62,6 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
         return CreateEngineInstance(channelId);
     }
 
-    /// <summary>
-    ///     Validates input parameters and dependencies.
-    /// </summary>
-    /// <param name="channelId">The channel ID to validate.</param>
-    /// <returns>A result indicating success or failure of validation.</returns>
     private Result<Unit, ExecutionEngineError> ValidateParameters(Guid channelId)
     {
         if (channelId == Guid.Empty)
@@ -114,11 +97,6 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
         return Result<Unit, ExecutionEngineError>.Success(Unit.Value);
     }
 
-    /// <summary>
-    ///     Creates a new instance of <see cref="ExecutionEngine" />.
-    /// </summary>
-    /// <param name="channelId">The channel ID.</param>
-    /// <returns>A result containing the execution engine or an error if creation fails.</returns>
     private Result<ExecutionEngine, ExecutionEngineError> CreateEngineInstance(Guid channelId)
     {
         try

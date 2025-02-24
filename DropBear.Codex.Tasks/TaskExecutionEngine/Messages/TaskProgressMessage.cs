@@ -14,16 +14,36 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 public sealed class TaskProgressMessage : TaskMessageBase
 {
     private bool _overallProgressCalculated;
-
-    // Cache these calculations to avoid recomputing
     private double? _overallProgressPercentage;
 
+    /// <summary>
+    ///     Indicates the percentage of completion for the specific task.
+    /// </summary>
     public double? TaskProgressPercentage { get; private set; }
+
+    /// <summary>
+    ///     Indicates the current status of the task (e.g., InProgress, Completed).
+    /// </summary>
     public TaskStatus Status { get; private set; }
+
+    /// <summary>
+    ///     Number of tasks completed overall, if relevant.
+    /// </summary>
     public int? OverallCompletedTasks { get; private set; }
+
+    /// <summary>
+    ///     Total number of tasks overall, if relevant.
+    /// </summary>
     public int? OverallTotalTasks { get; private set; }
+
+    /// <summary>
+    ///     An optional message describing the current state of the task.
+    /// </summary>
     public string Message { get; private set; } = string.Empty;
 
+    /// <summary>
+    ///     The aggregated progress across all tasks, computed lazily.
+    /// </summary>
     public double? OverallProgressPercentage
     {
         get
@@ -49,6 +69,9 @@ public sealed class TaskProgressMessage : TaskMessageBase
         return (double)OverallCompletedTasks.Value / OverallTotalTasks.Value * 100;
     }
 
+    /// <summary>
+    ///     Initializes this message instance with progress details.
+    /// </summary>
     public void Initialize(
         string taskName,
         double? taskProgressPercentage,
@@ -67,7 +90,6 @@ public sealed class TaskProgressMessage : TaskMessageBase
         Status = status;
         Message = message ?? string.Empty;
 
-        // Reset cached calculation
         _overallProgressCalculated = false;
         _overallProgressPercentage = null;
     }
@@ -109,6 +131,9 @@ public sealed class TaskProgressMessage : TaskMessageBase
         }
     }
 
+    /// <summary>
+    ///     Resets this instance for reuse, clearing all progress-related fields.
+    /// </summary>
     public override void Reset()
     {
         base.Reset();
@@ -121,6 +146,9 @@ public sealed class TaskProgressMessage : TaskMessageBase
         _overallProgressPercentage = null;
     }
 
+    /// <summary>
+    ///     Retrieves a pooled <see cref="TaskProgressMessage" /> and initializes it.
+    /// </summary>
     public static TaskProgressMessage Get(
         string taskName,
         double? taskProgressPercentage,
@@ -130,11 +158,13 @@ public sealed class TaskProgressMessage : TaskMessageBase
         string? message = "")
     {
         var msg = ObjectPools<TaskProgressMessage>.Rent();
-        msg.Initialize(taskName, taskProgressPercentage, overallCompletedTasks,
-            overallTotalTasks, status, message);
+        msg.Initialize(taskName, taskProgressPercentage, overallCompletedTasks, overallTotalTasks, status, message);
         return msg;
     }
 
+    /// <summary>
+    ///     Returns this message instance to the object pool.
+    /// </summary>
     public static void Return(TaskProgressMessage message)
     {
         ObjectPools<TaskProgressMessage>.Return(message);

@@ -9,7 +9,7 @@ using Microsoft.Extensions.ObjectPool;
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-///     Specialized pool policy for List{ITask} with additional optimizations
+///     Specialized pool policy for <see cref="List{ITask}" /> with additional capacity tracking.
 /// </summary>
 internal sealed class TaskListObjectPoolPolicy : PooledObjectPolicy<List<ITask>>
 {
@@ -37,7 +37,7 @@ internal sealed class TaskListObjectPoolPolicy : PooledObjectPolicy<List<ITask>>
         {
             obj.Clear();
 
-            // Resize if necessary based on tracked size
+            // Resize if needed
             if (_sizes.TryGetValue(obj, out var sizeObj) &&
                 sizeObj is int size &&
                 obj.Capacity != size)

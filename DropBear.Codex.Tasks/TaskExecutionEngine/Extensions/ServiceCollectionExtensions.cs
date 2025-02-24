@@ -27,23 +27,16 @@ public static class ServiceCollectionExtensions
         // Register the ExecutionEngineFactory
         services.AddSingleton<IExecutionEngineFactory, ExecutionEngineFactory>();
 
-        // Register the ExecutionEngine with Scoped lifetime for Blazor Server apps
+        // Register the ExecutionEngine with Scoped or Transient lifetime
+        // *** CHANGE *** The original code used Transient.
+        // You can keep Transient if each consumer wants a fresh engine.
         services.AddTransient<ExecutionEngine>();
 
-        // Add your custom logging filter to the DI container
-        // services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncLoggingFilter<>));
-        // services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncExceptionHandlingFilter<>));
-        // services.AddScoped(typeof(AsyncMessageHandlerFilter<>), typeof(AsyncPerformanceMonitoringFilter<>));
-
-        // Register MessagePipe with the desired configuration
+        // Register message pipe if needed
         services.AddMessagePipe(options =>
         {
-            // Configure MessagePipe options as needed
             options.EnableCaptureStackTrace = true;
             options.EnableAutoRegistration = true;
-            // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncLoggingFilter<>));
-            // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncExceptionHandlingFilter<>));
-            // options.AddGlobalAsyncMessageHandlerFilter(typeof(AsyncPerformanceMonitoringFilter<>));
             options.SetAutoRegistrationSearchAssemblies(Assembly.GetExecutingAssembly());
         });
 

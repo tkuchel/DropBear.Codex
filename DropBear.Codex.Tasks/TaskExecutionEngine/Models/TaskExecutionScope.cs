@@ -8,6 +8,10 @@ using Serilog;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
+/// <summary>
+///     Represents an isolated scope for task execution, including DI services,
+///     a <see cref="TaskExecutionTracker" />, and an <see cref="ExecutionContext" />.
+/// </summary>
 public sealed class TaskExecutionScope : IDisposable
 {
     private readonly ILogger _logger;
@@ -26,9 +30,19 @@ public sealed class TaskExecutionScope : IDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
+    /// <summary>
+    ///     Tracks progress, durations, and statuses of tasks in this scope.
+    /// </summary>
     public TaskExecutionTracker Tracker { get; }
+
+    /// <summary>
+    ///     Holds shared resources and options for the current execution context.
+    /// </summary>
     public ExecutionContext Context { get; }
 
+    /// <summary>
+    ///     Disposes the underlying scope and marks this object as disposed.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -48,6 +62,9 @@ public sealed class TaskExecutionScope : IDisposable
         }
     }
 
+    /// <summary>
+    ///     Retrieves a required service from the DI scope.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T GetRequiredService<T>() where T : notnull
     {
@@ -55,6 +72,9 @@ public sealed class TaskExecutionScope : IDisposable
         return _scope.ServiceProvider.GetRequiredService<T>();
     }
 
+    /// <summary>
+    ///     Retrieves a required service from the DI scope by type.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public object GetRequiredService(Type serviceType)
     {
