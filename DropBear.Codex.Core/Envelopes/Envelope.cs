@@ -123,16 +123,30 @@ public partial class Envelope<T> : IResultDiagnostics
         );
     }
 
-    public T Payload
+    protected T Payload
     {
         get
         {
             _rwLock.EnterReadLock();
             try
             {
+                // Check if the envelope is sealed but not encrypted
+                if (_state.IsSealed && _encryptedPayload == null)
+                {
+                    return _payload;
+                }
+
+                // Check if payload is encrypted
                 if (_encryptedPayload != null)
                 {
                     throw new InvalidOperationException("Payload is currently encrypted. Decrypt first.");
+                }
+
+                // Check if envelope is not sealed and requires validation
+                var validationResult = ValidatePayload();
+                if (!validationResult.IsValid)
+                {
+                    throw new InvalidOperationException($"Payload validation failed: {validationResult.ErrorMessage}");
                 }
 
                 return _payload;
