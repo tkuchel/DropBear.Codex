@@ -5,10 +5,13 @@ using R3;
 
 #endregion
 
+// For Subject<T> presumably
+// Make sure you have the correct namespace for Subject<T> (e.g. from Reactive Extensions or a custom type)
+
 namespace DropBear.Codex.StateManagement.StateSnapshots.Models;
 
 /// <summary>
-///     Represents a model that notifies observers about state changes and supports property change notifications.
+///     A model that notifies observers about state changes and supports property change notifications.
 /// </summary>
 /// <typeparam name="T">The type of the state managed by this model.</typeparam>
 public class ObservableModel<T> : INotifyPropertyChanged
@@ -41,18 +44,26 @@ public class ObservableModel<T> : INotifyPropertyChanged
                 throw new ArgumentException("Invalid state value.", nameof(value));
             }
 
+            T oldValue;
+            bool changed;
+
             lock (_lock)
             {
                 if (Equals(_state, value))
                 {
-                    return;
+                    return; // no change
                 }
 
+                oldValue = _state;
                 _state = value;
+                changed = true;
             }
 
-            StateChanged.OnNext(value);
-            OnPropertyChanged(nameof(State));
+            if (changed)
+            {
+                StateChanged.OnNext(value);
+                OnPropertyChanged(nameof(State));
+            }
         }
     }
 
@@ -62,20 +73,17 @@ public class ObservableModel<T> : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 
     /// <summary>
-    ///     Determines whether the specified state value is valid.
+    ///     Validates the state value. By default, checks that <paramref name="value" /> is not <c>null</c>.
+    ///     Override or modify if needed.
     /// </summary>
-    /// <param name="value">The state value to validate.</param>
-    /// <returns><c>true</c> if the value is valid; otherwise, <c>false</c>.</returns>
     private static bool IsValid(T value)
     {
         return value is not null;
-        // Add additional validation logic if needed
     }
 
     /// <summary>
-    ///     Raises the <see cref="PropertyChanged" /> event.
+    ///     Raises the <see cref="PropertyChanged" /> event for the given property name.
     /// </summary>
-    /// <param name="propertyName">The name of the property that changed.</param>
     protected virtual void OnPropertyChanged(string propertyName)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));

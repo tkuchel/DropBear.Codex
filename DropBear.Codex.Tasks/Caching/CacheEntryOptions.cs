@@ -3,7 +3,7 @@
 /// <summary>
 ///     Configures how items are stored in the cache, including expiration policies and stale-while-revalidate behavior.
 /// </summary>
-public abstract class CacheEntryOptions
+public class CacheEntryOptions
 {
     /// <summary>
     ///     Gets or sets the sliding expiration time for cache entries, after which the entry
