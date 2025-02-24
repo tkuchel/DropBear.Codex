@@ -1,5 +1,9 @@
-﻿using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
+﻿#region
+
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
+
+#endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
@@ -15,7 +19,7 @@ public interface ITask
     bool ContinueOnFailure { get; set; }
     IReadOnlyList<string> Dependencies { get; }
     TimeSpan EstimatedDuration { get; }
-
+    TimeSpan Timeout { get; set; }
     TaskPriority Priority { get; }
 
     Func<ExecutionContext, CancellationToken, Task>?
@@ -24,11 +28,11 @@ public interface ITask
     /// <summary>
     ///     Gets or sets metadata for the task, providing additional configuration or information.
     /// </summary>
-    Dictionary<string, object> Metadata { get; set; } // New extensibility point
+    IDictionary<string, object> Metadata { get;  } // New extensibility point
 
     bool Validate();
     Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken);
- 
+
     /// <summary>
     ///     Adds a dependency to this task.
     /// </summary>

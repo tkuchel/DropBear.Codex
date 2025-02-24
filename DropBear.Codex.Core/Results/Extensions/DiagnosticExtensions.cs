@@ -18,7 +18,7 @@ public static class DiagnosticExtensions
         Action<DiagnosticInfo> diagnosticHandler)
         where TError : ResultError
     {
-        var info = ((IResultDiagnostics)result).GetDiagnostics();
+        var info = ((result as IResultDiagnostics)!).GetDiagnostics();
         diagnosticHandler(info);
         return result;
     }

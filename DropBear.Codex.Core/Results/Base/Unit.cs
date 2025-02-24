@@ -2,8 +2,8 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using DropBear.Codex.Core.Results.Compatibility;
 
 #endregion
 
@@ -96,68 +96,5 @@ public readonly struct Unit : IEquatable<Unit>, ISpanFormattable
     public static implicit operator Task(Unit _)
     {
         return Task.CompletedTask;
-    }
-}
-
-/// <summary>
-///     JSON converter for the Unit type.
-/// </summary>
-public sealed class UnitJsonConverter : JsonConverter<Unit>
-{
-    public override Unit Read(
-        ref Utf8JsonReader reader,
-        Type typeToConvert,
-        JsonSerializerOptions options)
-    {
-        if (reader.TokenType != JsonTokenType.Null)
-        {
-            reader.Skip();
-        }
-
-        return Unit.Value;
-    }
-
-    public override void Write(
-        Utf8JsonWriter writer,
-        Unit value,
-        JsonSerializerOptions options)
-    {
-        writer.WriteStartObject();
-        writer.WriteEndObject();
-    }
-}
-
-/// <summary>
-///     Extension methods for Unit type.
-/// </summary>
-public static class UnitExtensions
-{
-    /// <summary>
-    ///     Converts any value to Unit, effectively discarding it.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Unit ToUnit<T>(this T _)
-    {
-        return Unit.Value;
-    }
-
-    /// <summary>
-    ///     Asynchronously converts any value to Unit, effectively discarding it.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ToUnitAsync<T>(this Task<T> task)
-    {
-        await task.ConfigureAwait(false);
-        return Unit.Value;
-    }
-
-    /// <summary>
-    ///     Asynchronously converts any value to Unit, effectively discarding it.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ToUnitAsync<T>(this ValueTask<T> task)
-    {
-        await task.ConfigureAwait(false);
-        return Unit.Value;
     }
 }

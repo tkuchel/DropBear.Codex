@@ -222,7 +222,7 @@ public class TaskManager : IDisposable
 
                 if (options.AllowParallel)
                 {
-                    // Add to a list of tasks for parallel execution
+                    // Add to a List of tasks for parallel execution
                     tasks.Add(ExecuteTask(linkedCts));
                 }
                 else

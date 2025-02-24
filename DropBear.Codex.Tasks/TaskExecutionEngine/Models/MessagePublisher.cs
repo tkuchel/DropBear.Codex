@@ -2,6 +2,8 @@
 
 #region
 
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using MessagePipe;
@@ -18,20 +20,17 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 /// </summary>
 public sealed class MessagePublisher : IAsyncDisposable
 {
+    private readonly Channel<(Guid ChannelId, object Message, Type MessageType)> _channel;
     private readonly IAsyncPublisher<Guid, TaskCompletedMessage> _completedPublisher;
     private readonly IAsyncPublisher<Guid, TaskFailedMessage> _failedPublisher;
     private readonly ILogger _logger;
-    private readonly Queue<(Guid ChannelId, object Message, Type MessageType)> _messageQueue = new();
     private readonly IAsyncPublisher<Guid, TaskProgressMessage> _progressPublisher;
-    private readonly CancellationTokenSource _publisherCts = new();
+    private readonly CancellationTokenSource _publisherCts;
     private readonly Task _publisherTask;
-    private readonly SemaphoreSlim _publishLock = new(1, 1);
+    private readonly SemaphoreSlim _publishLock;
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _startedPublisher;
     private bool _disposed;
 
-    /// <summary>
-    ///     Initializes a new instance of the MessagePublisher class.
-    /// </summary>
     public MessagePublisher(
         IAsyncPublisher<Guid, TaskProgressMessage> progressPublisher,
         IAsyncPublisher<Guid, TaskStartedMessage> startedPublisher,
@@ -44,7 +43,15 @@ public sealed class MessagePublisher : IAsyncDisposable
         _completedPublisher = completedPublisher;
         _failedPublisher = failedPublisher;
 
-        _publisherTask = Task.Run(PublishMessagesAsync);
+        _publisherCts = new CancellationTokenSource();
+        _publishLock = new SemaphoreSlim(1, 1);
+
+        _channel = Channel.CreateUnbounded<(Guid, object, Type)>(new UnboundedChannelOptions
+        {
+            SingleReader = true, SingleWriter = false
+        });
+
+        _publisherTask = ProcessMessagesAsync();
     }
 
     public async ValueTask DisposeAsync()
@@ -56,123 +63,103 @@ public sealed class MessagePublisher : IAsyncDisposable
 
         _disposed = true;
 
-        // Cancel the publishing task
-        await _publisherCts.CancelAsync().ConfigureAwait(false);
-
-        // Ensure pending messages are processed
-        await _publishLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            while (_messageQueue.TryDequeue(out var message))
+            _channel.Writer.Complete();
+
+            await _publisherCts.CancelAsync().ConfigureAwait(false);
+
+            try
             {
+                await _publisherTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // Expected during shutdown
+            }
+
+            _publisherCts.Dispose();
+            _publishLock.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error during MessagePublisher disposal");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ValueTask QueueMessage<T>(Guid channelId, T message)
+    {
+        if (_disposed)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return _channel.Writer.WriteAsync((channelId, message!, typeof(T)));
+    }
+
+    private async Task ProcessMessagesAsync()
+    {
+        try
+        {
+            while (!_publisherCts.Token.IsCancellationRequested)
+            {
+                var (channelId, message, messageType) =
+                    await _channel.Reader.ReadAsync(_publisherCts.Token).ConfigureAwait(false);
+
+                await _publishLock.WaitAsync(_publisherCts.Token).ConfigureAwait(false);
                 try
                 {
-                    await PublishMessageAsync(message.ChannelId, message.Message, message.MessageType)
-                        .ConfigureAwait(false);
+                    await PublishMessageAsync(channelId, message, messageType).ConfigureAwait(false);
                 }
-                catch (Exception ex)
+                finally
                 {
-                    _logger.Error(ex, "Failed to publish message during disposal. MessageType: {MessageType}",
-                        message.MessageType);
+                    _publishLock.Release();
                 }
             }
         }
-        finally
+        catch (OperationCanceledException)
         {
-            _publishLock.Release();
+            _logger.Debug("Message publishing cancelled");
         }
-
-        // Wait for the publishing task to complete
-        try
+        catch (Exception ex)
         {
-            await _publisherTask.ConfigureAwait(false);
-        }
-        catch (TaskCanceledException)
-        {
-            _logger.Information("MessagePublisher disposed during cancellation.");
-        }
-        finally
-        {
-            _publishLock.Dispose();
-            _publisherCts.Dispose();
+            _logger.Error(ex, "Error processing messages");
         }
     }
-
-
-    /// <summary>
-    ///     Queues a message for publishing.
-    /// </summary>
-    public void QueueMessage<T>(Guid channelId, T message)
-    {
-        if (!_disposed)
-        {
-            _messageQueue.Enqueue((channelId, message!, typeof(T)));
-        }
-        else
-        {
-            throw new ObjectDisposedException(nameof(MessagePublisher));
-        }
-    }
-
-    private async Task PublishMessagesAsync()
-    {
-        while (!_publisherCts.Token.IsCancellationRequested)
-        {
-            await _publishLock.WaitAsync(_publisherCts.Token).ConfigureAwait(false);
-            try
-            {
-                while (_messageQueue.TryDequeue(out var message))
-                {
-                    try
-                    {
-                        await PublishMessageAsync(message.ChannelId, message.Message, message.MessageType)
-                            .ConfigureAwait(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Error(ex, "Failed to publish message of type {MessageType}", message.MessageType);
-                    }
-                }
-            }
-            finally
-            {
-                _publishLock.Release();
-            }
-
-            try
-            {
-                await Task.Delay(10, _publisherCts.Token).ConfigureAwait(false);
-            }
-            catch (TaskCanceledException)
-            {
-                _logger.Debug("Publishing loop cancelled.");
-                break; // Exit loop gracefully
-            }
-        }
-    }
-
 
     private async Task PublishMessageAsync(Guid channelId, object message, Type messageType)
     {
-        if (messageType == typeof(TaskProgressMessage))
+        try
         {
-            await _progressPublisher.PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token)
-                .ConfigureAwait(false);
+            if (messageType == typeof(TaskProgressMessage))
+            {
+                await _progressPublisher
+                    .PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token)
+                    .ConfigureAwait(false);
+            }
+            else if (messageType == typeof(TaskStartedMessage))
+            {
+                await _startedPublisher
+                    .PublishAsync(channelId, (TaskStartedMessage)message, _publisherCts.Token)
+                    .ConfigureAwait(false);
+            }
+            else if (messageType == typeof(TaskCompletedMessage))
+            {
+                await _completedPublisher
+                    .PublishAsync(channelId, (TaskCompletedMessage)message, _publisherCts.Token)
+                    .ConfigureAwait(false);
+            }
+            else if (messageType == typeof(TaskFailedMessage))
+            {
+                await _failedPublisher
+                    .PublishAsync(channelId, (TaskFailedMessage)message, _publisherCts.Token)
+                    .ConfigureAwait(false);
+            }
         }
-        else if (messageType == typeof(TaskStartedMessage))
+        catch (Exception ex)
         {
-            await _startedPublisher.PublishAsync(channelId, (TaskStartedMessage)message, _publisherCts.Token)
-                .ConfigureAwait(false);
-        }
-        else if (messageType == typeof(TaskCompletedMessage))
-        {
-            await _completedPublisher.PublishAsync(channelId, (TaskCompletedMessage)message, _publisherCts.Token)
-                .ConfigureAwait(false);
-        }
-        else if (messageType == typeof(TaskFailedMessage))
-        {
-            await _failedPublisher.PublishAsync(channelId, (TaskFailedMessage)message, _publisherCts.Token)
-                .ConfigureAwait(false);
+            _logger.Error(ex, "Failed to publish message of type {MessageType}", messageType.Name);
         }
     }
 }

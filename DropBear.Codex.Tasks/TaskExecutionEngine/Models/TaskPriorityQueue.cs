@@ -1,63 +1,113 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 
 #endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
-/// <summary>
-///     Priority-based task queue for optimized scheduling
-/// </summary>
-internal sealed class TaskPriorityQueue
+public sealed class TaskPriorityQueue
 {
-    private readonly object _lock = new();
-    private readonly SortedDictionary<int, Queue<ITask>> _queues = new();
+    private readonly TaskPriority[] _priorityLevels;
+    private readonly ConcurrentDictionary<TaskPriority, ConcurrentQueue<ITask>> _priorityQueues;
+    private readonly ConcurrentDictionary<string, TaskPriority> _taskPriorities;
+    private long _count;
 
+    public TaskPriorityQueue()
+    {
+        _priorityQueues = new ConcurrentDictionary<TaskPriority, ConcurrentQueue<ITask>>();
+        _taskPriorities = new ConcurrentDictionary<string, TaskPriority>(StringComparer.Ordinal);
+
+        // Get and sort priority levels
+        _priorityLevels = Enum.GetValues<TaskPriority>()
+            .OrderByDescending(p => (int)p)
+            .ToArray();
+
+        // Initialize queues for all priority levels
+        foreach (var priority in _priorityLevels)
+        {
+            _priorityQueues[priority] = new ConcurrentQueue<ITask>();
+        }
+    }
+
+    public long Count => Interlocked.Read(ref _count);
+    public bool IsEmpty => Count == 0;
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Enqueue(ITask task)
     {
-        lock (_lock)
-        {
-            var priority = (int)task.Priority;
-            if (!_queues.TryGetValue(priority, out var queue))
-            {
-                queue = new Queue<ITask>();
-                _queues[priority] = queue;
-            }
+        ArgumentNullException.ThrowIfNull(task);
 
-            queue.Enqueue(task);
-        }
+        _priorityQueues[task.Priority].Enqueue(task);
+        _taskPriorities.TryAdd(task.Name, task.Priority);
+        Interlocked.Increment(ref _count);
     }
 
     public bool TryDequeue([NotNullWhen(true)] out ITask? task)
     {
-        lock (_lock)
+        task = null;
+
+        foreach (var priority in _priorityLevels)
         {
-            task = null;
-            if (_queues.Count == 0)
+            var queue = _priorityQueues[priority];
+            if (queue.TryDequeue(out task))
             {
-                return false;
+                _taskPriorities.TryRemove(task.Name, out _);
+                Interlocked.Decrement(ref _count);
+                return true;
             }
-
-            var highestPriority = _queues.Keys.Max();
-            var queue = _queues[highestPriority];
-            if (queue.Count == 0)
-            {
-                _queues.Remove(highestPriority);
-                return TryDequeue(out task);
-            }
-
-            task = queue.Dequeue();
-            return true;
         }
+
+        return false;
     }
 
+    public bool TryPeek([NotNullWhen(true)] out ITask? task)
+    {
+        task = null;
+
+        foreach (var priority in _priorityLevels)
+        {
+            var queue = _priorityQueues[priority];
+            if (queue.TryPeek(out task))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Clear()
     {
-        lock (_lock)
+        foreach (var queue in _priorityQueues.Values)
         {
-            _queues.Clear();
+            while (queue.TryDequeue(out _)) { }
         }
+
+        _taskPriorities.Clear();
+        Interlocked.Exchange(ref _count, 0);
+    }
+
+    public int GetQueueLength(TaskPriority priority)
+    {
+        return _priorityQueues.TryGetValue(priority, out var queue)
+            ? queue.Count
+            : 0;
+    }
+
+    public IDictionary<TaskPriority, int> GetQueueLengths()
+    {
+        var lengths = new Dictionary<TaskPriority, int>();
+        foreach (var priority in _priorityLevels)
+        {
+            lengths[priority] = GetQueueLength(priority);
+        }
+
+        return lengths;
     }
 }

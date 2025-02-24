@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 
@@ -7,14 +8,17 @@ using Serilog;
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
-public sealed class TaskExecutionScope : IAsyncDisposable
+public sealed class TaskExecutionScope : IDisposable
 {
     private readonly ILogger _logger;
     private readonly IServiceScope _scope;
-    private bool _disposed;
+    private volatile bool _disposed;
 
-    public TaskExecutionScope(IServiceScope scope, TaskExecutionTracker tracker,
-        ExecutionContext context, ILogger logger)
+    public TaskExecutionScope(
+        IServiceScope scope,
+        TaskExecutionTracker tracker,
+        ExecutionContext context,
+        ILogger logger)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
@@ -22,37 +26,48 @@ public sealed class TaskExecutionScope : IAsyncDisposable
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
-    public IServiceProvider ServiceProvider => _scope.ServiceProvider;
     public TaskExecutionTracker Tracker { get; }
     public ExecutionContext Context { get; }
 
-    public async ValueTask DisposeAsync()
+    public void Dispose()
     {
         if (_disposed)
         {
             return;
         }
 
+        _disposed = true;
+
         try
         {
-            if (_scope is IAsyncDisposable asyncDisposable)
-            {
-                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-            }
-            else
-            {
-                _scope.Dispose();
-            }
-
-            _logger.Debug("TaskExecutionScope disposed successfully.");
+            _scope.Dispose();
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error disposing task execution scope.");
+            _logger.Error(ex, "Error disposing TaskExecutionScope");
         }
-        finally
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T GetRequiredService<T>() where T : notnull
+    {
+        ThrowIfDisposed();
+        return _scope.ServiceProvider.GetRequiredService<T>();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public object GetRequiredService(Type serviceType)
+    {
+        ThrowIfDisposed();
+        return _scope.ServiceProvider.GetRequiredService(serviceType);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ThrowIfDisposed()
+    {
+        if (_disposed)
         {
-            _disposed = true;
+            throw new ObjectDisposedException(nameof(TaskExecutionScope));
         }
     }
 }

@@ -12,71 +12,62 @@ public sealed class TaskExecutionStats
     private int _failedTasks;
     private int _skippedTasks;
 
-    /// <summary>
-    ///     Gets or sets the total number of tasks to execute.
-    /// </summary>
-    public int TotalTasks
-    {
-        get;
-        set;
-        // Direct assignment as atomic updates are not required here
-    }
-
-    /// <summary>
-    ///     Gets or sets the total number of completed tasks.
-    ///     Atomic updates use the private backing field.
-    /// </summary>
     public int CompletedTasks
     {
         get => _completedTasks;
-        set => _completedTasks = value; // Direct assignment for non-atomic use cases
+        init => _completedTasks = value;
     }
 
-    /// <summary>
-    ///     Gets or sets the total number of failed tasks.
-    ///     Atomic updates use the private backing field.
-    /// </summary>
     public int FailedTasks
     {
         get => _failedTasks;
-        set => _failedTasks = value; // Direct assignment for non-atomic use cases
+        init => _failedTasks = value;
     }
 
-    /// <summary>
-    ///     Gets or sets the total number of skipped tasks.
-    /// </summary>
     public int SkippedTasks
     {
         get => _skippedTasks;
-        set => _skippedTasks = value;
+        init => _skippedTasks = value;
     }
 
-    /// <summary>
-    ///     A dictionary tracking task durations.
-    /// </summary>
-    public ConcurrentDictionary<string, TimeSpan> TaskDurations { get; init; } = new(StringComparer.Ordinal);
+    public int TotalTasks { get; set; }
 
-    /// <summary>
-    ///     Atomically increments the total number of completed tasks.
-    /// </summary>
+    public ConcurrentDictionary<string, TimeSpan> TaskDurations { get; init; } =
+        new(StringComparer.Ordinal);
+
     public void IncrementCompletedTasks()
     {
         Interlocked.Increment(ref _completedTasks);
     }
 
-    /// <summary>
-    ///     Atomically increments the total number of failed tasks.
-    /// </summary>
     public void IncrementFailedTasks()
     {
         Interlocked.Increment(ref _failedTasks);
     }
 
-    /// <summary>
-    ///     Atomically increments the total number of skipped tasks.
-    /// </summary>
     public void IncrementSkippedTasks()
     {
         Interlocked.Increment(ref _skippedTasks);
+    }
+
+    public void Reset()
+    {
+        _completedTasks = 0;
+        _failedTasks = 0;
+        _skippedTasks = 0;
+        TotalTasks = 0;
+        TaskDurations.Clear();
+    }
+
+    public TaskExecutionStats Clone()
+    {
+        return new TaskExecutionStats
+        {
+            _completedTasks = _completedTasks,
+            _failedTasks = _failedTasks,
+            _skippedTasks = _skippedTasks,
+            TotalTasks = TotalTasks,
+            TaskDurations = new ConcurrentDictionary<string, TimeSpan>(TaskDurations, StringComparer.Ordinal)
+        };
     }
 }

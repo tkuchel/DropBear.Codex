@@ -1,6 +1,11 @@
-﻿using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
+﻿#region
+
+using System.Runtime.CompilerServices;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
+
+#endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
@@ -9,72 +14,69 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 /// </summary>
 public sealed class SimpleTask : ITask
 {
-    private readonly List<string> _dependencies = new();
+    private readonly HashSet<string> _dependencies;
     private readonly Func<ExecutionContext, CancellationToken, Task> _executeAsync;
+    private Dictionary<string, object>? _metadata;
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="SimpleTask" /> class with asynchronous execution logic.
-    /// </summary>
-    /// <param name="name">The unique name of the task.</param>
-    /// <param name="executeAsync">The asynchronous execution logic of the task.</param>
     public SimpleTask(string name, Func<ExecutionContext, CancellationToken, Task> executeAsync)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));
         _executeAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
-        Metadata = new Dictionary<string, object>(StringComparer.Ordinal);
+        _dependencies = new HashSet<string>(StringComparer.Ordinal);
     }
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="SimpleTask" /> class with synchronous execution logic.
-    /// </summary>
-    /// <param name="name">The unique name of the task.</param>
-    /// <param name="execute">The synchronous execution logic of the task.</param>
     public SimpleTask(string name, Action<ExecutionContext> execute)
+        : this(name, WrapSyncExecution(execute))
     {
-        Name = name ?? throw new ArgumentNullException(nameof(name));
-        _executeAsync = (context, cancellationToken) =>
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            execute(context);
-            return Task.CompletedTask;
-        };
-        Metadata = new Dictionary<string, object>(StringComparer.Ordinal);
     }
 
-    /// <inheritdoc />
     public string Name { get; }
-
-    /// <inheritdoc />
     public Func<ExecutionContext, bool>? Condition { get; set; }
-
-    /// <inheritdoc />
     public int MaxRetryCount { get; set; } = 3;
-
-    /// <inheritdoc />
     public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
-
-    /// <inheritdoc />
+    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(5);
     public bool ContinueOnFailure { get; set; }
-
-    /// <inheritdoc />
-    public IReadOnlyList<string> Dependencies => _dependencies.AsReadOnly();
-
-    /// <inheritdoc />
-    public TimeSpan EstimatedDuration { get; set; } = TimeSpan.Zero;
-
-    /// <inheritdoc />
+    public TimeSpan EstimatedDuration { get; set; }
     public TaskPriority Priority { get; set; } = TaskPriority.Normal;
-
-    /// <inheritdoc />
     public Func<ExecutionContext, CancellationToken, Task>? CompensationActionAsync { get; set; }
 
-    /// <inheritdoc />
-    public Dictionary<string, object> Metadata { get; set; }
+    public IReadOnlyList<string> Dependencies => _dependencies.ToList();
 
-    /// <inheritdoc />
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromMinutes(5);
+    public IDictionary<string, object> Metadata => _metadata ??= new Dictionary<string, object>(StringComparer.Ordinal);
 
-    /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void AddDependency(string dependency)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dependency);
+        _dependencies.Add(dependency);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetDependencies(IEnumerable<string> dependencies)
+    {
+        ArgumentNullException.ThrowIfNull(dependencies);
+
+        _dependencies.Clear();
+        foreach (var dependency in dependencies.Where(d => !string.IsNullOrWhiteSpace(d)))
+        {
+            _dependencies.Add(dependency);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void RemoveDependency(string dependency)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dependency);
+        _dependencies.Remove(dependency);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool HasDependency(string dependency)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(dependency);
+        return _dependencies.Contains(dependency);
+    }
+
     public bool Validate()
     {
         if (string.IsNullOrWhiteSpace(Name))
@@ -92,7 +94,7 @@ public sealed class SimpleTask : ITask
             return false;
         }
 
-        if (Timeout < TimeSpan.Zero)
+        if (Timeout <= TimeSpan.Zero)
         {
             return false;
         }
@@ -100,61 +102,34 @@ public sealed class SimpleTask : ITask
         return true;
     }
 
-    /// <inheritdoc />
-    public Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken)
+    public async Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken)
     {
-        return _executeAsync(context, cancellationToken);
-    }
+        ArgumentNullException.ThrowIfNull(context);
 
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(Timeout);
 
-    /// <inheritdoc />
-    public void AddDependency(string dependency)
-    {
-        if (string.IsNullOrWhiteSpace(dependency))
+        using var scope = await context.CreateScopeAsync(cts.Token).ConfigureAwait(false);
+
+        try
         {
-            throw new ArgumentException("Dependency cannot be null or whitespace.", nameof(dependency));
+            await _executeAsync(context, cts.Token).ConfigureAwait(false);
         }
-
-        if (!_dependencies.Contains(dependency, StringComparer.Ordinal))
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            _dependencies.Add(dependency);
-        }
-    }
-
-    /// <inheritdoc />
-    public void SetDependencies(IEnumerable<string> dependencies)
-    {
-        if (dependencies == null)
-        {
-            throw new ArgumentNullException(nameof(dependencies));
-        }
-
-        _dependencies.Clear();
-        foreach (var dependency in dependencies.Where(d => !string.IsNullOrWhiteSpace(d)))
-        {
-            AddDependency(dependency);
+            throw new TimeoutException($"Task '{Name}' execution timed out after {Timeout.TotalSeconds} seconds");
         }
     }
 
-    /// <inheritdoc />
-    public void RemoveDependency(string dependency)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Func<ExecutionContext, CancellationToken, Task> WrapSyncExecution(Action<ExecutionContext> execute)
     {
-        if (string.IsNullOrWhiteSpace(dependency))
+        ArgumentNullException.ThrowIfNull(execute);
+        return (context, cancellationToken) =>
         {
-            throw new ArgumentException("Dependency cannot be null or whitespace.", nameof(dependency));
-        }
-
-        _dependencies.Remove(dependency);
-    }
-
-    /// <inheritdoc />
-    public bool HasDependency(string dependency)
-    {
-        if (string.IsNullOrWhiteSpace(dependency))
-        {
-            throw new ArgumentException("Dependency cannot be null or whitespace.", nameof(dependency));
-        }
-
-        return _dependencies.Contains(dependency, StringComparer.Ordinal);
+            cancellationToken.ThrowIfCancellationRequested();
+            execute(context);
+            return Task.CompletedTask;
+        };
     }
 }

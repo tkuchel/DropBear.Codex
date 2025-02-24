@@ -2,10 +2,11 @@
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using DropBear.Codex.Core.Results.Base;
 
 #endregion
 
-namespace DropBear.Codex.Core.Results.Base;
+namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
 ///     Provides extension methods for working with Result types.
@@ -23,7 +24,8 @@ public static class ResultExtensions
         var successValues = new List<T>();
         var errors = new List<TError>();
 
-        foreach (var result in results)
+        var enumerable = results.ToList();
+        foreach (var result in enumerable)
         {
             if (result.IsSuccess)
             {
@@ -40,7 +42,7 @@ public static class ResultExtensions
             return Result<IReadOnlyList<T>, TError>.Success(successValues);
         }
 
-        return errors.Count == results.Count()
+        return errors.Count == enumerable.Count()
             ? Result<IReadOnlyList<T>, TError>.Failure(errorAggregator(errors))
             : Result<IReadOnlyList<T>, TError>.PartialSuccess(successValues, errorAggregator(errors));
     }
@@ -247,6 +249,6 @@ public static class ResultExtensions
 
     private static TError CreateError<TError>(string message, Exception? exception = null) where TError : ResultError
     {
-        return (TError)Activator.CreateInstance(typeof(TError), message)!;
+        return (TError)Activator.CreateInstance(typeof(TError), message,exception)!;
     }
 }

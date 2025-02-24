@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
@@ -8,13 +9,10 @@ using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.Executi
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 
-/// <summary>
-///     Provides a builder for creating tasks with optional configurations.
-/// </summary>
-public class TaskBuilder
+public sealed class TaskBuilder
 {
-    private readonly HashSet<string> _dependencies = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, object> _metadata = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _dependencies;
+    private readonly Dictionary<string, object> _metadata;
     private Func<ExecutionContext, Task>? _compensationActionAsync;
     private Func<ExecutionContext, bool>? _condition;
     private bool _continueOnFailure;
@@ -27,54 +25,43 @@ public class TaskBuilder
     private TimeSpan _retryDelay = TimeSpan.FromSeconds(1);
     private TimeSpan _timeout = TimeSpan.FromMinutes(5);
 
-    /// <summary>
-    ///     Creates a new instance of the <see cref="TaskBuilder" /> with the specified task name.
-    /// </summary>
-    /// <param name="name">The unique name of the task.</param>
-    /// <returns>A new instance of <see cref="TaskBuilder" />.</returns>
+    private TaskBuilder()
+    {
+        _dependencies = new HashSet<string>(StringComparer.Ordinal);
+        _metadata = new Dictionary<string, object>(StringComparer.Ordinal);
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TaskBuilder Create(string name)
     {
         return new TaskBuilder().WithName(name);
     }
 
-    /// <summary>
-    ///     Sets the name of the task.
-    /// </summary>
-    /// <param name="name">The unique name of the task.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithName(string name)
     {
-        _name = name ?? throw new ArgumentNullException(nameof(name));
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+        _name = name;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the asynchronous execution logic of the task.
-    /// </summary>
-    /// <param name="executeAsync">The asynchronous execution delegate.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithExecution(Func<ExecutionContext, CancellationToken, Task> executeAsync)
     {
-        _executeAsync = executeAsync ?? throw new ArgumentNullException(nameof(executeAsync));
+        ArgumentNullException.ThrowIfNull(executeAsync);
+        _executeAsync = executeAsync;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the synchronous execution logic of the task.
-    /// </summary>
-    /// <param name="execute">The synchronous execution delegate.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithExecution(Action<ExecutionContext> execute)
     {
-        _execute = execute ?? throw new ArgumentNullException(nameof(execute));
+        ArgumentNullException.ThrowIfNull(execute);
+        _execute = execute;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the maximum retry count for the task.
-    /// </summary>
-    /// <param name="maxRetryCount">The maximum number of retry attempts.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithMaxRetryCount(int maxRetryCount)
     {
         if (maxRetryCount < 0)
@@ -86,11 +73,7 @@ public class TaskBuilder
         return this;
     }
 
-    /// <summary>
-    ///     Sets the retry delay for the task.
-    /// </summary>
-    /// <param name="retryDelay">The delay between retry attempts.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithRetryDelay(TimeSpan retryDelay)
     {
         if (retryDelay < TimeSpan.Zero)
@@ -102,28 +85,29 @@ public class TaskBuilder
         return this;
     }
 
-    /// <summary>
-    ///     Sets whether to continue on failure.
-    /// </summary>
-    /// <param name="continueOnFailure">Whether to continue on failure.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public TaskBuilder WithTimeout(TimeSpan timeout)
+    {
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive.");
+        }
+
+        _timeout = timeout;
+        return this;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder ContinueOnFailure(bool continueOnFailure = true)
     {
         _continueOnFailure = continueOnFailure;
         return this;
     }
 
-    /// <summary>
-    ///     Adds dependencies for the task.
-    /// </summary>
-    /// <param name="dependencies">An enumerable of task names that this task depends on.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithDependencies(IEnumerable<string> dependencies)
     {
-        if (dependencies == null)
-        {
-            throw new ArgumentNullException(nameof(dependencies));
-        }
+        ArgumentNullException.ThrowIfNull(dependencies);
 
         foreach (var dependency in dependencies)
         {
@@ -136,94 +120,63 @@ public class TaskBuilder
         return this;
     }
 
-    /// <summary>
-    ///     Sets the condition under which the task should execute.
-    /// </summary>
-    /// <param name="condition">The condition delegate.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithCondition(Func<ExecutionContext, bool> condition)
     {
+        ArgumentNullException.ThrowIfNull(condition);
         _condition = condition;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the compensation action for the task.
-    /// </summary>
-    /// <param name="compensationActionAsync">The compensation action delegate.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithCompensationAction(Func<ExecutionContext, Task> compensationActionAsync)
     {
+        ArgumentNullException.ThrowIfNull(compensationActionAsync);
         _compensationActionAsync = compensationActionAsync;
         return this;
     }
 
-    /// <summary>
-    ///     Adds metadata for the task.
-    /// </summary>
-    /// <param name="key">The metadata key.</param>
-    /// <param name="value">The metadata value.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithMetadata(string key, object value)
     {
-        if (string.IsNullOrWhiteSpace(key))
-        {
-            throw new ArgumentException("Metadata key cannot be null or whitespace.", nameof(key));
-        }
-
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
         _metadata[key] = value;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the priority of the task.
-    /// </summary>
-    /// <param name="priority">The task priority.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithPriority(TaskPriority priority)
     {
         _priority = priority;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the estimated duration of the task.
-    /// </summary>
-    /// <param name="estimatedDuration">The estimated duration of the task.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TaskBuilder WithEstimatedDuration(TimeSpan estimatedDuration)
     {
         if (estimatedDuration < TimeSpan.Zero)
         {
-            throw new ArgumentOutOfRangeException(nameof(estimatedDuration), "Estimated duration cannot be negative.");
+            throw new ArgumentOutOfRangeException(nameof(estimatedDuration),
+                "Estimated duration cannot be negative.");
         }
 
         _estimatedDuration = estimatedDuration;
         return this;
     }
 
-    /// <summary>
-    ///     Sets the timeout for the task execution.
-    /// </summary>
-    /// <param name="timeout">The timeout for the task execution.</param>
-    /// <returns>The current <see cref="TaskBuilder" /> instance.</returns>
-    public TaskBuilder WithTimeout(TimeSpan timeout)
+    public ITask Build()
     {
-        if (timeout < TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout cannot be negative.");
-        }
+        ValidateConfiguration();
 
-        _timeout = timeout;
-        return this;
+        var task = _executeAsync != null
+            ? new SimpleTask(_name, _executeAsync)
+            : new SimpleTask(_name, _execute!);
+
+        InitializeTask(task);
+        return task;
     }
 
-    /// <summary>
-    ///     Builds the task with the specified configurations.
-    /// </summary>
-    /// <returns>An instance of <see cref="ITask" />.</returns>
-    /// <exception cref="InvalidOperationException">Thrown when required configurations are missing.</exception>
-    public ITask Build()
+    private void ValidateConfiguration()
     {
         if (string.IsNullOrWhiteSpace(_name))
         {
@@ -234,29 +187,28 @@ public class TaskBuilder
         {
             throw new InvalidOperationException("Execution delegate is required.");
         }
+    }
 
-        var task = _executeAsync != null
-            ? new SimpleTask(_name, _executeAsync)
-            : new SimpleTask(_name, _execute!);
-
+    private void InitializeTask(SimpleTask task)
+    {
         task.MaxRetryCount = _maxRetryCount;
         task.RetryDelay = _retryDelay;
+        task.Timeout = _timeout;
         task.ContinueOnFailure = _continueOnFailure;
         task.Condition = _condition;
         task.Priority = _priority;
         task.EstimatedDuration = _estimatedDuration;
-        task.Timeout = _timeout;
 
-        // Wrap compensation action
-        task.CompensationActionAsync = _compensationActionAsync == null
-            ? null
-            : (context, cancellationToken) =>
+        if (_compensationActionAsync != null)
+        {
+            task.CompensationActionAsync = (context, cancellationToken) =>
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 return _compensationActionAsync(context);
             };
+        }
 
-        if (_dependencies.Any())
+        if (_dependencies.Count > 0)
         {
             task.SetDependencies(_dependencies);
         }
@@ -265,7 +217,5 @@ public class TaskBuilder
         {
             task.Metadata[key] = value;
         }
-
-        return task;
     }
 }

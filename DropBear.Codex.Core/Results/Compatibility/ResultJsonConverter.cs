@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
@@ -43,7 +44,7 @@ public class ResultJsonConverter<TError> : JsonConverter<Base.Result<TError>>
             var propertyName = reader.GetString();
             reader.Read();
 
-            switch (propertyName?.ToLower())
+            switch (propertyName?.ToLower(CultureInfo.InvariantCulture))
             {
                 case "state":
                     state = JsonSerializer.Deserialize<ResultState>(ref reader, options);

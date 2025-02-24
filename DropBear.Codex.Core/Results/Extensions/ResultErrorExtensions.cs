@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Diagnostics;
 using DropBear.Codex.Core.Results.Base;
 
 #endregion
@@ -47,6 +46,3 @@ public static class ResultErrorExtensions
         return (TError)error.WithMetadata("Exception", exception.ToString());
     }
 }
-
-
-

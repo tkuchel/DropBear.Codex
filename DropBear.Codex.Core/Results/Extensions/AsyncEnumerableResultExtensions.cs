@@ -63,7 +63,7 @@ public static class AsyncEnumerableResultExtensions
             return AsyncEnumerableResult<TResult, TError>.Failure(result.Error!);
         }
 
-        async IAsyncEnumerable<TResult> SelectAsync(
+        async IAsyncEnumerable<TResult> InternalSelectAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -72,7 +72,7 @@ public static class AsyncEnumerableResultExtensions
             }
         }
 
-        return AsyncEnumerableResult<TResult, TError>.Success(SelectAsync());
+        return AsyncEnumerableResult<TResult, TError>.Success(InternalSelectAsync());
     }
 
     /// <summary>
@@ -247,6 +247,9 @@ public static class AsyncEnumerableResultExtensions
     private static async IAsyncEnumerable<T> Empty<T>(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        yield break;
+        if (cancellationToken.IsCancellationRequested)
+        {
+            yield break;
+        }
     }
 }

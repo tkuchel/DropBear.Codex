@@ -1,91 +1,76 @@
 ﻿#region
 
 using System.Collections.Concurrent;
-using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
+using IResettable = DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces.IResettable;
 
 #endregion
 
 namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
-public static class ObjectPools<T> where T : class, new()
+/// <summary>
+///     Enhanced object pool with factory support
+/// </summary>
+internal static class ObjectPools<T> where T : class, new()
 {
-    private const int MaxPoolSize = 1000;
+    private const int MaxPoolSize = 1024;
     private static readonly ConcurrentQueue<T> Pool = new();
+    private static int _count;
+    private static Func<T>? _factory;
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ObjectPool<T> CreateWithFactory(Func<T> factory)
+    {
+        _factory = factory;
+        return new DefaultObjectPool<T>(new PooledObjectPolicy());
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Rent()
     {
-        return Pool.TryDequeue(out var item) ? item : new T();
-    }
-
-    public static void Return(T item)
-    {
-        if (Pool.Count < MaxPoolSize)
+        if (Pool.TryDequeue(out var item))
         {
-            Pool.Enqueue(item);
+            Interlocked.Decrement(ref _count);
+            return item;
         }
-    }
-}
 
-/// <summary>
-///     Manages object pooling for various collection types
-/// </summary>
-internal static class ObjectPoolProvider
-{
-    private static readonly DefaultObjectPoolProvider Provider = new();
-
-    public static readonly ObjectPool<List<ITask>> TaskListPool =
-        Provider.Create(new ListObjectPoolPolicy<ITask>());
-
-    public static readonly ObjectPool<HashSet<string>> StringSetPool =
-        Provider.Create(new HashSetObjectPoolPolicy<string>());
-
-    public static readonly ObjectPool<Dictionary<string, bool>> BoolDictionaryPool =
-        Provider.Create(new DictionaryPoolPolicy<string, bool>());
-}
-
-/// <summary>
-///     Custom pool policies for collections
-/// </summary>
-internal sealed class ListObjectPoolPolicy<T> : PooledObjectPolicy<List<T>>
-{
-    public override List<T> Create()
-    {
-        return new List<T>(32);
+        return _factory?.Invoke() ?? new T();
     }
 
-    public override bool Return(List<T> obj)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void Return(T? item)
     {
-        obj.Clear();
-        return true;
-    }
-}
+        if (item == null || _count >= MaxPoolSize)
+        {
+            return;
+        }
 
-internal sealed class HashSetObjectPoolPolicy<T> : PooledObjectPolicy<HashSet<T>>
-{
-    public override HashSet<T> Create()
-    {
-        return new HashSet<T>(32);
-    }
+        if (Interlocked.Increment(ref _count) > MaxPoolSize)
+        {
+            Interlocked.Decrement(ref _count);
+            return;
+        }
 
-    public override bool Return(HashSet<T> obj)
-    {
-        obj.Clear();
-        return true;
-    }
-}
+        if (item is IResettable resettable)
+        {
+            resettable.Reset();
+        }
 
-internal sealed class DictionaryPoolPolicy<TKey, TValue> : PooledObjectPolicy<Dictionary<TKey, TValue>>
-    where TKey : notnull
-{
-    public override Dictionary<TKey, TValue> Create()
-    {
-        return new Dictionary<TKey, TValue>(32);
+        Pool.Enqueue(item);
     }
 
-    public override bool Return(Dictionary<TKey, TValue> obj)
+    private sealed class PooledObjectPolicy : IPooledObjectPolicy<T>
     {
-        obj.Clear();
-        return true;
+        public T Create()
+        {
+            return Rent();
+        }
+
+        public bool Return(T obj)
+        {
+            ObjectPools<T>.Return(obj);
+            return true;
+        }
     }
 }

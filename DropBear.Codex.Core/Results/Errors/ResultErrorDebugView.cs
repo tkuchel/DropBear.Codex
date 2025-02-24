@@ -25,13 +25,14 @@ internal sealed class ResultErrorDebugView
         get
         {
             var items = new Dictionary<string, object>
-            {
-                { "Type", _error.GetType().Name },
-                { "Message", _error.Message },
-                { "Timestamp", _error.Timestamp },
-                { "Age", _error.Age },
-                { "ErrorId", _error.ErrorId }
-            };
+                (StringComparer.Ordinal)
+                {
+                    { "Type", _error.GetType().Name },
+                    { "Message", _error.Message },
+                    { "Timestamp", _error.Timestamp },
+                    { "Age", _error.Age },
+                    { "ErrorId", _error.ErrorId }
+                };
 
             if (_error.Metadata != null)
             {

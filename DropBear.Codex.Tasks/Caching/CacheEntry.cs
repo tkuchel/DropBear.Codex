@@ -1,7 +1,7 @@
 ﻿namespace DropBear.Codex.Tasks.Caching;
 
 /// <summary>
-/// Internal wrapper for cache entries to track metadata for stale-while-revalidate pattern
+///     Internal wrapper for cache entries to track metadata for stale-while-revalidate pattern
 /// </summary>
 /// <typeparam name="T">The type of the cached value</typeparam>
 public class CacheEntry<T>

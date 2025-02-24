@@ -12,6 +12,8 @@ namespace DropBear.Codex.Core.Results.Extensions;
 /// </summary>
 public static class ResultLinqExtensions
 {
+#pragma warning disable CS1584 // XML comment has syntactically incorrect cref attribute
+
     #region Single Value Operations
 
     /// <summary>
@@ -206,4 +208,6 @@ public static class ResultLinqExtensions
     }
 
     #endregion
+
+#pragma warning restore CS1584 // XML comment has syntactically incorrect cref attribute
 }

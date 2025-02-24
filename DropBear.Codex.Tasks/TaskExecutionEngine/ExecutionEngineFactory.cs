@@ -21,7 +21,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 public sealed class ExecutionEngineFactory : IExecutionEngineFactory
 {
     private readonly ILogger _logger;
-    private readonly IOptions<ExecutionOptions> _options;
+    private readonly IOptions<ExecutionOptions>? _options;
     private readonly IAsyncPublisher<Guid, TaskProgressMessage> _progressPublisher;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IAsyncPublisher<Guid, TaskCompletedMessage> _taskCompletedPublisher;
@@ -39,7 +39,7 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
     /// <param name="taskFailedPublisher">The task failed publisher.</param>
     /// <exception cref="ArgumentNullException">Thrown when any required dependency is null.</exception>
     public ExecutionEngineFactory(
-        IOptions<ExecutionOptions> options,
+        IOptions<ExecutionOptions>? options,
         IServiceScopeFactory scopeFactory,
         IAsyncPublisher<Guid, TaskProgressMessage> progressPublisher,
         IAsyncPublisher<Guid, TaskStartedMessage> taskStartedPublisher,
@@ -87,7 +87,7 @@ public sealed class ExecutionEngineFactory : IExecutionEngineFactory
             return Result<Unit, ExecutionEngineError>.Failure(new ExecutionEngineError("Channel ID cannot be empty"));
         }
 
-        if (_options.Value == null)
+        if (_options is { Value: null })
         {
             _logger.Error("ExecutionOptions is not configured");
             return Result<Unit, ExecutionEngineError>.Failure(

@@ -1,17 +1,32 @@
-﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
+﻿#region
+
+using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
+
+#endregion
+
+namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
 ///     Manages resources for a task execution
 /// </summary>
 public sealed class TaskResources : IAsyncDisposable
 {
-    private readonly SemaphoreSlim _lock = new(1, 1);
-    private readonly List<IAsyncDisposable> _resources = new();
+    private readonly SemaphoreSlim _disposalLock = new(1, 1);
+
+    private readonly ConcurrentDictionary<string, IAsyncDisposable> _resources =
+        new(StringComparer.Ordinal);
+
     private bool _disposed;
 
     public async ValueTask DisposeAsync()
     {
-        await _lock.WaitAsync().ConfigureAwait(false);
+        if (_disposed)
+        {
+            return;
+        }
+
+        await _disposalLock.WaitAsync().ConfigureAwait(false);
         try
         {
             if (_disposed)
@@ -21,41 +36,52 @@ public sealed class TaskResources : IAsyncDisposable
 
             _disposed = true;
 
-            foreach (var resource in _resources)
+            var exceptions = new List<Exception>();
+            foreach (var resource in _resources.Values)
             {
                 try
                 {
                     await resource.DisposeAsync().ConfigureAwait(false);
                 }
-                catch (Exception)
+                catch (Exception ex)
                 {
-                    // Log but continue disposing other resources
+                    exceptions.Add(ex);
                 }
             }
 
             _resources.Clear();
+
+            if (exceptions.Count > 0)
+            {
+                throw new AggregateException("Failed to dispose one or more resources", exceptions);
+            }
         }
         finally
         {
-            _lock.Release();
+            _disposalLock.Dispose();
         }
     }
 
-    public async ValueTask AddAsync(IAsyncDisposable resource)
-    {
-        await _lock.WaitAsync().ConfigureAwait(false);
-        try
-        {
-            if (_disposed)
-            {
-                throw new ObjectDisposedException(nameof(TaskResources));
-            }
 
-            _resources.Add(resource);
-        }
-        finally
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public async Task AddResource(string key, IAsyncDisposable resource)
+    {
+        ArgumentNullException.ThrowIfNull(resource);
+
+        if (_resources.TryGetValue(key, out var existing))
         {
-            _lock.Release();
+            if (existing != null)
+            {
+                await existing.DisposeAsync().ConfigureAwait(false);
+            }
         }
+
+        _resources[key] = resource;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public T? GetResource<T>(string key) where T : class, IAsyncDisposable
+    {
+        return _resources.TryGetValue(key, out var resource) ? resource as T : null;
     }
 }

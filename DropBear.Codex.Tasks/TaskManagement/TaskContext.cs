@@ -1,5 +1,9 @@
-﻿using DropBear.Codex.Core.Logging;
+﻿#region
+
+using DropBear.Codex.Core.Logging;
 using Serilog;
+
+#endregion
 
 namespace DropBear.Codex.Tasks.TaskManagement;
 
