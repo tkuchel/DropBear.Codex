@@ -123,7 +123,7 @@ public partial class Envelope<T> : IResultDiagnostics
         );
     }
 
-    protected T Payload
+    public T Payload
     {
         get
         {
