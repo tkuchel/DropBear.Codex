@@ -4,8 +4,9 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Enums;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Hashing;
 using DropBear.Codex.Hashing.Interfaces;
 using DropBear.Codex.Serialization.Factories;
@@ -26,7 +27,7 @@ public sealed class ContentContainer
     private static readonly ILogger Logger =
         LoggerFactory.Logger.ForContext<SerializationBuilder>();
 
-    private readonly IHasher _hasher = new HashBuilder().GetHasher("XxHash");
+    private readonly IHasher _hasher;
     private readonly Dictionary<string, Type> _providers = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -34,7 +35,18 @@ public sealed class ContentContainer
     ///     Defaults to <see cref="Flags" /> = <see cref="ContentContainerFlags.NoOperation" />.
     /// </summary>
     public ContentContainer()
+        : this(new HashBuilder().GetHasher("XxHash"))
     {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="ContentContainer" /> class with a custom hasher.
+    /// </summary>
+    /// <param name="hasher">The hasher to use for hash computations.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="hasher" /> is null.</exception>
+    public ContentContainer(IHasher hasher)
+    {
+        _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
         Flags = ContentContainerFlags.NoOperation;
         ContentType = "Unsupported/Unknown DataType";
     }
@@ -74,6 +86,7 @@ public sealed class ContentContainer
     /// <summary>
     ///     Determines if this container requires serialization (based on <see cref="Flags" />).
     /// </summary>
+    /// <returns><c>true</c> if serialization is required; otherwise, <c>false</c>.</returns>
     public bool RequiresSerialization()
     {
         return Flags.HasFlag(ContentContainerFlags.ShouldSerialize);
@@ -82,6 +95,7 @@ public sealed class ContentContainer
     /// <summary>
     ///     Determines if this container requires compression (based on <see cref="Flags" />).
     /// </summary>
+    /// <returns><c>true</c> if compression is required; otherwise, <c>false</c>.</returns>
     public bool RequiresCompression()
     {
         return Flags.HasFlag(ContentContainerFlags.ShouldCompress);
@@ -90,6 +104,7 @@ public sealed class ContentContainer
     /// <summary>
     ///     Determines if this container requires encryption (based on <see cref="Flags" />).
     /// </summary>
+    /// <returns><c>true</c> if encryption is required; otherwise, <c>false</c>.</returns>
     public bool RequiresEncryption()
     {
         return Flags.HasFlag(ContentContainerFlags.ShouldEncrypt);
@@ -102,12 +117,13 @@ public sealed class ContentContainer
     /// </summary>
     /// <typeparam name="T">The data type being stored.</typeparam>
     /// <param name="data">The data to store.</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public Result SetData<T>(T? data)
+    /// <returns>A <see cref="Result{Unit, ContentContainerError}" /> indicating success or failure.</returns>
+    public Result<Unit, ContentContainerError> SetData<T>(T? data)
     {
         if (data is null)
         {
-            return Result.Failure("Data is null.");
+            return Result<Unit, ContentContainerError>.Failure(
+                ContentContainerError.InvalidData);
         }
 
         switch (data)
@@ -136,7 +152,7 @@ public sealed class ContentContainer
             ComputeAndSetHash();
         }
 
-        return Result.Success();
+        return Result<Unit, ContentContainerError>.Success(Unit.Value);
     }
 
     /// <summary>
@@ -193,7 +209,16 @@ public sealed class ContentContainer
         }
 
         var hashResult = _hasher.EncodeToBase64Hash(Data);
-        Hash = hashResult.IsSuccess ? hashResult.Value : null;
+        if (hashResult.IsSuccess)
+        {
+            Hash = hashResult.Value;
+        }
+        else
+        {
+            Logger.Warning("Failed to compute hash for data: {ErrorMessage}",
+                hashResult.Error?.Message ?? "Unknown error");
+            Hash = null;
+        }
     }
 
     /// <summary>
@@ -201,52 +226,65 @@ public sealed class ContentContainer
     ///     If needed, a configured serializer is used to deserialize <see cref="Data" /> into <typeparamref name="T" />.
     /// </summary>
     /// <typeparam name="T">The desired output type (e.g., <c>byte[]</c>, <c>string</c>, or a model class).</typeparam>
-    /// <returns>A <see cref="Result{T}" /> with the requested data or an error.</returns>
-    public async Task<Result<T>> GetDataAsync<T>()
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A <see cref="Result{T, ContentContainerError}" /> with the requested data or an error.</returns>
+    public async ValueTask<Result<T, ContentContainerError>> GetDataAsync<T>(
+        CancellationToken cancellationToken = default)
     {
         if (Data is null || Data.Length == 0)
         {
-            return Result<T>.Failure("No data available.");
+            return Result<T, ContentContainerError>.Failure(ContentContainerError.InvalidData);
         }
 
         if (Hash is null)
         {
-            return Result<T>.Failure("No hash available.");
+            return Result<T, ContentContainerError>.Failure(
+                new ContentContainerError("No hash available for data integrity verification."));
         }
 
         // Check data integrity
         var hashResult = _hasher.EncodeToBase64Hash(Data);
         if (!hashResult.IsSuccess || !string.Equals(hashResult.Value, Hash, StringComparison.Ordinal))
         {
-            return Result<T>.Failure("Data integrity check failed.");
+            return Result<T, ContentContainerError>.Failure(ContentContainerError.HashVerificationFailed);
         }
 
         // If type is a byte array and no serialization is needed
         if (typeof(T) == typeof(byte[]))
         {
             return IsFlagEnabled(ContentContainerFlags.NoSerialization)
-                ? Result<T>.Success((T)(object)Data)
-                : Result<T>.Failure("No serialization required, but type is byte[].");
+                ? Result<T, ContentContainerError>.Success((T)(object)Data)
+                : Result<T, ContentContainerError>.Failure(
+                    new ContentContainerError("No serialization required, but type is byte[]."));
         }
 
         // Build serializer if needed
         var serializerBuilder = new SerializationBuilder();
         ConfigureContainerSerializer(serializerBuilder);
-        var serializer = RequiresSerialization() ? serializerBuilder.Build() : null;
 
         try
         {
+            var serializer = RequiresSerialization() ? serializerBuilder.Build() : null;
+
             if (serializer is null)
             {
-                return Result<T>.Failure("No serializer configured.");
+                return Result<T, ContentContainerError>.Failure(
+                    new ContentContainerError("No serializer configured."));
             }
 
-            var result = await serializer.DeserializeAsync<T>(Data).ConfigureAwait(false);
-            return Result<T>.Success(result);
+            // Use cancellation token for deserialization
+            cancellationToken.ThrowIfCancellationRequested();
+            var result = await serializer.DeserializeAsync<T>(Data, cancellationToken).ConfigureAwait(false);
+            return Result<T, ContentContainerError>.Success(result);
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // Let cancellation propagate
         }
         catch (Exception ex)
         {
-            return Result<T>.Failure($"Deserialization failed: {ex.Message}");
+            return Result<T, ContentContainerError>.Failure(
+                new ContentContainerError($"Deserialization failed: {ex.Message}"), ex);
         }
     }
 
@@ -255,6 +293,7 @@ public sealed class ContentContainer
     ///     indicated by <see cref="Flags" />.
     /// </summary>
     /// <param name="serializerBuilder">The builder to configure.</param>
+    /// <exception cref="KeyNotFoundException">Thrown if a required provider is not found.</exception>
     internal void ConfigureContainerSerializer(SerializationBuilder serializerBuilder)
     {
         try
@@ -279,7 +318,6 @@ public sealed class ContentContainer
         }
         catch (KeyNotFoundException ex)
         {
-            Console.WriteLine(ex.Message);
             Logger.Error(ex, "Error while configuring ContentContainer serializer: {Message}", ex.Message);
             throw; // rethrow to preserve original exception details
         }
@@ -289,19 +327,18 @@ public sealed class ContentContainer
     ///     Gets the provider <see cref="Type" /> from the dictionary by key name (e.g., "Serializer").
     /// </summary>
     /// <param name="keyName">The provider key name.</param>
+    /// <returns>The provider type if found.</returns>
     /// <exception cref="KeyNotFoundException">Thrown if no provider is found for the given key.</exception>
     private Type GetProviderType(string keyName)
     {
         if (_providers.TryGetValue(keyName, out var type))
         {
-            Console.WriteLine($"Provider for {keyName} found: {type.Name}");
             Logger.Debug("Provider for {ProviderKey} found: {ProviderType}", keyName, type.Name);
             return type;
         }
 
         var errorMessage = $"Provider for {keyName} not found.";
         Logger.Error(errorMessage);
-        Console.WriteLine(errorMessage);
         throw new KeyNotFoundException(errorMessage);
     }
 
@@ -326,6 +363,8 @@ public sealed class ContentContainer
     /// <summary>
     ///     Checks if a particular <see cref="ContentContainerFlags" /> is enabled.
     /// </summary>
+    /// <param name="flag">The flag to check.</param>
+    /// <returns><c>true</c> if the flag is enabled; otherwise, <c>false</c>.</returns>
     private bool IsFlagEnabled(ContentContainerFlags flag)
     {
         return (Flags & flag) == flag;

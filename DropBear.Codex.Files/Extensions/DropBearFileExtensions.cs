@@ -3,7 +3,10 @@
 using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Converters;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Models;
 using Microsoft.IO;
 using Serilog;
@@ -18,40 +21,57 @@ namespace DropBear.Codex.Files.Extensions;
 [SupportedOSPlatform("windows")]
 public static class DropBearFileExtensions
 {
+    // Define the JSON serializer options with custom converters
     private static readonly JsonSerializerOptions Options = new()
     {
-        // Add our custom converters for <see cref="Type"/> and <see cref="ContentContainer"/>.
-        Converters = { new TypeConverter(), new ContentContainerConverter() }, WriteIndented = true
+        WriteIndented = true,
+        PropertyNameCaseInsensitive = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new TypeConverter(), new ContentContainerConverter(), new JsonStringEnumConverter() }
     };
 
-    // A shared memory stream manager to optimize allocations.
-    private static readonly RecyclableMemoryStreamManager MemoryStreamManager = new();
+    // A shared memory stream manager to optimize allocations
+    private static readonly RecyclableMemoryStreamManager MemoryStreamManager = new(
+        new RecyclableMemoryStreamManager.Options
+        {
+            ThrowExceptionOnToArray = true,
+            BlockSize = 4096 * 4, // 16KB blocks
+            LargeBufferMultiple = 1024 * 1024, // 1MB increments for large buffers
+            MaximumBufferSize = 1024 * 1024 * 100 // 100MB max buffer size
+        });
 
     /// <summary>
     ///     Serializes a <see cref="DropBearFile" /> to a <see cref="MemoryStream" />.
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> to serialize.</param>
     /// <param name="logger">An <see cref="ILogger" /> for logging serialization details.</param>
-    /// <returns>A <see cref="MemoryStream" /> containing the serialized JSON data.</returns>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="file" /> is null.</exception>
-    /// <exception cref="InvalidOperationException">Thrown if serialization fails.</exception>
-    public static MemoryStream ToStream(this DropBearFile file, ILogger logger)
+    /// <returns>A <see cref="Result{MemoryStream, FileOperationError}" /> containing the serialized JSON data or an error.</returns>
+    public static Result<MemoryStream, FileOperationError> ToStream(this DropBearFile file, ILogger logger)
     {
         if (file is null)
         {
-            throw new ArgumentNullException(nameof(file), "Cannot serialize a null DropBearFile object.");
+            return Result<MemoryStream, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Cannot serialize a null DropBearFile object."));
         }
 
         try
         {
             var jsonString = JsonSerializer.Serialize(file, Options);
             logger.Information("Serialized DropBearFile to JSON string.");
-            return MemoryStreamManager.GetStream(Encoding.UTF8.GetBytes(jsonString));
+
+            // Use UTF8 encoding directly to avoid intermediate string
+            var memoryStream = MemoryStreamManager.GetStream();
+            var bytes = Encoding.UTF8.GetBytes(jsonString);
+            memoryStream.Write(bytes, 0, bytes.Length);
+            memoryStream.Position = 0;
+
+            return Result<MemoryStream, FileOperationError>.Success(memoryStream);
         }
         catch (Exception ex)
         {
             logger.Error(ex, "Serialization to stream failed.");
-            throw new InvalidOperationException("Serialization failed.", ex);
+            return Result<MemoryStream, FileOperationError>.Failure(
+                FileOperationError.SerializationFailed(ex.Message), ex);
         }
     }
 
@@ -64,18 +84,17 @@ public static class DropBearFileExtensions
     ///     A <see cref="CancellationToken" /> that can be used to cancel the operation.
     /// </param>
     /// <returns>
-    ///     A task that completes with a <see cref="MemoryStream" /> containing the serialized JSON data.
+    ///     A <see cref="Result{MemoryStream, FileOperationError}" /> containing the serialized JSON data or an error.
     /// </returns>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="file" /> is null.</exception>
-    /// <exception cref="InvalidOperationException">Thrown if serialization fails.</exception>
-    public static async Task<MemoryStream> ToStreamAsync(
+    public static async Task<Result<MemoryStream, FileOperationError>> ToStreamAsync(
         this DropBearFile file,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
         if (file is null)
         {
-            throw new ArgumentNullException(nameof(file), "Cannot serialize a null DropBearFile object.");
+            return Result<MemoryStream, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Cannot serialize a null DropBearFile object."));
         }
 
         var stream = MemoryStreamManager.GetStream();
@@ -84,12 +103,20 @@ public static class DropBearFileExtensions
             await JsonSerializer.SerializeAsync(stream, file, Options, cancellationToken).ConfigureAwait(false);
             stream.Position = 0; // Reset position after writing
             logger.Information("Asynchronously serialized DropBearFile to stream.");
-            return stream;
+            return Result<MemoryStream, FileOperationError>.Success(stream);
+        }
+        catch (OperationCanceledException)
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
+            logger.Information("Serialization operation was canceled");
+            throw; // Propagate cancellation
         }
         catch (Exception ex)
         {
+            await stream.DisposeAsync().ConfigureAwait(false);
             logger.Error(ex, "Serialization to stream failed.");
-            throw new InvalidOperationException("Serialization failed.", ex);
+            return Result<MemoryStream, FileOperationError>.Failure(
+                FileOperationError.SerializationFailed(ex.Message), ex);
         }
     }
 
@@ -98,41 +125,42 @@ public static class DropBearFileExtensions
     /// </summary>
     /// <param name="stream">A <see cref="Stream" /> containing serialized JSON data.</param>
     /// <param name="logger">An <see cref="ILogger" /> for logging deserialization details.</param>
-    /// <returns>The deserialized <see cref="DropBearFile" />.</returns>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="stream" /> is null.</exception>
-    /// <exception cref="NotSupportedException">Thrown if <paramref name="stream" /> is not readable.</exception>
-    /// <exception cref="InvalidOperationException">Thrown if deserialization fails or results in a null object.</exception>
-    public static DropBearFile FromStream(Stream stream, ILogger logger)
+    /// <returns>A <see cref="Result{DropBearFile, FileOperationError}" /> containing the deserialized object or an error.</returns>
+    public static Result<DropBearFile, FileOperationError> FromStream(Stream stream, ILogger logger)
     {
         if (stream is null)
         {
-            throw new ArgumentNullException(nameof(stream), "Cannot deserialize from a null stream.");
+            return Result<DropBearFile, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Cannot deserialize from a null stream."));
         }
 
         if (!stream.CanRead)
         {
-            throw new NotSupportedException("Stream must be readable.");
+            return Result<DropBearFile, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Stream must be readable."));
         }
 
         try
         {
             stream.Position = 0; // Ensure reading from the start
-            using var reader = new StreamReader(stream, Encoding.UTF8, false, 4096, true);
-            var jsonString = reader.ReadToEnd();
-            var file = JsonSerializer.Deserialize<DropBearFile>(jsonString, Options);
+
+            // Deserialize directly from stream without intermediate string
+            var file = JsonSerializer.Deserialize<DropBearFile>(stream, Options);
 
             if (file is null)
             {
-                throw new InvalidOperationException("Deserialization resulted in a null object.");
+                return Result<DropBearFile, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Deserialization resulted in a null object."));
             }
 
             logger.Information("Deserialized DropBearFile from stream.");
-            return file;
+            return Result<DropBearFile, FileOperationError>.Success(file);
         }
         catch (Exception ex)
         {
             logger.Error(ex, "Deserialization from stream failed.");
-            throw new InvalidOperationException("Deserialization failed.", ex);
+            return Result<DropBearFile, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Deserialization failed: {ex.Message}"), ex);
         }
     }
 
@@ -145,25 +173,23 @@ public static class DropBearFileExtensions
     ///     A <see cref="CancellationToken" /> that can be used to cancel the operation.
     /// </param>
     /// <returns>
-    ///     A <see cref="Task{T}" /> representing the async operation, returning the deserialized
-    ///     <see cref="DropBearFile" />.
+    ///     A <see cref="Result{DropBearFile, FileOperationError}" /> containing the deserialized object or an error.
     /// </returns>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="stream" /> is null.</exception>
-    /// <exception cref="NotSupportedException">Thrown if <paramref name="stream" /> is not readable.</exception>
-    /// <exception cref="InvalidOperationException">Thrown if deserialization fails or results in a null object.</exception>
-    public static async Task<DropBearFile> FromStreamAsync(
+    public static async Task<Result<DropBearFile, FileOperationError>> FromStreamAsync(
         Stream stream,
         ILogger logger,
         CancellationToken cancellationToken = default)
     {
         if (stream is null)
         {
-            throw new ArgumentNullException(nameof(stream), "Cannot deserialize from a null stream.");
+            return Result<DropBearFile, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Cannot deserialize from a null stream."));
         }
 
         if (!stream.CanRead)
         {
-            throw new NotSupportedException("Stream must be readable.");
+            return Result<DropBearFile, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Stream must be readable."));
         }
 
         try
@@ -175,16 +201,23 @@ public static class DropBearFileExtensions
 
             if (file is null)
             {
-                throw new InvalidOperationException("Deserialization resulted in a null object.");
+                return Result<DropBearFile, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Deserialization resulted in a null object."));
             }
 
             logger.Information("Asynchronously deserialized DropBearFile from stream.");
-            return file;
+            return Result<DropBearFile, FileOperationError>.Success(file);
+        }
+        catch (OperationCanceledException)
+        {
+            logger.Information("Deserialization operation was canceled");
+            throw; // Propagate cancellation
         }
         catch (Exception ex)
         {
             logger.Error(ex, "Deserialization from stream failed.");
-            throw new InvalidOperationException("Deserialization failed.", ex);
+            return Result<DropBearFile, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Deserialization failed: {ex.Message}"), ex);
         }
     }
 }

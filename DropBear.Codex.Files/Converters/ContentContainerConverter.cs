@@ -50,9 +50,18 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
 
         try
         {
+            // Track depth to ensure proper end object detection
+            var depth = reader.CurrentDepth;
+
+            if (reader.TokenType != JsonTokenType.StartObject)
+            {
+                throw new JsonException($"Expected StartObject token, got {reader.TokenType}");
+            }
+
             while (reader.Read())
             {
-                if (reader.TokenType == JsonTokenType.EndObject)
+                // Exit when we reach the end of the current object depth
+                if (reader.TokenType == JsonTokenType.EndObject && reader.CurrentDepth == depth)
                 {
                     // Once we reach the end of this object, set the providers on the container
                     container.SetProviders(providers);
@@ -96,6 +105,8 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
 
                     default:
                         _logger.Warning("Unsupported property encountered: {PropertyName}", propertyName);
+                        // Skip unknown properties instead of throwing
+                        reader.Skip();
                         break;
                 }
             }
@@ -127,7 +138,14 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
         writer.WriteString("contentType", value.ContentType);
 
         writer.WritePropertyName("data");
-        JsonSerializer.Serialize(writer, value.Data, options);
+        if (value.Data == null)
+        {
+            writer.WriteNullValue();
+        }
+        else
+        {
+            JsonSerializer.Serialize(writer, value.Data, options);
+        }
 
         writer.WriteString("hash", value.Hash);
 

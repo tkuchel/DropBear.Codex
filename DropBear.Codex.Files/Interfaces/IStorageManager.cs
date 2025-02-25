@@ -1,6 +1,7 @@
 ﻿#region
 
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Files.Errors;
 
 #endregion
 
@@ -17,8 +18,10 @@ public interface IStorageManager
     /// <param name="identifier">The identifier of the data.</param>
     /// <param name="dataStream">The stream containing the data to write.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task representing the asynchronous operation, containing a Result indicating success or failure.</returns>
-    Task<Result> WriteAsync(string identifier, Stream dataStream,
+    /// <returns>A Result indicating success (Unit) or failure with error details.</returns>
+    Task<Result<Unit, StorageError>> WriteAsync(
+        string identifier,
+        Stream dataStream,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -26,8 +29,9 @@ public interface IStorageManager
     /// </summary>
     /// <param name="identifier">The identifier of the data to read.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task representing the asynchronous operation, containing a Result with the data stream if successful.</returns>
-    Task<Result<Stream>> ReadAsync(string identifier,
+    /// <returns>A Result containing the data stream if successful, or error details if failed.</returns>
+    Task<Result<Stream, StorageError>> ReadAsync(
+        string identifier,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -36,8 +40,10 @@ public interface IStorageManager
     /// <param name="identifier">The identifier of the data to update.</param>
     /// <param name="newDataStream">The stream containing the new data.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task representing the asynchronous operation, containing a Result indicating success or failure.</returns>
-    Task<Result> UpdateAsync(string identifier, Stream newDataStream,
+    /// <returns>A Result indicating success (Unit) or failure with error details.</returns>
+    Task<Result<Unit, StorageError>> UpdateAsync(
+        string identifier,
+        Stream newDataStream,
         CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -45,7 +51,8 @@ public interface IStorageManager
     /// </summary>
     /// <param name="identifier">The identifier of the data to delete.</param>
     /// <param name="cancellationToken">A token to cancel the operation.</param>
-    /// <returns>A task representing the asynchronous operation, containing a Result indicating success or failure.</returns>
-    Task<Result> DeleteAsync(string identifier,
+    /// <returns>A Result indicating success (Unit) or failure with error details.</returns>
+    Task<Result<Unit, StorageError>> DeleteAsync(
+        string identifier,
         CancellationToken cancellationToken = default);
 }

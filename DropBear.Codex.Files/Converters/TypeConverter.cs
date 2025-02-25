@@ -15,6 +15,9 @@ namespace DropBear.Codex.Files.Converters;
 /// </summary>
 public sealed class TypeConverter : JsonConverter<Type>
 {
+    // Use Dictionary<string, Type> for caching Type lookups to improve performance
+    private static readonly Dictionary<string, Type> TypeCache = new(StringComparer.Ordinal);
+    private static readonly object SyncLock = new();
     private readonly ILogger _logger;
 
     /// <summary>
@@ -47,8 +50,28 @@ public sealed class TypeConverter : JsonConverter<Type>
 
         try
         {
+            // Check cache first for performance
+            lock (SyncLock)
+            {
+                if (TypeCache.TryGetValue(typeName, out var cachedType))
+                {
+                    return cachedType;
+                }
+            }
+
             // Attempt to resolve the type by name
-            return Type.GetType(typeName, AssemblyResolver, null, true);
+            var resolvedType = Type.GetType(typeName, AssemblyResolver, null, true);
+
+            // Add to cache if resolved
+            if (resolvedType != null)
+            {
+                lock (SyncLock)
+                {
+                    TypeCache[typeName] = resolvedType;
+                }
+            }
+
+            return resolvedType;
         }
         catch (Exception ex)
         {
@@ -91,6 +114,17 @@ public sealed class TypeConverter : JsonConverter<Type>
     {
         try
         {
+            // Try to load from loaded assemblies first
+            var assembly = AppDomain.CurrentDomain.GetAssemblies()
+                .FirstOrDefault(a => AssemblyName.ReferenceMatchesDefinition(
+                    assemblyName, a.GetName()));
+
+            if (assembly != null)
+            {
+                return assembly;
+            }
+
+            // Fall back to normal loading
             return Assembly.Load(assemblyName);
         }
         catch (Exception ex)

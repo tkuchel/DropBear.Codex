@@ -2,7 +2,8 @@
 
 using System.Text;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Hashing.Errors;
 using DropBear.Codex.Hashing.Interfaces;
 using HashDepot;
 using Serilog;
@@ -13,7 +14,7 @@ namespace DropBear.Codex.Hashing.Hashers;
 
 /// <summary>
 ///     A <see cref="IHasher" /> implementation using SipHash-2-4 (64-bit).
-///     Requires a 16-byte key.
+///     Requires a 16-byte key, no salt or iteration support.
 /// </summary>
 public sealed class SipHasher : IHasher
 {
@@ -21,134 +22,251 @@ public sealed class SipHasher : IHasher
     private byte[] _key;
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="SipHasher" /> class.
+    ///     Initializes a new instance of the <see cref="SipHasher" /> class with a 16-byte key.
     /// </summary>
     /// <param name="key">A 16-byte key for SipHash.</param>
-    /// <exception cref="ArgumentException">Thrown if <paramref name="key" /> is null or not 16 bytes long.</exception>
+    /// <exception cref="ArgumentException">Thrown if <paramref name="key" /> is not 16 bytes.</exception>
     public SipHasher(byte[] key)
     {
-        if (key == Array.Empty<byte>() || key.Length is not 16)
+        if (key == null || key.Length != 16)
         {
-            Logger.Error("Key must be 16 bytes in length for SipHash.");
+            Logger.Error("SipHash key must be 16 bytes in length.");
             throw new ArgumentException("Key must be 16 bytes in length.", nameof(key));
         }
 
         _key = key;
     }
 
-    /// <summary>
-    ///     SipHash does not utilize salt, so this is a no-op.
-    /// </summary>
     public IHasher WithSalt(byte[]? salt)
     {
+        Logger.Information("SipHash does not utilize salt. No-op.");
         return this;
     }
 
-    /// <summary>
-    ///     SipHash does not utilize iterations, so this is a no-op.
-    /// </summary>
     public IHasher WithIterations(int iterations)
     {
+        Logger.Information("SipHash does not utilize iterations. No-op.");
         return this;
     }
 
-    /// <summary>
-    ///     Hashes the input string using SipHash-2-4 with the current 16-byte key.
-    /// </summary>
-    /// <param name="input">The string to hash.</param>
-    /// <returns>A hex-encoded 64-bit hash.</returns>
-    public Result<string> Hash(string input)
+    public IHasher WithHashSize(int size)
+    {
+        Logger.Information("SipHash-2-4 output is fixed at 64 bits. No-op.");
+        return this;
+    }
+
+    public async Task<Result<string, HashingError>> HashAsync(
+        string input,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(input))
         {
-            Logger.Error("SipHash: Input cannot be null or empty.");
-            return Result<string>.Failure("Input cannot be null or empty.");
+            Logger.Error("SipHash-2-4: input cannot be null or empty (async).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            Logger.Information("Hashing input with SipHash-2-4 (async).");
+            var hashHex = await Task.Run(() =>
+            {
+                var buffer = Encoding.UTF8.GetBytes(input);
+                var hashVal = SipHash24.Hash64(buffer, _key);
+                return hashVal.ToString("x8");
+            }, cancellationToken).ConfigureAwait(false);
+
+            return Result<string, HashingError>.Success(hashHex);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Information("SipHash hashing was canceled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during SipHash hashing (async).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
+        }
+    }
+
+    public Result<string, HashingError> Hash(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            Logger.Error("SipHash-2-4: input cannot be null or empty (sync).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
         }
 
         try
         {
-            Logger.Information("Hashing input with SipHash-2-4.");
+            Logger.Information("Hashing input with SipHash-2-4 (sync).");
             var buffer = Encoding.UTF8.GetBytes(input);
-            var hash = SipHash24.Hash64(buffer, _key);
-            return Result<string>.Success(hash.ToString("x8"));
+            var hashVal = SipHash24.Hash64(buffer, _key);
+            return Result<string, HashingError>.Success(hashVal.ToString("x8"));
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during SipHash hashing.");
-            return Result<string>.Failure($"Error during hashing: {ex.Message}");
+            Logger.Error(ex, "Error during SipHash hashing (sync).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
         }
     }
 
-    /// <summary>
-    ///     Verifies the given input against a hex-encoded SipHash-2-4 output.
-    /// </summary>
-    /// <param name="input">The input string.</param>
-    /// <param name="expectedHash">A hex-encoded 64-bit hash.</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public Result Verify(string input, string expectedHash)
+    public async Task<Result<Unit, HashingError>> VerifyAsync(
+        string input,
+        string expectedHash,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var hashResult = await HashAsync(input, cancellationToken).ConfigureAwait(false);
+        if (!hashResult.IsSuccess)
+        {
+            Logger.Error("Failed to compute SipHash for verification (async).");
+            return Result<Unit, HashingError>.Failure(hashResult.Error);
+        }
+
+        var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
+        Logger.Information(isValid
+            ? "SipHash verification succeeded (async)."
+            : "SipHash verification failed (async).");
+
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
+    }
+
+    public Result<Unit, HashingError> Verify(string input, string expectedHash)
     {
         var hashResult = Hash(input);
         if (!hashResult.IsSuccess)
         {
-            Logger.Error("Failed to compute SipHash for verification.");
-            return Result.Failure("Failed to compute hash.");
+            Logger.Error("Failed to compute SipHash for verification (sync).");
+            return Result<Unit, HashingError>.Failure(hashResult.Error);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
-        Logger.Information(isValid ? "SipHash verification succeeded." : "SipHash verification failed.");
+        Logger.Information(isValid
+            ? "SipHash verification succeeded (sync)."
+            : "SipHash verification failed (sync).");
 
-        return isValid ? Result.Success() : Result.Failure("Verification failed.");
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 
-    /// <summary>
-    ///     Computes a SipHash-2-4 for the byte array, returning a Base64-encoded representation of the 64-bit output.
-    /// </summary>
-    /// <param name="data">The byte array to hash.</param>
-    /// <returns>A Base64-encoded SipHash output.</returns>
-    public Result<string> EncodeToBase64Hash(byte[] data)
+    public async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default)
     {
-        if (data == Array.Empty<byte>() || data.Length is 0)
+        if (data.IsEmpty)
         {
-            Logger.Error("SipHash: Data cannot be null or empty.");
-            return Result<string>.Failure("Data cannot be null or empty.");
+            Logger.Error("SipHash: data cannot be null or empty for base64 hash (async).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            Logger.Information("Encoding data to Base64 hash using SipHash-2-4 (async).");
+            var base64Hash = await Task.Run(() =>
+            {
+                var hashVal = SipHash24.Hash64(data.Span, _key);
+                return Convert.ToBase64String(BitConverter.GetBytes(hashVal));
+            }, cancellationToken).ConfigureAwait(false);
+
+            return Result<string, HashingError>.Success(base64Hash);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Information("SipHash base64 encode was canceled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during SipHash base64 encoding (async).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
+        }
+    }
+
+    public Result<string, HashingError> EncodeToBase64Hash(byte[] data)
+    {
+        if (data == null || data.Length == 0)
+        {
+            Logger.Error("SipHash: data cannot be null or empty for base64 hash (sync).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
         }
 
         try
         {
-            Logger.Information("Encoding data to Base64 hash using SipHash-2-4.");
-            var hash = SipHash24.Hash64(data, _key);
-            var hashBytes = BitConverter.GetBytes(hash);
-            var base64Hash = Convert.ToBase64String(hashBytes);
-
-            return Result<string>.Success(base64Hash);
+            Logger.Information("Encoding data to Base64 hash using SipHash-2-4 (sync).");
+            var hashVal = SipHash24.Hash64(data, _key);
+            return Result<string, HashingError>.Success(Convert.ToBase64String(BitConverter.GetBytes(hashVal)));
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during SipHash base64 encoding.");
-            return Result<string>.Failure($"Error during base64 encoding hash: {ex.Message}");
+            Logger.Error(ex, "Error during SipHash base64 encoding (sync).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
         }
     }
 
-    /// <summary>
-    ///     Verifies <paramref name="data" /> by computing a SipHash-2-4 and comparing it to
-    ///     <paramref name="expectedBase64Hash" />.
-    /// </summary>
-    /// <param name="data">The byte array to hash.</param>
-    /// <param name="expectedBase64Hash">A Base64-encoded SipHash-2-4 output.</param>
-    /// <returns>A <see cref="Result" /> indicating success if they match.</returns>
-    public Result VerifyBase64Hash(byte[] data, string expectedBase64Hash)
+    public async Task<Result<Unit, HashingError>> VerifyBase64HashAsync(
+        ReadOnlyMemory<byte> data,
+        string expectedBase64Hash,
+        CancellationToken cancellationToken = default)
     {
-        var encodeResult = EncodeToBase64Hash(data);
+        if (data.IsEmpty)
+        {
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var encodeResult = await EncodeToBase64HashAsync(data, cancellationToken).ConfigureAwait(false);
         if (!encodeResult.IsSuccess)
         {
-            Logger.Error("Failed to compute SipHash base64 hash for verification.");
-            return Result.Failure("Failed to compute hash.");
+            Logger.Error("Failed to compute SipHash base64 hash for verification (async).");
+            return Result<Unit, HashingError>.Failure(encodeResult.Error);
         }
 
         var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
-        Logger.Information(isValid ? "SipHash base64 verification succeeded." : "SipHash base64 verification failed.");
+        Logger.Information(isValid
+            ? "SipHash base64 verification succeeded (async)."
+            : "SipHash base64 verification failed (async).");
 
-        return isValid ? Result.Success() : Result.Failure("Base64 hash verification failed.");
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
+    }
+
+    public Result<Unit, HashingError> VerifyBase64Hash(byte[] data, string expectedBase64Hash)
+    {
+        if (data == null || data.Length == 0)
+        {
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        var encodeResult = EncodeToBase64Hash(data);
+        if (!encodeResult.IsSuccess)
+        {
+            Logger.Error("Failed to compute SipHash base64 hash for verification (sync).");
+            return Result<Unit, HashingError>.Failure(encodeResult.Error);
+        }
+
+        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
+        Logger.Information(isValid
+            ? "SipHash base64 verification succeeded (sync)."
+            : "SipHash base64 verification failed (sync).");
+
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 
     /// <summary>
@@ -159,7 +277,7 @@ public sealed class SipHasher : IHasher
     /// <exception cref="ArgumentException">Thrown if the <paramref name="key" /> is not 16 bytes.</exception>
     public IHasher WithKey(byte[] key)
     {
-        if (key == Array.Empty<byte>() || key.Length is not 16)
+        if (key == null || key.Length != 16)
         {
             Logger.Error("SipHash key must be 16 bytes in length.");
             throw new ArgumentException("Key must be 16 bytes in length.", nameof(key));
@@ -167,14 +285,6 @@ public sealed class SipHasher : IHasher
 
         Logger.Information("Setting a new key for SipHasher (SipHash-2-4).");
         _key = key;
-        return this;
-    }
-
-    /// <summary>
-    ///     No-op for SipHash. SipHash-2-4 output is fixed at 64 bits.
-    /// </summary>
-    public IHasher WithHashSize(int size)
-    {
         return this;
     }
 }

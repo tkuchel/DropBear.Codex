@@ -2,7 +2,8 @@
 
 using System.Text;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Hashing.Errors;
 using DropBear.Codex.Hashing.Interfaces;
 using HashDepot;
 using Serilog;
@@ -12,134 +13,251 @@ using Serilog;
 namespace DropBear.Codex.Hashing.Hashers;
 
 /// <summary>
-///     A <see cref="IHasher" /> implementation using the FNV-1a hashing algorithm.
+///     A <see cref="IHasher" /> implementation using the FNV-1a hashing algorithm (32-bit or 64-bit).
 ///     Simple and fast, but not cryptographically secure. No salt or iterations are used.
 /// </summary>
 public sealed class Fnv1AHasher : IHasher
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<Fnv1AHasher>();
 
-    /// <summary>
-    ///     FNV-1a does not support salt, so this is a no-op.
-    /// </summary>
     public IHasher WithSalt(byte[]? salt)
     {
         return this;
+        // No-op
     }
 
-    /// <summary>
-    ///     FNV-1a does not support iterations, so this is a no-op.
-    /// </summary>
     public IHasher WithIterations(int iterations)
     {
         return this;
+        // No-op
     }
 
-    /// <summary>
-    ///     Hashes the given input string using 32-bit FNV-1a. Returns a lowercase hex string (8 chars).
-    /// </summary>
-    /// <param name="input">The input string to hash.</param>
-    /// <returns>A <see cref="Result{T}" /> containing the hex-encoded hash, or an error message.</returns>
-    public Result<string> Hash(string input)
+    public IHasher WithHashSize(int size)
+    {
+        return this;
+        // Typically no-op
+    }
+
+    /// <inheritdoc />
+    public async Task<Result<string, HashingError>> HashAsync(
+        string input,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(input))
         {
-            Logger.Error("FNV-1a: Input cannot be null or empty.");
-            return Result<string>.Failure("Input cannot be null or empty.");
+            Logger.Error("FNV-1a: Input cannot be null or empty (async).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            Logger.Information("Hashing input with FNV-1a (32-bit) asynchronously.");
+            var hashHex = await Task.Run(() =>
+            {
+                var buffer = Encoding.UTF8.GetBytes(input);
+                var hashVal = Fnv1a.Hash32(buffer);
+                return hashVal.ToString("x8");
+            }, cancellationToken).ConfigureAwait(false);
+
+            return Result<string, HashingError>.Success(hashHex);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Information("FNV-1a hashing canceled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during FNV-1a hashing (async).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public Result<string, HashingError> Hash(string input)
+    {
+        if (string.IsNullOrEmpty(input))
+        {
+            Logger.Error("FNV-1a: Input cannot be null or empty (sync).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
         }
 
         try
         {
-            Logger.Information("Hashing input with FNV-1a (32-bit).");
+            Logger.Information("Hashing input with FNV-1a (32-bit) sync.");
             var buffer = Encoding.UTF8.GetBytes(input);
-            var hash = Fnv1a.Hash32(buffer);
-            return Result<string>.Success(hash.ToString("x8"));
+            var hashVal = Fnv1a.Hash32(buffer);
+            return Result<string, HashingError>.Success(hashVal.ToString("x8"));
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during FNV-1a hashing.");
-            return Result<string>.Failure($"Error during hashing: {ex.Message}");
+            Logger.Error(ex, "Error during FNV-1a hashing (sync).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
         }
     }
 
-    /// <summary>
-    ///     Verifies the input string by hashing it and comparing to <paramref name="expectedHash" />.
-    /// </summary>
-    /// <param name="input">The input string to verify.</param>
-    /// <param name="expectedHash">A hex-encoded 32-bit FNV-1a hash.</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public Result Verify(string input, string expectedHash)
+    /// <inheritdoc />
+    public async Task<Result<Unit, HashingError>> VerifyAsync(
+        string input,
+        string expectedHash,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var hashResult = await HashAsync(input, cancellationToken).ConfigureAwait(false);
+        if (!hashResult.IsSuccess)
+        {
+            Logger.Error("Failed to compute FNV-1a hash for verification (async).");
+            return Result<Unit, HashingError>.Failure(hashResult.Error);
+        }
+
+        var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
+        Logger.Information(isValid
+            ? "FNV-1a verification succeeded (async)."
+            : "FNV-1a verification failed (async).");
+
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
+    }
+
+    /// <inheritdoc />
+    public Result<Unit, HashingError> Verify(string input, string expectedHash)
     {
         var hashResult = Hash(input);
         if (!hashResult.IsSuccess)
         {
-            Logger.Error("Failed to compute FNV-1a hash for verification.");
-            return Result.Failure("Failed to compute hash.");
+            Logger.Error("Failed to compute FNV-1a hash for verification (sync).");
+            return Result<Unit, HashingError>.Failure(hashResult.Error);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
-        Logger.Information(isValid ? "FNV-1a verification succeeded." : "FNV-1a verification failed.");
+        Logger.Information(isValid
+            ? "FNV-1a verification succeeded (sync)."
+            : "FNV-1a verification failed (sync).");
 
-        return isValid ? Result.Success() : Result.Failure("Verification failed.");
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 
-    /// <summary>
-    ///     Computes a 64-bit FNV-1a hash of <paramref name="data" /> and returns it Base64-encoded.
-    /// </summary>
-    /// <param name="data">The byte array to hash.</param>
-    /// <returns>A <see cref="Result{T}" /> with the Base64-encoded hash, or an error message.</returns>
-    public Result<string> EncodeToBase64Hash(byte[] data)
+    /// <inheritdoc />
+    public async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default)
     {
-        if (data == Array.Empty<byte>() || data.Length is 0)
+        if (data.IsEmpty)
         {
-            Logger.Error("FNV-1a: Data cannot be null or empty.");
-            return Result<string>.Failure("Data cannot be null or empty.");
+            Logger.Error("FNV-1a: Data cannot be null or empty for base64 hash (async).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            Logger.Information("Encoding data to Base64 with FNV-1a (64-bit) async.");
+            var base64Hash = await Task.Run(() =>
+            {
+                var hashVal = Fnv1a.Hash64(data.Span);
+                return Convert.ToBase64String(BitConverter.GetBytes(hashVal));
+            }, cancellationToken).ConfigureAwait(false);
+
+            return Result<string, HashingError>.Success(base64Hash);
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Information("FNV-1a base64 encode was canceled.");
+            throw;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during FNV-1a base64 encoding (async).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public Result<string, HashingError> EncodeToBase64Hash(byte[] data)
+    {
+        if (data == null || data.Length == 0)
+        {
+            Logger.Error("FNV-1a: Data cannot be null or empty for base64 hash (sync).");
+            return Result<string, HashingError>.Failure(HashComputationError.EmptyInput);
         }
 
         try
         {
-            Logger.Information("Encoding data to Base64 hash using 64-bit FNV-1a.");
-            var hash = Fnv1a.Hash64(data); // 64-bit for demonstration
-            var hashBytes = BitConverter.GetBytes(hash);
-            var base64Hash = Convert.ToBase64String(hashBytes);
-            return Result<string>.Success(base64Hash);
+            Logger.Information("Encoding data to Base64 with FNV-1a (64-bit) sync.");
+            var hashVal = Fnv1a.Hash64(data);
+            var base64Hash = Convert.ToBase64String(BitConverter.GetBytes(hashVal));
+
+            return Result<string, HashingError>.Success(base64Hash);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during FNV-1a base64 encoding hash.");
-            return Result<string>.Failure($"Error during base64 encoding hash: {ex.Message}");
+            Logger.Error(ex, "Error during FNV-1a base64 encoding (sync).");
+            return Result<string, HashingError>.Failure(
+                HashComputationError.AlgorithmError(ex.Message), ex);
         }
     }
 
-    /// <summary>
-    ///     Verifies <paramref name="data" /> by computing a 64-bit FNV-1a hash and comparing
-    ///     it to <paramref name="expectedBase64Hash" />.
-    /// </summary>
-    /// <param name="data">The original byte array to hash.</param>
-    /// <param name="expectedBase64Hash">A Base64-encoded FNV-1a 64-bit hash.</param>
-    /// <returns>A <see cref="Result" /> indicating success if they match.</returns>
-    public Result VerifyBase64Hash(byte[] data, string expectedBase64Hash)
+    /// <inheritdoc />
+    public async Task<Result<Unit, HashingError>> VerifyBase64HashAsync(
+        ReadOnlyMemory<byte> data,
+        string expectedBase64Hash,
+        CancellationToken cancellationToken = default)
     {
-        var encodeResult = EncodeToBase64Hash(data);
+        if (data.IsEmpty)
+        {
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var encodeResult = await EncodeToBase64HashAsync(data, cancellationToken).ConfigureAwait(false);
         if (!encodeResult.IsSuccess)
         {
-            Logger.Error("Failed to compute FNV-1a Base64 hash for verification.");
-            return Result.Failure("Failed to compute hash.");
+            Logger.Error("Failed to compute FNV-1a Base64 hash for verification (async).");
+            return Result<Unit, HashingError>.Failure(encodeResult.Error);
         }
 
         var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
         Logger.Information(isValid
-            ? "FNV-1a Base64 hash verification succeeded."
-            : "FNV-1a Base64 hash verification failed.");
+            ? "FNV-1a Base64 hash verification succeeded (async)."
+            : "FNV-1a Base64 hash verification failed (async).");
 
-        return isValid ? Result.Success() : Result.Failure("Base64 hash verification failed.");
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 
-    /// <summary>
-    ///     No-op for FNV-1a. It has a fixed or variable output (32/64-bit), but we do not dynamically change it.
-    /// </summary>
-    public IHasher WithHashSize(int size)
+    /// <inheritdoc />
+    public Result<Unit, HashingError> VerifyBase64Hash(byte[] data, string expectedBase64Hash)
     {
-        return this;
+        if (data == null || data.Length == 0)
+        {
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        var encodeResult = EncodeToBase64Hash(data);
+        if (!encodeResult.IsSuccess)
+        {
+            return Result<Unit, HashingError>.Failure(encodeResult.Error);
+        }
+
+        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
+        Logger.Information(isValid
+            ? "FNV-1a Base64 hash verification succeeded (sync)."
+            : "FNV-1a Base64 hash verification failed (sync).");
+
+        return isValid
+            ? Result<Unit, HashingError>.Success(Unit.Value)
+            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 }

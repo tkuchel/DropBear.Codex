@@ -2,6 +2,8 @@
 
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Models;
 using Serilog;
 
@@ -34,6 +36,7 @@ public class DropBearFileBuilder
     ///     Sets the filename for the resulting <see cref="DropBearFile" />.
     /// </summary>
     /// <param name="fileName">The file name to assign.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentException">Thrown if <paramref name="fileName" /> is null or empty.</exception>
     public DropBearFileBuilder WithFileName(string fileName)
     {
@@ -60,6 +63,7 @@ public class DropBearFileBuilder
     /// </summary>
     /// <param name="versionLabel">The version label (e.g. "1.0.0").</param>
     /// <param name="versionDate">A <see cref="DateTimeOffset" /> indicating the version date.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentException">Thrown if <paramref name="versionLabel" /> is null or empty.</exception>
     public DropBearFileBuilder WithVersion(string versionLabel, DateTimeOffset versionDate)
     {
@@ -86,6 +90,7 @@ public class DropBearFileBuilder
     /// </summary>
     /// <param name="key">The metadata key.</param>
     /// <param name="value">The metadata value.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentException">Thrown if <paramref name="key" /> or <paramref name="value" /> is null or empty.</exception>
     public DropBearFileBuilder AddMetadata(string key, string value)
     {
@@ -121,6 +126,7 @@ public class DropBearFileBuilder
     ///     Adds a pre-built <see cref="ContentContainer" /> to the resulting <see cref="DropBearFile" />.
     /// </summary>
     /// <param name="container">The <see cref="ContentContainer" /> to include.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="container" /> is null.</exception>
     public DropBearFileBuilder AddContentContainer(ContentContainer container)
     {
@@ -152,29 +158,35 @@ public class DropBearFileBuilder
     ///     Builds and returns a <see cref="DropBearFile" /> instance with all configured metadata, version, and content
     ///     containers.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if a file name or version is not set.</exception>
-    public DropBearFile Build()
+    /// <returns>
+    ///     A <see cref="Result{DropBearFile, BuilderError}" /> containing the built <see cref="DropBearFile" /> or an
+    ///     error.
+    /// </returns>
+    public Result<DropBearFile, BuilderError> Build()
     {
         try
         {
             if (string.IsNullOrEmpty(_fileName))
             {
-                throw new InvalidOperationException("FileName must be set before building.");
+                return Result<DropBearFile, BuilderError>.Failure(
+                    BuilderError.BuildFailed("FileName must be set before building."));
             }
 
             if (_currentVersion == null)
             {
-                throw new InvalidOperationException("Version must be set before building.");
+                return Result<DropBearFile, BuilderError>.Failure(
+                    BuilderError.BuildFailed("Version must be set before building."));
             }
 
             var file = new DropBearFile(_metadata, _contentContainers, _fileName, _currentVersion);
             _logger.Information("Built DropBearFile: {FileName}", file.FileName);
-            return file;
+            return Result<DropBearFile, BuilderError>.Success(file);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error building DropBearFile");
-            throw;
+            return Result<DropBearFile, BuilderError>.Failure(
+                BuilderError.BuildFailed(ex), ex);
         }
     }
 }

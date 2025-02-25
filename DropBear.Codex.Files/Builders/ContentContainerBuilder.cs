@@ -2,7 +2,9 @@
 
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Enums;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Models;
 using DropBear.Codex.Serialization.Factories;
 using DropBear.Codex.Serialization.Interfaces;
@@ -40,6 +42,7 @@ public class ContentContainerBuilder
     /// </summary>
     /// <typeparam name="T">The type of the data being stored.</typeparam>
     /// <param name="data">The data object.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="data" /> is null.</exception>
     /// <exception cref="InvalidOperationException">Thrown if setting data on the container fails.</exception>
     public ContentContainerBuilder WithData<T>(T data)
@@ -52,7 +55,7 @@ public class ContentContainerBuilder
         var result = _container.SetData(data);
         if (!result.IsSuccess)
         {
-            throw new InvalidOperationException($"Failed to set data: {result.ErrorMessage}");
+            throw new InvalidOperationException($"Failed to set data: {result.Error?.Message}");
         }
 
         _logger.Debug("Set data of type {DataType}", typeof(T).Name);
@@ -63,6 +66,7 @@ public class ContentContainerBuilder
     ///     Enables a specific <see cref="ContentContainerFlags" /> on the container.
     /// </summary>
     /// <param name="flag">The flag to enable.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     public ContentContainerBuilder WithFlag(ContentContainerFlags flag)
     {
         _container.EnableFlag(flag);
@@ -74,6 +78,7 @@ public class ContentContainerBuilder
     ///     Sets the content type identifier on the <see cref="ContentContainer" />.
     /// </summary>
     /// <param name="contentType">A string representing the content type.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentException">Thrown if <paramref name="contentType" /> is null or empty.</exception>
     public ContentContainerBuilder WithContentType(string contentType)
     {
@@ -91,6 +96,7 @@ public class ContentContainerBuilder
     ///     Configures which <see cref="ISerializer" /> implementation to use.
     /// </summary>
     /// <typeparam name="T">A class implementing <see cref="ISerializer" />.</typeparam>
+    /// <returns>The builder instance for method chaining.</returns>
     public ContentContainerBuilder WithSerializer<T>() where T : ISerializer
     {
         _serializerType = typeof(T);
@@ -102,6 +108,7 @@ public class ContentContainerBuilder
     ///     Configures which <see cref="ICompressionProvider" /> implementation to use.
     /// </summary>
     /// <typeparam name="T">A class implementing <see cref="ICompressionProvider" />.</typeparam>
+    /// <returns>The builder instance for method chaining.</returns>
     public ContentContainerBuilder WithCompression<T>() where T : ICompressionProvider
     {
         _compressionProviderType = typeof(T);
@@ -113,6 +120,7 @@ public class ContentContainerBuilder
     ///     Configures which <see cref="IEncryptionProvider" /> implementation to use.
     /// </summary>
     /// <typeparam name="T">A class implementing <see cref="IEncryptionProvider" />.</typeparam>
+    /// <returns>The builder instance for method chaining.</returns>
     public ContentContainerBuilder WithEncryption<T>() where T : IEncryptionProvider
     {
         _encryptionProviderType = typeof(T);
@@ -125,6 +133,7 @@ public class ContentContainerBuilder
     /// </summary>
     /// <param name="publicKeyPath">Path to the public key file.</param>
     /// <param name="privateKeyPath">Path to the private key file.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     public ContentContainerBuilder WithKeys(string publicKeyPath, string privateKeyPath)
     {
         _publicKeyPath = publicKeyPath;
@@ -139,10 +148,14 @@ public class ContentContainerBuilder
     ///     Builds and configures the <see cref="ContentContainer" /> asynchronously.
     ///     This includes serializing data, if a serializer is specified.
     /// </summary>
-    /// <returns>The fully configured <see cref="ContentContainer" />.</returns>
-    /// <exception cref="InvalidOperationException">Thrown if required providers or data are missing.</exception>
-    /// <exception cref="Exception">Propagates any exception that occurs during building.</exception>
-    public async Task<ContentContainer> BuildAsync()
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>
+    ///     A <see cref="Result{ContentContainer, BuilderError}" /> containing the fully configured
+    ///     <see cref="ContentContainer" />
+    ///     or an error.
+    /// </returns>
+    public async Task<Result<ContentContainer, BuilderError>> BuildAsync(
+        CancellationToken cancellationToken = default)
     {
         try
         {
@@ -173,6 +186,9 @@ public class ContentContainerBuilder
                 _logger.Debug("Added encryption keys to serializer builder.");
             }
 
+            // Use cancellation token to check for cancellation
+            cancellationToken.ThrowIfCancellationRequested();
+
             var serializer = _serializerType != null ? serializerBuilder.Build() : null;
 
             // Perform serialization if required
@@ -181,17 +197,21 @@ public class ContentContainerBuilder
                 var data = _container.TemporaryData;
                 if (data == null)
                 {
-                    throw new InvalidOperationException("No data available for serialization.");
+                    return Result<ContentContainer, BuilderError>.Failure(
+                        BuilderError.BuildFailed("No data available for serialization."));
                 }
 
                 if (serializer != null)
                 {
-                    var serializedData = await serializer.SerializeAsync(data).ConfigureAwait(false);
+                    var serializedData = await serializer.SerializeAsync(data, cancellationToken)
+                        .ConfigureAwait(false);
+
                     _container.Data = serializedData;
                 }
                 else
                 {
-                    throw new InvalidOperationException("No serializer available for serialization.");
+                    return Result<ContentContainer, BuilderError>.Failure(
+                        BuilderError.BuildFailed("No serializer available for serialization."));
                 }
 
                 _logger.Debug("Serialized data for ContentContainer.");
@@ -200,12 +220,18 @@ public class ContentContainerBuilder
             // Finalize the container by computing hashes, etc.
             _container.ComputeAndSetHash();
             _logger.Information("Built ContentContainer successfully.");
-            return _container;
+            return Result<ContentContainer, BuilderError>.Success(_container);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("ContentContainer build was canceled.");
+            throw; // Propagate cancellation
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error building ContentContainer");
-            throw;
+            return Result<ContentContainer, BuilderError>.Failure(
+                BuilderError.BuildFailed(ex), ex);
         }
     }
 }

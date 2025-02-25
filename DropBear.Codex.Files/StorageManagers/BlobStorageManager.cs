@@ -1,7 +1,9 @@
 ﻿#region
 
+using System.Buffers;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Interfaces;
 using FluentStorage.Blobs;
 using Microsoft.IO;
@@ -17,6 +19,8 @@ namespace DropBear.Codex.Files.StorageManagers;
 /// </summary>
 public sealed class BlobStorageManager : IStorageManager
 {
+    // Optimal buffer size for blob operations
+    private const int BufferSize = 81920; // 80KB buffer for blob operations
     private readonly IBlobStorage _blobStorage;
     private readonly string _containerName;
     private readonly ILogger _logger;
@@ -45,19 +49,21 @@ public sealed class BlobStorageManager : IStorageManager
     }
 
     /// <inheritdoc />
-    public async Task<Result> WriteAsync(
+    public async Task<Result<Unit, StorageError>> WriteAsync(
         string identifier,
         Stream dataStream,
         CancellationToken cancellationToken = default)
     {
         if (dataStream == null)
         {
-            throw new ArgumentNullException(nameof(dataStream));
+            return Result<Unit, StorageError>.Failure(
+                StorageError.WriteFailed(identifier, "Data stream is null."));
         }
 
         if (dataStream.Length == 0)
         {
-            return Result.Failure("Attempting to write an empty stream to blob storage.");
+            return Result<Unit, StorageError>.Failure(
+                StorageError.WriteFailed(identifier, "Attempting to write an empty stream to blob storage."));
         }
 
         var fullPath = GetFullPath(identifier, _containerName);
@@ -71,19 +77,25 @@ public sealed class BlobStorageManager : IStorageManager
 
                 _logger.Information("Successfully wrote blob {BlobName} to container {ContainerName}",
                     identifier, _containerName);
-                return Result.Success();
+                return Result<Unit, StorageError>.Success(Unit.Value);
             }
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Write operation for {BlobName} was cancelled", identifier);
+            throw; // Propagate cancellation
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error writing blob {BlobName} to container {ContainerName}", identifier,
                 _containerName);
-            return Result.Failure(ex.Message, ex);
+            return Result<Unit, StorageError>.Failure(
+                StorageError.WriteFailed(identifier, ex.Message), ex);
         }
     }
 
     /// <inheritdoc />
-    public async Task<Result<Stream>> ReadAsync(
+    public async Task<Result<Stream, StorageError>> ReadAsync(
         string identifier,
         CancellationToken cancellationToken = default)
     {
@@ -96,27 +108,55 @@ public sealed class BlobStorageManager : IStorageManager
             {
                 _logger.Error("Blob not found or no access: {BlobName} in container {ContainerName}",
                     identifier, _containerName);
-                return Result<Stream>.Failure("Blob not found or no access.");
+                return Result<Stream, StorageError>.Failure(
+                    StorageError.ReadFailed(identifier, "Blob not found or no access."));
             }
 
-            var memoryStream = _memoryStreamManager.GetStream();
-            await readStream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
+            // Use memory stream with a size hint if available
+            var memoryStream = readStream.Length > 0 && readStream.Length <= int.MaxValue
+                ? _memoryStreamManager.GetStream(null, (int)readStream.Length)
+                : _memoryStreamManager.GetStream();
+
+            // Use ArrayPool for optimal buffer management
+            var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            try
+            {
+                int bytesRead;
+                while ((bytesRead = await readStream.ReadAsync(
+                           buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    await memoryStream.WriteAsync(
+                        buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+                await readStream.DisposeAsync().ConfigureAwait(false);
+            }
+
             memoryStream.Position = 0;
 
             _logger.Information("Successfully read blob {BlobName} from container {ContainerName}",
                 identifier, _containerName);
-            return Result<Stream>.Success(memoryStream);
+            return Result<Stream, StorageError>.Success(memoryStream);
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Read operation for {BlobName} was cancelled", identifier);
+            throw; // Propagate cancellation
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error reading blob {BlobName} from container {ContainerName}",
                 identifier, _containerName);
-            return Result<Stream>.Failure(ex.Message, ex);
+            return Result<Stream, StorageError>.Failure(
+                StorageError.ReadFailed(identifier, ex.Message), ex);
         }
     }
 
     /// <inheritdoc />
-    public async Task<Result> DeleteAsync(
+    public async Task<Result<Unit, StorageError>> DeleteAsync(
         string identifier,
         CancellationToken cancellationToken = default)
     {
@@ -127,18 +167,24 @@ public sealed class BlobStorageManager : IStorageManager
             await _blobStorage.DeleteAsync([fullPath], cancellationToken).ConfigureAwait(false);
             _logger.Information("Successfully deleted blob {BlobName} from container {ContainerName}",
                 identifier, _containerName);
-            return Result.Success();
+            return Result<Unit, StorageError>.Success(Unit.Value);
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Delete operation for {BlobName} was cancelled", identifier);
+            throw; // Propagate cancellation
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error deleting blob {BlobName} from container {ContainerName}",
                 identifier, _containerName);
-            return Result.Failure(ex.Message, ex);
+            return Result<Unit, StorageError>.Failure(
+                StorageError.DeleteFailed(identifier, ex.Message), ex);
         }
     }
 
     /// <inheritdoc />
-    public async Task<Result> UpdateAsync(
+    public async Task<Result<Unit, StorageError>> UpdateAsync(
         string identifier,
         Stream newDataStream,
         CancellationToken cancellationToken = default)
@@ -153,18 +199,25 @@ public sealed class BlobStorageManager : IStorageManager
             {
                 _logger.Error("Blob {BlobName} does not exist in container {ContainerName}",
                     identifier, _containerName);
-                return Result.Failure("The specified blob does not exist.");
+                return Result<Unit, StorageError>.Failure(
+                    StorageError.UpdateFailed(identifier, "The specified blob does not exist."));
             }
 
             // Delete old blob & write new data
             await _blobStorage.DeleteAsync([fullPath], cancellationToken).ConfigureAwait(false);
-            return await WriteAsync(fullPath, newDataStream, cancellationToken).ConfigureAwait(false);
+            return await WriteAsync(identifier, newDataStream, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException or OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Update operation for {BlobName} was cancelled", identifier);
+            throw; // Propagate cancellation
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error updating blob {BlobName} in container {ContainerName}",
                 identifier, _containerName);
-            return Result.Failure(ex.Message, ex);
+            return Result<Unit, StorageError>.Failure(
+                StorageError.UpdateFailed(identifier, ex.Message), ex);
         }
     }
 
@@ -180,8 +233,28 @@ public sealed class BlobStorageManager : IStorageManager
             return inputStream;
         }
 
-        var memoryStream = _memoryStreamManager.GetStream();
-        await inputStream.CopyToAsync(memoryStream, cancellationToken).ConfigureAwait(false);
+        // Use memory stream with a size hint if available
+        var memoryStream = inputStream.Length > 0 && inputStream.Length <= int.MaxValue
+            ? _memoryStreamManager.GetStream(null, (int)inputStream.Length)
+            : _memoryStreamManager.GetStream();
+
+        // Use ArrayPool for optimal buffer management
+        var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+        try
+        {
+            int bytesRead;
+            while ((bytesRead = await inputStream.ReadAsync(
+                       buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                await memoryStream.WriteAsync(
+                    buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
         memoryStream.Position = 0;
         return memoryStream;
     }
@@ -191,6 +264,7 @@ public sealed class BlobStorageManager : IStorageManager
     /// </summary>
     /// <param name="blobName">The user-specified blob identifier.</param>
     /// <param name="containerName">An optional override container name (defaults to <see cref="_containerName" />).</param>
+    /// <returns>A validated full path string.</returns>
     private string GetFullPath(string blobName, string? containerName)
     {
         containerName ??= _containerName;
@@ -202,6 +276,8 @@ public sealed class BlobStorageManager : IStorageManager
     ///     Ensures the blob name is valid (non-empty and within length limits).
     /// </summary>
     /// <param name="blobName">The combined container/blob path.</param>
+    /// <returns>The validated blob name.</returns>
+    /// <exception cref="ArgumentException">Thrown if blob name is invalid.</exception>
     private static string ValidateBlobName(string blobName)
     {
         if (string.IsNullOrEmpty(blobName))

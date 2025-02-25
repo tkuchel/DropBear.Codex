@@ -1,13 +1,17 @@
 ﻿#region
 
+using System.Buffers;
+using System.Collections.Frozen;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Extensions;
 using DropBear.Codex.Files.Interfaces;
 using DropBear.Codex.Files.Models;
+using Microsoft.IO;
 using Serilog;
 
 #endregion
@@ -21,6 +25,15 @@ namespace DropBear.Codex.Files.Services;
 [SupportedOSPlatform("windows")]
 public sealed class FileManager
 {
+    private static readonly RecyclableMemoryStreamManager MemoryStreamManager = new(
+        new RecyclableMemoryStreamManager.Options
+        {
+            ThrowExceptionOnToArray = true,
+            BlockSize = 4096 * 4, // 16KB blocks
+            LargeBufferMultiple = 1024 * 1024, // 1MB increments for large buffers
+            MaximumBufferSize = 1024 * 1024 * 100 // 100MB max buffer size
+        });
+
     private readonly string _baseDirectory;
     private readonly ILogger _logger;
     private readonly IStorageManager _storageManager;
@@ -55,52 +68,66 @@ public sealed class FileManager
     /// <typeparam name="T">Type of data to write (e.g., <see cref="DropBearFile" /> or <c>byte[]</c>).</typeparam>
     /// <param name="data">The data to write.</param>
     /// <param name="identifier">A file path or blob name (depending on <see cref="IStorageManager" />).</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public async Task<Result> WriteToFileAsync<T>(T data, string identifier)
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A Result indicating success or failure with error details.</returns>
+    public async Task<Result<Unit, FileOperationError>> WriteToFileAsync<T>(
+        T data,
+        string identifier,
+        CancellationToken cancellationToken = default)
     {
         _logger.Debug("Attempting to write {DataType} to file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
             // Validate path & directory permissions
-            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier, cancellationToken).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
-                return validationResult;
+                return Result<Unit, FileOperationError>.Failure(validationResult.Error!);
             }
 
             identifier = GetFullPath(identifier);
 
             // Convert the data to a stream
-            var streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
+            var streamResult = await ConvertToStreamAsync(data, cancellationToken).ConfigureAwait(false);
             if (!streamResult.IsSuccess)
             {
                 _logger.Warning("Failed to convert {DataType} to stream. Error: {ErrorMessage}",
-                    typeof(T).Name, streamResult.ErrorMessage);
-                return Result.Failure(streamResult.ErrorMessage);
+                    typeof(T).Name, streamResult.Error?.Message);
+                return Result<Unit, FileOperationError>.Failure(streamResult.Error!);
             }
 
             // Write the stream via the storage manager
             var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
-                var writeResult = await _storageManager.WriteAsync(identifier, stream).ConfigureAwait(false);
+                var writeResult = await _storageManager.WriteAsync(identifier, stream, cancellationToken)
+                    .ConfigureAwait(false);
+
                 if (writeResult.IsSuccess)
                 {
                     _logger.Information("Successfully wrote {DataType} to file {FilePath}",
                         typeof(T).Name, identifier);
-                    return Result.Success();
+                    return Result<Unit, FileOperationError>.Success(Unit.Value);
                 }
 
                 _logger.Warning("Failed to write to file {FilePath}. Error: {ErrorMessage}",
-                    identifier, writeResult.ErrorMessage);
-                return writeResult;
+                    identifier, writeResult.Error?.Message);
+
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation($"Failed to write to file: {writeResult.Error?.Message}"));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Write operation for {FilePath} was cancelled", identifier);
+            throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error writing {DataType} to file {FilePath}", typeof(T).Name, identifier);
-            return Result.Failure($"Error writing to file: {ex.Message}", ex);
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error writing to file: {ex.Message}"), ex);
         }
     }
 
@@ -109,42 +136,53 @@ public sealed class FileManager
     /// </summary>
     /// <typeparam name="T">Type of data to read (e.g., <see cref="DropBearFile" /> or <c>byte[]</c>).</typeparam>
     /// <param name="identifier">A file path or blob name.</param>
-    /// <returns>A <see cref="Result{T}" /> with the read data or an error.</returns>
-    public async Task<Result<T>> ReadFromFileAsync<T>(string identifier)
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A Result with the read data or error details.</returns>
+    public async Task<Result<T, FileOperationError>> ReadFromFileAsync<T>(
+        string identifier,
+        CancellationToken cancellationToken = default)
     {
         _logger.Debug("Attempting to read {DataType} from file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
             // Validate path & directory permissions
-            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier, cancellationToken).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
-                return Result<T>.Failure(validationResult.ErrorMessage);
+                return Result<T, FileOperationError>.Failure(validationResult.Error!);
             }
 
             identifier = GetFullPath(identifier);
 
             // Read the file via the storage manager
-            var streamResult = await _storageManager.ReadAsync(identifier).ConfigureAwait(false);
+            var streamResult = await _storageManager.ReadAsync(identifier, cancellationToken).ConfigureAwait(false);
             if (!streamResult.IsSuccess)
             {
                 _logger.Warning("Failed to read from file {FilePath}. Error: {ErrorMessage}",
-                    identifier, streamResult.ErrorMessage);
-                return Result<T>.Failure(streamResult.ErrorMessage);
+                    identifier, streamResult.Error?.Message);
+
+                return Result<T, FileOperationError>.Failure(
+                    FileOperationError.ReadFailed(identifier, streamResult.Error?.Message ?? "Unknown error"));
             }
 
             var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
                 // Convert the stream back into T
-                return await ConvertFromStreamAsync<T>(stream).ConfigureAwait(false);
+                return await ConvertFromStreamAsync<T>(stream, cancellationToken).ConfigureAwait(false);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Read operation for {FilePath} was cancelled", identifier);
+            throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error reading from file {FilePath}", identifier);
-            return Result<T>.Failure(ex.Message, ex);
+            return Result<T, FileOperationError>.Failure(
+                FileOperationError.ReadFailed(identifier, ex.Message), ex);
         }
     }
 
@@ -159,18 +197,23 @@ public sealed class FileManager
     ///     If <c>true</c>, overwrites the entire file.
     ///     If <c>false</c> and <typeparamref name="T" /> is a <see cref="DropBearFile" />, merges content containers.
     /// </param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public async Task<Result> UpdateFileAsync<T>(T data, string identifier, bool overwrite = false)
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A Result indicating success or failure with error details.</returns>
+    public async Task<Result<Unit, FileOperationError>> UpdateFileAsync<T>(
+        T data,
+        string identifier,
+        bool overwrite = false,
+        CancellationToken cancellationToken = default)
     {
         _logger.Debug("Attempting to update {DataType} in file {FilePath}", typeof(T).Name, identifier);
 
         try
         {
             // Validate path & directory permissions
-            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier, cancellationToken).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
-                return validationResult;
+                return Result<Unit, FileOperationError>.Failure(validationResult.Error!);
             }
 
             identifier = GetFullPath(identifier);
@@ -180,7 +223,8 @@ public sealed class FileManager
             if (!overwrite && typeof(T) == typeof(DropBearFile))
             {
                 // Read the existing file
-                var readResult = await ReadFromFileAsync<DropBearFile>(identifier).ConfigureAwait(false);
+                var readResult = await ReadFromFileAsync<DropBearFile>(identifier, cancellationToken)
+                    .ConfigureAwait(false);
                 if (readResult.IsSuccess)
                 {
                     existingFile = readResult.Value;
@@ -188,7 +232,7 @@ public sealed class FileManager
                 else
                 {
                     _logger.Warning("No existing file found at {FilePath}. Error: {ErrorMessage}",
-                        identifier, readResult.ErrorMessage);
+                        identifier, readResult.Error?.Message);
                 }
             }
 
@@ -211,8 +255,9 @@ public sealed class FileManager
                         // Remove this container if data is null
                         if (existingFile.ContentContainers.Count == 1)
                         {
-                            throw new InvalidOperationException(
-                                "Cannot remove the last content container from the file.");
+                            return Result<Unit, FileOperationError>.Failure(
+                                FileOperationError.InvalidOperation(
+                                    "Cannot remove the last content container from the file."));
                         }
 
                         existingFile.ContentContainers.Remove(existingContainer);
@@ -229,44 +274,55 @@ public sealed class FileManager
             }
 
             // Convert updated object to stream
-            Result<Stream> streamResult;
+            Result<Stream, FileOperationError> streamResult;
             if (existingFile == null)
             {
-                streamResult = await ConvertToStreamAsync(data).ConfigureAwait(false);
+                streamResult = await ConvertToStreamAsync(data, cancellationToken).ConfigureAwait(false);
             }
             else
             {
-                streamResult = await ConvertToStreamAsync(existingFile).ConfigureAwait(false);
+                streamResult = await ConvertToStreamAsync(existingFile, cancellationToken).ConfigureAwait(false);
             }
 
             if (!streamResult.IsSuccess)
             {
                 _logger.Warning("Failed to convert {DataType} to stream for update. Error: {ErrorMessage}",
-                    typeof(T).Name, streamResult.ErrorMessage);
-                return Result.Failure(streamResult.ErrorMessage);
+                    typeof(T).Name, streamResult.Error?.Message);
+
+                return Result<Unit, FileOperationError>.Failure(streamResult.Error!);
             }
 
             var stream = streamResult.Value;
             await using (stream.ConfigureAwait(false))
             {
                 // Use storage manager to update the file
-                var updateResult = await _storageManager.UpdateAsync(identifier, stream).ConfigureAwait(false);
+                var updateResult = await _storageManager.UpdateAsync(identifier, stream, cancellationToken)
+                    .ConfigureAwait(false);
+
                 if (updateResult.IsSuccess)
                 {
                     _logger.Information("Successfully updated {DataType} in file {FilePath}",
                         typeof(T).Name, identifier);
-                    return Result.Success();
+                    return Result<Unit, FileOperationError>.Success(Unit.Value);
                 }
 
                 _logger.Warning("Failed to update file {FilePath}. Error: {ErrorMessage}",
-                    identifier, updateResult.ErrorMessage);
-                return updateResult;
+                    identifier, updateResult.Error?.Message);
+
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.UpdateFailed(identifier, updateResult.Error?.Message ?? "Unknown error"));
             }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Update operation for {FilePath} was cancelled", identifier);
+            throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error updating {DataType} in file {FilePath}", typeof(T).Name, identifier);
-            return Result.Failure($"Error updating file: {ex.Message}", ex);
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.UpdateFailed(identifier, ex.Message), ex);
         }
     }
 
@@ -279,21 +335,23 @@ public sealed class FileManager
     ///     If specified, deletes only that container instead of the entire file (unless <paramref name="deleteFile" /> is
     ///     <c>true</c>).
     /// </param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public async Task<Result> DeleteFileAsync(
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>A Result indicating success or failure with error details.</returns>
+    public async Task<Result<Unit, FileOperationError>> DeleteFileAsync(
         string identifier,
         bool deleteFile = true,
-        ContentContainer? containerToDelete = null)
+        ContentContainer? containerToDelete = null,
+        CancellationToken cancellationToken = default)
     {
         _logger.Debug("Attempting to delete file {FilePath} or specific content container", identifier);
 
         try
         {
             // Validate path & directory permissions
-            var validationResult = await ValidateFilePathAsync(identifier).ConfigureAwait(false);
+            var validationResult = await ValidateFilePathAsync(identifier, cancellationToken).ConfigureAwait(false);
             if (!validationResult.IsSuccess)
             {
-                return validationResult;
+                return Result<Unit, FileOperationError>.Failure(validationResult.Error!);
             }
 
             identifier = GetFullPath(identifier);
@@ -301,23 +359,27 @@ public sealed class FileManager
             // If deleting the entire file, just call storage manager
             if (deleteFile || containerToDelete == null)
             {
-                var deleteResult = await _storageManager.DeleteAsync(identifier).ConfigureAwait(false);
+                var deleteResult =
+                    await _storageManager.DeleteAsync(identifier, cancellationToken).ConfigureAwait(false);
                 if (deleteResult.IsSuccess)
                 {
                     _logger.Information("Successfully deleted file {FilePath}", identifier);
-                    return Result.Success();
+                    return Result<Unit, FileOperationError>.Success(Unit.Value);
                 }
 
                 _logger.Warning("Failed to delete file {FilePath}. Error: {ErrorMessage}",
-                    identifier, deleteResult.ErrorMessage);
-                return deleteResult;
+                    identifier, deleteResult.Error?.Message);
+
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.DeleteFailed(identifier, deleteResult.Error?.Message ?? "Unknown error"));
             }
 
             // If containerToDelete is specified, remove only that container from the file
-            var readResult = await ReadFromFileAsync<DropBearFile>(identifier).ConfigureAwait(false);
+            var readResult = await ReadFromFileAsync<DropBearFile>(identifier, cancellationToken).ConfigureAwait(false);
             if (!readResult.IsSuccess)
             {
-                return Result.Failure(readResult.ErrorMessage);
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.ReadFailed(identifier, readResult.Error?.Message ?? "Unknown error"));
             }
 
             var dropBearFile = readResult.Value;
@@ -325,7 +387,8 @@ public sealed class FileManager
             // Ensure we do not remove the last container
             if (dropBearFile.ContentContainers.Count == 1 && containerToDelete != null)
             {
-                throw new InvalidOperationException("Cannot delete the last content container in the file.");
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Cannot delete the last content container in the file."));
             }
 
             var existingContainer = dropBearFile.ContentContainers
@@ -337,15 +400,22 @@ public sealed class FileManager
                 _logger.Information("Deleted content container from file {FilePath}", identifier);
 
                 // Update the file with the new container list
-                return await UpdateFileAsync(dropBearFile, identifier, true).ConfigureAwait(false);
+                return await UpdateFileAsync(dropBearFile, identifier, true, cancellationToken).ConfigureAwait(false);
             }
 
-            return Result.Failure("Content container not found.");
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Content container not found."));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("Delete operation for {FilePath} was cancelled", identifier);
+            throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
             _logger.Error(ex, "Error deleting file {FilePath}", identifier);
-            return Result.Failure(ex.Message, ex);
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.DeleteFailed(identifier, ex.Message), ex);
         }
     }
 
@@ -357,6 +427,9 @@ public sealed class FileManager
     /// <returns>The matching <see cref="ContentContainer" /> or <c>null</c> if not found.</returns>
     public ContentContainer? GetContainerByContentType(DropBearFile file, string contentType)
     {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(contentType);
+
         try
         {
             return file.ContentContainers
@@ -377,6 +450,9 @@ public sealed class FileManager
     /// <returns>The matching <see cref="ContentContainer" /> or <c>null</c> if not found.</returns>
     public ContentContainer? GetContainerByHash(DropBearFile file, string hash)
     {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(hash);
+
         try
         {
             return file.ContentContainers
@@ -393,17 +469,23 @@ public sealed class FileManager
     ///     Lists all distinct content types in the <see cref="DropBearFile" />.
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> whose containers are listed.</param>
-    /// <returns>A list of content types present in <paramref name="file" />.</returns>
-    public IList<string> ListContainerTypes(DropBearFile file)
+    /// <returns>A frozen list of content types present in <paramref name="file" />.</returns>
+    public IReadOnlyList<string> ListContainerTypes(DropBearFile file)
     {
+        ArgumentNullException.ThrowIfNull(file);
+
         try
         {
-            return file.ContentContainers.Select(c => c.ContentType).ToList();
+            // Use frozen collections for read-only lists (.NET 8 feature)
+            return file.ContentContainers
+                .Select(c => c.ContentType)
+                .ToFrozenSet(StringComparer.OrdinalIgnoreCase)
+                .ToList();
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error listing content container types.");
-            return new List<string>();
+            return Array.Empty<string>();
         }
     }
 
@@ -413,9 +495,14 @@ public sealed class FileManager
     /// </summary>
     /// <param name="file">The target <see cref="DropBearFile" />.</param>
     /// <param name="newContainer">The <see cref="ContentContainer" /> to add or update.</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public Result AddOrUpdateContainer(DropBearFile file, ContentContainer newContainer)
+    /// <returns>A Result indicating success or failure with error details.</returns>
+    public Result<Unit, FileOperationError> AddOrUpdateContainer(
+        DropBearFile file,
+        ContentContainer newContainer)
     {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(newContainer);
+
         try
         {
             var existingContainer = file.ContentContainers.FirstOrDefault(c => c.Equals(newContainer));
@@ -424,17 +511,18 @@ public sealed class FileManager
                 existingContainer.Data = newContainer.Data;
                 existingContainer.SetHash(newContainer.Hash);
                 _logger.Information("Updated existing content container.");
-                return Result.Success();
+                return Result<Unit, FileOperationError>.Success(Unit.Value);
             }
 
             file.ContentContainers.Add(newContainer);
             _logger.Information("Added new content container.");
-            return Result.Success();
+            return Result<Unit, FileOperationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error adding or updating content container.");
-            return Result.Failure("Error adding or updating container.");
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Error adding or updating container."), ex);
         }
     }
 
@@ -444,30 +532,38 @@ public sealed class FileManager
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> to modify.</param>
     /// <param name="contentType">The content type of the container to remove.</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public Result RemoveContainerByContentType(DropBearFile file, string contentType)
+    /// <returns>A Result indicating success or failure with error details.</returns>
+    public Result<Unit, FileOperationError> RemoveContainerByContentType(
+        DropBearFile file,
+        string contentType)
     {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(contentType);
+
         try
         {
             var containerToRemove = GetContainerByContentType(file, contentType);
             if (containerToRemove == null)
             {
-                return Result.Failure("Content container not found.");
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Content container not found."));
             }
 
             if (file.ContentContainers.Count == 1)
             {
-                return Result.Failure("Cannot remove the last content container.");
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Cannot remove the last content container."));
             }
 
             file.ContentContainers.Remove(containerToRemove);
             _logger.Information("Removed content container with content type: {ContentType}", contentType);
-            return Result.Success();
+            return Result<Unit, FileOperationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error removing content container by content type: {ContentType}", contentType);
-            return Result.Failure("Error removing content container.");
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Error removing content container."), ex);
         }
     }
 
@@ -478,6 +574,8 @@ public sealed class FileManager
     /// <returns>The number of content containers.</returns>
     public int CountContainers(DropBearFile file)
     {
+        ArgumentNullException.ThrowIfNull(file);
+
         try
         {
             return file.ContentContainers.Count;
@@ -498,6 +596,9 @@ public sealed class FileManager
     /// <returns>The count of matching containers.</returns>
     public int CountContainersByType(DropBearFile file, string contentType)
     {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(contentType);
+
         try
         {
             return file.ContentContainers.Count(c =>
@@ -516,27 +617,36 @@ public sealed class FileManager
     /// <param name="file">The <see cref="DropBearFile" /> to modify.</param>
     /// <param name="oldContainer">The old container to remove.</param>
     /// <param name="newContainer">The new container to add in its place.</param>
-    /// <returns>A <see cref="Result" /> indicating success or failure.</returns>
-    public Result ReplaceContainer(DropBearFile file, ContentContainer oldContainer, ContentContainer newContainer)
+    /// <returns>A Result indicating success or failure with error details.</returns>
+    public Result<Unit, FileOperationError> ReplaceContainer(
+        DropBearFile file,
+        ContentContainer oldContainer,
+        ContentContainer newContainer)
     {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(oldContainer);
+        ArgumentNullException.ThrowIfNull(newContainer);
+
         try
         {
             var existingContainer = file.ContentContainers.FirstOrDefault(c => c.Equals(oldContainer));
             if (existingContainer == null)
             {
-                return Result.Failure("Content container not found.");
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Content container not found."));
             }
 
             file.ContentContainers.Remove(existingContainer);
             file.ContentContainers.Add(newContainer);
 
             _logger.Information("Replaced content container in DropBearFile.");
-            return Result.Success();
+            return Result<Unit, FileOperationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error replacing content container.");
-            return Result.Failure("Error replacing content container.");
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation("Error replacing content container."), ex);
         }
     }
 
@@ -555,14 +665,19 @@ public sealed class FileManager
     }
 
     // Validates directory existence and permissions
-    private async Task<Result> ValidateFilePathAsync(string path)
+    private async Task<Result<Unit, FileOperationError>> ValidateFilePathAsync(
+        string path,
+        CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var directoryPath = Path.GetDirectoryName(GetFullPath(path));
             if (string.IsNullOrEmpty(directoryPath))
             {
-                return Result.Failure("Invalid file path.");
+                return Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.InvalidOperation("Invalid file path."));
             }
 
             if (!Directory.Exists(directoryPath))
@@ -571,33 +686,44 @@ public sealed class FileManager
                 _logger.Information("Directory created successfully: {DirectoryPath}", directoryPath);
             }
 
-            if (await HasWritePermissionOnDirAsync(directoryPath).ConfigureAwait(false))
+            if (await HasWritePermissionOnDirAsync(directoryPath, cancellationToken).ConfigureAwait(false))
             {
-                return Result.Success();
+                return Result<Unit, FileOperationError>.Success(Unit.Value);
             }
 
             _logger.Information("Setting write permissions on directory: {DirectoryPath}", directoryPath);
             var currentUser = WindowsIdentity.GetCurrent().Name;
             await AddDirectorySecurityAsync(directoryPath, currentUser, FileSystemRights.WriteData,
-                AccessControlType.Allow).ConfigureAwait(false);
+                AccessControlType.Allow, cancellationToken).ConfigureAwait(false);
 
-            return await HasWritePermissionOnDirAsync(directoryPath).ConfigureAwait(false)
-                ? Result.Success()
-                : Result.Failure("Failed to set write permissions on directory.");
+            return await HasWritePermissionOnDirAsync(directoryPath, cancellationToken).ConfigureAwait(false)
+                ? Result<Unit, FileOperationError>.Success(Unit.Value)
+                : Result<Unit, FileOperationError>.Failure(
+                    FileOperationError.AccessDenied(directoryPath));
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Information("File path validation was cancelled: {FilePath}", path);
+            throw; // Propagate cancellation
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error validating file path: {FilePath}", path);
-            return Result.Failure("Error validating file path.", ex);
+            return Result<Unit, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error validating file path: {ex.Message}"), ex);
         }
     }
 
-    private static async Task<bool> HasWritePermissionOnDirAsync(string path)
+    private static async Task<bool> HasWritePermissionOnDirAsync(
+        string path,
+        CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var dInfo = new DirectoryInfo(path);
-            var dSecurity = await Task.Run(() => dInfo.GetAccessControl()).ConfigureAwait(false);
+            var dSecurity = await Task.Run(() => dInfo.GetAccessControl(), cancellationToken).ConfigureAwait(false);
             var rules = dSecurity.GetAccessRules(true, true, typeof(SecurityIdentifier));
 
             return rules.Cast<FileSystemAccessRule>().Any(rule =>
@@ -615,12 +741,15 @@ public sealed class FileManager
         string path,
         string account,
         FileSystemRights rights,
-        AccessControlType controlType)
+        AccessControlType controlType,
+        CancellationToken cancellationToken = default)
     {
         try
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             var dInfo = new DirectoryInfo(path);
-            var dSecurity = await Task.Run(() => dInfo.GetAccessControl()).ConfigureAwait(false);
+            var dSecurity = await Task.Run(() => dInfo.GetAccessControl(), cancellationToken).ConfigureAwait(false);
 
             dSecurity.AddAccessRule(new FileSystemAccessRule(
                 account,
@@ -629,7 +758,7 @@ public sealed class FileManager
                 PropagationFlags.None,
                 controlType));
 
-            await Task.Run(() => dInfo.SetAccessControl(dSecurity)).ConfigureAwait(false);
+            await Task.Run(() => dInfo.SetAccessControl(dSecurity), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -638,40 +767,108 @@ public sealed class FileManager
         }
     }
 
-    private async Task<Result<Stream>> ConvertToStreamAsync<T>(T data)
+    private async Task<Result<Stream, FileOperationError>> ConvertToStreamAsync<T>(
+        T data,
+        CancellationToken cancellationToken = default)
     {
-        return data switch
+        try
         {
-            // If it's a DropBearFile, serialize asynchronously to a stream
-            DropBearFile file => Result<Stream>.Success(await file.ToStreamAsync(_logger).ConfigureAwait(false)),
+            cancellationToken.ThrowIfCancellationRequested();
 
-            // If it's a byte array, just wrap in a MemoryStream
-            byte[] byteArray => Result<Stream>.Success(new MemoryStream(byteArray)),
+            if (data is DropBearFile file)
+            {
+                // If it's a DropBearFile, serialize asynchronously to a stream
+                var result = await file.ToStreamAsync(_logger, cancellationToken).ConfigureAwait(false);
+                if (result.IsSuccess)
+                {
+                    return Result<Stream, FileOperationError>.Success(result.Value);
+                }
 
-            // Add other supported types here
-            _ => Result<Stream>.Failure($"Unsupported type for write operation: {typeof(T).Name}")
-        };
+                return Result<Stream, FileOperationError>.Failure(result.Error);
+            }
+
+            if (data is byte[] byteArray)
+            {
+                // If it's a byte array, create a RecyclableMemoryStream
+                var memoryStream = MemoryStreamManager.GetStream();
+                await memoryStream.WriteAsync(byteArray, cancellationToken).ConfigureAwait(false);
+                memoryStream.Position = 0;
+                return Result<Stream, FileOperationError>.Success(memoryStream);
+            }
+
+            // Unsupported type
+            return Result<Stream, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Unsupported type for write operation: {typeof(T).Name}"));
+        }
+        catch (OperationCanceledException)
+        {
+            throw; // Propagate cancellation
+        }
+        catch (Exception ex)
+        {
+            return Result<Stream, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error converting {typeof(T).Name} to stream: {ex.Message}"), ex);
+        }
     }
 
-    private async Task<Result<T>> ConvertFromStreamAsync<T>(Stream stream)
+    private async Task<Result<T, FileOperationError>> ConvertFromStreamAsync<T>(
+        Stream stream,
+        CancellationToken cancellationToken = default)
     {
-        if (typeof(T) == typeof(byte[]))
+        try
         {
-            // Copy stream to a byte array
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms).ConfigureAwait(false);
-            return Result<T>.Success((T)(object)ms.ToArray());
-        }
+            cancellationToken.ThrowIfCancellationRequested();
 
-        if (typeof(T) == typeof(DropBearFile))
+            if (typeof(T) == typeof(byte[]))
+            {
+                // Copy stream to a byte array using ArrayPool for efficiency
+                using var ms = new MemoryStream();
+
+                var buffer = ArrayPool<byte>.Shared.Rent(81920);
+                try
+                {
+                    int bytesRead;
+                    while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
+                               .ConfigureAwait(false)) > 0)
+                    {
+                        await ms.WriteAsync(buffer, 0, bytesRead, cancellationToken).ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+
+                return Result<T, FileOperationError>.Success((T)(object)ms.ToArray());
+            }
+
+            if (typeof(T) == typeof(DropBearFile))
+            {
+                // Use extension method to deserialize
+                var result = await DropBearFileExtensions.FromStreamAsync(stream, _logger, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (result.IsSuccess)
+                {
+                    return Result<T, FileOperationError>.Success((T)(object)result.Value);
+                }
+
+                return Result<T, FileOperationError>.Failure(result.Error!);
+            }
+
+            // Add other supported types here
+            return Result<T, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Unsupported type for read operation: {typeof(T).Name}"));
+        }
+        catch (OperationCanceledException)
         {
-            // Use extension method to deserialize
-            var file = await DropBearFileExtensions.FromStreamAsync(stream, _logger).ConfigureAwait(false);
-            return Result<T>.Success((T)(object)file);
+            throw; // Propagate cancellation
         }
-
-        // Add other supported types here
-        return Result<T>.Failure($"Unsupported type for read operation: {typeof(T).Name}");
+        catch (Exception ex)
+        {
+            return Result<T, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error converting stream to {typeof(T).Name}: {ex.Message}"), ex);
+        }
     }
 
     #endregion

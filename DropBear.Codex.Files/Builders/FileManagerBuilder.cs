@@ -2,6 +2,8 @@
 
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Factories;
 using DropBear.Codex.Files.Interfaces;
 using DropBear.Codex.Files.Services;
@@ -36,6 +38,7 @@ public class FileManagerBuilder
     ///     Configures the <see cref="FileManager" /> to use a custom <see cref="RecyclableMemoryStreamManager" />.
     /// </summary>
     /// <param name="memoryStreamManager">The custom memory stream manager to use.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="memoryStreamManager" /> is null.</exception>
     public FileManagerBuilder WithMemoryStreamManager(RecyclableMemoryStreamManager memoryStreamManager)
     {
@@ -53,6 +56,7 @@ public class FileManagerBuilder
     ///     Configures the <see cref="FileManager" /> to store files locally under a specified base directory.
     /// </summary>
     /// <param name="baseDirectory">The base directory path for local storage.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentException">Thrown if <paramref name="baseDirectory" /> is null or empty.</exception>
     /// <exception cref="DirectoryNotFoundException">
     ///     Thrown if the directory is invalid (though we create it if it doesn't
@@ -72,11 +76,19 @@ public class FileManagerBuilder
             _logger.Warning("Base directory did not exist. Created: {BaseDirectory}", baseDirectory);
         }
 
-        // If no custom MemoryStreamManager is set, use a default one
+        // If no custom MemoryStreamManager is set, use an optimized default one
         if (_memoryStreamManager == null)
         {
-            _memoryStreamManager = new RecyclableMemoryStreamManager();
-            _logger.Debug("Default MemoryStreamManager created for local storage.");
+            _memoryStreamManager = new RecyclableMemoryStreamManager(
+                new RecyclableMemoryStreamManager.Options
+                {
+                    ThrowExceptionOnToArray = true,
+                    // Optimize block sizes for file operations
+                    BlockSize = 4096 * 4, // 16KB blocks
+                    LargeBufferMultiple = 1024 * 1024, // 1MB increments for large buffers
+                    MaximumBufferSize = 1024 * 1024 * 100 // 100MB max buffer size
+                });
+            _logger.Debug("Optimized MemoryStreamManager created for local storage.");
         }
 
         _baseDirectory = baseDirectory;
@@ -92,6 +104,7 @@ public class FileManagerBuilder
     /// <param name="accountName">Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
     /// <param name="containerName">The default container name for blob storage.</param>
+    /// <returns>The builder instance for method chaining.</returns>
     /// <exception cref="ArgumentException">
     ///     Thrown if <paramref name="accountName" />, <paramref name="accountKey" />, or <paramref name="containerName" /> is
     ///     null or empty.
@@ -115,8 +128,16 @@ public class FileManagerBuilder
 
         if (_memoryStreamManager == null)
         {
-            _memoryStreamManager = new RecyclableMemoryStreamManager();
-            _logger.Debug("Default MemoryStreamManager created for blob storage.");
+            _memoryStreamManager = new RecyclableMemoryStreamManager(
+                new RecyclableMemoryStreamManager.Options
+                {
+                    ThrowExceptionOnToArray = true,
+                    // Optimize block sizes for blob operations
+                    BlockSize = 4096 * 8, // 32KB blocks
+                    LargeBufferMultiple = 1024 * 1024, // 1MB increments for large buffers
+                    MaximumBufferSize = 1024 * 1024 * 200 // 200MB max buffer size
+                });
+            _logger.Debug("Optimized MemoryStreamManager created for blob storage.");
         }
 
         var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
@@ -133,6 +154,10 @@ public class FileManagerBuilder
     /// <param name="accountName">Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
     /// <param name="containerName">The default container name for blob storage.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>
+    ///     A task representing the asynchronous operation that returns the builder instance for method chaining.
+    /// </returns>
     /// <exception cref="ArgumentException">
     ///     Thrown if <paramref name="accountName" />, <paramref name="accountKey" />, or <paramref name="containerName" /> is
     ///     null or empty.
@@ -140,7 +165,8 @@ public class FileManagerBuilder
     public async Task<FileManagerBuilder> UseBlobStorageAsync(
         string accountName,
         string accountKey,
-        string containerName)
+        string containerName,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(accountName))
         {
@@ -159,12 +185,22 @@ public class FileManagerBuilder
 
         if (_memoryStreamManager == null)
         {
-            _memoryStreamManager = new RecyclableMemoryStreamManager();
-            _logger.Debug("Default MemoryStreamManager created for blob storage.");
+            _memoryStreamManager = new RecyclableMemoryStreamManager(
+                new RecyclableMemoryStreamManager.Options
+                {
+                    ThrowExceptionOnToArray = true,
+                    // Optimize block sizes for blob operations
+                    BlockSize = 4096 * 8, // 32KB blocks
+                    LargeBufferMultiple = 1024 * 1024, // 1MB increments for large buffers
+                    MaximumBufferSize = 1024 * 1024 * 200 // 200MB max buffer size
+                });
+            _logger.Debug("Optimized MemoryStreamManager created for blob storage.");
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
+
         var blobStorage = await BlobStorageFactory
-            .CreateAzureBlobStorageAsync(accountName, accountKey)
+            .CreateAzureBlobStorageAsync(accountName, accountKey, cancellationToken)
             .ConfigureAwait(false);
 
         _storageManager = new BlobStorageManager(blobStorage, _memoryStreamManager, _logger, containerName);
@@ -177,23 +213,29 @@ public class FileManagerBuilder
     /// <summary>
     ///     Builds and returns the configured <see cref="FileManager" /> instance.
     /// </summary>
-    /// <exception cref="InvalidOperationException">Thrown if no storage manager is configured (local or blob).</exception>
-    public FileManager Build()
+    /// <returns>
+    ///     A <see cref="Result{FileManager, BuilderError}" /> containing the built <see cref="FileManager" /> or an
+    ///     error.
+    /// </returns>
+    public Result<FileManager, BuilderError> Build()
     {
         try
         {
             if (_storageManager == null)
             {
-                throw new InvalidOperationException("A storage manager (local or blob) must be configured.");
+                return Result<FileManager, BuilderError>.Failure(
+                    BuilderError.BuildFailed("A storage manager (local or blob) must be configured."));
             }
 
             _logger.Information("Building FileManager with configured storage manager.");
-            return new FileManager(_baseDirectory ?? string.Empty, _storageManager);
+            var fileManager = new FileManager(_baseDirectory ?? string.Empty, _storageManager);
+            return Result<FileManager, BuilderError>.Success(fileManager);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error building FileManager");
-            throw;
+            return Result<FileManager, BuilderError>.Failure(
+                BuilderError.BuildFailed(ex), ex);
         }
     }
 }

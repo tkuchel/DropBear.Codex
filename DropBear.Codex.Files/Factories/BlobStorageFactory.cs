@@ -59,6 +59,7 @@ public static class BlobStorageFactory
     /// </summary>
     /// <param name="accountName">The Azure Storage account name.</param>
     /// <param name="accountKey">The shared key for the Azure Storage account.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
     /// <returns>
     ///     A task representing the asynchronous operation. The task result is an <see cref="IBlobStorage" />
     ///     instance configured for Azure Blob Storage.
@@ -69,7 +70,10 @@ public static class BlobStorageFactory
     /// <exception cref="InvalidOperationException">
     ///     Thrown if creation of the Azure Blob Storage instance fails.
     /// </exception>
-    public static async Task<IBlobStorage> CreateAzureBlobStorageAsync(string accountName, string accountKey)
+    public static async Task<IBlobStorage> CreateAzureBlobStorageAsync(
+        string accountName,
+        string accountKey,
+        CancellationToken cancellationToken = default)
     {
         Logger.Debug("Creating Azure Blob Storage asynchronously with account name: {AccountName}", accountName);
 
@@ -78,8 +82,12 @@ public static class BlobStorageFactory
 
         try
         {
+            // Check for cancellation
+            cancellationToken.ThrowIfCancellationRequested();
+
             var storage = await Task.Run(() =>
-                StorageFactory.Blobs.AzureBlobStorageWithSharedKey(accountName, accountKey)).ConfigureAwait(false);
+                    StorageFactory.Blobs.AzureBlobStorageWithSharedKey(accountName, accountKey),
+                cancellationToken).ConfigureAwait(false);
 
             if (storage == null)
             {
@@ -89,6 +97,11 @@ public static class BlobStorageFactory
             Logger.Information("Successfully created Azure Blob Storage asynchronously for account: {AccountName}",
                 accountName);
             return storage;
+        }
+        catch (OperationCanceledException)
+        {
+            Logger.Information("Azure Blob Storage creation was canceled for account: {AccountName}", accountName);
+            throw; // Propagate cancellation
         }
         catch (Exception ex)
         {

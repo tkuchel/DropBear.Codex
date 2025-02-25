@@ -66,7 +66,7 @@ public sealed class ExtendedBlake3Hasher : Blake3Hasher
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="data" /> is null.</exception>
     public static string GenerateMac(byte[] data, byte[] key)
     {
-        if (key.Length is not 32)
+        if (key is null || key.Length != 32)
         {
             Logger.Error("Key must be 256 bits (32 bytes) for Blake3 MAC generation.");
             throw new ArgumentException("Key must be 256 bits (32 bytes).", nameof(key));
@@ -154,7 +154,7 @@ public sealed class ExtendedBlake3Hasher : Blake3Hasher
         {
             Logger.Information("Hashing stream with Blake3.");
             using var hasher = Hasher.New();
-            var buffer = new byte[4096]; // Read in 4KB chunks
+            var buffer = new byte[4096];
 
             int bytesRead;
             while ((bytesRead = inputStream.Read(buffer, 0, buffer.Length)) > 0)
