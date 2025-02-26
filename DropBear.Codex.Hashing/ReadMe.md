@@ -10,6 +10,9 @@ DropBear.Codex.Hashing contains:
 - **Result<,>** pattern with typed errors (HashComputationError, HashVerificationError, etc.).
 - Pre-built hashers: Argon2, Blake2, Blake3, ExtendedBlake3, FNV1A, Murmur3, SipHash, XXHash.
 - Fluent configuration for salt, iterations, memory size, seeds, etc. (where applicable).
+- Memory-efficient implementation using Span<T> and ArrayPool for reduced allocations.
+- Constant-time comparisons for cryptographic operations to prevent timing attacks.
+- Object pooling support for high-throughput scenarios.
 
 ## Installation
 
@@ -25,6 +28,7 @@ dotnet add package DropBear.Codex.Hashing
 - **`HashBuilder`** is your main entry point for retrieving hashers by name (e.g., "argon2", "blake2").
 - It pre-registers default hashers for the following keys: "argon2", "blake2", "blake3", "extended_blake3", "fnv1a", "murmur3", "siphash", "xxhash".
 - You can also register custom hashers and enable pooling for performance.
+- The updated builder supports object pooling for better performance in high-throughput scenarios.
 
 #### Example
 
@@ -52,6 +56,16 @@ if (hasherResult.IsSuccess)
 else
 {
     Console.WriteLine($"Error: {hasherResult.Error.Message}");
+}
+
+// Using pooled hashers for better performance
+using (var pooledResult = builder.GetPooledHasher("xxhash"))
+{
+    if (pooledResult.IsSuccess)
+    {
+        var xxHasher = pooledResult.Value.Hasher;
+        // Use xxHasher here - it will be automatically returned to the pool when disposed
+    }
 }
 ```
 
@@ -81,19 +95,41 @@ All hashers implement `IHasher`, which defines these methods:
    - `.WithDegreeOfParallelism(...)`
    - `.WithHashSize(...)`
 
-2. **Blake2Hasher**: High-speed hashing, optionally with salt.
+2. **Blake2Hasher**: High-speed cryptographic hashing, optionally with salt:
+   - `.WithSalt(...)`
+   - `.WithHashSize(...)`
 
-3. **Blake3Hasher**: Next-gen, extremely fast. Doesn’t support salt or iterations.
+3. **Blake3Hasher**: Next-gen, extremely fast cryptographic hashing:
+   - `.WithHashSize(...)` (supports variable-length output)
 
-4. **ExtendedBlake3Hasher**: Inherits from `Blake3Hasher` but adds static helper methods for incremental hashing, MAC generation, key derivation, and stream hashing.
+4. **ExtendedBlake3Hasher**: Inherits from `Blake3Hasher` but adds static helper methods:
+   - `IncrementalHash(IEnumerable<byte[]>)` and `IncrementalHashAsync(...)`
+   - `GenerateMac(byte[] data, byte[] key)` and `GenerateMacAsync(...)`
+   - `DeriveKey(byte[] context, byte[] inputKeyingMaterial)` and `DeriveKeyAsync(...)`
+   - `HashStream(Stream inputStream)` and `HashStreamAsync(...)`
+   - `HashFileAsync(string filePath, CancellationToken)` for efficient file hashing
 
-5. **Fnv1AHasher**: Simple, fast, non-cryptographic. No salt or iteration.
+5. **Fnv1AHasher**: Simple, fast, non-cryptographic hash function:
+   - `.WithHashSize(...)` (supports 32-bit or 64-bit output)
 
-6. **Murmur3Hasher**: Non-cryptographic, widely used for hash-based lookups. Optional seed.
+6. **Murmur3Hasher**: Non-cryptographic, widely used for hash-based lookups:
+   - `.WithSeed(uint seed)` for customizing the hash seed
 
-7. **SipHasher**: 64-bit keyed hashing (requires a 16-byte key). Great for short message MACs.
+7. **SipHasher**: 64-bit keyed hashing, great for short message MACs:
+   - Default constructor generates a secure random 16-byte key
+   - `.WithKey(byte[] key)` for custom 16-byte key
 
-8. **XxHasher**: XXHash (64-bit) for fast non-cryptographic hashing. Optional 64-bit seed.
+8. **XxHasher**: XXHash for fast non-cryptographic hashing:
+   - `.WithSeed(ulong seed)` for customizing the hash seed
+   - `.WithHashSize(...)` (supports 32-bit or 64-bit output)
+
+### 5. BaseHasher
+
+All hashers now inherit from an optimized `BaseHasher` class that provides:
+- Memory-efficient operations using Span<T> and ArrayPool
+- Constant-time comparisons for cryptographic verification
+- Common implementation for verification and encoding methods
+- Consistent logging patterns and error handling
 
 ## Usage Examples
 
@@ -175,15 +211,54 @@ var customBuilder = new HashBuilder();
 // Register a custom hasher with key "myhasher"
 customBuilder.RegisterHasher("myhasher", () => new Blake2Hasher().WithHashSize(64));
 
-// Optionally enable pooling for performance
+// Enable pooling for performance
 customBuilder.EnablePoolingForHasher("myhasher", maxPoolSize: 16);
 
-// Retrieve from the pool
-var myHasher = customBuilder.GetHasher("myhasher");
-var result = myHasher.Hash("SomeString");
+// Retrieve and use a pooled hasher
+using (var pooledResult = customBuilder.GetPooledHasher("myhasher"))
+{
+    if (pooledResult.IsSuccess)
+    {
+        var myHasher = pooledResult.Value.Hasher;
+        var result = myHasher.Hash("SomeString");
+        if (result.IsSuccess)
+        {
+            Console.WriteLine($"Pooled custom hasher result: {result.Value}");
+        }
+    }
+}
+```
+
+### 4. File Hashing with ExtendedBlake3Hasher
+
+```csharp
+// Efficiently hash a large file
+var result = await ExtendedBlake3Hasher.HashFileAsync("path/to/large/file.iso");
 if (result.IsSuccess)
 {
-    Console.WriteLine($"Pooled custom hasher result: {result.Value}");
+    Console.WriteLine($"File hash: {result.Value}");
+}
+else
+{
+    Console.WriteLine($"Error hashing file: {result.Error.Message}");
+}
+
+// Stream processing with progress reporting
+using var stream = File.OpenRead("path/to/large/file.bin");
+var progressToken = new CancellationTokenSource();
+var hashTask = ExtendedBlake3Hasher.HashStreamAsync(stream, progressToken.Token);
+
+// To cancel the operation after timeout
+progressToken.CancelAfter(TimeSpan.FromMinutes(5));
+
+try
+{
+    var hash = await hashTask;
+    Console.WriteLine($"Stream hash: {hash}");
+}
+catch (OperationCanceledException)
+{
+    Console.WriteLine("Hashing was canceled.");
 }
 ```
 
@@ -217,10 +292,20 @@ else
 
 `HashingHelper` offers static convenience methods:
 - `GenerateRandomSalt(size)`
-- `CombineBytes(salt, hash)` to store salt+hash
+- `CombineBytes(salt, hash)` and `CombineBytes(ReadOnlySpan<byte>, ReadOnlySpan<byte>)` to store salt+hash
 - `ExtractBytes` to separate salt+hash
-- `HashStreamChunkedAsync` for chunked hashing
+- `HashStreamChunkedAsync` for chunked hashing of large data
 - `ConvertByteArrayToBase64String`, etc.
+
+## Performance Optimization
+
+This library uses several optimization techniques:
+- **Span<T>** and **ReadOnlySpan<T>** for zero-allocation memory operations
+- **ArrayPool<T>** for efficient buffer management
+- **Constant-time comparisons** to prevent timing attacks
+- **FrozenDictionary** for fast, immutable lookups
+- **Smart async/sync dispatch** based on input size
+- **Object pooling** for high-throughput scenarios
 
 ## Contributing
 

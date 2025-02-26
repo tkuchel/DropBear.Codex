@@ -1,12 +1,10 @@
 ﻿#region
 
 using System.Text;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
 using DropBear.Codex.Hashing.Interfaces;
 using HashDepot;
-using Serilog;
 
 #endregion
 
@@ -16,30 +14,51 @@ namespace DropBear.Codex.Hashing.Hashers;
 ///     A <see cref="IHasher" /> implementation using the FNV-1a hashing algorithm (32-bit or 64-bit).
 ///     Simple and fast, but not cryptographically secure. No salt or iterations are used.
 /// </summary>
-public sealed class Fnv1AHasher : IHasher
+public sealed class Fnv1AHasher : BaseHasher
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<Fnv1AHasher>();
+    private bool _use64Bit; // Default to 32-bit
 
-    public IHasher WithSalt(byte[]? salt)
+    /// <summary>
+    ///     Initializes a new instance of <see cref="Fnv1AHasher" />.
+    /// </summary>
+    public Fnv1AHasher() : base("FNV-1a")
     {
-        return this;
-        // No-op
-    }
-
-    public IHasher WithIterations(int iterations)
-    {
-        return this;
-        // No-op
-    }
-
-    public IHasher WithHashSize(int size)
-    {
-        return this;
-        // Typically no-op
     }
 
     /// <inheritdoc />
-    public async Task<Result<string, HashingError>> HashAsync(
+    public override IHasher WithSalt(byte[]? salt)
+    {
+        Logger.Information("FNV-1a does not support salt. No-op.");
+        return this;
+    }
+
+    /// <inheritdoc />
+    public override IHasher WithIterations(int iterations)
+    {
+        Logger.Information("FNV-1a does not support iterations. No-op.");
+        return this;
+    }
+
+    /// <inheritdoc />
+    public override IHasher WithHashSize(int size)
+    {
+        // For FNV-1a, we support two sizes: 4 bytes (32-bit) and 8 bytes (64-bit)
+        if (size <= 4)
+        {
+            _use64Bit = false;
+            Logger.Information("Using 32-bit FNV-1a hash output.");
+        }
+        else
+        {
+            _use64Bit = true;
+            Logger.Information("Using 64-bit FNV-1a hash output.");
+        }
+
+        return this;
+    }
+
+    /// <inheritdoc />
+    public override async Task<Result<string, HashingError>> HashAsync(
         string input,
         CancellationToken cancellationToken = default)
     {
@@ -53,15 +72,31 @@ public sealed class Fnv1AHasher : IHasher
 
         try
         {
-            Logger.Information("Hashing input with FNV-1a (32-bit) asynchronously.");
-            var hashHex = await Task.Run(() =>
+            // FNV-1a is very fast, so we only need to use Task.Run for very large inputs
+            if (input.Length > 10000)
             {
-                var buffer = Encoding.UTF8.GetBytes(input);
-                var hashVal = Fnv1a.Hash32(buffer);
-                return hashVal.ToString("x8");
-            }, cancellationToken).ConfigureAwait(false);
+                Logger.Information("Hashing input with FNV-1a ({0}-bit) asynchronously.", _use64Bit ? 64 : 32);
 
-            return Result<string, HashingError>.Success(hashHex);
+                return await Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var buffer = Encoding.UTF8.GetBytes(input);
+
+                    if (_use64Bit)
+                    {
+                        var hashVal = Fnv1a.Hash64(buffer);
+                        return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                    }
+                    else
+                    {
+                        var hashVal = Fnv1a.Hash32(buffer);
+                        return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                    }
+                }, cancellationToken).ConfigureAwait(false);
+            }
+
+            // For small inputs, just use the synchronous method
+            return Hash(input);
         }
         catch (OperationCanceledException)
         {
@@ -77,7 +112,7 @@ public sealed class Fnv1AHasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<string, HashingError> Hash(string input)
+    public override Result<string, HashingError> Hash(string input)
     {
         if (string.IsNullOrEmpty(input))
         {
@@ -87,10 +122,19 @@ public sealed class Fnv1AHasher : IHasher
 
         try
         {
-            Logger.Information("Hashing input with FNV-1a (32-bit) sync.");
+            Logger.Information("Hashing input with FNV-1a ({0}-bit) sync.", _use64Bit ? 64 : 32);
             var buffer = Encoding.UTF8.GetBytes(input);
-            var hashVal = Fnv1a.Hash32(buffer);
-            return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+
+            if (_use64Bit)
+            {
+                var hashVal = Fnv1a.Hash64(buffer);
+                return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+            }
+            else
+            {
+                var hashVal = Fnv1a.Hash32(buffer);
+                return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+            }
         }
         catch (Exception ex)
         {
@@ -101,12 +145,21 @@ public sealed class Fnv1AHasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<Unit, HashingError>> VerifyAsync(
+    public override async Task<Result<Unit, HashingError>> VerifyAsync(
         string input,
         string expectedHash,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+
+        if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(expectedHash))
+        {
+            Logger.Error("FNV-1a: Input and expected hash cannot be null or empty.");
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        // Check if we're dealing with 32-bit or 64-bit based on hash length
+        _use64Bit = expectedHash.Length > 8;
 
         var hashResult = await HashAsync(input, cancellationToken).ConfigureAwait(false);
         if (!hashResult.IsSuccess)
@@ -126,8 +179,17 @@ public sealed class Fnv1AHasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<Unit, HashingError> Verify(string input, string expectedHash)
+    public override Result<Unit, HashingError> Verify(string input, string expectedHash)
     {
+        if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(expectedHash))
+        {
+            Logger.Error("FNV-1a: Input and expected hash cannot be null or empty.");
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        // Check if we're dealing with 32-bit or 64-bit based on hash length
+        _use64Bit = expectedHash.Length > 8;
+
         var hashResult = Hash(input);
         if (!hashResult.IsSuccess)
         {
@@ -146,7 +208,7 @@ public sealed class Fnv1AHasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
+    public override async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
@@ -160,14 +222,44 @@ public sealed class Fnv1AHasher : IHasher
 
         try
         {
-            Logger.Information("Encoding data to Base64 with FNV-1a (64-bit) async.");
-            var base64Hash = await Task.Run(() =>
-            {
-                var hashVal = Fnv1a.Hash64(data.Span);
-                return Convert.ToBase64String(BitConverter.GetBytes(hashVal));
-            }, cancellationToken).ConfigureAwait(false);
+            Logger.Information("Encoding data to Base64 with FNV-1a ({0}-bit) async.", _use64Bit ? 64 : 32);
 
-            return Result<string, HashingError>.Success(base64Hash);
+            // Only use Task.Run for larger data
+            if (data.Length > 10000)
+            {
+                return await Task.Run(() =>
+                {
+                    byte[] hashBytes;
+                    if (_use64Bit)
+                    {
+                        var hashVal = Fnv1a.Hash64(data.Span);
+                        hashBytes = BitConverter.GetBytes(hashVal);
+                    }
+                    else
+                    {
+                        var hashVal = Fnv1a.Hash32(data.Span);
+                        hashBytes = BitConverter.GetBytes(hashVal);
+                    }
+
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
+                }, cancellationToken).ConfigureAwait(false);
+            }
+
+            {
+                byte[] hashBytes;
+                if (_use64Bit)
+                {
+                    var hashVal = Fnv1a.Hash64(data.Span);
+                    hashBytes = BitConverter.GetBytes(hashVal);
+                }
+                else
+                {
+                    var hashVal = Fnv1a.Hash32(data.Span);
+                    hashBytes = BitConverter.GetBytes(hashVal);
+                }
+
+                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -183,7 +275,7 @@ public sealed class Fnv1AHasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<string, HashingError> EncodeToBase64Hash(byte[] data)
+    public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
         {
@@ -193,11 +285,21 @@ public sealed class Fnv1AHasher : IHasher
 
         try
         {
-            Logger.Information("Encoding data to Base64 with FNV-1a (64-bit) sync.");
-            var hashVal = Fnv1a.Hash64(data);
-            var base64Hash = Convert.ToBase64String(BitConverter.GetBytes(hashVal));
+            Logger.Information("Encoding data to Base64 with FNV-1a ({0}-bit) sync.", _use64Bit ? 64 : 32);
 
-            return Result<string, HashingError>.Success(base64Hash);
+            byte[] hashBytes;
+            if (_use64Bit)
+            {
+                var hashVal = Fnv1a.Hash64(data);
+                hashBytes = BitConverter.GetBytes(hashVal);
+            }
+            else
+            {
+                var hashVal = Fnv1a.Hash32(data);
+                hashBytes = BitConverter.GetBytes(hashVal);
+            }
+
+            return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
         }
         catch (Exception ex)
         {
@@ -205,59 +307,5 @@ public sealed class Fnv1AHasher : IHasher
             return Result<string, HashingError>.Failure(
                 HashComputationError.AlgorithmError(ex.Message), ex);
         }
-    }
-
-    /// <inheritdoc />
-    public async Task<Result<Unit, HashingError>> VerifyBase64HashAsync(
-        ReadOnlyMemory<byte> data,
-        string expectedBase64Hash,
-        CancellationToken cancellationToken = default)
-    {
-        if (data.IsEmpty)
-        {
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var encodeResult = await EncodeToBase64HashAsync(data, cancellationToken).ConfigureAwait(false);
-        if (!encodeResult.IsSuccess)
-        {
-            Logger.Error("Failed to compute FNV-1a Base64 hash for verification (async).");
-            return Result<Unit, HashingError>.Failure(encodeResult.Error);
-        }
-
-        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
-        Logger.Information(isValid
-            ? "FNV-1a Base64 hash verification succeeded (async)."
-            : "FNV-1a Base64 hash verification failed (async).");
-
-        return isValid
-            ? Result<Unit, HashingError>.Success(Unit.Value)
-            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-    }
-
-    /// <inheritdoc />
-    public Result<Unit, HashingError> VerifyBase64Hash(byte[] data, string expectedBase64Hash)
-    {
-        if (data == null || data.Length == 0)
-        {
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
-        }
-
-        var encodeResult = EncodeToBase64Hash(data);
-        if (!encodeResult.IsSuccess)
-        {
-            return Result<Unit, HashingError>.Failure(encodeResult.Error);
-        }
-
-        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
-        Logger.Information(isValid
-            ? "FNV-1a Base64 hash verification succeeded (sync)."
-            : "FNV-1a Base64 hash verification failed (sync).");
-
-        return isValid
-            ? Result<Unit, HashingError>.Success(Unit.Value)
-            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 }

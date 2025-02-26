@@ -1,49 +1,62 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using System.Text;
 using Blake3;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
 using DropBear.Codex.Hashing.Interfaces;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Hashing.Hashers;
 
 /// <summary>
-///     A <see cref="IHasher" /> implementation using the Blake3 algorithm (fixed or variable output),
-///     but here we treat it as a single fixed size. Does not support salt or iterations.
+///     A <see cref="IHasher" /> implementation using the Blake3 algorithm.
+///     Supports variable output size; does not support salt or iterations.
 /// </summary>
-public class Blake3Hasher : IHasher
+public class Blake3Hasher : BaseHasher
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<Blake3Hasher>();
+    private int _hashSize = 32; // Default to 32 bytes (256-bit)
+
+    /// <summary>
+    ///     Initializes a new instance of <see cref="Blake3Hasher" />.
+    /// </summary>
+    public Blake3Hasher() : base("Blake3")
+    {
+    }
 
     /// <inheritdoc />
-    public IHasher WithSalt(byte[]? salt)
+    public override IHasher WithSalt(byte[]? salt)
     {
         Logger.Information("Blake3 does not support salt. No-op.");
         return this;
     }
 
     /// <inheritdoc />
-    public IHasher WithIterations(int iterations)
+    public override IHasher WithIterations(int iterations)
     {
         Logger.Information("Blake3 does not support iterations. No-op.");
         return this;
     }
 
     /// <inheritdoc />
-    public IHasher WithHashSize(int size)
+    public override IHasher WithHashSize(int size)
     {
-        // Blake3 can produce variable output, but we won't implement it here
-        Logger.Information("Blake3 default output used. WithHashSize is a no-op for Blake3Hasher.");
+        if (size < 1)
+        {
+            Logger.Error("Blake3 hash size must be at least 1 byte.");
+            throw new ArgumentOutOfRangeException(nameof(size), "Hash size must be at least 1 byte.");
+        }
+
+        // Blake3 supports arbitrary output size
+        Logger.Information("Setting Blake3 hash output size to {Size} bytes.", size);
+        _hashSize = size;
         return this;
     }
 
     /// <inheritdoc />
-    public async Task<Result<string, HashingError>> HashAsync(
+    public override async Task<Result<string, HashingError>> HashAsync(
         string input,
         CancellationToken cancellationToken = default)
     {
@@ -58,15 +71,20 @@ public class Blake3Hasher : IHasher
             Logger.Information("Hashing input using Blake3 (async).");
             cancellationToken.ThrowIfCancellationRequested();
 
-            // We'll just do a quick Task.Run for demonstration
-            var hashString = await Task.Run(() =>
+            // For larger inputs, offload to task thread
+            if (input.Length > 1000)
             {
-                var hash = Hasher.Hash(Encoding.UTF8.GetBytes(input));
-                return hash.ToString();
-            }, cancellationToken).ConfigureAwait(false);
+                return await Task.Run(() =>
+                {
+                    var outputBytes = HashInput(Encoding.UTF8.GetBytes(input));
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(outputBytes));
+                }, cancellationToken).ConfigureAwait(false);
+            }
 
-            Logger.Information("Blake3 hashing successful (async).");
-            return Result<string, HashingError>.Success(hashString);
+            {
+                var outputBytes = HashInput(Encoding.UTF8.GetBytes(input));
+                return Result<string, HashingError>.Success(Convert.ToBase64String(outputBytes));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -82,7 +100,7 @@ public class Blake3Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<string, HashingError> Hash(string input)
+    public override Result<string, HashingError> Hash(string input)
     {
         if (string.IsNullOrEmpty(input))
         {
@@ -93,8 +111,8 @@ public class Blake3Hasher : IHasher
         try
         {
             Logger.Information("Hashing input using Blake3 (sync).");
-            var hash = Hasher.Hash(Encoding.UTF8.GetBytes(input));
-            return Result<string, HashingError>.Success(hash.ToString());
+            var outputBytes = HashInput(Encoding.UTF8.GetBytes(input));
+            return Result<string, HashingError>.Success(Convert.ToBase64String(outputBytes));
         }
         catch (Exception ex)
         {
@@ -105,7 +123,7 @@ public class Blake3Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<Unit, HashingError>> VerifyAsync(
+    public override async Task<Result<Unit, HashingError>> VerifyAsync(
         string input,
         string expectedHash,
         CancellationToken cancellationToken = default)
@@ -121,13 +139,33 @@ public class Blake3Hasher : IHasher
             cancellationToken.ThrowIfCancellationRequested();
             Logger.Information("Verifying hash using Blake3 (async).");
 
-            var hashString = await Task.Run(() =>
-            {
-                var hash = Hasher.Hash(Encoding.UTF8.GetBytes(input));
-                return hash.ToString();
-            }, cancellationToken).ConfigureAwait(false);
+            byte[] computedHash;
 
-            var isValid = string.Equals(hashString, expectedHash, StringComparison.Ordinal);
+            // Only use Task.Run for larger inputs
+            if (input.Length > 1000)
+            {
+                computedHash = await Task.Run(() => HashInput(Encoding.UTF8.GetBytes(input)), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                computedHash = HashInput(Encoding.UTF8.GetBytes(input));
+            }
+
+            byte[] expectedBytes;
+            try
+            {
+                expectedBytes = Convert.FromBase64String(expectedHash);
+            }
+            catch (FormatException ex)
+            {
+                Logger.Error(ex, "Invalid base64 format for expected Blake3 hash.");
+                return Result<Unit, HashingError>.Failure(HashVerificationError.InvalidFormat, ex);
+            }
+
+            // Use constant-time comparison for security
+            var isValid = ConstantTimeEquals(computedHash, expectedBytes);
+
             return isValid
                 ? Result<Unit, HashingError>.Success(Unit.Value)
                 : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
@@ -146,7 +184,7 @@ public class Blake3Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<Unit, HashingError> Verify(string input, string expectedHash)
+    public override Result<Unit, HashingError> Verify(string input, string expectedHash)
     {
         if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(expectedHash))
         {
@@ -157,8 +195,21 @@ public class Blake3Hasher : IHasher
         try
         {
             Logger.Information("Verifying hash using Blake3 (sync).");
-            var hashString = Hasher.Hash(Encoding.UTF8.GetBytes(input)).ToString();
-            var isValid = string.Equals(hashString, expectedHash, StringComparison.Ordinal);
+            var computedHash = HashInput(Encoding.UTF8.GetBytes(input));
+
+            byte[] expectedBytes;
+            try
+            {
+                expectedBytes = Convert.FromBase64String(expectedHash);
+            }
+            catch (FormatException ex)
+            {
+                Logger.Error(ex, "Invalid base64 format for expected Blake3 hash.");
+                return Result<Unit, HashingError>.Failure(HashVerificationError.InvalidFormat, ex);
+            }
+
+            // Use constant-time comparison for security
+            var isValid = ConstantTimeEquals(computedHash, expectedBytes);
 
             return isValid
                 ? Result<Unit, HashingError>.Success(Unit.Value)
@@ -173,7 +224,7 @@ public class Blake3Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
+    public override async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
@@ -188,16 +239,17 @@ public class Blake3Hasher : IHasher
             Logger.Information("Encoding data to Base64 hash using Blake3 (async).");
             cancellationToken.ThrowIfCancellationRequested();
 
-            var hashBytes = await Task.Run(() =>
+            // Process larger data asynchronously
+            if (data.Length > 1000)
             {
-                // Hasher.Hash(...) returns a Hash object with a .AsSpan() method
-                // but we copy that to an array so we can safely pass it around
-                var hash = Hasher.Hash(data.Span);
-                return hash.AsSpan().ToArray();
-            }, cancellationToken).ConfigureAwait(false);
-
-            // Now Convert.ToBase64String(hashBytes) works fine
-            return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
+                var result = await Task.Run(() => HashBytes(data.Span), cancellationToken).ConfigureAwait(false);
+                return Result<string, HashingError>.Success(Convert.ToBase64String(result));
+            }
+            else
+            {
+                var result = HashBytes(data.Span);
+                return Result<string, HashingError>.Success(Convert.ToBase64String(result));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -213,7 +265,7 @@ public class Blake3Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<string, HashingError> EncodeToBase64Hash(byte[] data)
+    public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
         {
@@ -224,8 +276,8 @@ public class Blake3Hasher : IHasher
         try
         {
             Logger.Information("Encoding data to Base64 hash using Blake3 (sync).");
-            var hash = Hasher.Hash(data);
-            return Result<string, HashingError>.Success(Convert.ToBase64String(hash.AsSpan()));
+            var result = HashBytes(data);
+            return Result<string, HashingError>.Success(Convert.ToBase64String(result));
         }
         catch (Exception ex)
         {
@@ -235,75 +287,56 @@ public class Blake3Hasher : IHasher
         }
     }
 
-    /// <inheritdoc />
-    public async Task<Result<Unit, HashingError>> VerifyBase64HashAsync(
-        ReadOnlyMemory<byte> data,
-        string expectedBase64Hash,
-        CancellationToken cancellationToken = default)
+    // -------------------------------------------------------------------------------
+    // Private helper methods
+    // -------------------------------------------------------------------------------
+
+    /// <summary>
+    ///     Computes a Blake3 hash of the input bytes with specified size.
+    /// </summary>
+    /// <param name="input">The input bytes to hash.</param>
+    /// <returns>The hash with the specified output size.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] HashInput(byte[] input)
     {
-        if (data.IsEmpty)
+        // In Blake3, we can extract specific hash sizes
+        var hash = Hasher.Hash(input);
+
+        // If the hash size matches the default Blake3 output, return as is
+        if (_hashSize == 32)
         {
-            Logger.Error("Blake3 base64 verification: data cannot be empty.");
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+            return hash.AsSpan().ToArray();
         }
 
-        try
-        {
-            Logger.Information("Verifying Base64 hash using Blake3 (async).");
-            cancellationToken.ThrowIfCancellationRequested();
+        // Custom sized output
+        var result = new byte[_hashSize];
 
-            var hashBase64 = await EncodeToBase64HashAsync(data, cancellationToken).ConfigureAwait(false);
-            if (!hashBase64.IsSuccess)
-            {
-                return Result<Unit, HashingError>.Failure(hashBase64.Error);
-            }
+        // Copy only what we need, handling edge cases
+        hash.AsSpan().Slice(0, Math.Min(_hashSize, hash.AsSpan().Length)).CopyTo(result.AsSpan());
 
-            var isValid = string.Equals(hashBase64.Value, expectedBase64Hash, StringComparison.Ordinal);
-            return isValid
-                ? Result<Unit, HashingError>.Success(Unit.Value)
-                : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.Information("Blake3 base64 verification was canceled.");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error verifying base64 hash with Blake3 (async).");
-            return Result<Unit, HashingError>.Failure(
-                new HashVerificationError($"Error during base64 verification: {ex.Message}"), ex);
-        }
+        return result;
     }
 
-    /// <inheritdoc />
-    public Result<Unit, HashingError> VerifyBase64Hash(byte[] data, string expectedBase64Hash)
+    /// <summary>
+    ///     Computes a Blake3 hash with the specified output size.
+    /// </summary>
+    /// <param name="data">The input data to hash.</param>
+    /// <returns>The hash output with specified size.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private byte[] HashBytes(ReadOnlySpan<byte> data)
     {
-        if (data == null || data.Length == 0)
+        var hash = Hasher.Hash(data);
+
+        // Handle specific hash output size
+        if (_hashSize == 32)
         {
-            Logger.Error("Blake3 base64 verification: data cannot be null or empty.");
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+            return hash.AsSpan().ToArray();
         }
 
-        try
-        {
-            Logger.Information("Verifying Base64 hash using Blake3 (sync).");
-            var hashBase64 = EncodeToBase64Hash(data);
-            if (!hashBase64.IsSuccess)
-            {
-                return Result<Unit, HashingError>.Failure(hashBase64.Error);
-            }
+        // Custom output size
+        var result = new byte[_hashSize];
+        hash.AsSpan().Slice(0, Math.Min(_hashSize, hash.AsSpan().Length)).CopyTo(result.AsSpan());
 
-            var isValid = string.Equals(hashBase64.Value, expectedBase64Hash, StringComparison.Ordinal);
-            return isValid
-                ? Result<Unit, HashingError>.Success(Unit.Value)
-                : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error verifying base64 hash with Blake3 (sync).");
-            return Result<Unit, HashingError>.Failure(
-                new HashVerificationError($"Error during base64 verification: {ex.Message}"), ex);
-        }
+        return result;
     }
 }

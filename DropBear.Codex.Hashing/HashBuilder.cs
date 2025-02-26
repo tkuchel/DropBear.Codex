@@ -18,6 +18,10 @@ namespace DropBear.Codex.Hashing;
 ///     Provides a flexible way to construct and retrieve hasher instances by key.
 ///     Pre-registers a set of default hasher services, and allows custom registration.
 /// </summary>
+/// <remarks>
+///     This implementation includes object pooling for frequently used hashers to improve performance
+///     and reduce GC pressure in high-throughput scenarios.
+/// </remarks>
 public sealed class HashBuilder : IHashBuilder
 {
     private readonly Dictionary<string, Func<IHasher>> _customHashers;
@@ -45,23 +49,25 @@ public sealed class HashBuilder : IHashBuilder
             { "blake3", () => new Blake3Hasher() },
             { "fnv1a", () => new Fnv1AHasher() },
             { "murmur3", () => new Murmur3Hasher() },
-            { "siphash", () => new SipHasher(new byte[16]) }, // Example: default 16-byte key
+            // Enhanced SipHasher with random key generation
+            { "siphash", () => new SipHasher() },
             { "xxhash", () => new XxHasher() },
-            { "extended_blake3", () => new ExtendedBlake3Hasher() } // Extended Blake3
+            { "extended_blake3", () => new ExtendedBlake3Hasher() }
         }.ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
 
         _logger.Information("HashBuilder initialized with default hasher services.");
     }
 
-    /// <summary>
-    ///     Retrieves a hasher instance based on the specified key.
-    /// </summary>
-    /// <param name="key">A string key identifying the hasher (e.g. "argon2", "blake2").</param>
-    /// <returns>An <see cref="IHasher" /> instance.</returns>
-    /// <exception cref="ArgumentException">Thrown if no hasher is registered for the given key.</exception>
+    /// <inheritdoc />
     public IHasher GetHasher(string key)
     {
         _logger.Debug("Attempting to retrieve hasher for key: {Key}", key);
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            _logger.Error("Hasher key cannot be null or empty.");
+            throw new ArgumentException("Hasher key cannot be null or empty.", nameof(key));
+        }
 
         // Check for pooled hasher first
         if (_hasherPools.TryGetValue(key, out var pool))
@@ -89,14 +95,17 @@ public sealed class HashBuilder : IHashBuilder
         throw new ArgumentException($"No hashing service registered for key: {key}", nameof(key));
     }
 
-    /// <summary>
-    ///     Attempts to retrieve a hasher instance based on the specified key.
-    /// </summary>
-    /// <param name="key">A string key identifying the hasher (e.g. "argon2", "blake2").</param>
-    /// <returns>A Result containing the hasher or an error if not found.</returns>
+    /// <inheritdoc />
     public Result<IHasher, BuilderError> TryGetHasher(string key)
     {
         _logger.Debug("Attempting to retrieve hasher for key: {Key}", key);
+
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            _logger.Error("Hasher key cannot be null or empty.");
+            return Result<IHasher, BuilderError>.Failure(
+                new BuilderError("Hasher key cannot be null or empty."));
+        }
 
         try
         {
@@ -133,15 +142,7 @@ public sealed class HashBuilder : IHashBuilder
         }
     }
 
-    /// <summary>
-    ///     Registers a custom hasher for a given key, overriding any existing registration.
-    /// </summary>
-    /// <param name="key">A string key identifying the hasher.</param>
-    /// <param name="hasherFactory">
-    ///     A factory function returning a new <see cref="IHasher" /> instance whenever called.
-    /// </param>
-    /// <exception cref="ArgumentException">Thrown if <paramref name="key" /> is null or whitespace.</exception>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="hasherFactory" /> is null.</exception>
+    /// <inheritdoc />
     public void RegisterHasher(string key, Func<IHasher> hasherFactory)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -159,11 +160,7 @@ public sealed class HashBuilder : IHashBuilder
         _logger.Debug("Hasher registered for key: {Key}", key);
     }
 
-    /// <summary>
-    ///     Enables object pooling for a specific hasher type to improve performance.
-    /// </summary>
-    /// <param name="key">The hasher key to enable pooling for.</param>
-    /// <param name="maxPoolSize">Maximum number of objects to pool (default 32).</param>
+    /// <inheritdoc />
     public void EnablePoolingForHasher(string key, int maxPoolSize = 32)
     {
         if (string.IsNullOrWhiteSpace(key))
@@ -201,6 +198,44 @@ public sealed class HashBuilder : IHashBuilder
     }
 
     /// <summary>
+    ///     Returns a hasher to the pool when it's no longer needed.
+    ///     This can improve performance in high-throughput scenarios.
+    /// </summary>
+    /// <param name="key">The key used to retrieve the hasher.</param>
+    /// <param name="hasher">The hasher instance to return to the pool.</param>
+    public void ReturnHasher(string key, IHasher hasher)
+    {
+        if (string.IsNullOrWhiteSpace(key) || hasher == null)
+        {
+            return;
+        }
+
+        if (_hasherPools.TryGetValue(key, out var pool))
+        {
+            pool.Return(hasher);
+            _logger.Debug("Returned hasher for key: {Key} to pool", key);
+        }
+    }
+
+    /// <summary>
+    ///     Tries to get a hasher from the pool if available, otherwise creates a new one.
+    /// </summary>
+    /// <param name="key">The hasher key.</param>
+    /// <returns>A result containing the hasher or an error.</returns>
+    public Result<PooledHasher, BuilderError> GetPooledHasher(string key)
+    {
+        var hasherResult = TryGetHasher(key);
+        if (!hasherResult.IsSuccess)
+        {
+            return Result<PooledHasher, BuilderError>.Failure(hasherResult.Error);
+        }
+
+        // Create a wrapper that will automatically return the hasher to the pool
+        var pooledHasher = new PooledHasher(hasherResult.Value, key, this);
+        return Result<PooledHasher, BuilderError>.Success(pooledHasher);
+    }
+
+    /// <summary>
     ///     Policy for pooling hasher objects.
     /// </summary>
     private sealed class HasherPooledObjectPolicy : IPooledObjectPolicy<IHasher>
@@ -220,6 +255,40 @@ public sealed class HashBuilder : IHashBuilder
         public bool Return(IHasher obj)
         {
             return true;
+        }
+    }
+}
+
+/// <summary>
+///     A wrapper that automatically returns a hasher to the pool when disposed.
+/// </summary>
+public sealed class PooledHasher : IDisposable
+{
+    private readonly HashBuilder _builder;
+    private readonly string _key;
+    private bool _disposed;
+
+    internal PooledHasher(IHasher hasher, string key, HashBuilder builder)
+    {
+        Hasher = hasher;
+        _key = key;
+        _builder = builder;
+    }
+
+    /// <summary>
+    ///     Gets the underlying hasher.
+    /// </summary>
+    public IHasher Hasher { get; }
+
+    /// <summary>
+    ///     Disposes the wrapper and returns the hasher to the pool.
+    /// </summary>
+    public void Dispose()
+    {
+        if (!_disposed)
+        {
+            _builder.ReturnHasher(_key, Hasher);
+            _disposed = true;
         }
     }
 }

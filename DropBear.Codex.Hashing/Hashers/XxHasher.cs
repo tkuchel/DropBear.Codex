@@ -1,12 +1,10 @@
 ﻿#region
 
 using System.Text;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
 using DropBear.Codex.Hashing.Interfaces;
 using HashDepot;
-using Serilog;
 
 #endregion
 
@@ -14,41 +12,68 @@ namespace DropBear.Codex.Hashing.Hashers;
 
 /// <summary>
 ///     A <see cref="IHasher" /> implementation using the XXHash (64-bit) algorithm.
-///     Does not support salt or iterations; has optional seed usage.
+///     Very fast, non-cryptographic hash function. Supports seeding.
 /// </summary>
-public sealed class XxHasher : IHasher
+public sealed class XxHasher : BaseHasher
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<XxHasher>();
     private ulong _seed;
+    private bool _use32Bit; // Default to 64-bit
 
     /// <summary>
-    ///     Initializes a new instance of <see cref="XxHasher" /> with an optional 64-bit seed.
+    ///     Initializes a new instance of <see cref="XxHasher" /> with an optional seed.
     /// </summary>
     /// <param name="seed">A 64-bit seed for XXHash.</param>
-    public XxHasher(ulong seed = 0)
+    public XxHasher(ulong seed = 0) : base("XXHash")
     {
         _seed = seed;
     }
 
-    public IHasher WithSalt(byte[]? salt)
+    /// <inheritdoc />
+    public override IHasher WithSalt(byte[]? salt)
     {
         Logger.Information("XXHash does not support salt. No-op.");
         return this;
     }
 
-    public IHasher WithIterations(int iterations)
+    /// <inheritdoc />
+    public override IHasher WithIterations(int iterations)
     {
         Logger.Information("XXHash does not support iterations. No-op.");
         return this;
     }
 
-    public IHasher WithHashSize(int size)
+    /// <inheritdoc />
+    public override IHasher WithHashSize(int size)
     {
-        Logger.Information("XXHash is typically 32/64-bit. We are using 64-bit. No-op for interface compliance.");
+        // XXHash can do 32-bit or 64-bit
+        if (size <= 4)
+        {
+            _use32Bit = true;
+            Logger.Information("Using 32-bit XXHash output.");
+        }
+        else
+        {
+            _use32Bit = false;
+            Logger.Information("Using 64-bit XXHash output.");
+        }
+
         return this;
     }
 
-    public async Task<Result<string, HashingError>> HashAsync(
+    /// <summary>
+    ///     Sets the seed for XXHash operations.
+    /// </summary>
+    /// <param name="seed">A 64-bit seed.</param>
+    /// <returns>The current <see cref="XxHasher" /> instance.</returns>
+    public IHasher WithSeed(ulong seed)
+    {
+        Logger.Information("Setting seed for XxHasher to {Seed}.", seed);
+        _seed = seed;
+        return this;
+    }
+
+    /// <inheritdoc />
+    public override async Task<Result<string, HashingError>> HashAsync(
         string input,
         CancellationToken cancellationToken = default)
     {
@@ -62,15 +87,32 @@ public sealed class XxHasher : IHasher
 
         try
         {
-            Logger.Information("Hashing input with XXHash (64-bit) async.");
-            var hashHex = await Task.Run(() =>
+            // XXHash is extremely fast, so only use Task.Run for very large inputs
+            if (input.Length > 100000)
             {
-                var buffer = Encoding.UTF8.GetBytes(input);
-                var hashVal = XXHash.Hash64(buffer, _seed);
-                return hashVal.ToString("x8");
-            }, cancellationToken).ConfigureAwait(false);
+                Logger.Information("Hashing input with XXHash ({0}-bit) async with seed {1}.",
+                    _use32Bit ? 32 : 64, _seed);
 
-            return Result<string, HashingError>.Success(hashHex);
+                return await Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var buffer = Encoding.UTF8.GetBytes(input);
+
+                    if (_use32Bit)
+                    {
+                        var hash = XXHash.Hash32(buffer, (uint)_seed);
+                        return Result<string, HashingError>.Success(hash.ToString("x8"));
+                    }
+                    else
+                    {
+                        var hash = XXHash.Hash64(buffer, _seed);
+                        return Result<string, HashingError>.Success(hash.ToString("x16"));
+                    }
+                }, cancellationToken).ConfigureAwait(false);
+            }
+
+            // For small inputs, just use the synchronous method
+            return Hash(input);
         }
         catch (OperationCanceledException)
         {
@@ -85,7 +127,8 @@ public sealed class XxHasher : IHasher
         }
     }
 
-    public Result<string, HashingError> Hash(string input)
+    /// <inheritdoc />
+    public override Result<string, HashingError> Hash(string input)
     {
         if (string.IsNullOrEmpty(input))
         {
@@ -95,10 +138,21 @@ public sealed class XxHasher : IHasher
 
         try
         {
-            Logger.Information("Hashing input with XXHash (64-bit) sync.");
+            Logger.Information("Hashing input with XXHash ({0}-bit) sync with seed {1}.",
+                _use32Bit ? 32 : 64, _seed);
+
             var buffer = Encoding.UTF8.GetBytes(input);
-            var hashVal = XXHash.Hash64(buffer, _seed);
-            return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+
+            if (_use32Bit)
+            {
+                var hash = XXHash.Hash32(buffer, (uint)_seed);
+                return Result<string, HashingError>.Success(hash.ToString("x8"));
+            }
+            else
+            {
+                var hash = XXHash.Hash64(buffer, _seed);
+                return Result<string, HashingError>.Success(hash.ToString("x16"));
+            }
         }
         catch (Exception ex)
         {
@@ -108,12 +162,22 @@ public sealed class XxHasher : IHasher
         }
     }
 
-    public async Task<Result<Unit, HashingError>> VerifyAsync(
+    /// <inheritdoc />
+    public override async Task<Result<Unit, HashingError>> VerifyAsync(
         string input,
         string expectedHash,
         CancellationToken cancellationToken = default)
     {
+        if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(expectedHash))
+        {
+            Logger.Error("XXHash: Input and expected hash cannot be null or empty.");
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
         cancellationToken.ThrowIfCancellationRequested();
+
+        // Determine if we're working with 32-bit or 64-bit hash based on expected length
+        _use32Bit = expectedHash.Length <= 8;
 
         var hashResult = await HashAsync(input, cancellationToken).ConfigureAwait(false);
         if (!hashResult.IsSuccess)
@@ -132,8 +196,18 @@ public sealed class XxHasher : IHasher
             : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 
-    public Result<Unit, HashingError> Verify(string input, string expectedHash)
+    /// <inheritdoc />
+    public override Result<Unit, HashingError> Verify(string input, string expectedHash)
     {
+        if (string.IsNullOrEmpty(input) || string.IsNullOrEmpty(expectedHash))
+        {
+            Logger.Error("XXHash: Input and expected hash cannot be null or empty.");
+            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
+        }
+
+        // Determine if we're working with 32-bit or 64-bit hash based on expected length
+        _use32Bit = expectedHash.Length <= 8;
+
         var hashResult = Hash(input);
         if (!hashResult.IsSuccess)
         {
@@ -151,7 +225,8 @@ public sealed class XxHasher : IHasher
             : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
     }
 
-    public async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
+    /// <inheritdoc />
+    public override async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
@@ -165,15 +240,48 @@ public sealed class XxHasher : IHasher
 
         try
         {
-            Logger.Information("Encoding data to Base64 hash using XXHash (64-bit) async.");
-            var base64Hash = await Task.Run(() =>
-            {
-                var hashVal = XXHash.Hash64(data.Span, _seed);
-                var hashBytes = BitConverter.GetBytes(hashVal);
-                return Convert.ToBase64String(hashBytes);
-            }, cancellationToken).ConfigureAwait(false);
+            Logger.Information("Encoding data to Base64 hash using XXHash ({0}-bit) async with seed {1}.",
+                _use32Bit ? 32 : 64, _seed);
 
-            return Result<string, HashingError>.Success(base64Hash);
+            // Only use Task.Run for large data
+            if (data.Length > 100000)
+            {
+                return await Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    byte[] hashBytes;
+
+                    if (_use32Bit)
+                    {
+                        var hash = XXHash.Hash32(data.Span, (uint)_seed);
+                        hashBytes = BitConverter.GetBytes(hash);
+                    }
+                    else
+                    {
+                        var hash = XXHash.Hash64(data.Span, _seed);
+                        hashBytes = BitConverter.GetBytes(hash);
+                    }
+
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
+                }, cancellationToken).ConfigureAwait(false);
+            }
+
+            {
+                byte[] hashBytes;
+
+                if (_use32Bit)
+                {
+                    var hash = XXHash.Hash32(data.Span, (uint)_seed);
+                    hashBytes = BitConverter.GetBytes(hash);
+                }
+                else
+                {
+                    var hash = XXHash.Hash64(data.Span, _seed);
+                    hashBytes = BitConverter.GetBytes(hash);
+                }
+
+                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
+            }
         }
         catch (OperationCanceledException)
         {
@@ -188,7 +296,8 @@ public sealed class XxHasher : IHasher
         }
     }
 
-    public Result<string, HashingError> EncodeToBase64Hash(byte[] data)
+    /// <inheritdoc />
+    public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
         {
@@ -198,9 +307,22 @@ public sealed class XxHasher : IHasher
 
         try
         {
-            Logger.Information("Encoding data to Base64 hash using XXHash (64-bit) sync.");
-            var hashVal = XXHash.Hash64(data, _seed);
-            var hashBytes = BitConverter.GetBytes(hashVal);
+            Logger.Information("Encoding data to Base64 hash using XXHash ({0}-bit) sync with seed {1}.",
+                _use32Bit ? 32 : 64, _seed);
+
+            byte[] hashBytes;
+
+            if (_use32Bit)
+            {
+                var hash = XXHash.Hash32(data, (uint)_seed);
+                hashBytes = BitConverter.GetBytes(hash);
+            }
+            else
+            {
+                var hash = XXHash.Hash64(data, _seed);
+                hashBytes = BitConverter.GetBytes(hash);
+            }
+
             return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
         }
         catch (Exception ex)
@@ -209,70 +331,5 @@ public sealed class XxHasher : IHasher
             return Result<string, HashingError>.Failure(
                 HashComputationError.AlgorithmError(ex.Message), ex);
         }
-    }
-
-    public async Task<Result<Unit, HashingError>> VerifyBase64HashAsync(
-        ReadOnlyMemory<byte> data,
-        string expectedBase64Hash,
-        CancellationToken cancellationToken = default)
-    {
-        if (data.IsEmpty)
-        {
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
-        }
-
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var encodeResult = await EncodeToBase64HashAsync(data, cancellationToken).ConfigureAwait(false);
-        if (!encodeResult.IsSuccess)
-        {
-            Logger.Error("Failed to compute XXHash base64 hash for verification (async).");
-            return Result<Unit, HashingError>.Failure(encodeResult.Error);
-        }
-
-        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
-        Logger.Information(isValid
-            ? "XXHash base64 verification succeeded (async)."
-            : "XXHash base64 verification failed (async).");
-
-        return isValid
-            ? Result<Unit, HashingError>.Success(Unit.Value)
-            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-    }
-
-    public Result<Unit, HashingError> VerifyBase64Hash(byte[] data, string expectedBase64Hash)
-    {
-        if (data == null || data.Length == 0)
-        {
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
-        }
-
-        var encodeResult = EncodeToBase64Hash(data);
-        if (!encodeResult.IsSuccess)
-        {
-            Logger.Error("Failed to compute XXHash base64 hash for verification (sync).");
-            return Result<Unit, HashingError>.Failure(encodeResult.Error);
-        }
-
-        var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
-        Logger.Information(isValid
-            ? "XXHash base64 verification succeeded (sync)."
-            : "XXHash base64 verification failed (sync).");
-
-        return isValid
-            ? Result<Unit, HashingError>.Success(Unit.Value)
-            : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-    }
-
-    /// <summary>
-    ///     Sets the seed for XXHash operations.
-    /// </summary>
-    /// <param name="seed">A 64-bit seed.</param>
-    /// <returns>The current <see cref="XxHasher" /> instance.</returns>
-    public IHasher WithSeed(ulong seed)
-    {
-        Logger.Information("Setting seed for XxHasher to {Seed}.", seed);
-        _seed = seed;
-        return this;
     }
 }

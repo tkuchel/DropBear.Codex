@@ -1,17 +1,13 @@
 ﻿#region
 
-using System.Collections;
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Blake2Fast;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
 using DropBear.Codex.Hashing.Helpers;
 using DropBear.Codex.Hashing.Interfaces;
-using Serilog;
-// For Result<T, HashingError> etc.
-// For HashComputationError, HashVerificationError, etc.
-// For HashingHelper
 
 #endregion
 
@@ -22,15 +18,20 @@ namespace DropBear.Codex.Hashing.Hashers;
 ///     Supports an optional salt (combined with input) for hashing, and returns results as strongly-typed
 ///     <see cref="Result{T,TError}" />.
 /// </summary>
-public sealed class Blake2Hasher : IHasher
+public sealed class Blake2Hasher : BaseHasher
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<Blake2Hasher>();
-
     private int _hashSize = 32; // Default: 32 bytes
     private byte[]? _salt;
 
+    /// <summary>
+    ///     Initializes a new instance of <see cref="Blake2Hasher" />.
+    /// </summary>
+    public Blake2Hasher() : base("Blake2b")
+    {
+    }
+
     /// <inheritdoc />
-    public IHasher WithSalt(byte[]? salt)
+    public override IHasher WithSalt(byte[]? salt)
     {
         if (salt is null || salt.Length == 0)
         {
@@ -44,7 +45,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public IHasher WithIterations(int iterations)
+    public override IHasher WithIterations(int iterations)
     {
         // Not applicable for Blake2; do nothing but log
         Logger.Information("WithIterations called but not applicable for Blake2Hasher.");
@@ -52,7 +53,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public IHasher WithHashSize(int size)
+    public override IHasher WithHashSize(int size)
     {
         if (size < 1)
         {
@@ -66,7 +67,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<string, HashingError>> HashAsync(
+    public override async Task<Result<string, HashingError>> HashAsync(
         string input,
         CancellationToken cancellationToken = default)
     {
@@ -81,13 +82,23 @@ public sealed class Blake2Hasher : IHasher
             Logger.Information("Hashing input using Blake2 (async).");
             cancellationToken.ThrowIfCancellationRequested();
 
-            var hashBytes = await Task.Run(() =>
+            // Use Task.Run only for larger inputs to justify the overhead
+            byte[] hashBytes;
+            if (input.Length > 1000)
+            {
+                hashBytes = await Task.Run(() =>
+                {
+                    _salt ??= HashingHelper.GenerateRandomSalt(32);
+                    return HashWithBlake2(input, _salt);
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            else
             {
                 _salt ??= HashingHelper.GenerateRandomSalt(32);
-                return HashWithBlake2(input, _salt);
-            }, cancellationToken).ConfigureAwait(false);
+                hashBytes = HashWithBlake2(input, _salt);
+            }
 
-            var combinedBytes = HashingHelper.CombineBytes(_salt, hashBytes);
+            var combinedBytes = CombineBytes(_salt, hashBytes);
             return Result<string, HashingError>.Success(Convert.ToBase64String(combinedBytes));
         }
         catch (OperationCanceledException)
@@ -104,7 +115,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<string, HashingError> Hash(string input)
+    public override Result<string, HashingError> Hash(string input)
     {
         if (string.IsNullOrEmpty(input))
         {
@@ -118,7 +129,7 @@ public sealed class Blake2Hasher : IHasher
             _salt ??= HashingHelper.GenerateRandomSalt(32);
 
             var hashBytes = HashWithBlake2(input, _salt);
-            var combinedBytes = HashingHelper.CombineBytes(_salt, hashBytes);
+            var combinedBytes = CombineBytes(_salt, hashBytes);
 
             return Result<string, HashingError>.Success(Convert.ToBase64String(combinedBytes));
         }
@@ -131,7 +142,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<Unit, HashingError>> VerifyAsync(
+    public override async Task<Result<Unit, HashingError>> VerifyAsync(
         string input,
         string expectedHash,
         CancellationToken cancellationToken = default)
@@ -147,13 +158,34 @@ public sealed class Blake2Hasher : IHasher
             cancellationToken.ThrowIfCancellationRequested();
 
             Logger.Information("Verifying Blake2 hash (async).");
-            var expectedBytes = Convert.FromBase64String(expectedHash);
+            byte[] expectedBytes;
+
+            try
+            {
+                expectedBytes = Convert.FromBase64String(expectedHash);
+            }
+            catch (FormatException ex)
+            {
+                Logger.Error(ex, "Invalid base64 format for Blake2 expected hash.");
+                return Result<Unit, HashingError>.Failure(HashVerificationError.InvalidFormat, ex);
+            }
 
             var saltLength = _salt?.Length ?? 32;
             var (salt, expectedHashBytes) = HashingHelper.ExtractBytes(expectedBytes, saltLength);
 
-            var hashBytes = await Task.Run(() => HashWithBlake2(input, salt), cancellationToken).ConfigureAwait(false);
-            var isValid = StructuralComparisons.StructuralEqualityComparer.Equals(hashBytes, expectedHashBytes);
+            byte[] hashBytes;
+            if (input.Length > 1000)
+            {
+                hashBytes = await Task.Run(() => HashWithBlake2(input, salt), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                hashBytes = HashWithBlake2(input, salt);
+            }
+
+            // Use constant-time comparison to prevent timing attacks
+            var isValid = ConstantTimeEquals(hashBytes, expectedHashBytes);
 
             return isValid
                 ? Result<Unit, HashingError>.Success(Unit.Value)
@@ -178,7 +210,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<Unit, HashingError> Verify(string input, string expectedHash)
+    public override Result<Unit, HashingError> Verify(string input, string expectedHash)
     {
         try
         {
@@ -189,13 +221,25 @@ public sealed class Blake2Hasher : IHasher
             }
 
             Logger.Information("Verifying Blake2 hash (sync).");
-            var expectedBytes = Convert.FromBase64String(expectedHash);
+            byte[] expectedBytes;
+
+            try
+            {
+                expectedBytes = Convert.FromBase64String(expectedHash);
+            }
+            catch (FormatException ex)
+            {
+                Logger.Error(ex, "Invalid base64 format for Blake2 expected hash (sync).");
+                return Result<Unit, HashingError>.Failure(HashVerificationError.InvalidFormat, ex);
+            }
 
             var saltLength = _salt?.Length ?? 32;
             var (salt, expectedHashBytes) = HashingHelper.ExtractBytes(expectedBytes, saltLength);
 
             var hashBytes = HashWithBlake2(input, salt);
-            var isValid = StructuralComparisons.StructuralEqualityComparer.Equals(hashBytes, expectedHashBytes);
+
+            // Use constant-time comparison to prevent timing attacks
+            var isValid = ConstantTimeEquals(hashBytes, expectedHashBytes);
 
             return isValid
                 ? Result<Unit, HashingError>.Success(Unit.Value)
@@ -215,7 +259,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
+    public override async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
@@ -230,8 +274,17 @@ public sealed class Blake2Hasher : IHasher
             Logger.Information("Encoding data to Base64 hash using Blake2 (async).");
             cancellationToken.ThrowIfCancellationRequested();
 
-            var hash = await Task.Run(() => Blake2b.ComputeHash(_hashSize, data.ToArray()), cancellationToken)
-                .ConfigureAwait(false);
+            // Only use Task.Run for larger data
+            byte[] hash;
+            if (data.Length > 1000)
+            {
+                hash = await Task.Run(() => Blake2b.ComputeHash(_hashSize, data.Span), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            else
+            {
+                hash = Blake2b.ComputeHash(_hashSize, data.Span);
+            }
 
             return Result<string, HashingError>.Success(Convert.ToBase64String(hash));
         }
@@ -249,7 +302,7 @@ public sealed class Blake2Hasher : IHasher
     }
 
     /// <inheritdoc />
-    public Result<string, HashingError> EncodeToBase64Hash(byte[] data)
+    public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
         {
@@ -271,92 +324,73 @@ public sealed class Blake2Hasher : IHasher
         }
     }
 
-    /// <inheritdoc />
-    public async Task<Result<Unit, HashingError>> VerifyBase64HashAsync(
-        ReadOnlyMemory<byte> data,
-        string expectedBase64Hash,
-        CancellationToken cancellationToken = default)
-    {
-        if (data.IsEmpty)
-        {
-            Logger.Error("Blake2 base64 verification: data cannot be empty.");
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
-        }
-
-        try
-        {
-            Logger.Information("Verifying Base64 hash using Blake2 (async).");
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var hashBase64 = await EncodeToBase64HashAsync(data, cancellationToken).ConfigureAwait(false);
-            if (!hashBase64.IsSuccess)
-            {
-                return Result<Unit, HashingError>.Failure(hashBase64.Error);
-            }
-
-            var isValid = string.Equals(hashBase64.Value, expectedBase64Hash, StringComparison.Ordinal);
-            return isValid
-                ? Result<Unit, HashingError>.Success(Unit.Value)
-                : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-        }
-        catch (OperationCanceledException)
-        {
-            Logger.Information("Blake2 VerifyBase64Hash operation was canceled.");
-            throw;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error verifying base64 hash with Blake2 (async).");
-            return Result<Unit, HashingError>.Failure(
-                new HashVerificationError($"Error during base64 verification: {ex.Message}"), ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public Result<Unit, HashingError> VerifyBase64Hash(byte[] data, string expectedBase64Hash)
-    {
-        if (data == null || data.Length == 0)
-        {
-            Logger.Error("Blake2 base64 verification: data cannot be null or empty.");
-            return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
-        }
-
-        try
-        {
-            Logger.Information("Verifying Base64 hash using Blake2 (sync).");
-            var hashResult = EncodeToBase64Hash(data);
-            if (!hashResult.IsSuccess)
-            {
-                return Result<Unit, HashingError>.Failure(hashResult.Error);
-            }
-
-            var isValid = string.Equals(hashResult.Value, expectedBase64Hash, StringComparison.Ordinal);
-            return isValid
-                ? Result<Unit, HashingError>.Success(Unit.Value)
-                : Result<Unit, HashingError>.Failure(HashVerificationError.HashMismatch);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error verifying base64 hash with Blake2 (sync).");
-            return Result<Unit, HashingError>.Failure(
-                new HashVerificationError($"Error during base64 verification: {ex.Message}"), ex);
-        }
-    }
-
     // -------------------------------------------------------------------------------
-    // Private helper
+    // Private helpers
     // -------------------------------------------------------------------------------
+
+    /// <summary>
+    ///     Hashes input with Blake2b, optionally combining with a salt.
+    /// </summary>
+    /// <param name="input">The input string to hash.</param>
+    /// <param name="salt">Optional salt bytes to combine with input.</param>
+    /// <returns>The computed hash.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private byte[] HashWithBlake2(string input, byte[]? salt)
     {
         Logger.Debug("Hashing input using Blake2 with optional salt (private helper).");
-        var inputBytes = Encoding.UTF8.GetBytes(input);
+        ReadOnlySpan<byte> inputBytes = Encoding.UTF8.GetBytes(input);
 
-        if (salt != null)
+        if (salt == null || salt.Length == 0)
         {
-            var saltedInput = HashingHelper.CombineBytes(salt, inputBytes);
+            return Blake2b.ComputeHash(_hashSize, inputBytes);
+        }
+
+        // Use more efficient memory handling with stackalloc for small data
+        ReadOnlySpan<byte> saltSpan = salt;
+        var bufferSize = saltSpan.Length + inputBytes.Length;
+
+        if (bufferSize <= 1024)
+        {
+            // For small inputs, use stack allocation for better performance
+            Span<byte> saltedInput = stackalloc byte[bufferSize];
+            saltSpan.CopyTo(saltedInput);
+            inputBytes.CopyTo(saltedInput.Slice(saltSpan.Length));
+
             return Blake2b.ComputeHash(_hashSize, saltedInput);
         }
 
-        return Blake2b.ComputeHash(_hashSize, inputBytes);
+        // For larger inputs, use ArrayPool to minimize GC pressure
+        var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+        try
+        {
+            var bufferSpan = buffer.AsSpan(0, bufferSize);
+            saltSpan.CopyTo(bufferSpan);
+            inputBytes.CopyTo(bufferSpan.Slice(saltSpan.Length));
+
+            return Blake2b.ComputeHash(_hashSize, bufferSpan.Slice(0, bufferSize));
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    /// <summary>
+    ///     Combines salt and hash bytes efficiently.
+    /// </summary>
+    /// <param name="salt">The salt bytes.</param>
+    /// <param name="hash">The hash bytes.</param>
+    /// <returns>Combined array.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte[] CombineBytes(byte[] salt, byte[] hash)
+    {
+        // Create a single array for the combined data
+        var result = new byte[salt.Length + hash.Length];
+
+        // Copy salt and hash into the result array
+        salt.AsSpan().CopyTo(result.AsSpan(0, salt.Length));
+        hash.AsSpan().CopyTo(result.AsSpan(salt.Length));
+
+        return result;
     }
 }
