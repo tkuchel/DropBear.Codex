@@ -75,7 +75,6 @@
 
   <!-- Folders (if required) -->
   <ItemGroup>
-    <Folder Include="Models\" />
     <Folder Include="Enums\" />
   </ItemGroup>
 

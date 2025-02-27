@@ -50,7 +50,7 @@ public abstract record ResultError : ISpanFormattable
     ///     Additional context or metadata associated with this error.
     /// </summary>
     [JsonExtensionData]
-    public Dictionary<string, object>? Metadata { get; private init; }
+    public Dictionary<string, object>? Metadata { get; protected init; }
 
     /// <summary>
     ///     Indicates whether this error is a default/unknown error (i.e., no message provided).
