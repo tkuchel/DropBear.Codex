@@ -201,12 +201,20 @@ public class ContentContainerBuilder
                         BuilderError.BuildFailed("No data available for serialization."));
                 }
 
-                if (serializer != null)
+                if (serializer != null && serializer.IsSuccess)
                 {
-                    var serializedData = await serializer.SerializeAsync(data, cancellationToken)
+                    var serializedData = await serializer.Value.SerializeAsync(data, cancellationToken)
                         .ConfigureAwait(false);
 
-                    _container.Data = serializedData;
+                    if (serializedData.IsSuccess)
+                    {
+                        _container.Data = serializedData.Value;
+                    }
+                    else
+                    {
+                        return Result<ContentContainer, BuilderError>.Failure(
+                            BuilderError.BuildFailed("Failed to serialize data."));
+                    }
                 }
                 else
                 {

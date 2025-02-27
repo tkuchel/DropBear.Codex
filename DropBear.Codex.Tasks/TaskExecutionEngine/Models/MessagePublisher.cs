@@ -119,6 +119,10 @@ public sealed class MessagePublisher : IAsyncDisposable
                 }
             }
         }
+        catch (ChannelClosedException)
+        {
+            _logger.Debug("Message publishing channel closed");
+        }
         catch (OperationCanceledException)
         {
             _logger.Debug("Message publishing cancelled");

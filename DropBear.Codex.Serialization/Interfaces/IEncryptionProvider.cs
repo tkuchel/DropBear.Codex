@@ -10,4 +10,10 @@ public interface IEncryptionProvider
     /// </summary>
     /// <returns>An instance of an encryptor.</returns>
     IEncryptor GetEncryptor();
+
+    /// <summary>
+    ///     Gets information about the encryption provider.
+    /// </summary>
+    /// <returns>A dictionary of information about the encryption provider.</returns>
+    IDictionary<string, object> GetProviderInfo();
 }

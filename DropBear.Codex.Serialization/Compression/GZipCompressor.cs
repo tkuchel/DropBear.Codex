@@ -1,7 +1,10 @@
 ﻿#region
 
+using System.Buffers;
 using System.IO.Compression;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Serialization.Errors;
 using DropBear.Codex.Serialization.Interfaces;
 using Microsoft.IO;
 using Serilog;
@@ -15,96 +18,155 @@ namespace DropBear.Codex.Serialization.Compression;
 /// </summary>
 public sealed class GZipCompressor : ICompressor
 {
+    private readonly int _bufferSize;
+    private readonly CompressionLevel _compressionLevel;
     private readonly ILogger _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="GZipCompressor" /> class.
+    ///     Initializes a new instance of the <see cref="GZipCompressor" /> class with default settings.
     /// </summary>
     public GZipCompressor()
+        : this(CompressionLevel.Fastest, 81920) // Default to fastest compression and 80KB buffer
     {
+    }
+
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="GZipCompressor" /> class with specified settings.
+    /// </summary>
+    /// <param name="compressionLevel">The compression level to use.</param>
+    /// <param name="bufferSize">The buffer size for compression operations.</param>
+    public GZipCompressor(CompressionLevel compressionLevel, int bufferSize)
+    {
+        _compressionLevel = compressionLevel;
+        _bufferSize = bufferSize > 0 ? bufferSize : 81920; // Default to 80KB if invalid
         _memoryStreamManager = new RecyclableMemoryStreamManager();
         _logger = LoggerFactory.Logger.ForContext<GZipCompressor>();
+
+        _logger.Information(
+            "GZipCompressor initialized with CompressionLevel: {CompressionLevel}, BufferSize: {BufferSize}",
+            compressionLevel, _bufferSize);
     }
 
     /// <inheritdoc />
-    public async Task<byte[]> CompressAsync(byte[] data, CancellationToken cancellationToken = default)
+    public async Task<Result<byte[], SerializationError>> CompressAsync(byte[] data,
+        CancellationToken cancellationToken = default)
     {
-        if (data == null)
-        {
-            _logger.Error("Attempted to compress null data.");
-            throw new ArgumentNullException(nameof(data), "Input data cannot be null.");
-        }
-
-        _logger.Information("Starting compression of data with length {DataLength}.", data.Length);
-
-        var compressedStream = _memoryStreamManager.GetStream("GZipCompressor-Compress");
-
         try
         {
-            await using (var zipStream =
-                         new GZipStream(compressedStream, CompressionMode.Compress, true)) // Leave stream open
+            ArgumentNullException.ThrowIfNull(data, nameof(data));
+
+            if (data.Length == 0)
             {
-                await zipStream.WriteAsync(data, 0, data.Length, cancellationToken).ConfigureAwait(false);
-                await zipStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
             }
 
-            // Reset the position only after the GZipStream is disposed and the data is written
+            _logger.Information("Starting compression of data with length {DataLength} bytes.", data.Length);
+
+            using var compressedStream = _memoryStreamManager.GetStream("GZipCompressor-Compress");
+
+            // Use braced scope to ensure proper disposal of resources
+            {
+                using var zipStream = new GZipStream(compressedStream, _compressionLevel, true); // Leave stream open
+
+                // Use Memory<T> for better performance
+                await zipStream.WriteAsync(data.AsMemory(), cancellationToken).ConfigureAwait(false);
+                await zipStream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            } // zipStream is disposed here, ensuring all data is written to compressedStream
+
+            // Reset position to read the compressed data
             compressedStream.Position = 0;
 
             var result = compressedStream.ToArray();
-            _logger.Information("Compression completed. Compressed data length: {CompressedLength}.", result.Length);
 
-            return result;
+            _logger.Information(
+                "Compression completed. Data compressed from {OriginalSize} to {CompressedSize} bytes. Ratio: {Ratio:P2}",
+                data.Length, result.Length, (float)result.Length / data.Length);
+
+            return Result<byte[], SerializationError>.Success(result);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error occurred while compressing data.");
-            throw;
-        }
-        finally
-        {
-            // Dispose of the stream after all operations are complete
-            await compressedStream.DisposeAsync().ConfigureAwait(false);
+            _logger.Error(ex, "Error occurred while compressing data: {Message}", ex.Message);
+            return Result<byte[], SerializationError>.Failure(
+                new SerializationError($"GZip compression failed: {ex.Message}") { Operation = "Compress" }, ex);
         }
     }
 
-
     /// <inheritdoc />
-    public async Task<byte[]> DecompressAsync(byte[] compressedData, CancellationToken cancellationToken = default)
+    public async Task<Result<byte[], SerializationError>> DecompressAsync(byte[] compressedData,
+        CancellationToken cancellationToken = default)
     {
-        if (compressedData == null)
+        try
         {
-            _logger.Error("Attempted to decompress null data.");
-            throw new ArgumentNullException(nameof(compressedData), "Compressed data cannot be null.");
-        }
+            ArgumentNullException.ThrowIfNull(compressedData, nameof(compressedData));
 
-        _logger.Information("Starting decompression of data with length {CompressedDataLength}.",
-            compressedData.Length);
+            if (compressedData.Length == 0)
+            {
+                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+            }
 
-        var compressedStream =
-            _memoryStreamManager.GetStream("GZipCompressor-Decompress-Input", compressedData);
-        await using (compressedStream.ConfigureAwait(false))
-        {
-            await using var decompressedStream = _memoryStreamManager.GetStream("GZipCompressor-Decompress-Output");
+            _logger.Information("Starting decompression of data with length {CompressedDataLength} bytes.",
+                compressedData.Length);
+
+            // Create input stream with compressed data
+            using var compressedStream =
+                _memoryStreamManager.GetStream("GZipCompressor-Decompress-Input", compressedData);
+
+            // Create output stream for decompressed data
+            using var decompressedStream = _memoryStreamManager.GetStream("GZipCompressor-Decompress-Output");
+
+            // Use a shared buffer from the array pool to minimize allocations
+            var buffer = ArrayPool<byte>.Shared.Rent(_bufferSize);
 
             try
             {
-                await using var zipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
-                await zipStream.CopyToAsync(decompressedStream, cancellationToken).ConfigureAwait(false);
+                using var zipStream = new GZipStream(compressedStream, CompressionMode.Decompress);
+
+                int bytesRead;
+                while ((bytesRead = await zipStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
+                           .ConfigureAwait(false)) > 0)
+                {
+                    await decompressedStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                await decompressedStream.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
-            catch (Exception ex)
+            finally
             {
-                _logger.Error(ex, "Error occurred while decompressing data.");
-                throw;
+                // Return the buffer to the pool when done
+                ArrayPool<byte>.Shared.Return(buffer);
             }
 
-            decompressedStream.Position = 0; // Reset position to read the stream content
-            var result = decompressedStream.ToArray();
-            _logger.Information("Decompression completed. Decompressed data length: {DecompressedLength}.",
-                result.Length);
+            // Reset position to read the decompressed content
+            decompressedStream.Position = 0;
 
-            return result;
+            var result = decompressedStream.ToArray();
+
+            _logger.Information(
+                "Decompression completed. Data decompressed from {CompressedSize} to {DecompressedSize} bytes.",
+                compressedData.Length, result.Length);
+
+            return Result<byte[], SerializationError>.Success(result);
         }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error occurred while decompressing data: {Message}", ex.Message);
+            return Result<byte[], SerializationError>.Failure(
+                new SerializationError($"GZip decompression failed: {ex.Message}") { Operation = "Decompress" }, ex);
+        }
+    }
+
+    /// <inheritdoc />
+    public IDictionary<string, object> GetCompressionInfo()
+    {
+        return new Dictionary<string, object>
+        {
+            ["Algorithm"] = "GZip",
+            ["CompressionLevel"] = _compressionLevel.ToString(),
+            ["BufferSize"] = _bufferSize,
+            ["IsThreadSafe"] = true
+        };
     }
 }

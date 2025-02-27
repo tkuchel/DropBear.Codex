@@ -2,7 +2,6 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
@@ -27,21 +26,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 {
     private static readonly ConcurrentDictionary<Type, DefaultObjectPool<Result<T, TError>>> ResultPool = new();
 
-    private readonly Lazy<T> _lazyValue;
-
-    private sealed class ResultPooledObjectPolicy : IPooledObjectPolicy<Result<T, TError>>
-    {
-        public Result<T, TError> Create()
-        {
-            return new Result<T, TError>(new Lazy<T>(() => default!), ResultState.Success);
-        }
-
-        public bool Return(Result<T, TError> obj)
-        {
-            obj.Initialize(ResultState.Success);
-            return true;
-        }
-    }
+    private Lazy<T> _lazyValue;
 
     #region Properties
 
@@ -51,6 +36,12 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     public T? Value => IsSuccess ? _lazyValue.Value : default;
 
     #endregion
+
+    private void ResetLazyValue(Func<T>? factory = null)
+    {
+        // If factory is null, default to creating a Lazy<T> that returns default(T).
+        _lazyValue = new Lazy<T>(factory ?? (() => default!));
+    }
 
     #region Operators
 
@@ -70,6 +61,21 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     #endregion
+
+
+    private sealed class ResultPooledObjectPolicy : IPooledObjectPolicy<Result<T, TError>>
+    {
+        public Result<T, TError> Create()
+        {
+            return new Result<T, TError>(new Lazy<T>(() => default!), ResultState.Success);
+        }
+
+        public bool Return(Result<T, TError> obj)
+        {
+            obj.Initialize(ResultState.Success);
+            return true;
+        }
+    }
 
     #region Constructors
 
@@ -308,23 +314,24 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     protected override void Initialize(ResultState state, TError? error = null, Exception? exception = null)
     {
+        // For no value: just pass null for factory, which yields default(T).
         base.Initialize(state, error, exception);
-        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
-        field?.SetValue(this, new Lazy<T>(() => default!));
+        ResetLazyValue();
     }
 
     protected void Initialize(T value, ResultState state, TError? error = null, Exception? exception = null)
     {
+        // For a known immediate value: reset the lazy to produce that value.
         base.Initialize(state, error, exception);
-        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
-        field?.SetValue(this, new Lazy<T>(() => value));
+        ResetLazyValue(() => value);
     }
 
-    protected void Initialize(Func<T> valueFactory, ResultState state, TError? error = null, Exception? exception = null)
+    protected void Initialize(Func<T> valueFactory, ResultState state, TError? error = null,
+        Exception? exception = null)
     {
+        // For a delayed/lazy factory: reset the lazy with the user-provided function.
         base.Initialize(state, error, exception);
-        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
-        field?.SetValue(this, new Lazy<T>(valueFactory));
+        ResetLazyValue(valueFactory);
     }
 
     #endregion

@@ -274,8 +274,19 @@ public sealed class ContentContainer
 
             // Use cancellation token for deserialization
             cancellationToken.ThrowIfCancellationRequested();
-            var result = await serializer.DeserializeAsync<T>(Data, cancellationToken).ConfigureAwait(false);
-            return Result<T, ContentContainerError>.Success(result);
+
+            // Check we got a serializer and not an error
+            if (!serializer.IsSuccess)
+            {
+                return Result<T, ContentContainerError>.Failure(
+                    new ContentContainerError("Failed to build serializer."));
+            }
+
+            var result = await serializer.Value.DeserializeAsync<T>(Data, cancellationToken).ConfigureAwait(false);
+
+            return !result.IsSuccess
+                ? Result<T, ContentContainerError>.Failure(new ContentContainerError(result.Exception?.Message))
+                : Result<T, ContentContainerError>.Success(result.Value);
         }
         catch (OperationCanceledException)
         {

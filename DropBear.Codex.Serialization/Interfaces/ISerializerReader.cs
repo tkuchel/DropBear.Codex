@@ -1,4 +1,11 @@
-﻿namespace DropBear.Codex.Serialization.Interfaces;
+﻿#region
+
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Serialization.Errors;
+
+#endregion
+
+namespace DropBear.Codex.Serialization.Interfaces;
 
 /// <summary>
 ///     Interface for serializer readers.
@@ -11,6 +18,13 @@ public interface ISerializerReader
     /// <typeparam name="T">The type to deserialize to.</typeparam>
     /// <param name="stream">The stream containing the serialized data.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>A task representing the asynchronous operation. The result contains the deserialized data.</returns>
-    Task<T?> DeserializeAsync<T>(Stream stream, CancellationToken cancellationToken = default);
+    /// <returns>A result containing either the deserialized data or an error.</returns>
+    Task<Result<T, SerializationError>> DeserializeAsync<T>(Stream stream,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Gets the options being used by this reader.
+    /// </summary>
+    /// <returns>A dictionary containing the reader options.</returns>
+    IDictionary<string, object> GetReaderOptions();
 }

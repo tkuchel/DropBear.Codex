@@ -10,4 +10,10 @@ public interface IEncodingProvider
     /// </summary>
     /// <returns>An instance of an encoder.</returns>
     IEncoder GetEncoder();
+
+    /// <summary>
+    ///     Gets information about the encoding provider.
+    /// </summary>
+    /// <returns>A dictionary of information about the encoding provider.</returns>
+    IDictionary<string, object> GetProviderInfo();
 }
