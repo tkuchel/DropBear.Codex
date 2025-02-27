@@ -1,10 +1,12 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Utilities.Exceptions;
+using DropBear.Codex.Core.Results.Base;
 using Serilog;
 
 #endregion
@@ -12,17 +14,34 @@ using Serilog;
 namespace DropBear.Codex.Utilities.AccessCodes;
 
 /// <summary>
+///     Represents specific errors that can occur during time-based code operations.
+/// </summary>
+public sealed record TimeBasedCodeError : ResultError
+{
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="TimeBasedCodeError" /> record.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    public TimeBasedCodeError(string message) : base(message) { }
+}
+
+/// <summary>
 ///     Generates and validates time-based security codes.
 ///     Useful for scenarios like two-factor authentication or other time-sensitive token generation.
 /// </summary>
 public class TimeBasedCodeGenerator
 {
+    // Constants to avoid allocations from string formatting
+    private const string DateTimeFormat = "yyyyMMddHHmm";
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<TimeBasedCodeGenerator>();
 
     private readonly string _characterSet;
     private readonly int _codeLength;
     private readonly TimeSpan _gracePeriod;
     private readonly string _secretKey;
+
+    // Cache for validated codes to improve performance
+    private readonly ConcurrentDictionary<string, (DateTime ExpiryTime, bool IsValid)> _validationCache = new();
     private readonly TimeSpan _validityDuration;
 
     /// <summary>
@@ -63,8 +82,8 @@ public class TimeBasedCodeGenerator
     /// <summary>
     ///     Generates a time-based code using the current UTC time.
     /// </summary>
-    /// <returns>A string representing the generated code.</returns>
-    public string GenerateCode()
+    /// <returns>A Result containing the generated code or error information.</returns>
+    public Result<string, TimeBasedCodeError> GenerateCode()
     {
         return GenerateCode(DateTime.UtcNow);
     }
@@ -73,25 +92,28 @@ public class TimeBasedCodeGenerator
     ///     Generates a time-based code using a specified <paramref name="dateTime" />.
     /// </summary>
     /// <param name="dateTime">The date and time to use for code generation.</param>
-    /// <returns>A string representing the generated code.</returns>
-    /// <exception cref="TimeBasedCodeException">Thrown if code generation fails.</exception>
-    public string GenerateCode(DateTime dateTime)
+    /// <returns>A Result containing the generated code or error information.</returns>
+    public Result<string, TimeBasedCodeError> GenerateCode(DateTime dateTime)
     {
         try
         {
             // We incorporate the date/time and the secret key into an HMAC-SHA256 hash
-            var message = dateTime.ToString("yyyyMMddHHmm", CultureInfo.InvariantCulture) + _secretKey;
+            var message = dateTime.ToString(DateTimeFormat, CultureInfo.InvariantCulture) + _secretKey;
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_secretKey));
             var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
             var hashString = Convert.ToBase64String(hash);
 
             // Convert the hash into a code of length _codeLength using characters from _characterSet
-            return GenerateCodeFromHash(hashString, _codeLength, _characterSet);
+            var code = GenerateCodeFromHash(hashString, _codeLength, _characterSet);
+
+            Logger.Debug("Generated code for date: {DateTime}", dateTime);
+            return Result<string, TimeBasedCodeError>.Success(code);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error generating code for date: {DateTime}", dateTime);
-            throw new TimeBasedCodeException("Failed to generate code", ex);
+            return Result<string, TimeBasedCodeError>.Failure(
+                new TimeBasedCodeError($"Failed to generate code: {ex.Message}"), ex);
         }
     }
 
@@ -99,8 +121,8 @@ public class TimeBasedCodeGenerator
     ///     Validates a code against the current UTC time.
     /// </summary>
     /// <param name="code">The code to validate.</param>
-    /// <returns><c>true</c> if the code is valid within the current time window; otherwise <c>false</c>.</returns>
-    public bool ValidateCode(string code)
+    /// <returns>A Result indicating whether the code is valid.</returns>
+    public Result<bool, TimeBasedCodeError> ValidateCode(string code)
     {
         return ValidateCode(code, DateTime.UtcNow);
     }
@@ -113,10 +135,27 @@ public class TimeBasedCodeGenerator
     /// </summary>
     /// <param name="code">The code to validate.</param>
     /// <param name="dateTime">The date/time against which to validate.</param>
-    /// <returns><c>true</c> if the code is valid within that window; otherwise <c>false</c>.</returns>
-    /// <exception cref="TimeBasedCodeException">Thrown if code validation fails unexpectedly.</exception>
-    public bool ValidateCode(string code, DateTime dateTime)
+    /// <returns>A Result indicating whether the code is valid.</returns>
+    public Result<bool, TimeBasedCodeError> ValidateCode(string code, DateTime dateTime)
     {
+        if (string.IsNullOrEmpty(code))
+        {
+            return Result<bool, TimeBasedCodeError>.Failure(
+                new TimeBasedCodeError("Code cannot be null or empty"));
+        }
+
+        // Check cache first to avoid unnecessary code generation for repeated validations
+        if (_validationCache.TryGetValue(code, out var cacheEntry))
+        {
+            if (cacheEntry.ExpiryTime >= dateTime)
+            {
+                return Result<bool, TimeBasedCodeError>.Success(cacheEntry.IsValid);
+            }
+
+            // Expired entry, remove it
+            _validationCache.TryRemove(code, out _);
+        }
+
         try
         {
             // The earliest time we consider a code valid
@@ -127,21 +166,36 @@ public class TimeBasedCodeGenerator
             // We check every minute from validityStart up to validityEnd for a match
             for (var checkTime = validityStart; checkTime <= validityEnd; checkTime = checkTime.AddMinutes(1))
             {
-                var generatedCode = GenerateCode(checkTime);
-                if (string.Equals(code, generatedCode, StringComparison.Ordinal))
+                var generatedCodeResult = GenerateCode(checkTime);
+                if (!generatedCodeResult.IsSuccess)
+                {
+                    continue;
+                }
+
+                if (string.Equals(code, generatedCodeResult.Value, StringComparison.Ordinal))
                 {
                     Logger.Information("Code validated successfully for date: {DateTime}", dateTime);
-                    return true;
+
+                    // Cache the successful validation result
+                    var expiryTime = dateTime + _validityDuration;
+                    _validationCache.TryAdd(code, (expiryTime, true));
+
+                    return Result<bool, TimeBasedCodeError>.Success(true);
                 }
             }
 
+            // Cache the failed validation to prevent brute force attacks
+            var failedExpiryTime = dateTime + TimeSpan.FromMinutes(1); // Short cache time for failures
+            _validationCache.TryAdd(code, (failedExpiryTime, false));
+
             Logger.Information("Code validation failed for date: {DateTime}", dateTime);
-            return false;
+            return Result<bool, TimeBasedCodeError>.Success(false);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error validating code: {Code} for date: {DateTime}", code, dateTime);
-            throw new TimeBasedCodeException("Failed to validate code", ex);
+            return Result<bool, TimeBasedCodeError>.Failure(
+                new TimeBasedCodeError($"Failed to validate code: {ex.Message}"), ex);
         }
     }
 
@@ -153,17 +207,23 @@ public class TimeBasedCodeGenerator
     /// <param name="length">Desired code length.</param>
     /// <param name="characterSet">Set of characters used to form the code.</param>
     /// <returns>A string code of length <paramref name="length" /> made from <paramref name="characterSet" />.</returns>
-    private static string GenerateCodeFromHash(string hash, int length, string characterSet)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static string GenerateCodeFromHash(ReadOnlySpan<char> hash, int length, ReadOnlySpan<char> characterSet)
     {
-        var result = new StringBuilder(length);
+        // Use stack allocation for small codes to avoid heap allocations
+        var resultBuffer = length <= 128
+            ? stackalloc char[length]
+            : new char[length];
 
-        // Filter the hash so only characters from 'characterSet' appear in the code
+        var resultPos = 0;
+
+        // Filter the hash so only characters from characterSet appear in the code
         foreach (var c in hash)
         {
             if (characterSet.Contains(c))
             {
-                result.Append(c);
-                if (result.Length == length)
+                resultBuffer[resultPos++] = c;
+                if (resultPos == length)
                 {
                     break;
                 }
@@ -171,12 +231,12 @@ public class TimeBasedCodeGenerator
         }
 
         // If the result is shorter than needed, pad with the first character in the character set
-        while (result.Length < length)
+        while (resultPos < length)
         {
-            result.Append(characterSet[0]);
+            resultBuffer[resultPos++] = characterSet[0];
         }
 
-        return result.ToString();
+        return new string(resultBuffer);
     }
 
     /// <summary>
@@ -187,5 +247,18 @@ public class TimeBasedCodeGenerator
         var key = new byte[32];
         RandomNumberGenerator.Fill(key);
         return Convert.ToBase64String(key);
+    }
+
+    /// <summary>
+    ///     Clears the validation cache.
+    /// </summary>
+    /// <remarks>
+    ///     Can be useful if you need to force revalidation of codes or when
+    ///     system time changes significantly.
+    /// </remarks>
+    public void ClearValidationCache()
+    {
+        _validationCache.Clear();
+        Logger.Information("Validation cache has been cleared");
     }
 }

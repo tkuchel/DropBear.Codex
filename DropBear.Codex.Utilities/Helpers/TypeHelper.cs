@@ -1,29 +1,61 @@
-﻿namespace DropBear.Codex.Utilities.Helpers;
+﻿#region
+
+using System.Collections.Frozen;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Utilities.Errors;
+
+#endregion
+
+namespace DropBear.Codex.Utilities.Helpers;
 
 /// <summary>
-///     Provides utility methods for working with types.
+///     Provides utility methods for working with types, optimized for performance and .NET 8 features.
 /// </summary>
 public static class TypeHelper
 {
+    private static readonly FrozenSet<Type> PrimitiveTypes = new[]
+    {
+        typeof(int), typeof(double), typeof(float), typeof(long), typeof(short), typeof(byte), typeof(bool),
+        typeof(char), typeof(decimal), typeof(string)
+    }.ToFrozenSet();
+
     /// <summary>
     ///     Determines whether the specified type is of the specified target type or derives from it.
     /// </summary>
-    /// <param name="typeToCheck">The type to check.</param>
-    /// <param name="targetType">The target type to compare against.</param>
-    /// <returns>
-    ///     <see langword="true" /> if <paramref name="typeToCheck" /> is of type <paramref name="targetType" /> or
-    ///     derives from it; otherwise, <see langword="false" />.
-    /// </returns>
-    /// <exception cref="ArgumentNullException">
-    ///     Thrown when either <paramref name="typeToCheck" /> or
-    ///     <paramref name="targetType" /> is null.
-    /// </exception>
-    public static bool IsOfTypeOrDerivedFrom(Type typeToCheck, Type targetType)
+    public static Result<bool, TypeError> IsOfTypeOrDerivedFrom(Type? typeToCheck, Type? targetType)
     {
-        ArgumentNullException.ThrowIfNull(typeToCheck, nameof(typeToCheck));
-        ArgumentNullException.ThrowIfNull(targetType, nameof(targetType));
+        if (typeToCheck is null || targetType is null)
+        {
+            return Result<bool, TypeError>.Failure(new TypeError("Types cannot be null."));
+        }
 
-        // Check if the type is the same or if the type can be assigned to the target type
-        return targetType.IsAssignableFrom(typeToCheck);
+        try
+        {
+            return Result<bool, TypeError>.Success(targetType.IsAssignableFrom(typeToCheck));
+        }
+        catch (Exception ex)
+        {
+            return Result<bool, TypeError>.Failure(new TypeError("Error checking type hierarchy.", ex));
+        }
+    }
+
+    /// <summary>
+    ///     Checks if a given type is a primitive or well-known simple type.
+    /// </summary>
+    public static Result<bool, TypeError> IsPrimitiveOrSimpleType(Type? type)
+    {
+        if (type is null)
+        {
+            return Result<bool, TypeError>.Failure(new TypeError("Type cannot be null."));
+        }
+
+        try
+        {
+            return Result<bool, TypeError>.Success(PrimitiveTypes.Contains(type));
+        }
+        catch (Exception ex)
+        {
+            return Result<bool, TypeError>.Failure(new TypeError("Error checking if type is primitive.", ex));
+        }
     }
 }

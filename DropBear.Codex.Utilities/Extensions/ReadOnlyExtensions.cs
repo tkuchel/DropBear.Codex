@@ -1,7 +1,11 @@
 ﻿#region
 
+using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Reflection;
 using System.Reflection.Emit;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Utilities.Errors;
 
 #endregion
 
@@ -9,10 +13,13 @@ namespace DropBear.Codex.Utilities.Extensions;
 
 /// <summary>
 ///     Provides an extension method to create a read-only version of an object by dynamically generating a wrapper type.
+///     Optimized for .NET 8 performance features.
 /// </summary>
 public static class ReadOnlyExtensions
 {
-    private static readonly Dictionary<Type, Type> CachedReadOnlyTypes = new();
+    private static readonly FrozenDictionary<Type, Type> CachedReadOnlyTypes =
+        new ConcurrentDictionary<Type, Type>().ToFrozenDictionary();
+
 
     /// <summary>
     ///     Returns a read-only version of the specified object.
@@ -20,25 +27,37 @@ public static class ReadOnlyExtensions
     ///     If the object is a reference type, a dynamically generated read-only wrapper is returned.
     /// </summary>
     /// <param name="obj">The object to create a read-only version of.</param>
-    /// <returns>A read-only version of the object, or the original object if it is a value type.</returns>
-    public static object? GetReadOnlyVersion(this object? obj)
+    /// <typeparam name="T">The type of the object.</typeparam>
+    /// <returns>
+    ///     A <see cref="Result{T, ReadOnlyConversionError}" /> containing the read-only version of the object or an
+    ///     error.
+    /// </returns>
+    public static Result<T, ReadOnlyConversionError> GetReadOnlyVersion<T>(this T obj)
     {
         if (obj is null)
         {
-            return null;
+            return Result<T, ReadOnlyConversionError>.Failure(new ReadOnlyConversionError("Object cannot be null."));
         }
 
-        var type = obj.GetType();
+        var type = typeof(T);
 
-        // For value types (structs), just return the original instance
+        // If the object is a value type, return as-is
         if (type.IsValueType)
         {
-            return obj;
+            return Result<T, ReadOnlyConversionError>.Success(obj);
         }
 
-        // For reference types (classes), create or retrieve a read-only wrapper
-        var readOnlyType = GetOrCreateReadOnlyType(type);
-        return Activator.CreateInstance(readOnlyType, obj);
+        try
+        {
+            var readOnlyType = GetOrCreateReadOnlyType(type);
+            var readOnlyInstance = Activator.CreateInstance(readOnlyType, obj);
+            return Result<T, ReadOnlyConversionError>.Success((T)readOnlyInstance!);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, ReadOnlyConversionError>.Failure(
+                new ReadOnlyConversionError("Failed to create read-only version.", ex));
+        }
     }
 
     /// <summary>
@@ -48,14 +67,7 @@ public static class ReadOnlyExtensions
     /// <returns>A dynamically generated read-only type.</returns>
     private static Type GetOrCreateReadOnlyType(Type type)
     {
-        if (CachedReadOnlyTypes.TryGetValue(type, out var readOnlyType))
-        {
-            return readOnlyType;
-        }
-
-        readOnlyType = CreateReadOnlyType(type);
-        CachedReadOnlyTypes[type] = readOnlyType;
-        return readOnlyType;
+        return CachedReadOnlyTypes.GetValueOrDefault(type) ?? CreateReadOnlyType(type);
     }
 
     /// <summary>
@@ -76,12 +88,7 @@ public static class ReadOnlyExtensions
         var instanceField =
             typeBuilder.DefineField("_instance", type, FieldAttributes.Private | FieldAttributes.InitOnly);
 
-        var constructor = typeBuilder.DefineConstructor(
-            MethodAttributes.Public,
-            CallingConventions.HasThis,
-            [type]
-        );
-
+        var constructor = typeBuilder.DefineConstructor(MethodAttributes.Public, CallingConventions.HasThis, [type]);
         var constructorIl = constructor.GetILGenerator();
         constructorIl.Emit(OpCodes.Ldarg_0);
         constructorIl.Emit(OpCodes.Ldarg_1);
@@ -111,6 +118,6 @@ public static class ReadOnlyExtensions
             readOnlyProperty.SetGetMethod(getMethodBuilder);
         }
 
-        return typeBuilder.CreateType();
+        return typeBuilder.CreateType()!;
     }
 }

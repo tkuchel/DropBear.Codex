@@ -1,113 +1,110 @@
 ﻿#region
 
 using System.Security.Cryptography;
+using System.Text;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Utilities.Errors;
 
 #endregion
 
 namespace DropBear.Codex.Utilities.Helpers;
 
 /// <summary>
-///     Provides utility methods for cryptographic operations, including salt generation, byte array manipulation, and
-///     Base64 conversions.
+///     Provides utility methods for cryptographic operations, optimized for .NET 8.
 /// </summary>
 public static class HashingHelper
 {
     /// <summary>
     ///     Generates a cryptographically secure random salt of the specified size.
     /// </summary>
-    /// <param name="saltSize">The size of the salt in bytes.</param>
-    /// <returns>A byte array containing the generated salt.</returns>
-    public static byte[] GenerateRandomSalt(int saltSize)
+    public static Result<byte[], HashingError> GenerateRandomSalt(int saltSize)
     {
         if (saltSize <= 0)
         {
-            throw new ArgumentOutOfRangeException(nameof(saltSize), "Salt size must be a positive integer.");
+            return Result<byte[], HashingError>.Failure(new HashingError("Salt size must be a positive integer."));
         }
 
-        var buffer = new byte[saltSize];
-        using var rng = RandomNumberGenerator.Create();
-        rng.GetBytes(buffer);
-        return buffer;
-    }
-
-    /// <summary>
-    ///     Combines two byte arrays into one.
-    /// </summary>
-    /// <param name="salt">The first byte array, typically a salt.</param>
-    /// <param name="hash">The second byte array, typically a hash.</param>
-    /// <returns>A combined byte array containing both the salt and the hash.</returns>
-    public static byte[] CombineBytes(byte[] salt, byte[] hash)
-    {
-        if (salt == null)
+        try
         {
-            throw new ArgumentNullException(nameof(salt));
+            Span<byte> buffer = stackalloc byte[saltSize];
+            RandomNumberGenerator.Fill(buffer);
+            return Result<byte[], HashingError>.Success(buffer.ToArray());
         }
-
-        if (hash == null)
+        catch (Exception ex)
         {
-            throw new ArgumentNullException(nameof(hash));
+            return Result<byte[], HashingError>.Failure(new HashingError("Failed to generate salt.", ex));
         }
-
-        var combinedBytes = new byte[salt.Length + hash.Length];
-        Buffer.BlockCopy(salt, 0, combinedBytes, 0, salt.Length);
-        Buffer.BlockCopy(hash, 0, combinedBytes, salt.Length, hash.Length);
-        return combinedBytes;
-    }
-
-    /// <summary>
-    ///     Extracts salt and hash bytes from a combined byte array.
-    /// </summary>
-    /// <param name="combinedBytes">The combined byte array containing salt and hash bytes.</param>
-    /// <param name="saltSize">The size of the salt in bytes.</param>
-    /// <returns>A tuple containing the extracted salt and hash byte arrays.</returns>
-    public static (byte[] salt, byte[] hash) ExtractBytes(byte[] combinedBytes, int saltSize)
-    {
-        if (combinedBytes == null)
-        {
-            throw new ArgumentNullException(nameof(combinedBytes));
-        }
-
-        if (saltSize <= 0 || saltSize > combinedBytes.Length)
-        {
-            throw new ArgumentOutOfRangeException(nameof(saltSize),
-                "Salt size must be a positive integer and less than or equal to the length of the combined byte array.");
-        }
-
-        var salt = new byte[saltSize];
-        var hash = new byte[combinedBytes.Length - saltSize];
-        Buffer.BlockCopy(combinedBytes, 0, salt, 0, saltSize);
-        Buffer.BlockCopy(combinedBytes, saltSize, hash, 0, hash.Length);
-        return (salt, hash);
     }
 
     /// <summary>
     ///     Converts a byte array to its Base64 string representation.
+    ///     Uses <see cref="Span{T}" /> for optimized conversion.
     /// </summary>
-    /// <param name="byteArray">The byte array to convert.</param>
-    /// <returns>A Base64 string representing the byte array.</returns>
-    public static string ConvertByteArrayToBase64String(byte[] byteArray)
+    public static Result<string, HashingError> ConvertByteArrayToBase64String(ReadOnlySpan<byte> byteArray)
     {
-        if (byteArray == null)
+        if (byteArray.IsEmpty)
         {
-            throw new ArgumentNullException(nameof(byteArray));
+            return Result<string, HashingError>.Failure(new HashingError("Byte array cannot be empty."));
         }
 
-        return Convert.ToBase64String(byteArray);
+        try
+        {
+            return Result<string, HashingError>.Success(Convert.ToBase64String(byteArray));
+        }
+        catch (Exception ex)
+        {
+            return Result<string, HashingError>.Failure(new HashingError("Failed to convert byte array to Base64.",
+                ex));
+        }
     }
 
     /// <summary>
     ///     Converts a Base64 string back into a byte array.
     /// </summary>
-    /// <param name="str">The Base64 string to convert.</param>
-    /// <returns>A byte array represented by the Base64 string.</returns>
-    /// <exception cref="FormatException">Thrown if the input string is not a valid Base64 string.</exception>
-    public static byte[] ConvertBase64StringToByteArray(string str)
+    public static Result<byte[], HashingError> ConvertBase64StringToByteArray(ReadOnlySpan<char> base64String)
     {
-        if (string.IsNullOrWhiteSpace(str))
+        if (base64String.IsEmpty)
         {
-            throw new ArgumentNullException(nameof(str));
+            return Result<byte[], HashingError>.Failure(new HashingError("Base64 string cannot be empty."));
         }
 
-        return Convert.FromBase64String(str);
+        try
+        {
+            return Result<byte[], HashingError>.Success(Convert.FromBase64String(base64String.ToString()));
+        }
+        catch (FormatException ex)
+        {
+            return Result<byte[], HashingError>.Failure(new HashingError("Invalid Base64 format.", ex));
+        }
+        catch (Exception ex)
+        {
+            return Result<byte[], HashingError>.Failure(
+                new HashingError("Failed to convert Base64 string to byte array.", ex));
+        }
+    }
+
+    /// <summary>
+    ///     Computes the SHA256 hash of a string.
+    ///     Uses <see cref="Span{T}" /> for optimized hashing.
+    /// </summary>
+    public static Result<string, HashingError> ToSha256(ReadOnlySpan<char> input)
+    {
+        if (input.IsEmpty)
+        {
+            return Result<string, HashingError>.Failure(new HashingError("Input string cannot be empty."));
+        }
+
+        try
+        {
+            Span<byte> inputBytes = stackalloc byte[Encoding.UTF8.GetByteCount(input)];
+            Encoding.UTF8.GetBytes(input, inputBytes);
+            Span<byte> hashBytes = stackalloc byte[32];
+            SHA256.HashData(inputBytes, hashBytes);
+            return Result<string, HashingError>.Success(Convert.ToHexString(hashBytes));
+        }
+        catch (Exception ex)
+        {
+            return Result<string, HashingError>.Failure(new HashingError("Failed to generate SHA256 hash.", ex));
+        }
     }
 }

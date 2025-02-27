@@ -12,9 +12,9 @@ namespace DropBear.Codex.Utilities.Extensions;
 /// <summary>
 ///     Provides extension methods for encoding and decoding strings and byte arrays using the rANS codec.
 /// </summary>
-public static class rANSCodecExtensions
+public static class RANSCodecExtensions
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<rANSCodec>();
+    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<RANSCodec>();
 
     /// <summary>
     ///     Encodes a string using the rANS codec.
@@ -23,7 +23,7 @@ public static class rANSCodecExtensions
     /// <param name="input">The string to encode.</param>
     /// <returns>A <see cref="BigInteger" /> representing the encoded state.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="input" /> is null.</exception>
-    public static BigInteger EncodeString(this rANSCodec codec, string input)
+    public static BigInteger EncodeString(this RANSCodec codec, string input)
     {
         if (input == null)
         {
@@ -35,7 +35,16 @@ public static class rANSCodecExtensions
             var (symbols, symbolCounts, encodeMap) = GetSymbolsAndCounts(input);
             codec.LastUsedSymbolCounts = symbolCounts;
             codec.LastUsedDecodeMap = encodeMap.ToDictionary(kvp => kvp.Value, kvp => (byte)kvp.Key);
-            return codec.RansEncode(symbols, symbolCounts);
+
+            var result = codec.RansEncode(symbols, symbolCounts);
+            if (result.IsSuccess)
+            {
+                return result.Value;
+            }
+
+            Logger.Error("Error during string encoding: {Error}", result.Error);
+
+            throw new InvalidOperationException("Error during string encoding");
         }
         catch (Exception ex)
         {
@@ -52,7 +61,7 @@ public static class rANSCodecExtensions
     /// <param name="originalLength">The length of the original string.</param>
     /// <returns>The decoded string.</returns>
     /// <exception cref="InvalidOperationException">Thrown if decoding is attempted before encoding.</exception>
-    public static string DecodeToString(this rANSCodec codec, BigInteger encodedState, int originalLength)
+    public static string DecodeToString(this RANSCodec codec, BigInteger encodedState, int originalLength)
     {
         if (codec.LastUsedSymbolCounts == null || codec.LastUsedDecodeMap == null)
         {
@@ -62,7 +71,14 @@ public static class rANSCodecExtensions
         try
         {
             var decodedSymbols = codec.RansDecode(encodedState, originalLength, codec.LastUsedSymbolCounts);
-            return new string(decodedSymbols.Select(s => (char)codec.LastUsedDecodeMap[s]).ToArray());
+
+            if (decodedSymbols.IsSuccess)
+            {
+                return new string(decodedSymbols.Value.Select(s => (char)codec.LastUsedDecodeMap[s]).ToArray());
+            }
+
+            Logger.Error("Error during string decoding: {Error}", decodedSymbols.Error);
+            throw new InvalidOperationException("Error during string decoding");
         }
         catch (Exception ex)
         {
@@ -78,7 +94,7 @@ public static class rANSCodecExtensions
     /// <param name="input">The byte array to encode.</param>
     /// <returns>A <see cref="BigInteger" /> representing the encoded state.</returns>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="input" /> is null.</exception>
-    public static BigInteger EncodeByteArray(this rANSCodec codec, byte[] input)
+    public static BigInteger EncodeByteArray(this RANSCodec codec, byte[] input)
     {
         if (input == null)
         {
@@ -90,7 +106,15 @@ public static class rANSCodecExtensions
             var (symbols, symbolCounts, encodeMap) = GetSymbolsAndCounts(input);
             codec.LastUsedSymbolCounts = symbolCounts;
             codec.LastUsedDecodeMap = encodeMap.ToDictionary(kvp => kvp.Value, kvp => kvp.Key);
-            return codec.RansEncode(symbols, symbolCounts);
+            var result = codec.RansEncode(symbols, symbolCounts);
+            if (result.IsSuccess)
+            {
+                return result.Value;
+            }
+
+            Logger.Error("Error during byte array encoding: {Error}", result.Error);
+
+            throw new InvalidOperationException("Error during byte array encoding");
         }
         catch (Exception ex)
         {
@@ -107,7 +131,7 @@ public static class rANSCodecExtensions
     /// <param name="originalLength">The length of the original byte array.</param>
     /// <returns>The decoded byte array.</returns>
     /// <exception cref="InvalidOperationException">Thrown if decoding is attempted before encoding.</exception>
-    public static byte[] DecodeToByteArray(this rANSCodec codec, BigInteger encodedState, int originalLength)
+    public static byte[] DecodeToByteArray(this RANSCodec codec, BigInteger encodedState, int originalLength)
     {
         if (codec.LastUsedSymbolCounts == null || codec.LastUsedDecodeMap == null)
         {
@@ -118,7 +142,14 @@ public static class rANSCodecExtensions
         try
         {
             var decodedSymbols = codec.RansDecode(encodedState, originalLength, codec.LastUsedSymbolCounts);
-            return decodedSymbols.Select(s => codec.LastUsedDecodeMap[s]).ToArray();
+
+            if (decodedSymbols.IsSuccess)
+            {
+                return decodedSymbols.Value.Select(s => codec.LastUsedDecodeMap[s]).ToArray();
+            }
+
+            Logger.Error("Error during byte array decoding: {Error}", decodedSymbols.Error);
+            throw new InvalidOperationException("Error during byte array decoding");
         }
         catch (Exception ex)
         {

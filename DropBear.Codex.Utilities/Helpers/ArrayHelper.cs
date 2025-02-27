@@ -1,127 +1,120 @@
-﻿namespace DropBear.Codex.Utilities.Helpers;
+﻿#region
+
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Utilities.Errors;
+using DropBear.Codex.Utilities.Extensions;
+
+#endregion
+
+namespace DropBear.Codex.Utilities.Helpers;
 
 /// <summary>
-///     Provides helper methods for printing and comparing byte arrays.
+///     Provides helper methods for printing and comparing byte arrays, optimized for .NET 8 features.
 /// </summary>
 public static class ArrayHelper
 {
     /// <summary>
     ///     Prints the contents of a byte array in a formatted, human-readable form.
+    ///     Uses <see cref="Span{T}" /> for optimized processing.
     /// </summary>
-    /// <param name="bytes">The byte array to print.</param>
-    /// <param name="output">The output stream to write to. Defaults to Console.Out.</param>
-    public static void PrintByteArray(byte[] bytes, TextWriter? output = null)
+    public static Result<Unit, ByteArrayError> PrintByteArray(ReadOnlySpan<byte> bytes, TextWriter? output = null)
     {
-        if (bytes == null)
+        if (bytes.IsEmpty)
         {
-            throw new ArgumentNullException(nameof(bytes));
+            return Result<Unit, ByteArrayError>.Failure(new ByteArrayError("Byte array cannot be empty."));
         }
 
-        const int bytesPerLine = 16;
-        output ??= Console.Out;
-
-        for (var i = 0; i < bytes.Length; i += bytesPerLine)
+        try
         {
-            output.Write($"{i:X8}: ");
+            const int bytesPerLine = 16;
+            output ??= Console.Out;
 
-            // Print hexadecimal values
-            for (var j = 0; j < bytesPerLine; j++)
+            for (var i = 0; i < bytes.Length; i += bytesPerLine)
             {
-                output.Write(i + j < bytes.Length ? $"{bytes[i + j]:X2} " : "   ");
+                output.Write($"{i:X8}: ");
+
+                // Print hexadecimal values
+                foreach (var b in bytes.Slice(i, Math.Min(bytesPerLine, bytes.Length - i)))
+                {
+                    output.Write($"{b:X2} ");
+                }
+
+                output.Write(" ");
+
+                // Print ASCII characters
+                foreach (var b in bytes.Slice(i, Math.Min(bytesPerLine, bytes.Length - i)))
+                {
+                    output.Write(b < 32 || b > 126 ? '.' : (char)b);
+                }
+
+                output.WriteLine();
             }
 
-            output.Write(" ");
-
-            // Print ASCII characters
-            for (var j = 0; j < bytesPerLine; j++)
-            {
-                if (i + j < bytes.Length)
-                {
-                    var b = bytes[i + j];
-                    var c = b < 32 || b > 126 ? '.' : (char)b;
-                    output.Write(c);
-                }
-                else
-                {
-                    output.Write(" ");
-                }
-            }
-
-            output.WriteLine();
+            return Result<Unit, ByteArrayError>.Success(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, ByteArrayError>.Failure(new ByteArrayError("Failed to print byte array.", ex));
         }
     }
 
     /// <summary>
     ///     Compares two byte arrays and prints the differences in a side-by-side hexadecimal format.
     /// </summary>
-    /// <param name="array1">The first byte array.</param>
-    /// <param name="array2">The second byte array.</param>
-    /// <param name="output">The output stream to write to. Defaults to Console.Out.</param>
-    public static void CompareBytesArrays(byte[] array1, byte[] array2, TextWriter? output = null)
+    public static Result<Unit, ByteArrayError> CompareByteArrays(ReadOnlySpan<byte> array1, ReadOnlySpan<byte> array2,
+        TextWriter? output = null)
     {
-        if (array1 == null)
+        if (array1.IsEmpty || array2.IsEmpty)
         {
-            throw new ArgumentNullException(nameof(array1));
+            return Result<Unit, ByteArrayError>.Failure(new ByteArrayError("Both byte arrays must be provided."));
         }
 
-        if (array2 == null)
+        try
         {
-            throw new ArgumentNullException(nameof(array2));
-        }
+            output ??= Console.Out;
+            output.WriteLine("Comparing byte arrays...");
 
-        output ??= Console.Out;
-        output.WriteLine("Comparing byte arrays...");
-
-        if (array1.Length != array2.Length)
-        {
-            output.WriteLine($"The arrays have different lengths: {array1.Length} and {array2.Length}.");
-        }
-
-        var diffCount = 0;
-        const int bytesPerLine = 16;
-        var maxLength = Math.Max(array1.Length, array2.Length);
-
-        for (var i = 0; i < maxLength; i += bytesPerLine)
-        {
-            var bytesToPrint = Math.Min(bytesPerLine, maxLength - i);
-
-            output.Write($"{i:X8}: ");
-
-            // Print bytes for array1
-            for (var j = 0; j < bytesToPrint; j++)
+            if (array1.Length != array2.Length)
             {
-                var index = i + j;
-                output.Write(index < array1.Length ? $"{array1[index]:X2} " : "   ");
+                output.WriteLine($"The arrays have different lengths: {array1.Length} and {array2.Length}.");
             }
 
-            output.Write(" ");
+            var diffCount = 0;
+            const int bytesPerLine = 16;
+            var maxLength = Math.Max(array1.Length, array2.Length);
 
-            // Print bytes for array2
-            for (var j = 0; j < bytesToPrint; j++)
+            for (var i = 0; i < maxLength; i += bytesPerLine)
             {
-                var index = i + j;
-                if (index < array2.Length)
+                output.Write($"{i:X8}: ");
+
+                // Print bytes for array1
+                foreach (var b in array1.Slice(i, Math.Min(bytesPerLine, array1.Length - i)))
                 {
-                    output.Write($"{array2[index]:X2} ");
-                    if (index < array1.Length && array1[index] != array2[index])
+                    output.Write($"{b:X2} ");
+                }
+
+                output.Write(" ");
+
+                // Print bytes for array2 and differences
+                foreach (var (b1, b2) in array1.Slice(i, Math.Min(bytesPerLine, array1.Length - i))
+                             .Zip(array2.Slice(i, Math.Min(bytesPerLine, array2.Length - i))))
+                {
+                    output.Write($"{b2:X2} {(b1 != b2 ? "* " : "  ")}");
+                    if (b1 != b2)
                     {
-                        output.Write("* ");
                         diffCount++;
                     }
-                    else
-                    {
-                        output.Write("  ");
-                    }
                 }
-                else
-                {
-                    output.Write("   ");
-                }
+
+                output.WriteLine();
             }
 
-            output.WriteLine();
+            output.WriteLine($"Total differences: {diffCount}");
+            return Result<Unit, ByteArrayError>.Success(Unit.Value);
         }
-
-        output.WriteLine($"Total differences: {diffCount}");
+        catch (Exception ex)
+        {
+            return Result<Unit, ByteArrayError>.Failure(new ByteArrayError("Failed to compare byte arrays.", ex));
+        }
     }
 }

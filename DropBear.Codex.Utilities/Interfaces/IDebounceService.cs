@@ -1,41 +1,63 @@
 ﻿#region
 
 using System.Runtime.CompilerServices;
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Utilities.Errors;
 
 #endregion
 
 namespace DropBear.Codex.Utilities.Interfaces;
 
 /// <summary>
-///     Interface for managing debounced function or action calls.
+///     Interface for a service that manages debounced function or action calls.
 /// </summary>
 public interface IDebounceService
 {
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{T}" />.
-    ///     Ensures that the function is not executed more frequently than the specified minimum interval.
+    ///     Debounces a function that returns a <see cref="Result{T, TError}" />.
     /// </summary>
-    /// <typeparam name="T">The type of the result returned by the function.</typeparam>
-    /// <param name="function">
-    ///     The function to execute which returns a <see cref="Task{TResult}" /> of <see cref="Result{T}" />
-    ///     .
-    /// </param>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="function">The function to execute which returns a <see cref="Result{T, TError}" />.</param>
     /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
     /// <param name="lineNumber">
-    ///     Automatically filled by the compiler to provide the line number in the source code of the
-    ///     caller.
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
     /// </param>
     /// <returns>
-    ///     A task that represents the asynchronous operation, containing a <see cref="Result{T}" /> indicating the outcome of
-    ///     the
-    ///     function execution.
+    ///     A <see cref="Task" /> containing a <see cref="Result{T, TError}" /> with the function result or a debounce
+    ///     error.
     /// </returns>
-    Task<Result<T>> DebounceAsync<T>(
-        Func<Task<Result<T>>> function,
+    Task<Result<T, TError>> DebounceAsync<T, TError>(
+        Func<Task<Result<T, TError>>> function,
+        string key = "",
+        TimeSpan? debounceTime = null,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string filePath = "",
+        [CallerLineNumber] int lineNumber = 0)
+        where TError : ResultError;
+
+    /// <summary>
+    ///     Debounces a function that returns a <see cref="Result{T, DebounceError}" />.
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <param name="function">The function to execute which returns a <see cref="Result{T, DebounceError}" />.</param>
+    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
+    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
+    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
+    /// <param name="lineNumber">
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
+    /// </param>
+    /// <returns>
+    ///     A <see cref="Task" /> containing a <see cref="Result{T, DebounceError}" /> with the function result or a
+    ///     debounce error.
+    /// </returns>
+    Task<Result<T, DebounceError>> DebounceAsync<T>(
+        Func<Task<Result<T, DebounceError>>> function,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
@@ -44,7 +66,6 @@ public interface IDebounceService
 
     /// <summary>
     ///     Debounces an action that does not return a value.
-    ///     Ensures that the action is not executed more frequently than the specified minimum interval.
     /// </summary>
     /// <param name="action">The action to execute.</param>
     /// <param name="key">An optional unique identifier for the action call used for debouncing purposes.</param>
@@ -52,15 +73,13 @@ public interface IDebounceService
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
     /// <param name="lineNumber">
-    ///     Automatically filled by the compiler to provide the line number in the source code of the
-    ///     caller.
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
     /// </param>
     /// <returns>
-    ///     A task that represents the asynchronous operation, containing a <see cref="Result" /> indicating the outcome of the
-    ///     action
-    ///     execution.
+    ///     A <see cref="Task" /> containing a <see cref="Result{Unit, DebounceError}" /> indicating success or a debounce
+    ///     error.
     /// </returns>
-    Task<Result> DebounceAsync(
+    Task<Result<Unit, DebounceError>> DebounceAsync(
         Action action,
         string key = "",
         TimeSpan? debounceTime = null,
@@ -69,8 +88,7 @@ public interface IDebounceService
         [CallerLineNumber] int lineNumber = 0);
 
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Task" /> of <see cref="Result" />.
-    ///     Ensures that the function is not executed more frequently than the specified minimum interval.
+    ///     Debounces a function that returns a <see cref="Result{Unit, DebounceError}" />.
     /// </summary>
     /// <param name="function">The asynchronous function to execute.</param>
     /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
@@ -78,19 +96,90 @@ public interface IDebounceService
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
     /// <param name="lineNumber">
-    ///     Automatically filled by the compiler to provide the line number in the source code of the
-    ///     caller.
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
     /// </param>
     /// <returns>
-    ///     A task that represents the asynchronous operation, containing a <see cref="Result" /> indicating the outcome of the
-    ///     debounced
-    ///     function execution.
+    ///     A <see cref="Task" /> containing a <see cref="Result{Unit, DebounceError}" /> indicating success or a debounce
+    ///     error.
     /// </returns>
-    Task<Result> DebounceAsync(
+    Task<Result<Unit, DebounceError>> DebounceAsync(
+        Func<Task<Result<Unit, DebounceError>>> function,
+        string key = "",
+        TimeSpan? debounceTime = null,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string filePath = "",
+        [CallerLineNumber] int lineNumber = 0);
+
+    /// <summary>
+    ///     Clears all debounce entries from the cache.
+    /// </summary>
+    void ClearCache();
+
+    #region Backwards Compatibility Methods
+
+    /// <summary>
+    ///     For backwards compatibility with the original implementation.
+    /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <param name="function">The function to execute which returns a <see cref="Core.Results.Compatibility.Result{T}" />.</param>
+    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
+    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
+    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
+    /// <param name="lineNumber">
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
+    /// </param>
+    /// <returns>
+    ///     A <see cref="Task" /> containing a <see cref="Core.Results.Compatibility.Result{T}" /> with the function
+    ///     result or a debounce error.
+    /// </returns>
+    Task<Core.Results.Compatibility.Result<T>> DebounceAsyncLegacy<T>(
+        Func<Task<Core.Results.Compatibility.Result<T>>> function,
+        string key = "",
+        TimeSpan? debounceTime = null,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string filePath = "",
+        [CallerLineNumber] int lineNumber = 0);
+
+    /// <summary>
+    ///     For backwards compatibility with the original implementation.
+    /// </summary>
+    /// <param name="action">The action to execute.</param>
+    /// <param name="key">An optional unique identifier for the action call used for debouncing purposes.</param>
+    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
+    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
+    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
+    /// <param name="lineNumber">
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
+    /// </param>
+    /// <returns>A <see cref="Task" /> containing a <see cref="Result" /> indicating success or a debounce error.</returns>
+    Task<Result> DebounceAsyncLegacy(
+        Action action,
+        string key = "",
+        TimeSpan? debounceTime = null,
+        [CallerMemberName] string caller = "",
+        [CallerFilePath] string filePath = "",
+        [CallerLineNumber] int lineNumber = 0);
+
+    /// <summary>
+    ///     For backwards compatibility with the original implementation.
+    /// </summary>
+    /// <param name="function">The function to execute which returns a <see cref="Result" />.</param>
+    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
+    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
+    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
+    /// <param name="lineNumber">
+    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
+    /// </param>
+    /// <returns>A <see cref="Task" /> containing a <see cref="Result" /> indicating success or a debounce error.</returns>
+    Task<Result> DebounceAsyncLegacy(
         Func<Task<Result>> function,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
         [CallerFilePath] string filePath = "",
         [CallerLineNumber] int lineNumber = 0);
+
+    #endregion
 }

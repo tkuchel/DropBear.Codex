@@ -1,158 +1,79 @@
 ﻿#region
 
+using System.Collections.Frozen;
 using System.Globalization;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Utilities.Errors;
 
 #endregion
 
 namespace DropBear.Codex.Utilities.Helpers;
 
 /// <summary>
-///     Provides utility methods for date manipulation and formatting.
+///     Provides utility methods for date manipulation and formatting, optimized for .NET 8.
 /// </summary>
 public static class DateHelper
 {
-    /// <summary>
-    ///     Standard date format used across the application.
-    /// </summary>
-    private const string StandardDateFormat = "dd/MM/yyyy";
-
-    /// <summary>
-    ///     Standard time format used across the application.
-    /// </summary>
-    public const string StandardTimeFormat = "HH:mm:ss";
-
-    /// <summary>
-    ///     Standard datetime format used across the application.
-    /// </summary>
-    private const string StandardDateTimeFormat = "dd/MM/yyyy HH:mm:ss";
-
-    /// <summary>
-    ///     Formats a <see cref="DateTime" /> according to whether it includes a time part.
-    /// </summary>
-    /// <param name="dateTime">The <see cref="DateTime" /> to format.</param>
-    /// <param name="dateFormat">Format string for dates without time.</param>
-    /// <param name="dateTimeFormat">Format string for dates with time.</param>
-    /// <returns>Formatted date string.</returns>
-    public static string ToDisplayString(this DateTime dateTime,
-        string dateFormat = StandardDateFormat,
-        string dateTimeFormat = StandardDateTimeFormat)
-    {
-        var isDateOnly = dateTime.TimeOfDay == TimeSpan.Zero;
-        return dateTime.ToString(isDateOnly ? dateFormat : dateTimeFormat, CultureInfo.CurrentCulture);
-    }
-
-    /// <summary>
-    ///     Calculates age in years from a given birth date to today's date.
-    /// </summary>
-    /// <param name="dateOfBirth">Birth date.</param>
-    /// <param name="today">Today's date.</param>
-    /// <returns>Age in years, or null if birth date is invalid.</returns>
-    public static int? CalculateAgeInYears(DateTime? dateOfBirth, DateTime today)
-    {
-        if (!dateOfBirth.HasValue || dateOfBirth.Value > today)
+    private static readonly FrozenDictionary<string, string> DateFormats = new Dictionary<string, string>
+        (StringComparer.Ordinal)
         {
-            return null;
+            { "StandardDate", "dd/MM/yyyy" },
+            { "StandardDateTime", "dd/MM/yyyy HH:mm:ss" },
+            { "ISO8601", "yyyy-MM-ddTHH:mm:ss.fffZ" }
+        }.ToFrozenDictionary();
+
+    /// <summary>
+    ///     Formats a <see cref="DateTime" /> using predefined formats.
+    /// </summary>
+    public static Result<string, DateError> ToFormattedString(this DateTime dateTime,
+        string formatKey = "StandardDateTime")
+    {
+        if (!DateFormats.TryGetValue(formatKey, out var format))
+        {
+            return Result<string, DateError>.Failure(new DateError("Invalid format key."));
         }
 
-        var age = today.Year - dateOfBirth.Value.Year;
-
-        if (today < dateOfBirth.Value.AddYears(age))
+        try
         {
-            age--;
+            return Result<string, DateError>.Success(dateTime.ToString(format, CultureInfo.CurrentCulture));
+        }
+        catch (Exception ex)
+        {
+            return Result<string, DateError>.Failure(new DateError("Failed to format DateTime.", ex));
+        }
+    }
+
+    /// <summary>
+    ///     Parses a date string into a DateTime object using multiple formats.
+    ///     Uses <see cref="Span{T}" /> for optimized string parsing.
+    /// </summary>
+    public static Result<DateTime, DateError> ParseDate(ReadOnlySpan<char> dateString)
+    {
+        foreach (var format in DateFormats.Values)
+        {
+            if (DateTime.TryParseExact(dateString, format, CultureInfo.InvariantCulture, DateTimeStyles.None,
+                    out var parsedDate))
+            {
+                return Result<DateTime, DateError>.Success(parsedDate);
+            }
         }
 
-        return age;
-    }
-
-    /// <summary>
-    ///     Calculates the number of years between two dates.
-    /// </summary>
-    /// <param name="fromDate">Start date.</param>
-    /// <param name="toDate">End date.</param>
-    /// <returns>Number of years between the dates.</returns>
-    public static int YearsApart(DateTime fromDate, DateTime toDate)
-    {
-        var years = toDate.Year - fromDate.Year;
-
-        if (toDate < fromDate.AddYears(years))
-        {
-            years--;
-        }
-
-        return years;
-    }
-
-    /// <summary>
-    ///     Gets the start of the day for a given <see cref="DateTime" />.
-    /// </summary>
-    /// <param name="dateTime">The date.</param>
-    /// <returns>Start of the day (00:00:00).</returns>
-    public static DateTime StartOfDay(this DateTime dateTime)
-    {
-        return dateTime.Date;
-    }
-
-    /// <summary>
-    ///     Gets the end of the day for a given <see cref="DateTime" />.
-    /// </summary>
-    /// <param name="dateTime">The date.</param>
-    /// <returns>End of the day (23:59:59).</returns>
-    public static DateTime EndOfDay(this DateTime dateTime)
-    {
-        return new DateTime(dateTime.Year, dateTime.Month, dateTime.Day, 23, 59, 59);
-    }
-
-    /// <summary>
-    ///     Checks if a nullable <see cref="DateTime" /> is between two dates, inclusive.
-    /// </summary>
-    /// <param name="dateTime">The date to check.</param>
-    /// <param name="lowerBound">Lower bound date.</param>
-    /// <param name="upperBound">Upper bound date.</param>
-    /// <returns>True if the date is within the bounds; otherwise, false.</returns>
-    public static bool IsBetweenInclusive(this DateTime? dateTime, DateTime lowerBound, DateTime upperBound)
-    {
-        return dateTime.HasValue && dateTime.Value >= lowerBound && dateTime.Value <= upperBound;
+        return Result<DateTime, DateError>.Failure(new DateError("Failed to parse date."));
     }
 
     /// <summary>
     ///     Converts a <see cref="DateTime" /> to Unix time.
     /// </summary>
-    /// <param name="dateTime">The date to convert.</param>
-    /// <returns>Unix time representation of the date.</returns>
-    public static long ToUnixTime(this DateTime dateTime)
+    public static Result<long, DateError> ToUnixTime(this DateTime dateTime)
     {
-        return (long)(dateTime.ToUniversalTime() - new DateTime(1970, 1, 1)).TotalSeconds;
-    }
-
-    /// <summary>
-    ///     Determines whether the given date of birth indicates that the person is under 18 years of age.
-    /// </summary>
-    /// <param name="dateOfBirth">The date of birth of the person.</param>
-    /// <returns>
-    ///     <c>true</c> if the person is under 18 years of age based on the provided date of birth; otherwise, <c>false</c>.
-    /// </returns>
-    public static bool IsUnder18(DateTimeOffset? dateOfBirth)
-    {
-        return IsUnderAgeLimit(dateOfBirth, 18);
-    }
-
-    /// <summary>
-    ///     Determines whether the given date of birth indicates that the person is under the specified age limit.
-    /// </summary>
-    /// <param name="dateOfBirth">The date of birth of the person.</param>
-    /// <param name="ageLimit">The age limit to check against.</param>
-    /// <returns>
-    ///     <c>true</c> if the person is under the specified age limit based on the provided date of birth; otherwise,
-    ///     <c>false</c>.
-    /// </returns>
-    public static bool IsUnderAgeLimit(DateTimeOffset? dateOfBirth, int ageLimit)
-    {
-        if (dateOfBirth == null || ageLimit < 0)
+        try
         {
-            return false;
+            return Result<long, DateError>.Success((long)(dateTime.ToUniversalTime() - DateTime.UnixEpoch)
+                .TotalSeconds);
         }
-
-        var now = DateTimeOffset.UtcNow;
-        return dateOfBirth > now.AddYears(-ageLimit);
+        catch (Exception ex)
+        {
+            return Result<long, DateError>.Failure(new DateError("Failed to convert to Unix time.", ex));
+        }
     }
 }
