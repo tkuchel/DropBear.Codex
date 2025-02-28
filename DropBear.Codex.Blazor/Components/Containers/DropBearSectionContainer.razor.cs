@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
@@ -19,51 +20,108 @@ public partial class DropBearSectionContainer : DropBearComponentBase
 {
     private const string DefaultMaxWidth = "100%";
     private const string JsModuleName = JsModuleNames.ResizeManager;
-    private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(3); // Increased cache duration
+    private static readonly ConcurrentDictionary<string, WindowDimensions> GlobalDimensionsCache = new();
+    private static readonly TimeSpan ResizeDebounceDelay = TimeSpan.FromMilliseconds(150);
+    private readonly CancellationTokenSource _containerCts = new();
 
     private readonly SemaphoreSlim _resizeSemaphore = new(1, 1);
+
+    // Component state
     private WindowDimensions? _cachedDimensions;
+
+    // Performance tracking
+    private string _cacheKey = string.Empty;
     private string? _containerClassCache;
+    private int _debouncePending;
     private DotNetObjectReference<DropBearSectionContainer>? _dotNetRef;
     private volatile bool _isInitialized;
     private DateTime _lastDimensionsCheck = DateTime.MinValue;
     private string? _maxWidth;
     private string _maxWidthStyle = DefaultMaxWidth;
-
     private IJSObjectReference? _module;
+    private bool _parametersChanged;
+
+    // Debounce state
     private CancellationTokenSource? _resizeDebouncer;
 
+    /// <summary>
+    ///     Gets the container CSS class with caching
+    /// </summary>
     protected string ContainerClass => _containerClassCache ??= BuildContainerClass();
 
-    [Parameter] [EditorRequired] public RenderFragment? ChildContent { get; set; }
+    /// <summary>
+    ///     Child content to be rendered inside the container
+    /// </summary>
+    [Parameter]
+    [EditorRequired]
+    public RenderFragment? ChildContent { get; set; }
 
+    /// <summary>
+    ///     Maximum width of the container (e.g. "800px" or "80%")
+    /// </summary>
     [Parameter]
     public string? MaxWidth
     {
         get => _maxWidth;
         set
         {
+            if (value == _maxWidth)
+            {
+                return;
+            }
+
             if (value != null && !value.EndsWith("%") && !value.EndsWith("px"))
             {
                 throw new ArgumentException("MaxWidth must end with % or px", nameof(MaxWidth));
             }
 
             _maxWidth = value;
+            _parametersChanged = true;
         }
     }
 
-    [Parameter] public bool IsHorizontalCentered { get; set; }
+    /// <summary>
+    ///     Whether to center the container horizontally
+    /// </summary>
+    [Parameter]
+    public bool IsHorizontalCentered { get; set; }
 
-    [Parameter] public bool IsVerticalCentered { get; set; }
+    /// <summary>
+    ///     Whether to center the container vertically
+    /// </summary>
+    [Parameter]
+    public bool IsVerticalCentered { get; set; }
 
-    [Parameter] public EventCallback<WindowDimensions> OnDimensionsChanged { get; set; }
+    /// <summary>
+    ///     Event callback when window dimensions change
+    /// </summary>
+    [Parameter]
+    public EventCallback<WindowDimensions> OnDimensionsChanged { get; set; }
 
+    /// <summary>
+    ///     Updates the parameter tracking when parameters are set
+    /// </summary>
     protected override void OnParametersSet()
     {
-        _containerClassCache = null;
+        // Only rebuild class if alignment parameters changed
+        var horizontalChanged = _containerClassCache != null &&
+                                IsHorizontalCentered != _containerClassCache.Contains("horizontal-centered");
+        var verticalChanged = _containerClassCache != null &&
+                              IsVerticalCentered != _containerClassCache.Contains("vertical-centered");
+
+        if (horizontalChanged || verticalChanged || _containerClassCache == null)
+        {
+            _containerClassCache = null;
+            _parametersChanged = true;
+        }
+
         base.OnParametersSet();
     }
 
+    /// <summary>
+    ///     Initializes the component by setting up JS interop
+    /// </summary>
     protected override async Task InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
@@ -73,31 +131,54 @@ public partial class DropBearSectionContainer : DropBearComponentBase
 
         try
         {
-            await _resizeSemaphore.WaitAsync(ComponentToken);
+            // Try to get the semaphore with a timeout to avoid deadlocks
+            if (!await _resizeSemaphore.WaitAsync(2000, _containerCts.Token))
+            {
+                LogWarning("Timeout waiting for resize semaphore during initialization");
+                return;
+            }
 
-            _module = await GetJsModuleAsync(JsModuleName);
-            await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", ComponentToken);
+            try
+            {
+                // Generate a unique cache key for the window dimensions
+                _cacheKey = $"dims_{JsRuntime.GetHashCode()}";
 
-            _dotNetRef = DotNetObjectReference.Create(this);
-            await _module.InvokeVoidAsync($"{JsModuleName}API.createResizeManager",
-                ComponentToken, _dotNetRef);
+                // Initialize JS module
+                _module = await GetJsModuleAsync(JsModuleName);
+                await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", _containerCts.Token);
 
-            _isInitialized = true;
-            LogDebug("Section container initialized");
+                // Create .NET reference
+                _dotNetRef = DotNetObjectReference.Create(this);
 
-            await SetMaxWidthBasedOnWindowSize();
+                // Initialize resizing with configurable parameters
+                await _module.InvokeVoidAsync($"{JsModuleName}API.createResizeManager",
+                    _containerCts.Token, _dotNetRef,
+                    new { debounceMs = (int)ResizeDebounceDelay.TotalMilliseconds, componentId = ComponentId });
+
+                _isInitialized = true;
+                LogDebug("Section container initialized");
+
+                // Initial width calculation
+                await SetMaxWidthBasedOnWindowSize();
+            }
+            finally
+            {
+                _resizeSemaphore.Release();
+            }
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            LogWarning("JS initialization interrupted: {Reason}", ex.GetType().Name);
         }
         catch (Exception ex)
         {
             LogError("Failed to initialize section container", ex);
-            throw;
-        }
-        finally
-        {
-            _resizeSemaphore.Release();
         }
     }
 
+    /// <summary>
+    ///     JS-invokable method to update container width on window resize
+    /// </summary>
     [JSInvokable]
     public async Task SetMaxWidthBasedOnWindowSize()
     {
@@ -108,23 +189,37 @@ public partial class DropBearSectionContainer : DropBearComponentBase
 
         try
         {
+            // Track pending debounce calls with thread-safe increment
+            Interlocked.Increment(ref _debouncePending);
+
             // Debounce resize events
-            _resizeDebouncer?.Cancel();
+            await _resizeDebouncer?.CancelAsync();
             _resizeDebouncer = new CancellationTokenSource();
             var token = _resizeDebouncer.Token;
 
-            await Task.Delay(50, token);
+            // Additional debounce in case JS debounce isn't working as expected
+            await Task.Delay((int)ResizeDebounceDelay.TotalMilliseconds, token);
 
-            await _resizeSemaphore.WaitAsync(token);
+            // Only process if we can acquire the semaphore without blocking for too long
+            if (!await _resizeSemaphore.WaitAsync(500, token))
+            {
+                LogDebug("Skipping resize update - semaphore busy");
+                return;
+            }
+
             try
             {
+                // Get dimensions (using cached values when possible)
                 var dimensions = await GetWindowDimensionsAsync(token);
                 if (dimensions == null)
                 {
                     return;
                 }
 
+                // Calculate new width
                 var newMaxWidth = CalculateMaxWidth(dimensions.Width);
+
+                // Only trigger UI update if width changed
                 if (_maxWidthStyle != newMaxWidth)
                 {
                     await QueueStateHasChangedAsync(async () =>
@@ -140,24 +235,33 @@ public partial class DropBearSectionContainer : DropBearComponentBase
             finally
             {
                 _resizeSemaphore.Release();
+                Interlocked.Decrement(ref _debouncePending);
             }
         }
         catch (OperationCanceledException)
         {
             // Debouncing in action, ignore
+            Interlocked.Decrement(ref _debouncePending);
         }
         catch (Exception ex)
         {
             LogError("Error updating max width", ex);
             _maxWidthStyle = DefaultMaxWidth;
+            Interlocked.Decrement(ref _debouncePending);
         }
         finally
         {
-            _resizeDebouncer?.Dispose();
-            _resizeDebouncer = null;
+            if (_resizeDebouncer != null)
+            {
+                _resizeDebouncer.Dispose();
+                _resizeDebouncer = null;
+            }
         }
     }
 
+    /// <summary>
+    ///     Gets window dimensions with efficient caching
+    /// </summary>
     private async Task<WindowDimensions?> GetWindowDimensionsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -166,22 +270,48 @@ public partial class DropBearSectionContainer : DropBearComponentBase
             return _cachedDimensions;
         }
 
-        // Use cached dimensions if recent enough
+        // Check internal component cache first
         if (_cachedDimensions != null &&
             DateTime.UtcNow - _lastDimensionsCheck < DimensionsCacheDuration)
         {
             return _cachedDimensions;
         }
 
+        // Then check global shared cache
+        if (!string.IsNullOrEmpty(_cacheKey) &&
+            GlobalDimensionsCache.TryGetValue(_cacheKey, out var cachedDimensions) &&
+            DateTime.UtcNow - _lastDimensionsCheck < DimensionsCacheDuration)
+        {
+            _cachedDimensions = cachedDimensions;
+            _lastDimensionsCheck = DateTime.UtcNow;
+            return _cachedDimensions;
+        }
+
         try
         {
+            // Ensure module is initialized
             _module ??= await GetJsModuleAsync(JsModuleName);
+
+            // Get dimensions from JS with timeout
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(2000); // 2 second timeout for JS operation
 
             _cachedDimensions = await _module.InvokeAsync<WindowDimensions>(
                 $"{JsModuleName}API.getDimensions",
-                cancellationToken);
+                cts.Token);
 
+            // Update caches
             _lastDimensionsCheck = DateTime.UtcNow;
+            if (!string.IsNullOrEmpty(_cacheKey))
+            {
+                GlobalDimensionsCache[_cacheKey] = _cachedDimensions;
+            }
+
+            return _cachedDimensions;
+        }
+        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
+        {
+            LogWarning("JS operation interrupted: {Reason}", ex.GetType().Name);
             return _cachedDimensions;
         }
         catch (Exception ex)
@@ -191,14 +321,29 @@ public partial class DropBearSectionContainer : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Builds the container CSS class efficiently
+    /// </summary>
     private string BuildContainerClass()
     {
-        return new StringBuilder("section-container", 100)
-            .Append(IsHorizontalCentered ? " horizontal-centered" : string.Empty)
-            .Append(IsVerticalCentered ? " vertical-centered" : string.Empty)
-            .ToString();
+        var builder = new StringBuilder("section-container", 100);
+
+        if (IsHorizontalCentered)
+        {
+            builder.Append(" horizontal-centered");
+        }
+
+        if (IsVerticalCentered)
+        {
+            builder.Append(" vertical-centered");
+        }
+
+        return builder.ToString();
     }
 
+    /// <summary>
+    ///     Calculates the max width style based on window width
+    /// </summary>
     private string CalculateMaxWidth(double windowWidth)
     {
         if (string.IsNullOrEmpty(MaxWidth))
@@ -221,27 +366,40 @@ public partial class DropBearSectionContainer : DropBearComponentBase
         return MaxWidth;
     }
 
+    /// <summary>
+    ///     Cleans up JS resources
+    /// </summary>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
+            // Cancel any pending operations
             if (_resizeDebouncer != null)
             {
                 await _resizeDebouncer.CancelAsync();
+                _resizeDebouncer.Dispose();
+                _resizeDebouncer = null;
             }
 
+            // Dispose JS resources with timeout
             if (_module != null)
             {
-                await _resizeSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
-                try
+                // Try to acquire the semaphore with a short timeout
+                if (await _resizeSemaphore.WaitAsync(500, _containerCts.Token))
                 {
-                    await _module.InvokeVoidAsync($"{JsModuleName}API.dispose",
-                        new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
-                    LogDebug("Section container resources cleaned up");
-                }
-                finally
-                {
-                    _resizeSemaphore.Release();
+                    try
+                    {
+                        // Create a timeout to prevent blocking disposal
+                        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_containerCts.Token);
+                        cts.CancelAfter(2000);
+
+                        await _module.InvokeVoidAsync($"{JsModuleName}API.dispose", cts.Token);
+                        LogDebug("Section container resources cleaned up");
+                    }
+                    finally
+                    {
+                        _resizeSemaphore.Release();
+                    }
                 }
             }
         }
@@ -253,20 +411,46 @@ public partial class DropBearSectionContainer : DropBearComponentBase
         {
             LogError("Failed to cleanup section container", ex);
         }
-        finally
-        {
-            try
-            {
-                _dotNetRef?.Dispose();
-                _resizeSemaphore.Dispose();
-                _resizeDebouncer?.Dispose();
-            }
-            catch (ObjectDisposedException) { }
+    }
 
+    /// <summary>
+    ///     Disposes component resources
+    /// </summary>
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            // Cancel operations first
+            await _containerCts.CancelAsync();
+
+            // Clean up resources
+            _dotNetRef?.Dispose();
+            _resizeSemaphore.Dispose();
+            _containerCts.Dispose();
+
+            if (_resizeDebouncer != null)
+            {
+                _resizeDebouncer.Dispose();
+            }
+
+            // Clear references
             _dotNetRef = null;
             _module = null;
             _isInitialized = false;
             _cachedDimensions = null;
+            _resizeDebouncer = null;
+
+            // Remove from global cache
+            if (!string.IsNullOrEmpty(_cacheKey))
+            {
+                GlobalDimensionsCache.TryRemove(_cacheKey, out _);
+            }
         }
+        catch (Exception ex)
+        {
+            LogError("Error during component disposal", ex);
+        }
+
+        await base.DisposeAsync();
     }
 }

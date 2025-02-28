@@ -1,7 +1,9 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Results.Base;
 
 #endregion
 
@@ -25,33 +27,56 @@ public interface IPageAlertService : IAsyncDisposable
     /// <summary>
     ///     Shows a general alert with the specified parameters.
     /// </summary>
-    Task ShowAlertAsync(string title, string message, PageAlertType type = PageAlertType.Info,
+    /// <param name="title">The alert title.</param>
+    /// <param name="message">The alert message content.</param>
+    /// <param name="type">The alert type (Success, Error, Warning, Info).</param>
+    /// <param name="duration">Optional duration in milliseconds before auto-dismiss.</param>
+    /// <param name="isPermanent">Whether the alert requires manual dismissal.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    Task<Result<Unit, AlertError>> ShowAlertAsync(string title, string message, PageAlertType type = PageAlertType.Info,
         int? duration = null, bool isPermanent = false);
 
     /// <summary>
     ///     Shows a success alert.
     /// </summary>
-    Task ShowSuccessAsync(string title, string message, int? duration = 5000);
+    /// <param name="title">The alert title.</param>
+    /// <param name="message">The alert message content.</param>
+    /// <param name="duration">Optional duration in milliseconds before auto-dismiss.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    Task<Result<Unit, AlertError>> ShowSuccessAsync(string title, string message, int? duration = 5000);
 
     /// <summary>
     ///     Shows an error alert.
     /// </summary>
-    Task ShowErrorAsync(string title, string message, int? duration = 8000);
+    /// <param name="title">The alert title.</param>
+    /// <param name="message">The alert message content.</param>
+    /// <param name="duration">Optional duration in milliseconds before auto-dismiss.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    Task<Result<Unit, AlertError>> ShowErrorAsync(string title, string message, int? duration = 8000);
 
     /// <summary>
     ///     Shows a warning alert.
     /// </summary>
-    Task ShowWarningAsync(string title, string message, bool isPermanent = false);
+    /// <param name="title">The alert title.</param>
+    /// <param name="message">The alert message content.</param>
+    /// <param name="isPermanent">Whether the alert requires manual dismissal.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    Task<Result<Unit, AlertError>> ShowWarningAsync(string title, string message, bool isPermanent = false);
 
     /// <summary>
     ///     Shows an info alert.
     /// </summary>
-    Task ShowInfoAsync(string title, string message, bool isPermanent = false);
+    /// <param name="title">The alert title.</param>
+    /// <param name="message">The alert message content.</param>
+    /// <param name="isPermanent">Whether the alert requires manual dismissal.</param>
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    Task<Result<Unit, AlertError>> ShowInfoAsync(string title, string message, bool isPermanent = false);
 
     /// <summary>
     ///     Clears all displayed alerts.
     /// </summary>
-    Task ClearAsync();
+    /// <returns>A result indicating success or failure of the operation.</returns>
+    Task<Result<Unit, AlertError>> ClearAsync();
 
     #region Backwards Compatibility Methods
 

@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -21,15 +22,33 @@ public partial class DropBearBadge : DropBearComponentBase
     private const int TOOLTIP_MAX_WIDTH = 200;
     private const int TOOLTIP_HEIGHT = 50;
     private const string JsModuleName = JsModuleNames.Utils;
-    private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(1);
+
+    // Increased cache duration for better performance in server scenarios
+    private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(5);
+
+    // Use thread-safe dictionary to cache dimensions across instances with same screen size
+    private static readonly ConcurrentDictionary<string, CachedDimensions> GlobalDimensionsCache = new();
+
     private readonly CancellationTokenSource _tooltipCts = new();
     private readonly SemaphoreSlim _tooltipSemaphore = new(1, 1);
+    private readonly string _uniqueId = Guid.NewGuid().ToString("N");
+
     private WindowDimensions? _cachedDimensions;
 
     private IJSObjectReference? _jsModule;
     private DateTime _lastDimensionsCheck = DateTime.MinValue;
+    private string _previousTooltip = string.Empty;
     private volatile bool _showTooltip;
     private string _tooltipStyle = string.Empty;
+
+    /// <summary>
+    ///     A class to hold cached window dimensions with timestamp
+    /// </summary>
+    private sealed class CachedDimensions
+    {
+        public WindowDimensions Dimensions { get; set; } = new(0, 0);
+        public DateTime Timestamp { get; set; }
+    }
 
     #region Parameters
 
@@ -63,6 +82,18 @@ public partial class DropBearBadge : DropBearComponentBase
     [Parameter]
     public string Tooltip { get; set; } = string.Empty;
 
+    /// <summary>
+    ///     CSS class(es) to be added to the component
+    /// </summary>
+    [Parameter]
+    public string Class { get; set; } = string.Empty;
+
+    /// <summary>
+    ///     Optional ID for the badge, if not provided a unique ID will be generated
+    /// </summary>
+    [Parameter]
+    public string? Id { get; set; }
+
     #endregion
 
     #region Protected Properties
@@ -81,7 +112,12 @@ public partial class DropBearBadge : DropBearComponentBase
             }
 
             _showTooltip = value;
-            InvokeAsync(StateHasChanged);
+
+            // Use StateHasChanged queue to avoid too many renders
+            if (!IsDisposed)
+            {
+                InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -99,18 +135,44 @@ public partial class DropBearBadge : DropBearComponentBase
             }
 
             _tooltipStyle = value;
-            InvokeAsync(StateHasChanged);
+
+            // Only queue StateHasChanged if tooltip is shown
+            if (_showTooltip && !IsDisposed)
+            {
+                InvokeAsync(StateHasChanged);
+            }
         }
     }
 
     /// <summary>
     ///     Dynamic CSS class based on badge properties.
     /// </summary>
-    protected string CssClass => BuildCssClass();
+    protected string CssClass { get; private set; } = string.Empty;
+
+    /// <summary>
+    ///     Gets the element ID to use for the badge
+    /// </summary>
+    protected string ElementId => Id ?? $"badge-{_uniqueId}";
 
     #endregion
 
     #region Lifecycle Methods
+
+    /// <summary>
+    ///     Initialize cached values when parameters are set
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+
+        // Only rebuild the CSS class if relevant parameters changed
+        if (CssClass == string.Empty ||
+            _previousTooltip != Tooltip)
+        {
+            CssClass = BuildCssClass();
+            _previousTooltip = Tooltip;
+        }
+    }
 
     /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -200,26 +262,33 @@ public partial class DropBearBadge : DropBearComponentBase
 
         try
         {
-            await _tooltipSemaphore.WaitAsync(_tooltipCts.Token);
+            // Use non-blocking check first to avoid unnecessary semaphore wait
+            if (!await _tooltipSemaphore.WaitAsync(100, _tooltipCts.Token))
+            {
+                return;
+            }
 
+            // Use cached dimensions when available
             var dimensions = await GetWindowDimensionsAsync();
             if (dimensions == null)
             {
                 return;
             }
 
-            await InvokeAsync(() =>
+            await QueueStateHasChangedAsync(() =>
             {
                 CalculateTooltipPosition(args, dimensions);
                 ShowTooltip = true;
             });
-
-            LogDebug("Tooltip shown at X={X}, Y={Y}", args.ClientX, args.ClientY);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation - it's expected during disposal
+        }
+        catch (Exception ex)
         {
             LogError("Error showing tooltip", ex);
-            await InvokeAsync(() =>
+            await QueueStateHasChangedAsync(() =>
             {
                 ShowTooltip = false;
                 TooltipStyle = string.Empty;
@@ -239,9 +308,14 @@ public partial class DropBearBadge : DropBearComponentBase
     /// </summary>
     protected async Task OnTooltipHide()
     {
+        if (!ShowTooltip || IsDisposed)
+        {
+            return;
+        }
+
         try
         {
-            await InvokeAsync(() =>
+            await QueueStateHasChangedAsync(() =>
             {
                 ShowTooltip = false;
                 TooltipStyle = string.Empty;
@@ -259,11 +333,16 @@ public partial class DropBearBadge : DropBearComponentBase
 
     private async Task<WindowDimensions?> GetWindowDimensionsAsync()
     {
+        // Check if module is initialized
         if (_jsModule == null)
         {
             try
             {
                 await InitializeJsModuleAsync();
+                if (_jsModule == null)
+                {
+                    return null;
+                }
             }
             catch (Exception ex)
             {
@@ -278,16 +357,40 @@ public partial class DropBearBadge : DropBearComponentBase
             return _cachedDimensions;
         }
 
-        try
+        // Check shared cache based on component ID
+        var cacheKey = $"{JsRuntime.GetHashCode()}";
+        if (GlobalDimensionsCache.TryGetValue(cacheKey, out var cachedEntry) &&
+            DateTime.UtcNow - cachedEntry.Timestamp < DimensionsCacheDuration)
         {
-            _cachedDimensions = await _jsModule!.InvokeAsync<WindowDimensions>(
-                $"{JsModuleName}API.getWindowDimensions",
-                _tooltipCts.Token
-            );
+            _cachedDimensions = cachedEntry.Dimensions;
             _lastDimensionsCheck = DateTime.UtcNow;
             return _cachedDimensions;
         }
-        catch (Exception ex)
+
+        try
+        {
+            // Get dimensions with a timeout
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_tooltipCts.Token);
+            cts.CancelAfter(2000); // 2 second timeout for JS operation
+
+            var dimensions = await _jsModule.InvokeAsync<WindowDimensions>(
+                $"{JsModuleName}API.getWindowDimensions",
+                cts.Token
+            );
+
+            // Update caches
+            _cachedDimensions = dimensions;
+            _lastDimensionsCheck = DateTime.UtcNow;
+
+            // Add to global cache
+            GlobalDimensionsCache[cacheKey] = new CachedDimensions
+            {
+                Dimensions = dimensions, Timestamp = DateTime.UtcNow
+            };
+
+            return dimensions;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             LogError("Error getting window dimensions", ex);
             return null;
@@ -296,15 +399,21 @@ public partial class DropBearBadge : DropBearComponentBase
 
     private void CalculateTooltipPosition(MouseEventArgs args, WindowDimensions dimensions)
     {
-        var offsetX = args.ClientX + TOOLTIP_MAX_WIDTH > dimensions.Width
+        // Tooltip positioning optimization
+        var mouseX = Math.Min(Math.Max(0, args.ClientX), dimensions.Width);
+        var mouseY = Math.Min(Math.Max(0, args.ClientY), dimensions.Height);
+
+        // Determine if tooltip should appear on left or right
+        var offsetX = mouseX + TOOLTIP_MAX_WIDTH > dimensions.Width
             ? -TOOLTIP_MAX_WIDTH
             : TOOLTIP_MARGIN;
 
-        var offsetY = args.ClientY + TOOLTIP_HEIGHT > dimensions.Height
+        // Determine if tooltip should appear above or below
+        var offsetY = mouseY + TOOLTIP_HEIGHT > dimensions.Height
             ? -TOOLTIP_HEIGHT
             : TOOLTIP_MARGIN;
 
-        TooltipStyle = $"left: {args.ClientX + offsetX}px; top: {args.ClientY + offsetY}px;";
+        TooltipStyle = $"left: {mouseX + offsetX}px; top: {mouseY + offsetY}px;";
     }
 
     private string BuildCssClass()
@@ -316,7 +425,8 @@ public partial class DropBearBadge : DropBearComponentBase
                 $"dropbear-badge-{Shape.ToString().ToLowerInvariant()}",
                 string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(Icon)
                     ? "dropbear-badge-icon-only"
-                    : string.Empty
+                    : string.Empty,
+                Class // Add user-provided classes
             }.Where(c => !string.IsNullOrEmpty(c)));
     }
 

@@ -1,16 +1,12 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<!--
-  Added ARIA attributes for better accessibility if this prompt acts like a modal or alert.
-  Replaced some class references with the new method name, but mostly the code is the same.
--->
 <div class="prompt-card-container"
      role="dialog"
      aria-modal="true"
      aria-labelledby="@($"{Id}-title")"
      aria-describedby="@($"{Id}-message")">
     <div class="prompt-card-overlay">
-        <div class="@CssClass">
+        <div class="@CssClass" id="@Id">
             <div class="card-header">
                 @if (!string.IsNullOrEmpty(Icon))
                 {
@@ -22,7 +18,7 @@
             <div class="card-body">
                 <p class="card-text" id="@($"{Id}-message")">@Message</p>
 
-                @if (Buttons.Any())
+                @if (Buttons?.Any() == true)
                 {
                     <div class="button-group">
                         @foreach (var button in Buttons)
@@ -30,16 +26,17 @@
                             if (string.IsNullOrWhiteSpace(button?.Id) ||
                                 string.IsNullOrWhiteSpace(button.Text))
                             {
-                                // Log or skip, as needed
                                 continue;
                             }
 
                             <button type="button"
                                     class="@GetButtonClass(button)"
-                                    @onclick="@(() => HandleButtonClick(button))">
+                                    id="@($"{Id}-btn-{button.Id}")"
+                                    @onclick="@(() => HandleButtonClick(button))"
+                                    @onclick:stopPropagation="true">
                                 @if (!string.IsNullOrEmpty(button.Icon))
                                 {
-                                    <i class="@button.Icon"></i>
+                                    <i class="@button.Icon" aria-hidden="true"></i>
                                 }
                                 @button.Text
                             </button>

@@ -2,24 +2,36 @@
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div id="@ComponentId" class="navigation-buttons">
-    <button class="nav-button back-button"
-            @onclick="GoBack"
-            aria-label="Go back"
-            style="top: @BackButtonTop; left: @BackButtonLeft;">
-        <i class="fas fa-arrow-left"></i>
-    </button>
+    @if (ShowBackButton)
+    {
+        <button type="button"
+                class="nav-button back-button"
+                @onclick="GoBack"
+                aria-label="Go back"
+                style="top: @BackButtonTop; left: @BackButtonLeft;">
+            <i class="fas fa-arrow-left" aria-hidden="true"></i>
+        </button>
+    }
 
-    <button class="nav-button home-button"
-            @onclick="GoHome"
-            aria-label="Go to home"
-            style="top: @HomeButtonTop; left: @HomeButtonLeft;">
-        <i class="fas fa-home"></i>
-    </button>
+    @if (ShowHomeButton)
+    {
+        <button type="button"
+                class="nav-button home-button"
+                @onclick="GoHome"
+                aria-label="Go to home"
+                style="top: @HomeButtonTop; left: @HomeButtonLeft;">
+            <i class="fas fa-home" aria-hidden="true"></i>
+        </button>
+    }
 
-    <button class="nav-button scroll-top-button @(IsVisible ? "visible" : "")"
-            @onclick="ScrollToTop"
-            aria-label="Scroll to top"
-            style="bottom: @ScrollTopButtonBottom; right: @ScrollTopButtonRight;">
-        <i class="fas fa-arrow-up"></i>
-    </button>
+    @if (ShowScrollTopButton)
+    {
+        <button type="button"
+                class="nav-button scroll-top-button @(IsVisible ? "visible" : "")"
+                @onclick="ScrollToTop"
+                aria-label="Scroll to top"
+                style="bottom: @ScrollTopButtonBottom; right: @ScrollTopButtonRight;">
+            <i class="fas fa-arrow-up" aria-hidden="true"></i>
+        </button>
+    }
 </div>

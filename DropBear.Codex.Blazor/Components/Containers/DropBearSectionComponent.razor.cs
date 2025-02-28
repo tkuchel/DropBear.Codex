@@ -2,7 +2,10 @@
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Errors;
+using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
+using Exception = System.Exception;
 
 #endregion
 
@@ -11,14 +14,28 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// <summary>
 ///     A component that conditionally renders its content based on synchronous or asynchronous predicates.
 ///     Implements enhanced error handling, performance optimizations, and lifecycle management.
+///     Optimized for Blazor Server efficiency and memory usage.
 /// </summary>
 public sealed partial class DropBearSectionComponent : DropBearComponentBase
 {
     private const string PREDICATE_CONFLICT_MESSAGE = "Cannot specify both AsyncPredicate and Predicate.";
     private const string MISSING_CONTENT_MESSAGE = "ChildContent must be provided and cannot be null.";
-    private volatile bool _isInitialized;
+    private static readonly TimeSpan MinEvaluationInterval = TimeSpan.FromMilliseconds(100);
+    private readonly CancellationTokenSource _renderThrottleCts = new();
 
+    // UI rendering throttling
+    private readonly SemaphoreSlim _renderThrottleSemaphore = new(1, 1);
+
+    // State tracking for initialization and rendering
+    private volatile bool _isInitialized;
     private bool _isPredicateValid;
+    private Func<Task<bool>>? _lastAsyncPredicate;
+    private DateTime _lastEvaluationTime = DateTime.MinValue;
+    private Func<bool>? _lastSyncPredicate;
+
+    // Change detection
+    private bool _parametersChanged;
+    private bool _renderQueued;
     private volatile bool _shouldRenderContent;
     private bool _wasAsyncPredicate;
 
@@ -33,6 +50,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         try
         {
             ValidateParameters();
+            CachePredicates();
             await EvaluatePredicatesAsync();
             _isInitialized = true;
         }
@@ -58,9 +76,19 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
             var wasValid = _isPredicateValid;
             ValidateParameters();
 
+            // Check if predicates have changed
+            _parametersChanged = _lastSyncPredicate != Predicate || _lastAsyncPredicate != AsyncPredicate;
+
+            // Cache the predicates for future comparison
+            if (_parametersChanged)
+            {
+                CachePredicates();
+            }
+
             if (ShouldRevaluatePredicates(wasValid))
             {
-                await EvaluatePredicatesAsync();
+                // If predicates changed, queue evaluation with throttling
+                await ThrottledEvaluationAsync();
             }
         }
         catch (Exception ex)
@@ -72,10 +100,86 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         await base.OnParametersSetAsync();
     }
 
+    /// <summary>
+    ///     Cache predicates for change detection
+    /// </summary>
+    private void CachePredicates()
+    {
+        _lastSyncPredicate = Predicate;
+        _lastAsyncPredicate = AsyncPredicate;
+    }
+
+    /// <summary>
+    ///     Throttles predicate evaluation to prevent excessive evaluation
+    /// </summary>
+    private async Task ThrottledEvaluationAsync()
+    {
+        try
+        {
+            // Check if we need to throttle based on time
+            var now = DateTime.UtcNow;
+            if (now - _lastEvaluationTime < MinEvaluationInterval)
+            {
+                // If already queued, just exit
+                if (_renderQueued)
+                {
+                    return;
+                }
+
+                // Try to acquire the semaphore without blocking
+                if (!await _renderThrottleSemaphore.WaitAsync(0, _renderThrottleCts.Token))
+                {
+                    _renderQueued = true;
+                    return;
+                }
+
+                try
+                {
+                    // Wait for throttle interval
+                    var waitTime = MinEvaluationInterval - (now - _lastEvaluationTime);
+                    if (waitTime > TimeSpan.Zero)
+                    {
+                        await Task.Delay(waitTime, _renderThrottleCts.Token);
+                    }
+
+                    // Now evaluate
+                    await EvaluatePredicatesAsync();
+                    _lastEvaluationTime = DateTime.UtcNow;
+                    _renderQueued = false;
+                }
+                finally
+                {
+                    _renderThrottleSemaphore.Release();
+                }
+            }
+            else
+            {
+                // Immediate evaluation
+                await EvaluatePredicatesAsync();
+                _lastEvaluationTime = DateTime.UtcNow;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // This is expected during disposal
+            _renderQueued = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error during throttled evaluation");
+            _renderQueued = false;
+        }
+    }
+
+    /// <summary>
+    ///     Determines if predicates should be reevaluated based on parameter changes.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool ShouldRevaluatePredicates(bool wasValid)
     {
         return (!wasValid && _isPredicateValid) ||
-               (AsyncPredicate is null && Predicate is not null);
+               _parametersChanged ||
+               (Predicate is not null && AsyncPredicate is null);
     }
 
     /// <summary>
@@ -129,7 +233,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         {
             if (ChildContent is null)
             {
-                throw new InvalidOperationException(MISSING_CONTENT_MESSAGE);
+                throw new ArgumentNullException(nameof(ChildContent), MISSING_CONTENT_MESSAGE);
             }
 
             if (AsyncPredicate is not null && Predicate is not null)
@@ -155,29 +259,35 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Handles exceptions uniformly.
+    ///     Handles exceptions uniformly and returns a Result object.
     /// </summary>
-    private async Task HandleExceptionAsync(Exception ex, string context)
+    private async Task<Result<Unit, ComponentError>> HandleExceptionAsync(Exception ex, string context)
     {
         Logger.Error(ex, "{Context}: {Message}", context, ex.Message);
 
         if (!OnError.HasDelegate)
         {
-            return;
+            return Result<Unit, ComponentError>.Failure(
+                new ComponentError($"{context}: {ex.Message}")
+            );
         }
 
         try
         {
             await OnError.InvokeAsync(ex);
+            return Result<Unit, ComponentError>.Success(Unit.Value);
         }
         catch (Exception callbackEx)
         {
             Logger.Error(callbackEx, "Error callback failed");
+            return Result<Unit, ComponentError>.Failure(
+                new ComponentError($"Error callback failed: {callbackEx.Message}")
+            );
         }
     }
 
     /// <summary>
-    ///     Notifies listeners of state changes.
+    ///     Notifies listeners of state changes efficiently.
     /// </summary>
     private async Task NotifyStateChangeAsync(bool newState)
     {
@@ -195,6 +305,29 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         {
             await HandleExceptionAsync(ex, "State change notification failed");
         }
+    }
+
+    /// <summary>
+    ///     Handles component disposal, ensuring resources are properly cleaned up
+    /// </summary>
+    public override async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _renderThrottleCts.CancelAsync();
+            _renderThrottleCts.Dispose();
+            _renderThrottleSemaphore.Dispose();
+
+            // Clear event handlers
+            _lastSyncPredicate = null;
+            _lastAsyncPredicate = null;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error disposing section component");
+        }
+
+        await base.DisposeAsync();
     }
 
     #region Parameters

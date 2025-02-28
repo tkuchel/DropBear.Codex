@@ -3,6 +3,8 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
+using System.Timers;
+using Timer = System.Timers.Timer;
 
 #endregion
 
@@ -13,119 +15,184 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// </summary>
 public sealed partial class DropBearPageAlert : DropBearComponentBase
 {
-    // Stores the SVG path data for each alert type.
-    private static readonly Dictionary<PageAlertType, string> IconPaths = new()
+    private string _progressBarStyle = string.Empty;
+    private Timer? _closeTimer;
+    private Timer? _progressTimer;
+    private readonly int _progressUpdateInterval = 100; // ms
+    private int _elapsedTime = 0;
+
+    /// <summary>
+    /// The unique identifier for this alert instance.
+    /// </summary>
+    [Parameter] public string AlertId { get; set; } = $"alert-{Guid.NewGuid():N}";
+
+    /// <summary>
+    /// The title to display in the alert header.
+    /// </summary>
+    [Parameter] public string? Title { get; set; }
+
+    /// <summary>
+    /// The message body of the alert, supports HTML.
+    /// </summary>
+    [Parameter] public string? Message { get; set; }
+
+    /// <summary>
+    /// The type of alert to display (Success, Error, Warning, Info).
+    /// </summary>
+    [Parameter] public PageAlertType Type { get; set; } = PageAlertType.Info;
+
+    /// <summary>
+    /// Whether the alert should remain visible until explicitly closed.
+    /// </summary>
+    [Parameter] public bool IsPermanent { get; set; }
+
+    /// <summary>
+    /// The duration in milliseconds to display the alert before auto-closing.
+    /// Only applies when IsPermanent is false.
+    /// </summary>
+    [Parameter] public int? Duration { get; set; }
+
+    /// <summary>
+    /// Event callback when the alert is closed either by timer or user action.
+    /// </summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    /// <summary>
+    /// CSS class to apply based on alert type.
+    /// </summary>
+    protected string AlertTypeCssClass => Type switch
     {
-        { PageAlertType.Success, "<path d=\"M20 6L9 17L4 12\"></path>" },
-        {
-            PageAlertType.Error,
-            "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M15 9l-6 6M9 9l6 6\"></path>"
-        },
-        { PageAlertType.Warning, "<path d=\"M12 9v2m0 4h.01\"></path><path d=\"M12 5l7 13H5l7-13z\"></path>" },
-        {
-            PageAlertType.Info,
-            "<circle cx=\"12\" cy=\"12\" r=\"10\"></circle><path d=\"M12 16v-4m0-4h.01\"></path>"
-        }
+        PageAlertType.Success => "success",
+        PageAlertType.Error => "error",
+        PageAlertType.Warning => "warning",
+        PageAlertType.Info => "info",
+        _ => "info"
     };
 
     /// <summary>
-    ///     The unique identifier for this alert, used as the HTML element ID.
+    /// Generates SVG path data for the alert icon based on type.
     /// </summary>
-    [Parameter]
-    [EditorRequired]
-    public string? AlertId { get; set; }
-
-    /// <summary>
-    ///     The alert title text to display in bold.
-    /// </summary>
-    [Parameter]
-    [EditorRequired]
-    public string? Title { get; set; }
-
-    /// <summary>
-    ///     The main message text displayed in the alert.
-    /// </summary>
-    [Parameter]
-    [EditorRequired]
-    public string? Message { get; set; }
-
-    /// <summary>
-    ///     Specifies the alert type (Success, Error, Warning, Info).
-    /// </summary>
-    [Parameter]
-    public PageAlertType Type { get; set; } = PageAlertType.Info;
-
-    /// <summary>
-    ///     If set to true, the alert remains visible indefinitely (no progress bar).
-    /// </summary>
-    [Parameter]
-    public bool IsPermanent { get; set; }
-
-    /// <summary>
-    ///     Optional duration in milliseconds for how long the alert should remain visible.
-    /// </summary>
-    [Parameter]
-    public int? Duration { get; set; }
-
-    /// <summary>
-    ///     Callback invoked when the alert is closed by the user.
-    /// </summary>
-    [Parameter]
-    public EventCallback OnClose { get; set; }
-
-    /// <summary>
-    ///     Derives the CSS class for the alert's type (e.g., "success", "error", etc.).
-    /// </summary>
-    private string AlertTypeCssClass => Type.ToString().ToLowerInvariant();
-
-    /// <summary>
-    ///     A convenience property returning <see cref="AlertId" /> non-null.
-    /// </summary>
-    private string Id => AlertId!;
-
-    /// <summary>
-    ///     Invoked when the user clicks the close button; calls the OnClose callback.
-    /// </summary>
-    private async Task RequestClose()
+    protected string GetIconPath() => Type switch
     {
+        PageAlertType.Success => "<path d=\"M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z\"></path>",
+        PageAlertType.Error => "<path d=\"M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z\"></path>",
+        PageAlertType.Warning => "<path d=\"M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z\"></path>",
+        PageAlertType.Info => "<path d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path>",
+        _ => "<path d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path>"
+    };
+
+    /// <summary>
+    /// Initiates alert setup after the component renders.
+    /// </summary>
+    protected override Task InitializeComponentAsync()
+    {
+        try
+        {
+            if (!IsPermanent && Duration.HasValue && Duration.Value > 0)
+            {
+                InitializeTimers(Duration.Value);
+            }
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to initialize alert component");
+            return Task.CompletedTask;
+        }
+    }
+
+    /// <summary>
+    /// Sets up the timer for alert auto-closing and progress visualization.
+    /// </summary>
+    /// <param name="duration">Duration in milliseconds</param>
+    private void InitializeTimers(int duration)
+    {
+        // Dispose any existing timers
+        _closeTimer?.Dispose();
+        _progressTimer?.Dispose();
+
+        // Main timer to close the alert
+        _closeTimer = new Timer(duration);
+        _closeTimer.AutoReset = false;
+        _closeTimer.Elapsed += async (sender, args) => await CloseAlertAsync();
+
+        // Progress timer for visual feedback
+        _progressTimer = new Timer(_progressUpdateInterval);
+        _progressTimer.AutoReset = true;
+        _progressTimer.Elapsed += UpdateProgressBar;
+
+        // Start timers
+        _elapsedTime = 0;
+        _progressTimer.Start();
+        _closeTimer.Start();
+    }
+
+    /// <summary>
+    /// Updates the progress bar visualization.
+    /// </summary>
+    private void UpdateProgressBar(object? sender, ElapsedEventArgs e)
+    {
+        if (Duration is null || Duration.Value <= 0) return;
+
+        _elapsedTime += _progressUpdateInterval;
+        var percentage = Math.Min(100, (_elapsedTime * 100) / Duration.Value);
+        var scaleX = 1 - (percentage / 100.0);
+
+        // Only schedule UI updates if there's a meaningful change
+        if (percentage % 5 == 0 || percentage >= 100)
+        {
+            _ = InvokeAsync(() =>
+            {
+                _progressBarStyle = $"transform: scaleX({scaleX:F2});";
+                StateHasChanged();
+            });
+        }
+    }
+
+    /// <summary>
+    /// Handles user-initiated close request.
+    /// </summary>
+    protected async Task RequestClose()
+    {
+        await CloseAlertAsync();
+    }
+
+    /// <summary>
+    /// Performs alert closure operations.
+    /// </summary>
+    private async Task CloseAlertAsync()
+    {
+        // Avoid multiple closures
+        if (_closeTimer == null) return;
+
+        // Stop and dispose timers
+        _progressTimer?.Stop();
+        _closeTimer?.Stop();
+        _progressTimer?.Dispose();
+        _closeTimer?.Dispose();
+        _progressTimer = null;
+        _closeTimer = null;
+
+        // Invoke the close callback
         try
         {
             await OnClose.InvokeAsync();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error closing page alert {AlertId}", AlertId);
+            Logger.Error(ex, "Error in alert close callback");
         }
     }
 
     /// <summary>
-    ///     Returns the SVG path(s) for the icon matching the current alert type.
+    /// Ensures timers are properly disposed when the component is removed.
     /// </summary>
-    private string GetIconPath()
+    protected override ValueTask DisposeAsyncCore()
     {
-        return IconPaths.TryGetValue(Type, out var path) ? path : string.Empty;
-    }
-
-    /// <summary>
-    ///     Validates that required parameters are set.
-    /// </summary>
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-
-        if (string.IsNullOrWhiteSpace(AlertId))
-        {
-            throw new ArgumentException("AlertId cannot be null or empty.", nameof(AlertId));
-        }
-
-        if (string.IsNullOrWhiteSpace(Title))
-        {
-            throw new ArgumentException("Title cannot be null or empty.", nameof(Title));
-        }
-
-        if (string.IsNullOrWhiteSpace(Message))
-        {
-            throw new ArgumentException("Message cannot be null or empty.", nameof(Message));
-        }
+        _progressTimer?.Dispose();
+        _closeTimer?.Dispose();
+        _progressTimer = null;
+        _closeTimer = null;
+        return base.DisposeAsyncCore();
     }
 }

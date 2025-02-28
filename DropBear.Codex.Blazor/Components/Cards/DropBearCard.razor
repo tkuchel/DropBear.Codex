@@ -2,7 +2,7 @@
 @namespace DropBear.Codex.Blazor.Components.Cards
 
 <div class="card-container">
-    <div class="card @CssClass">
+    <div class="card @CssClass" id="@_cardId">
         @if (!string.IsNullOrEmpty(ImageSource))
         {
             <img class="card-img-top" src="@ImageSource" alt="@ImageAlt"/>
@@ -10,14 +10,14 @@
         <div class="card-header">
             @if (!string.IsNullOrEmpty(IconSource))
             {
-                <i class="@IconSource card-icon"></i>
+                <i class="@IconSource card-icon" aria-hidden="true"></i>
             }
             @if (!string.IsNullOrEmpty(HeaderTitle))
             {
-                <h3 class="card-title">@HeaderTitle</h3>
+                <h3 class="card-title" id="@($"{_cardId}-title")">@HeaderTitle</h3>
             }
         </div>
-        <div class="card-body">
+        <div class="card-body" id="@($"{_cardId}-body")">
             @CardBodyContent
         </div>
         <div class="card-footer">
@@ -25,15 +25,17 @@
             {
                 @CardFooterContent
             }
-            else
+            else if (Buttons?.Any() == true)
             {
                 @foreach (var button in Buttons)
                 {
-                    <button type="button" class="btn @GetButtonClass(button.Color)"
-                            @onclick="@(() => HandleButtonClick(button))">
+                    <button type="button"
+                            class="btn @GetButtonClass(button.Color)"
+                            @onclick="@(() => HandleButtonClick(button))"
+                            @onclick:stopPropagation="true">
                         @if (!string.IsNullOrEmpty(button.Icon))
                         {
-                            <i class="@button.Icon"></i>
+                            <i class="@button.Icon" aria-hidden="true"></i>
                         }
                         @button.Text
                     </button>

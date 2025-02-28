@@ -1,7 +1,8 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Blazor.Errors;
+using DropBear.Codex.Core.Results.Base;
 
 #endregion
 
@@ -29,9 +30,14 @@ public interface IModalService
     bool IsModalVisible { get; }
 
     /// <summary>
+    ///     Gets the number of modals currently in the queue.
+    /// </summary>
+    int QueueCount { get; }
+
+    /// <summary>
     ///     Event triggered when the modal state changes, used to notify subscribers.
     /// </summary>
-    event Action OnChange;
+    event Action? OnChange;
 
     /// <summary>
     ///     Displays the specified component as a modal, with optional parameters.
@@ -40,11 +46,28 @@ public interface IModalService
     /// </summary>
     /// <typeparam name="T">The type of the component to display. Must inherit from <see cref="DropBearComponentBase" />.</typeparam>
     /// <param name="parameters">Optional parameters to pass to the component.</param>
-    /// <returns>A <see cref="Result" /> object indicating success or failure of the operation.</returns>
-    Result Show<T>(IDictionary<string, object>? parameters = null) where T : DropBearComponentBase;
+    /// <returns>A Result indicating success or failure of the operation.</returns>
+    Result<Unit, ModalError> Show<T>(IDictionary<string, object>? parameters = null) where T : DropBearComponentBase;
+
+    /// <summary>
+    ///     Displays the specified component as a modal, with single parameter.
+    ///     Convenience method for simple cases.
+    /// </summary>
+    /// <typeparam name="T">The type of the component to display. Must inherit from <see cref="DropBearComponentBase" />.</typeparam>
+    /// <param name="parameterName">Name of the parameter to pass.</param>
+    /// <param name="parameterValue">Value of the parameter to pass.</param>
+    /// <returns>A Result indicating success or failure of the operation.</returns>
+    Result<Unit, ModalError> Show<T>(string parameterName, object parameterValue) where T : DropBearComponentBase;
 
     /// <summary>
     ///     Closes the currently displayed modal and displays the next modal in the queue, if any.
     /// </summary>
-    void Close();
+    /// <returns>A Result indicating success or failure of the operation.</returns>
+    Result<Unit, ModalError> Close();
+
+    /// <summary>
+    ///     Clears all modals from the queue and closes any currently displayed modal.
+    /// </summary>
+    /// <returns>A Result indicating success or failure of the operation.</returns>
+    Result<Unit, ModalError> ClearAll();
 }

@@ -22,7 +22,7 @@
     </div>
     @if (!IsPermanent)
     {
-        <div class="page-alert-progress-bar"></div>
+        <div class="page-alert-progress-bar" style="@_progressBarStyle"></div>
         <button class="page-alert-close" type="button" aria-label="Close" @onclick="RequestClose">
             <span aria-hidden="true">&times;</span>
         </button>

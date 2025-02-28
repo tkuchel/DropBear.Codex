@@ -9,7 +9,7 @@ namespace DropBear.Codex.Blazor.Models;
 /// <summary>
 ///     Represents an alert instance displayed on a page.
 /// </summary>
-public sealed class PageAlertInstance
+public  class PageAlertInstance
 {
     /// <summary>
     ///     Gets or sets the unique identifier for this alert.

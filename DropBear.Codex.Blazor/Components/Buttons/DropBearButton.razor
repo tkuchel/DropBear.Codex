@@ -5,10 +5,12 @@
         type="@Type"
         disabled="@IsDisabled"
         aria-disabled="@IsDisabled"
-        @onclick="OnClickHandler">
+        @onclick="OnClickHandler"
+        @onclick:preventDefault="@(Type != "submit")"
+        @onclick:stopPropagation="true">
     @if (!string.IsNullOrEmpty(Icon))
     {
-        <i class="@Icon"></i>
+        <i class="@Icon" aria-hidden="true"></i>
     }
 
     @ChildContent

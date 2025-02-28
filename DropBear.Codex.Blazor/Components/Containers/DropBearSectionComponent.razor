@@ -2,7 +2,7 @@
 
 @if (ShouldRenderContent)
 {
-    <div class="section-component-section">
+    <section class="section-component-section" id="@($"section-{ComponentId}")">
         @ChildContent
-    </div>
+    </section>
 }

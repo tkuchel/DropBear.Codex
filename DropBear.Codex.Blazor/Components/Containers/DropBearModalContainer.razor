@@ -4,11 +4,15 @@
 
 @if (ModalService.IsModalVisible)
 {
-    <div class="modal-overlay" @onclick="HandleOutsideClick">
+    <div class="modal-overlay"
+         @onclick="HandleOutsideClick"
+         role="dialog"
+         aria-modal="true">
         <div class="modal-content @_modalTransitionClass"
              style="@ModalStyle"
              @onclick:stopPropagation="true">
-            <DynamicComponent Type="ModalService.CurrentComponent" Parameters="ChildParameters"/>
+            <DynamicComponent Type="ModalService.CurrentComponent"
+                              Parameters="ChildParameters"/>
         </div>
     </div>
 }

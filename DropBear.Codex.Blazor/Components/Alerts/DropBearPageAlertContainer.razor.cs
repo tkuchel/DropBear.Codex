@@ -4,11 +4,10 @@ using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
-using DropBear.Codex.Notifications;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
-using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 
 #endregion
@@ -32,335 +31,202 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// </remarks>
 public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 {
-    private const string JsModuleName = JsModuleNames.PageAlerts;
-    private const int MaxQueueSize = 100;
-    private const int BatchUpdateIntervalMs = 100;
-    private readonly ConcurrentDictionary<string, PageAlertInstance> _activeAlerts = new();
+    // Maximum alerts to show at once to limit DOM size and memory usage
+    private const int MaxVisibleAlerts = 5;
+    private const int DefaultDuration = 5000;
 
-    // Cancellation and synchronization
-    private readonly CancellationTokenSource _batchingCts = new();
-    private readonly SemaphoreSlim _initializationSemaphore = new(1, 1);
+    // Thread-safe collection to store active alerts
+    private readonly ConcurrentDictionary<string, AlertInstance> _activeAlerts = new();
+    private IJSObjectReference? _alertModule;
 
-    // Thread-safe collections for alert management
-    private readonly ConcurrentQueue<PageAlertInstance> _pendingAlerts = new();
-    private Task? _batchUpdateTask;
-
-    // Event subscriptions and JS module
-    private IDisposable? _channelSubscription;
-    private IJSObjectReference? _jsModule;
+    private ErrorBoundary? _errorBoundary;
+    private bool _isModuleInitialized;
+    private IDisposable? _notificationSubscription;
 
     /// <summary>
-    ///     Gets or sets the channel ID for notification routing.
+    ///     Initialize and set up event subscriptions
     /// </summary>
-    [Parameter]
-    public string? ChannelId { get; set; }
-
-    #region Lifecycle Methods
-
-    /// <inheritdoc />
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        base.OnInitialized();
+        await base.OnInitializedAsync();
 
+        // Subscribe to PageAlertService events
+        PageAlertService.OnAlert += HandleAlertAsync;
+        PageAlertService.OnClear += HandleClear;
+
+        // Subscribe to notification system
         try
         {
-            InitializeSubscriptions();
-            StartBatchProcessor();
+            await SubscribeToNotificationsAsync();
         }
         catch (Exception ex)
         {
-            LogError("Failed to initialize PageAlertContainer", ex);
+            LogError("Failed to subscribe to notifications", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Initialize JS functionality when component is first rendered
+    /// </summary>
+    protected override async Task InitializeComponentAsync()
+    {
+        try
+        {
+            _alertModule = await GetJsModuleAsync("DropBearPageAlert");
+            _isModuleInitialized = await SafeJsInteropAsync<bool>("DropBearPageAlertAPI.isInitialized");
+
+            if (!_isModuleInitialized)
+            {
+                await SafeJsVoidInteropAsync("DropBearPageAlertAPI.initialize");
+                _isModuleInitialized = true;
+            }
+
+            LogDebug("Alert container initialized with JS module");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to initialize alert container JS module", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Subscribes to the notification system
+    /// </summary>
+    private Task SubscribeToNotificationsAsync()
+    {
+        try
+        {
+            // Make sure any existing subscription is disposed
+            _notificationSubscription?.Dispose();
+
+            // Create an async message handler for the notification
+            var handler = new AsyncMessageHandler<Notification>(async (notification, cancellationToken) =>
+            {
+                await HandleNotificationAsync(notification);
+            });
+
+            // Subscribe to the "Alerts" channel using the MessagePipe interface
+            _notificationSubscription = NotificationSubscriber.Subscribe(
+                "Alerts", // The channel key
+                handler // The message handler
+            );
+
+            LogDebug("Successfully subscribed to notifications channel");
+
+            return Task.CompletedTask;
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to subscribe to notifications", ex);
             throw;
         }
     }
 
-    /// <inheritdoc />
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    /// <summary>
+    ///     Recover the error boundary when parameters change
+    /// </summary>
+    protected override void OnParametersSet()
     {
-        await base.OnAfterRenderAsync(firstRender);
+        _errorBoundary?.Recover();
+    }
 
-        if (!firstRender || IsDisposed)
+    /// <summary>
+    ///     Handles incoming alert requests from the PageAlertService
+    /// </summary>
+    private async Task HandleAlertAsync(PageAlertInstance alertData)
+    {
+        if (IsDisposed)
         {
             return;
         }
 
         try
         {
-            await InitializeJsModuleAsync();
+            // Ensure we don't exceed maximum visible alerts by removing oldest non-permanent alert if needed
+            if (_activeAlerts.Count >= MaxVisibleAlerts)
+            {
+                var oldestAlert = _activeAlerts.Values
+                    .Where(a => !a.IsPermanent)
+                    .OrderBy(a => a.Id)
+                    .FirstOrDefault();
+
+                if (oldestAlert != null)
+                {
+                    await RemoveAlertAsync(oldestAlert.Id);
+                }
+            }
+
+            // Create extended alert instance
+            var alert = new AlertInstance
+            {
+                Id = alertData.Id,
+                Title = alertData.Title,
+                Message = alertData.Message,
+                Type = alertData.Type,
+                Duration = alertData.Duration ?? DefaultDuration,
+                IsPermanent = alertData.IsPermanent
+            };
+
+            // Add to collection and queue state update
+            if (_activeAlerts.TryAdd(alert.Id, alert))
+            {
+                await QueueStateHasChangedAsync(() => { });
+            }
         }
         catch (Exception ex)
         {
-            LogError("Error during first render initialization", ex);
+            LogError("Error handling alert", ex);
         }
     }
 
-    /// <inheritdoc />
-    protected override async Task CleanupJavaScriptResourcesAsync()
+    /// <summary>
+    ///     Handles notifications from the notification system
+    /// </summary>
+    private async Task HandleNotificationAsync(Notification notification)
     {
-        if (_jsModule is null)
+        if (IsDisposed || notification?.Message == null)
         {
             return;
         }
 
         try
         {
-            // Attempt to hide all active alerts gracefully
-            var hideAllResult = await _jsModule.InvokeAsync<bool[]>(
-                $"{JsModuleName}API.hideAll",
-                new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token
-            );
-
-            LogDebug("All page alerts hidden during cleanup. Success count: {SuccessCount}",
-                hideAllResult.Count(success => success));
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
-        {
-            LogWarning("JS cleanup skipped: {Reason}", ex.GetType().Name);
-        }
-        catch (Exception ex)
-        {
-            LogError("Error hiding alerts during cleanup", ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public override async ValueTask DisposeAsync()
-    {
-        try
-        {
-            // Cancel batch processing
-            await _batchingCts.CancelAsync();
-            if (_batchUpdateTask != null)
+            // Map notification severity to alert type
+            var alertType = notification.Severity switch
             {
-                await _batchUpdateTask;
-            }
+                NotificationSeverity.Critical => PageAlertType.Error,
+                NotificationSeverity.Error => PageAlertType.Error,
+                NotificationSeverity.Warning => PageAlertType.Warning,
+                NotificationSeverity.Success => PageAlertType.Success,
+                NotificationSeverity.Information => PageAlertType.Info,
+                _ => PageAlertType.Info
+            };
 
-            // Cleanup subscriptions and resources
-            if (PageAlertService is not null)
-            {
-                PageAlertService.OnAlert -= HandleAlert;
-                PageAlertService.OnClear -= HandleClear;
-            }
+            // Determine if the alert should be permanent based on severity
+            var isPermanent = notification.Severity is NotificationSeverity.Critical or NotificationSeverity.Error;
 
-            _channelSubscription?.Dispose();
-            _initializationSemaphore.Dispose();
-            _batchingCts.Dispose();
-
-            // Clear collections
-            _activeAlerts.Clear();
-            while (_pendingAlerts.TryDequeue(out _)) { }
-        }
-        catch (Exception ex)
-        {
-            LogError("Error disposing page alert container", ex);
-        }
-        finally
-        {
-            await base.DisposeAsync();
-        }
-    }
-
-    #endregion
-
-    #region Alert Processing
-
-    private async Task InitializeJsModuleAsync()
-    {
-        try
-        {
-            await _initializationSemaphore.WaitAsync();
-            _jsModule = await GetJsModuleAsync(JsModuleName);
-
-            // Process any queued alerts
-            await ProcessPendingAlertsAsync();
-        }
-        finally
-        {
-            _initializationSemaphore.Release();
-        }
-    }
-
-    private void StartBatchProcessor()
-    {
-        _batchUpdateTask = Task.Run(async () =>
-        {
-            try
-            {
-                while (!_batchingCts.Token.IsCancellationRequested)
+            // Set duration based on alert type if not permanent
+            var duration = !isPermanent
+                ? alertType switch
                 {
-                    await Task.Delay(BatchUpdateIntervalMs, _batchingCts.Token);
-                    await ProcessPendingAlertsAsync();
+                    PageAlertType.Success => 5000,
+                    PageAlertType.Error => 8000,
+                    PageAlertType.Warning => 7000,
+                    _ => 6000
                 }
-            }
-            catch (OperationCanceledException)
+                : 3500;
+
+            var alert = new PageAlertInstance
             {
-                // Expected during shutdown
-            }
-            catch (Exception ex)
-            {
-                LogError("Error in batch processor", ex);
-            }
-        }, _batchingCts.Token);
-    }
+                Id = $"notification-{Guid.NewGuid():N}",
+                Title = notification.Title ?? "Notification",
+                Message = notification.Message,
+                Type = alertType,
+                IsPermanent = isPermanent,
+                Duration = duration
+            };
 
-    private async Task ProcessPendingAlertsAsync()
-    {
-        if (_jsModule is null || !_pendingAlerts.Any())
-        {
-            return;
-        }
-
-        // First, add pending alerts to the active collection so that they render.
-        while (_pendingAlerts.TryDequeue(out var alert))
-        {
-            _activeAlerts.TryAdd(alert.Id, alert);
-        }
-
-        // Trigger a re-render so that the new alerts are placed in the DOM.
-        await InvokeAsync(StateHasChanged);
-
-        // Optionally, wait a tick to ensure the DOM updates
-        await Task.Yield();
-
-        // Now, for each alert in the active collection that hasn’t been initialized in JS,
-        // invoke the JS interop to create the PageAlertManager.
-        foreach (var alert in _activeAlerts.Values)
-        {
-            try
-            {
-                var result = await _jsModule.InvokeAsync<bool>(
-                    $"{JsModuleName}API.create",
-                    alert.Id,
-                    alert.Duration ?? 5000,
-                    alert.IsPermanent
-                );
-
-                if (!result)
-                {
-                    LogWarning("Failed to create alert: {AlertId}", alert.Id);
-                }
-            }
-            catch (Exception ex)
-            {
-                LogError("Error processing alert {AlertId}", ex, alert.Id);
-            }
-        }
-    }
-
-
-    private async Task HandleAlert(PageAlertInstance alert)
-    {
-        try
-        {
-            if (_pendingAlerts.Count >= MaxQueueSize)
-            {
-                LogWarning("Alert queue full. Dropping alert: {AlertId}", alert.Id);
-                return;
-            }
-
-            _pendingAlerts.Enqueue(alert);
-            await ProcessPendingAlertsAsync();
-        }
-        catch (Exception ex)
-        {
-            LogError("Error handling alert {AlertId}", ex, alert.Id);
-        }
-    }
-
-    private void HandleClear()
-    {
-        try
-        {
-            // Fire and forget the async clear operation
-            _ = InvokeAsync(async () =>
-            {
-                try
-                {
-                    await _initializationSemaphore.WaitAsync();
-                    var hideTasks = _activeAlerts.Keys
-                        .Select(async alertId =>
-                        {
-                            if (_jsModule != null)
-                            {
-                                try
-                                {
-                                    await _jsModule.InvokeAsync<bool>($"{JsModuleName}API.hide", alertId);
-                                }
-                                catch (Exception ex)
-                                {
-                                    LogError($"Error hiding alert: {alertId}", ex);
-                                }
-                            }
-                        });
-
-                    await Task.WhenAll(hideTasks);
-                    _activeAlerts.Clear();
-                    StateHasChanged();
-                }
-                catch (Exception ex)
-                {
-                    LogError("Error in async clear operation", ex);
-                }
-                finally
-                {
-                    _initializationSemaphore.Release();
-                }
-            });
-        }
-        catch (Exception ex)
-        {
-            LogError("Error initiating clear operation", ex);
-        }
-    }
-
-    #endregion
-
-    #region Notification Handling
-
-    private void InitializeSubscriptions()
-    {
-        // Subscribe to local page alert service
-        if (PageAlertService is not null)
-        {
-            PageAlertService.OnAlert += HandleAlert;
-            PageAlertService.OnClear += HandleClear;  // This needs to be void
-            LogDebug("Subscribed to PageAlertService events");
-        }
-        else
-        {
-            LogWarning("PageAlertService is null during event subscription");
-        }
-
-        // Subscribe to channel-based notifications
-        var bag = DisposableBag.CreateBuilder();
-
-        // Channel notifications
-        if (!string.IsNullOrEmpty(ChannelId))
-        {
-            var channel = $"{GlobalConstants.UserNotificationChannel}.{ChannelId}";
-            NotificationSubscriber.Subscribe(channel, HandleNotificationAsync).AddTo(bag);
-            LogDebug("Subscribed to channel notifications for {ChannelId}", ChannelId);
-        }
-
-        // Global notifications
-        NotificationSubscriber.Subscribe(GlobalConstants.GlobalNotificationChannel, HandleNotificationAsync)
-            .AddTo(bag);
-        LogDebug("Subscribed to global notifications");
-
-        _channelSubscription = bag.Build();
-    }
-
-    private async ValueTask HandleNotificationAsync(Notification notification, CancellationToken token)
-    {
-        if (notification.Type != NotificationType.PageAlert || token.IsCancellationRequested)
-        {
-            return;
-        }
-
-        try
-        {
-            var alert = CreateAlertFromNotification(notification);
-            await InvokeAsync(() => HandleAlert(alert));
+            await HandleAlertAsync(alert);
         }
         catch (Exception ex)
         {
@@ -368,55 +234,141 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         }
     }
 
-    #endregion
-
-    #region Helper Methods
-
-    private static PageAlertInstance CreateAlertFromNotification(Notification notification)
+    /// <summary>
+    ///     Handles clearing all alerts
+    /// </summary>
+    private async void HandleClear()
     {
-        ArgumentNullException.ThrowIfNull(notification);
-
-        return new PageAlertInstance
+        if (IsDisposed)
         {
-            Id = $"alert-{Guid.NewGuid():N}",
-            Title = notification.Title ?? "Notification",
-            Message = notification.Message,
-            Type = MapNotificationSeverityToAlertType(notification.Severity),
-            IsPermanent = ShouldBePermanent(notification.Severity),
-            Duration = GetDurationForSeverity(notification.Severity)
+            return;
+        }
+
+        try
+        {
+            if (_isModuleInitialized && _alertModule != null)
+            {
+                await SafeJsVoidInteropAsync("DropBearPageAlertAPI.hideAll");
+            }
+
+            _activeAlerts.Clear();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            LogError("Error clearing alerts", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Removes a specific alert by ID
+    /// </summary>
+    private async Task RemoveAlertAsync(string alertId)
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_activeAlerts.TryRemove(alertId, out var alert) && alert.Reference != null)
+            {
+                // Alert will be removed from DOM after animation completes
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        catch (Exception ex)
+        {
+            LogError("Error removing alert", ex);
+        }
+    }
+
+    /// <summary>
+    ///     Returns alerts in priority order for rendering
+    /// </summary>
+    private IEnumerable<AlertInstance> GetPrioritizedAlerts()
+    {
+        return _activeAlerts.Values
+            .OrderByDescending(a => a.IsPermanent)
+            .ThenByDescending(a => GetAlertPriority(a.Type))
+            .ThenByDescending(a => a.Id) // Newest first (assuming ID has temporal ordering)
+            .Take(MaxVisibleAlerts);
+    }
+
+    /// <summary>
+    ///     Gets a numeric priority value for alert types to enable sorting
+    /// </summary>
+    private static int GetAlertPriority(PageAlertType type)
+    {
+        return type switch
+        {
+            PageAlertType.Error => 4,
+            PageAlertType.Warning => 3,
+            PageAlertType.Success => 2,
+            PageAlertType.Info => 1,
+            _ => 0
         };
     }
 
-    private static bool ShouldBePermanent(NotificationSeverity severity)
+    /// <summary>
+    ///     Clean up JS resources
+    /// </summary>
+    protected override async Task CleanupJavaScriptResourcesAsync()
     {
-        return severity is NotificationSeverity.Critical or NotificationSeverity.Error;
-    }
-
-    private static int GetDurationForSeverity(NotificationSeverity severity)
-    {
-        return severity switch
+        if (_alertModule != null && _isModuleInitialized)
         {
-            NotificationSeverity.Success => 5000,
-            NotificationSeverity.Information => 5000,
-            NotificationSeverity.Warning => 8000,
-            NotificationSeverity.Error => 0,
-            NotificationSeverity.Critical => 0,
-            _ => 5000
-        };
+            try
+            {
+                await SafeJsVoidInteropAsync("DropBearPageAlertAPI.hideAll");
+            }
+            catch (Exception ex)
+            {
+                LogError("Error cleaning up alerts", ex);
+            }
+        }
     }
 
-    private static PageAlertType MapNotificationSeverityToAlertType(NotificationSeverity severity)
+    /// <summary>
+    ///     Ensures all resources are properly disposed
+    /// </summary>
+    protected override async ValueTask DisposeAsyncCore()
     {
-        return severity switch
+        // Unsubscribe from PageAlertService events
+        if (PageAlertService != null)
         {
-            NotificationSeverity.Success => PageAlertType.Success,
-            NotificationSeverity.Information => PageAlertType.Info,
-            NotificationSeverity.Warning => PageAlertType.Warning,
-            NotificationSeverity.Error => PageAlertType.Error,
-            NotificationSeverity.Critical => PageAlertType.Error,
-            _ => PageAlertType.Info
-        };
+            PageAlertService.OnAlert -= HandleAlertAsync;
+            PageAlertService.OnClear -= HandleClear;
+        }
+
+        // Dispose notification subscription
+        _notificationSubscription?.Dispose();
+
+        // Clear alerts dictionary
+        _activeAlerts.Clear();
+
+        await base.DisposeAsyncCore();
     }
 
-    #endregion
+    // Helper class to implement IAsyncMessageHandler<T>
+    private sealed class AsyncMessageHandler<T> : IAsyncMessageHandler<T>
+    {
+        private readonly Func<T, CancellationToken, ValueTask> _handler;
+
+        public AsyncMessageHandler(Func<T, CancellationToken, ValueTask> handler)
+        {
+            _handler = handler;
+        }
+
+        public ValueTask HandleAsync(T message, CancellationToken cancellationToken)
+        {
+            return _handler(message, cancellationToken);
+        }
+    }
+
+    // Extended alert model to include component reference
+    private sealed class AlertInstance : PageAlertInstance
+    {
+        public DropBearPageAlert? Reference { get; set; }
+    }
 }

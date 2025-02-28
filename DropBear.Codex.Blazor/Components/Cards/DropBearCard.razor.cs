@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -11,9 +12,11 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 
 /// <summary>
 ///     A Blazor component for rendering a card with various styles and options.
+///     Optimized for Blazor Server with efficient rendering and memory management.
 /// </summary>
-public sealed partial class DropBearCard : DropBearComponentBase
+public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
 {
+    // Cache button mappings to avoid dictionary lookups
     private static readonly IReadOnlyDictionary<ButtonColor, string> ButtonClasses = new Dictionary<ButtonColor, string>
     {
         { ButtonColor.Default, "btn-default" },
@@ -25,15 +28,76 @@ public sealed partial class DropBearCard : DropBearComponentBase
         { ButtonColor.Primary, "btn-primary" }
     };
 
-    /// <summary>
-    ///     The CSS class for controlling a "compact" card.
-    /// </summary>
-    private string CompactClass => CompactMode ? "compact" : string.Empty;
+    // Unique ID for this card instance
+    private readonly string _cardId = $"card-{Guid.NewGuid():N}";
+
+    // Cache CSS class to avoid rebuilding on each render
+    private bool _lastCompactMode;
+    private string _lastIconSource = string.Empty;
+    private string _lastImageSource = string.Empty;
+
+    // Track previous parameter values to detect changes
+    private CardType _lastType;
+
+    // Flag to track if parameters have changed
+    private bool _parametersChanged = true;
 
     /// <summary>
     ///     Gets the CSS class based on card configuration.
     /// </summary>
-    private string CssClass => BuildCssClass();
+    private string CssClass { get; set; } = string.Empty;
+
+    /// <summary>
+    ///     Disposes of the component, cleaning up any resources.
+    /// </summary>
+    public void Dispose()
+    {
+        try
+        {
+            // Clear references to prevent memory leaks
+            Buttons = Array.Empty<ButtonConfig>();
+
+            // Clear cached values
+            CssClass = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error disposing DropBearCard");
+        }
+    }
+
+    /// <summary>
+    ///     Updates parameters and cache when they change
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+
+        // Check if relevant parameters have changed
+        if (_lastType != Type ||
+            _lastCompactMode != CompactMode ||
+            _lastImageSource != ImageSource ||
+            _lastIconSource != IconSource)
+        {
+            _parametersChanged = true;
+
+            // Update cached values
+            _lastType = Type;
+            _lastCompactMode = CompactMode;
+            _lastImageSource = ImageSource ?? string.Empty;
+            _lastIconSource = IconSource ?? string.Empty;
+        }
+
+        // Validate image configuration
+        ValidateImageConfig();
+
+        // Rebuild CSS class if parameters changed
+        if (_parametersChanged)
+        {
+            CssClass = BuildCssClass();
+            _parametersChanged = false;
+        }
+    }
 
     /// <summary>
     ///     Handles a button click event and invokes OnButtonClicked.
@@ -67,36 +131,48 @@ public sealed partial class DropBearCard : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Gets the CSS class for a button type.
+    ///     Gets the CSS class for a button type with efficient caching.
     /// </summary>
     private static string GetButtonClass(ButtonColor type)
     {
-        return ButtonClasses.GetValueOrDefault(type, ButtonClasses[ButtonColor.Primary]);
+        return ButtonClasses.TryGetValue(type, out var cssClass)
+            ? cssClass
+            : ButtonClasses[ButtonColor.Primary];
     }
 
     /// <summary>
-    ///     Builds CSS classes for the card.
+    ///     Builds CSS classes for the card with efficient string concatenation.
     /// </summary>
     private string BuildCssClass()
     {
-        var cssClasses = new List<string> { "dropbear-card", $"dropbear-card-{Type.ToString().ToLowerInvariant()}" };
+        var stringBuilder = new StringBuilder(100);
 
+        // Base class
+        stringBuilder.Append("dropbear-card");
+
+        // Type variant
+        stringBuilder.Append(" dropbear-card-");
+        stringBuilder.Append(Type.ToString().ToLowerInvariant());
+
+        // Compact mode
         if (CompactMode)
         {
-            cssClasses.Add("compact");
+            stringBuilder.Append(" compact");
         }
 
+        // Image indicator
         if (!string.IsNullOrEmpty(ImageSource))
         {
-            cssClasses.Add("dropbear-card-with-image");
+            stringBuilder.Append(" dropbear-card-with-image");
         }
 
+        // Icon indicator
         if (!string.IsNullOrEmpty(IconSource))
         {
-            cssClasses.Add("dropbear-card-with-icon");
+            stringBuilder.Append(" dropbear-card-with-icon");
         }
 
-        return string.Join(" ", cssClasses);
+        return stringBuilder.ToString();
     }
 
     /// <summary>
@@ -107,29 +183,6 @@ public sealed partial class DropBearCard : DropBearComponentBase
         if (!string.IsNullOrEmpty(ImageSource) && string.IsNullOrEmpty(ImageAlt))
         {
             Logger.Warning("Image source provided without alt text: {ImageSource}", ImageSource);
-        }
-    }
-
-    /// <inheritdoc />
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-        ValidateImageConfig();
-    }
-
-    /// <summary>
-    ///     Disposes of the component, cleaning up any resources.
-    ///     This method is called by the Blazor framework when the component is removed from the UI.
-    /// </summary>
-    public void Dispose()
-    {
-        try
-        {
-            Buttons = Array.Empty<ButtonConfig>();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error disposing DropBearCard");
         }
     }
 
@@ -151,7 +204,7 @@ public sealed partial class DropBearCard : DropBearComponentBase
     ///     Optional image source to display at the top of the card.
     /// </summary>
     [Parameter]
-    public string ImageSource { get; set; } = string.Empty;
+    public string? ImageSource { get; set; }
 
     /// <summary>
     ///     Alternate text for the image.
@@ -163,7 +216,7 @@ public sealed partial class DropBearCard : DropBearComponentBase
     ///     An optional icon class to display in the card header.
     /// </summary>
     [Parameter]
-    public string IconSource { get; set; } = string.Empty;
+    public string? IconSource { get; set; }
 
     /// <summary>
     ///     An optional title to display in the card header.
