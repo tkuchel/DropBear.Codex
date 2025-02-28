@@ -162,6 +162,30 @@ public class Result<TError> : ResultBase, IResult<TError>
         return result;
     }
 
+    /// <summary>
+    ///     Creates a new Result in the NoOp state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> NoOp(TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<TError>));
+        var result = pool.Get();
+        result.Initialize(ResultState.NoOp, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Pending state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> Pending(TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<TError>));
+        var result = pool.Get();
+        result.Initialize(ResultState.Pending, error);
+        return result;
+    }
+
     #endregion
 
     #region Operation Methods

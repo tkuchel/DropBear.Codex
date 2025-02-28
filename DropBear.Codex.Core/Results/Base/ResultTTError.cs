@@ -308,6 +308,66 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         return result;
     }
 
+    /// <summary>
+    ///     Creates a new Result in the Warning state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> Warning(T value, TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Warning, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Cancelled state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> Cancelled(TError error, Exception? exception = null)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.Cancelled, error, exception);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Cancelled state with a value.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> Cancelled(T value, TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Cancelled, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the NoOp state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> NoOp(TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.NoOp, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Pending state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> Pending(TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.Pending, error);
+        return result;
+    }
+
     #endregion
 
     #region Protected Methods

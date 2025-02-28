@@ -41,7 +41,15 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         Logger.Debug("Exporting data to Excel.");
 
         var dataToExport = FilteredData.ToList();
-        using var ms = _excelExporter.ExportToExcelStream(dataToExport);
+        var exportStreamResult = await _excelExporter.ExportToExcelStreamAsync(dataToExport);
+
+        if (exportStreamResult.IsFailure)
+        {
+            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error.Message);
+            return;
+        }
+
+        using var ms = exportStreamResult.Value;
 
         if (ms.Length == 0)
         {
