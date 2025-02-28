@@ -213,7 +213,7 @@ public sealed class CompressedSerializer : ISerializer
         var innerCapabilities = _innerSerializer.GetCapabilities();
         var compressorInfo = _compressor.GetCompressionInfo();
 
-        var capabilities = new Dictionary<string, object>(innerCapabilities)
+        var capabilities = new Dictionary<string, object>(innerCapabilities, StringComparer.Ordinal)
         {
             ["CompressionEnabled"] = true,
             ["SkipSmallObjects"] = _skipSmallObjects,

@@ -17,6 +17,7 @@ public static class MessagePackServiceCollectionExtensions
     ///     Adds MessagePack serialization configuration to the service collection.
     /// </summary>
     /// <param name="services">The <see cref="IServiceCollection" /> to add services to.</param>
+    /// <param name="configureOptions">The <see cref="MessagePackSerializerOptions"/> to use for configuration.</param>
     /// <returns>The <see cref="IServiceCollection" /> so that additional calls can be chained.</returns>
     public static IServiceCollection AddMessagePackSerialization(
         this IServiceCollection services,

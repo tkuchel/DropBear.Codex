@@ -262,7 +262,7 @@ public sealed class EncryptedSerializer : ISerializer, IDisposable
     {
         var innerCapabilities = _innerSerializer.GetCapabilities();
 
-        var capabilities = new Dictionary<string, object>(innerCapabilities)
+        var capabilities = new Dictionary<string, object>(innerCapabilities, StringComparer.Ordinal)
         {
             ["EncryptionEnabled"] = true,
             ["SkipSmallObjects"] = _skipSmallObjects,

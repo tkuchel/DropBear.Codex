@@ -348,7 +348,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the NoOp state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> NoOp(TError error)
+    public new static Result<T, TError> NoOp(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
@@ -360,7 +360,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the Pending state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> Pending(TError error)
+    public new static Result<T, TError> Pending(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();

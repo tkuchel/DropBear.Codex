@@ -100,6 +100,7 @@ public sealed class JsonSerializerWriter : ISerializerWriter
     public IDictionary<string, object> GetWriterOptions()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["WriterType"] = "JsonSerializerWriter",
             ["WriteIndented"] = _options.WriteIndented,

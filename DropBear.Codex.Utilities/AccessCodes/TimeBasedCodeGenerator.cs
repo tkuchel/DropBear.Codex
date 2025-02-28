@@ -41,7 +41,7 @@ public class TimeBasedCodeGenerator
     private readonly string _secretKey;
 
     // Cache for validated codes to improve performance
-    private readonly ConcurrentDictionary<string, (DateTime ExpiryTime, bool IsValid)> _validationCache = new();
+    private readonly ConcurrentDictionary<string, (DateTime ExpiryTime, bool IsValid)> _validationCache = new(StringComparer.Ordinal);
     private readonly TimeSpan _validityDuration;
 
     /// <summary>

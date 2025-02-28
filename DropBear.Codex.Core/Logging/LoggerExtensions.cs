@@ -25,7 +25,7 @@ public static class LoggerExtensions
         // A 'static' class in C# is just sealed + abstract at runtime, so:
         if (!staticClass.IsAbstract || !staticClass.IsSealed)
         {
-            throw new ArgumentException($"Type {staticClass.FullName} is not a static class.");
+            throw new ArgumentException($"Type {staticClass.FullName} is not a static class.", nameof(staticClass));
         }
 
         return logger.ForContext(staticClass);

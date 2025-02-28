@@ -130,7 +130,7 @@ public sealed class SimpleTask : ITask
         {
             cancellationToken.ThrowIfCancellationRequested();
             execute(context);
-            await Task.CompletedTask;
+            await Task.CompletedTask.ConfigureAwait(false);
         };
     }
 }

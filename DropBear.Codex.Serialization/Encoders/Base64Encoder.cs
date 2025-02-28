@@ -173,6 +173,7 @@ public sealed class Base64Encoder : IEncoder
     public IDictionary<string, object> GetEncoderInfo()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["EncodingType"] = "Base64", ["IsUrlSafe"] = _useUrlSafeEncoding, ["IsThreadSafe"] = true
         };

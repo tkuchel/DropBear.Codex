@@ -131,7 +131,7 @@ public static class Jumbler
         var key = deriveBytes.GetBytes(32); // 256 bits for AES-256
 
         // Cache the key for future use (for frequently used keyphrases)
-        if (keyPhrase == DefaultKeyPhrase || KeyCache.Count < 10)
+        if (string.Equals(keyPhrase, DefaultKeyPhrase, StringComparison.Ordinal) || KeyCache.Count < 10)
         {
             KeyCache[keyPhrase] = key;
         }

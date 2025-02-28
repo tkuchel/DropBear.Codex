@@ -163,6 +163,7 @@ public sealed class DeflateCompressor : ICompressor
     public IDictionary<string, object> GetCompressionInfo()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["Algorithm"] = "Deflate",
             ["CompressionLevel"] = _compressionLevel.ToString(),

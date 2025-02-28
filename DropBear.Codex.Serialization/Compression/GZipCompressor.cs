@@ -162,6 +162,7 @@ public sealed class GZipCompressor : ICompressor
     public IDictionary<string, object> GetCompressionInfo()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["Algorithm"] = "GZip",
             ["CompressionLevel"] = _compressionLevel.ToString(),

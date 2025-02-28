@@ -159,9 +159,9 @@ public static class ObjectComparer
                     var value2 = prop.GetValue(obj2);
 
                     // Use ValueTask to avoid thread pool starvation for CPU-bound work
-                    var fieldScore = await ValueTask.FromResult(CompareValues(value1, value2, 0, maxDepth));
+                    var fieldScore = await ValueTask.FromResult(CompareValues(value1, value2, 0, maxDepth)).ConfigureAwait(false);
                     fieldResults.Add(new FieldCompareResult(prop.Name, fieldScore));
-                });
+                }).ConfigureAwait(false);
 
             var resultList = fieldResults.ToList();
             var totalScore = resultList.Sum(f => f.Confidence);

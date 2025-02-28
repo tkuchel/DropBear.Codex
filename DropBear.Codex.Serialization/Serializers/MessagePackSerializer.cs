@@ -59,6 +59,7 @@ public sealed class MessagePackSerializer : ISerializer
     public Dictionary<string, object> GetCapabilities()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["SerializerType"] = "MessagePack",
             ["Compression"] = _options.Compression.ToString(),

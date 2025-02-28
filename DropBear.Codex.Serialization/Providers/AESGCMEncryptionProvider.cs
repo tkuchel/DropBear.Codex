@@ -104,6 +104,7 @@ public sealed class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
     public IDictionary<string, object> GetProviderInfo()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["Algorithm"] = "AES-GCM",
             ["KeySize"] = _rsa.KeySize,

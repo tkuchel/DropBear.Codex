@@ -145,6 +145,7 @@ public sealed class StreamSerializerAdapter : ISerializer
     public Dictionary<string, object> GetCapabilities()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["SerializerType"] = "StreamSerializerAdapter",
             ["InnerSerializerType"] = _streamSerializer.GetType().Name,

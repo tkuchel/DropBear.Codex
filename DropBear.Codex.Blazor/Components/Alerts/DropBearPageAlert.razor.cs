@@ -13,7 +13,7 @@ namespace DropBear.Codex.Blazor.Components.Alerts;
 /// <summary>
 ///     A page-level alert component for displaying success/error/warning/info messages.
 /// </summary>
-public sealed partial class DropBearPageAlert : DropBearComponentBase
+public partial class DropBearPageAlert : DropBearComponentBase
 {
     private string _progressBarStyle = string.Empty;
     private Timer? _closeTimer;

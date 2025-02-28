@@ -67,6 +67,7 @@ public sealed class JsonSerializer : ISerializer
     public Dictionary<string, object> GetCapabilities()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["SerializerType"] = "JSON",
             ["WriteIndented"] = Options.WriteIndented,

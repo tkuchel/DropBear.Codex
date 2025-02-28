@@ -216,6 +216,7 @@ public sealed class HexEncoder : IEncoder
     public IDictionary<string, object> GetEncoderInfo()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["EncodingType"] = "Hexadecimal", ["UpperCase"] = _upperCase, ["IsThreadSafe"] = true
         };

@@ -101,6 +101,7 @@ public sealed class JsonSerializerReader : ISerializerReader
     public IDictionary<string, object> GetReaderOptions()
     {
         return new Dictionary<string, object>
+(StringComparer.Ordinal)
         {
             ["ReaderType"] = "JsonSerializerReader",
             ["WriteIndented"] = _options.WriteIndented,
