@@ -1,32 +1,62 @@
 ﻿#region
 
 using System.Diagnostics;
-using DropBear.Codex.Core.Logging;
-using Serilog;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Service for collecting and managing performance metrics for the DropBearDataGrid component.
+///     Provides performance metrics tracking for the DataGrid component.
 /// </summary>
-public class DataGridMetricsService
+public sealed class DataGridMetricsService
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DataGridMetricsService>();
+    private readonly object _lockObject = new();
     private readonly Stopwatch _searchTimer = new();
-    private readonly Queue<double> _searchTimes = new(10); // Keep last 10 search times
-
-    public bool IsEnabled { get; set; }
-    public double LastSearchTime { get; private set; }
-    public double AverageSearchTime => _searchTimes.Any() ? _searchTimes.Average() : 0;
-    public int TotalItemsProcessed { get; private set; }
-    public int FilteredItemCount { get; private set; }
-    public int DisplayedItemCount { get; private set; }
-    public double ItemsPerSecond => LastSearchTime > 0 ? TotalItemsProcessed / (LastSearchTime / 1000) : 0;
+    private readonly List<double> _searchTimes = new();
 
     /// <summary>
-    ///     Starts timing a search operation.
+    ///     Gets the last search operation execution time in milliseconds.
+    /// </summary>
+    public double LastSearchTime { get; private set; }
+
+    /// <summary>
+    ///     Gets the average search operation execution time in milliseconds.
+    /// </summary>
+    public double AverageSearchTime { get; private set; }
+
+    /// <summary>
+    ///     Gets the number of items processed per second during the last search operation.
+    /// </summary>
+    public double ItemsPerSecond { get; private set; }
+
+    /// <summary>
+    ///     Gets the total number of items processed in the last operation.
+    /// </summary>
+    public int TotalItemsProcessed { get; private set; }
+
+    /// <summary>
+    ///     Gets the number of items that matched the filter criteria.
+    /// </summary>
+    public int FilteredItemCount { get; private set; }
+
+    /// <summary>
+    ///     Gets the number of items displayed in the grid (pagination affects this).
+    /// </summary>
+    public int DisplayedItemCount { get; private set; }
+
+    /// <summary>
+    ///     Gets or sets whether metrics collection is enabled.
+    /// </summary>
+    public bool IsEnabled { get; set; }
+
+    /// <summary>
+    ///     Gets the number of search operations tracked.
+    /// </summary>
+    public int OperationCount => _searchTimes.Count;
+
+    /// <summary>
+    ///     Starts the search timer.
     /// </summary>
     public void StartSearchTimer()
     {
@@ -35,16 +65,19 @@ public class DataGridMetricsService
             return;
         }
 
-        _searchTimer.Restart();
-        Logger.Debug("Search timer started");
+        lock (_lockObject)
+        {
+            _searchTimer.Reset();
+            _searchTimer.Start();
+        }
     }
 
     /// <summary>
-    ///     Stops timing the current search operation and records metrics.
+    ///     Stops the search timer and records metrics.
     /// </summary>
-    /// <param name="totalItems">Total number of items processed</param>
-    /// <param name="filteredItems">Number of items after filtering</param>
-    /// <param name="displayedItems">Number of items currently displayed</param>
+    /// <param name="totalItems">The total number of items processed.</param>
+    /// <param name="filteredItems">The number of items after filtering.</param>
+    /// <param name="displayedItems">The number of items displayed after pagination.</param>
     public void StopSearchTimer(int totalItems, int filteredItems, int displayedItems)
     {
         if (!IsEnabled)
@@ -52,43 +85,75 @@ public class DataGridMetricsService
             return;
         }
 
-        _searchTimer.Stop();
-        LastSearchTime = _searchTimer.Elapsed.TotalMilliseconds;
-
-        // Keep only the last 10 search times
-        if (_searchTimes.Count >= 10)
+        lock (_lockObject)
         {
-            _searchTimes.Dequeue();
+            _searchTimer.Stop();
+
+            var elapsed = _searchTimer.Elapsed.TotalMilliseconds;
+            LastSearchTime = elapsed;
+            _searchTimes.Add(elapsed);
+
+            // Keep only the last 100 measurements for average
+            if (_searchTimes.Count > 100)
+            {
+                _searchTimes.RemoveAt(0);
+            }
+
+            AverageSearchTime = _searchTimes.Average();
+
+            TotalItemsProcessed = totalItems;
+            FilteredItemCount = filteredItems;
+            DisplayedItemCount = displayedItems;
+
+            // Calculate items per second if the operation took time
+            if (elapsed > 0)
+            {
+                ItemsPerSecond = totalItems / elapsed * 1000;
+            }
+            else
+            {
+                ItemsPerSecond = totalItems; // Instant operation
+            }
         }
-
-        _searchTimes.Enqueue(LastSearchTime);
-
-        TotalItemsProcessed = totalItems;
-        FilteredItemCount = filteredItems;
-        DisplayedItemCount = displayedItems;
-
-        Logger.Information(
-            "Search completed - Time: {SearchTime}ms, Items: {TotalItems}, Filtered: {FilteredItems}, Displayed: {DisplayedItems}, Items/sec: {ItemsPerSecond}",
-            LastSearchTime,
-            totalItems,
-            filteredItems,
-            displayedItems,
-            ItemsPerSecond
-        );
     }
 
     /// <summary>
-    ///     Resets all metrics to their default values.
+    ///     Resets all metrics tracking.
     /// </summary>
     public void Reset()
     {
-        _searchTimer.Reset();
-        _searchTimes.Clear();
-        LastSearchTime = 0;
-        TotalItemsProcessed = 0;
-        FilteredItemCount = 0;
-        DisplayedItemCount = 0;
+        lock (_lockObject)
+        {
+            _searchTimer.Reset();
+            _searchTimes.Clear();
+            LastSearchTime = 0;
+            AverageSearchTime = 0;
+            ItemsPerSecond = 0;
+            TotalItemsProcessed = 0;
+            FilteredItemCount = 0;
+            DisplayedItemCount = 0;
+        }
+    }
 
-        Logger.Debug("Metrics reset");
+    /// <summary>
+    ///     Gets metrics data for the last search operation.
+    /// </summary>
+    /// <returns>A dictionary of metric names and values.</returns>
+    public IDictionary<string, object> GetMetricsData()
+    {
+        var metrics = new Dictionary<string, object>();
+
+        lock (_lockObject)
+        {
+            metrics["LastSearchTime"] = LastSearchTime;
+            metrics["AverageSearchTime"] = AverageSearchTime;
+            metrics["ItemsPerSecond"] = ItemsPerSecond;
+            metrics["TotalItemsProcessed"] = TotalItemsProcessed;
+            metrics["FilteredItemCount"] = FilteredItemCount;
+            metrics["DisplayedItemCount"] = DisplayedItemCount;
+            metrics["OperationCount"] = OperationCount;
+        }
+
+        return metrics;
     }
 }

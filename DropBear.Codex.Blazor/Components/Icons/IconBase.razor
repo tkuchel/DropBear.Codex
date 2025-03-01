@@ -1,0 +1,73 @@
+﻿// IconBase.razor
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="dropbear-icon @CssClass"
+     style="@GetInlineStyle()"
+     role="img"
+     aria-hidden="@(string.IsNullOrEmpty(Title) ? "true" : null)"
+     @attributes="AdditionalAttributes"
+     @onclick="HandleClick"
+     aria-label="@(string.IsNullOrEmpty(Title) ? null : Title)">
+    @if (!string.IsNullOrEmpty(Title))
+    {
+        <span class="visually-hidden">@Title</span>
+    }
+    @ChildContent
+</div>
+
+@code {
+    [Parameter]
+    public string? Title { get; set; }
+
+    [Parameter]
+    public int Size { get; set; } = 20;
+
+    [Parameter]
+    public string Color { get; set; } = "currentColor";
+
+    [Parameter]
+    public string CssClass { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Clickable { get; set; } = false;
+
+    [Parameter]
+    public EventCallback OnClick { get; set; }
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string GetInlineStyle()
+    {
+        var styles = new List<string>();
+
+        if (Size > 0)
+        {
+            styles.Add($"width: {Size}px");
+            styles.Add($"height: {Size}px");
+        }
+
+        if (Color != "currentColor")
+        {
+            styles.Add($"color: {Color}");
+        }
+
+        if (Clickable)
+        {
+            styles.Add("cursor: pointer");
+        }
+
+        return string.Join("; ", styles);
+    }
+
+    private async Task HandleClick()
+    {
+        if (Clickable && OnClick.HasDelegate)
+        {
+            await OnClick.InvokeAsync();
+        }
+    }
+}

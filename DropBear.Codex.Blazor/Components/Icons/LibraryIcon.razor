@@ -1,0 +1,25 @@
+﻿// LibraryIcon.razor
+@using DropBear.Codex.Blazor.Services
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@inject IconLibrary IconLibrary
+
+<IconBase Title="@Title"
+          Size="@Size"
+          Color="@Color"
+          CssClass="@CssClass"
+          Clickable="@Clickable"
+          OnClick="@OnClick"
+          @attributes="AdditionalAttributes">
+    @if (_svgContent != null)
+    {
+        @((MarkupString)_svgContent)
+    }
+    else if (!_loadAttempted)
+    {
+        <div class="icon-placeholder"></div>
+    }
+</IconBase>
+
+@code {
+
+}

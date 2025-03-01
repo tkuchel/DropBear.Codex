@@ -2,8 +2,10 @@
 
 using System.Linq.Expressions;
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
 using Serilog;
 
@@ -32,57 +34,111 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
     {
         base.OnInitialized();
 
-        // Validate the presence of a parent grid.
-        if (ParentGrid is null)
+        var result = ValidateAndBuildColumn();
+        if (!result.IsSuccess)
         {
-            Logger.Error("{Component} must be inside a {ParentComponent}.", nameof(DropBearDataGridColumn<TItem>),
-                nameof(DropBearDataGrid<TItem>));
-            throw new InvalidOperationException(
-                $"{nameof(DropBearDataGridColumn<TItem>)} must be inside a {nameof(DropBearDataGrid<TItem>)}.");
+            // Log the error and fail gracefully or throw based on context
+            Logger.Error("{Error}", result.Error?.Message);
+
+            if (result.Exception is InvalidOperationException ex)
+            {
+                throw ex; // Re-throw critical configuration errors
+            }
         }
+    }
 
-        // Validate required parameters.
-        if (string.IsNullOrWhiteSpace(PropertyName))
+    /// <summary>
+    ///     Validates the column configuration and builds the column for the grid.
+    /// </summary>
+    /// <returns>A Result indicating success or failure with detailed error information.</returns>
+    private Result<bool, DataGridError> ValidateAndBuildColumn()
+    {
+        try
         {
-            Logger.Error("{Parameter} is required for {Component}.", nameof(PropertyName),
-                nameof(DropBearDataGridColumn<TItem>));
-            throw new InvalidOperationException($"{nameof(PropertyName)} cannot be null or empty.");
+            // Validate the presence of a parent grid.
+            if (ParentGrid is null)
+            {
+                var error = DataGridError.InvalidColumnConfiguration(
+                    PropertyName, $"{GetType().Name} must be inside a {nameof(DropBearDataGrid<TItem>)}.");
+
+                return Result<bool, DataGridError>.Failure(
+                    error,
+                    new InvalidOperationException(error.Message));
+            }
+
+            // Validate required parameters.
+            if (string.IsNullOrWhiteSpace(PropertyName))
+            {
+                var error = DataGridError.InvalidColumnConfiguration(
+                    "<unknown>", $"{nameof(PropertyName)} cannot be null or empty.");
+
+                return Result<bool, DataGridError>.Failure(
+                    error,
+                    new InvalidOperationException(error.Message));
+            }
+
+            // We don't want to throw for missing PropertySelector if Template is provided
+            if (PropertySelector is null && Template is null)
+            {
+                var error = DataGridError.InvalidColumnConfiguration(
+                    PropertyName, $"Either {nameof(PropertySelector)} or {nameof(Template)} must be provided.");
+
+                Logger.Warning("{Error}", error.Message);
+
+                // Continue with a warning instead of failing completely
+                return Result<bool, DataGridError>.Warning(false,error);
+            }
+
+            if (string.IsNullOrWhiteSpace(Title))
+            {
+                Logger.Warning("Column {PropertyName} has no {Title}. Consider providing a Title for clarity.",
+                    PropertyName, nameof(Title));
+
+                // Use PropertyName as a fallback for Title
+                Title = PropertyName.Replace("_", " "); // Simple clean-up
+            }
+
+            // Build the internal column definition.
+            var column = new DataGridColumn<TItem>(
+                PropertyName,
+                Title,
+                Sortable,
+                Filterable,
+                Width,
+                CssClass,
+                Visible,
+                Format)
+            {
+                PropertySelector = PropertySelector,
+                Template = Template,
+                CustomSort = CustomSort,
+                CustomFilter = CustomFilter,
+                HeaderTemplate = HeaderTemplate,
+                FooterTemplate = FooterTemplate
+            };
+
+            // Register the column with the parent grid.
+            try
+            {
+                ParentGrid.AddColumn(column);
+                return Result<bool, DataGridError>.Success(true);
+            }
+            catch (Exception ex)
+            {
+                return Result<bool, DataGridError>.Failure(
+                    DataGridError.InvalidColumnConfiguration(PropertyName,
+                        $"Failed to add column to grid: {ex.Message}"),
+                    ex);
+            }
         }
-
-        if (PropertySelector is null)
+        catch (Exception ex)
         {
-            Logger.Error("{Parameter} is required for {Component}.", nameof(PropertySelector),
-                nameof(DropBearDataGridColumn<TItem>));
-            throw new InvalidOperationException($"{nameof(PropertySelector)} cannot be null.");
+            return Result<bool, DataGridError>.Failure(
+                DataGridError.InvalidColumnConfiguration(
+                    PropertyName ?? "<unknown>",
+                    $"Unexpected error configuring column: {ex.Message}"),
+                ex);
         }
-
-        if (string.IsNullOrWhiteSpace(Title))
-        {
-            Logger.Warning("Column {PropertyName} has no {Title}. Consider providing a Title for clarity.",
-                PropertyName, nameof(Title));
-        }
-
-        // Build the internal column definition.
-        var column = new DataGridColumn<TItem>(
-            PropertyName,
-            Title,
-            Sortable,
-            Filterable,
-            Width,
-            CssClass,
-            Visible,
-            Format)
-        {
-            PropertySelector = PropertySelector,
-            Template = Template,
-            CustomSort = CustomSort,
-            CustomFilter = CustomFilter,
-            HeaderTemplate = HeaderTemplate,
-            FooterTemplate = FooterTemplate
-        };
-
-        // Register the column with the parent grid.
-        ParentGrid.AddColumn(column);
     }
 
     #endregion
@@ -111,7 +167,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
     ///     An expression selecting which property of <typeparamref name="TItem" /> this column binds to.
     /// </summary>
     [Parameter]
-    public Expression<Func<TItem, object>> PropertySelector { get; set; } = null!;
+    public Expression<Func<TItem, object>>? PropertySelector { get; set; }
 
     /// <summary>
     ///     If true, the user can click the header to sort by this column.
@@ -120,7 +176,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
     public bool Sortable { get; set; }
 
     /// <summary>
-    ///     If true, allows filtering of this column (not fully implemented in the example).
+    ///     If true, allows filtering of this column.
     /// </summary>
     [Parameter]
     public bool Filterable { get; set; }
@@ -178,6 +234,12 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
     /// </summary>
     [Parameter]
     public RenderFragment? FooterTemplate { get; set; }
+
+    /// <summary>
+    ///     A handler for errors encountered when configuring this column.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Result<bool, DataGridError>> OnColumnError { get; set; }
 
     #endregion
 }

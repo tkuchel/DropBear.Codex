@@ -9,13 +9,34 @@
     }
     else
     {
-        <div>
+        <div class="dropbear-loading-container">
+            <div class="dropbear-loading-spinner"></div>
             <p>Loading...</p>
         </div>
     }
 }
 else
 {
+    @if (ShowError && _lastOperationResult?.Error != null)
+    {
+        <div class="dropbear-error-container">
+            @if (ErrorTemplate != null)
+            {
+                @ErrorTemplate(_lastOperationResult.Error)
+            }
+            else
+            {
+                <div class="dropbear-error-message">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span>@_lastOperationResult.Error.Message</span>
+                    <button class="dropbear-error-close" @onclick="() => _errorDisplayUntil = DateTime.MinValue">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            }
+        </div>
+    }
+
     @if (_isInitialized)
     {
         <CascadingValue Value="this">
@@ -39,7 +60,10 @@ else
                                        @bind="SearchTerm"/>
                                 @if (_isSearching)
                                 {
-                                    <span class="search-indicator">Searching...</span>
+                                    <span class="search-indicator">
+                                        <i class="fas fa-spinner fa-spin"></i>
+                                        Searching...
+                                    </span>
                                 }
                             </div>
                         }
@@ -86,7 +110,7 @@ else
                                     </div>
                                 </th>
                             }
-                            @if (AllowEdit || AllowDelete)
+                            @if (AllowEdit || AllowDelete || AllowDownload)
                             {
                                 <th class="datagrid-cell datagrid-cell-actions">Actions</th>
                             }
@@ -106,7 +130,8 @@ else
                                         }
                                         else
                                         {
-                                            <div>
+                                            <div class="no-data-message">
+                                                <i class="fas fa-search"></i>
                                                 <p>No data available.</p>
                                             </div>
                                         }
@@ -148,7 +173,7 @@ else
                                             </div>
                                         </td>
                                     }
-                                    @if (AllowEdit || AllowDelete)
+                                    @if (AllowEdit || AllowDelete || AllowDownload)
                                     {
                                         <td class="datagrid-cell datagrid-cell-actions">
                                             @if (AllowEdit)
@@ -202,7 +227,7 @@ else
                             <select id="itemsPerPage" @onchange="ItemsPerPageChanged">
                                 @foreach (var option in ItemsPerPageOptions)
                                 {
-                                    <option value="@option">@option</option>
+                                    <option value="@option" selected="@(option == ItemsPerPage)">@option</option>
                                 }
                             </select>
                         </div>

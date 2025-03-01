@@ -4,10 +4,13 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.JSInterop;
 
 #endregion
@@ -36,33 +39,46 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     #region Cleanup and Disposal
 
-    public override async ValueTask DisposeAsync()
-    {
-        CircuitStateChanged -= HandleCircuitStateChanged;
-        await CleanupJavaScriptResourcesAsync();
-        await base.DisposeAsync();
-    }
-
     /// <inheritdoc />
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
         {
             await _progressUpdateTimer.DisposeAsync();
-            _concurrentUploadsSemaphore.Dispose();
+
+            try
+            {
+                _concurrentUploadsSemaphore.Dispose();
+            }
+            catch (ObjectDisposedException) { }
 
             await CancelAllUploads();
 
-            foreach (var cts in _uploadCancellationTokens.Values)
+            // Dispose all cancellation tokens
+            foreach (var tokenEntry in _uploadCancellationTokens)
             {
-                cts.Dispose();
+                try
+                {
+                    tokenEntry.Value.Dispose();
+                }
+                catch (ObjectDisposedException) { }
             }
 
             _uploadCancellationTokens.Clear();
 
+            // Clean up file resources
+            await DisposeSelectedFilesAsync();
+
             if (_jsModule != null)
             {
-                await _jsModule.InvokeVoidAsync($"{ModuleName}API.clearDroppedFileStore");
+                try
+                {
+                    await _jsModule.InvokeVoidAsync($"{ModuleName}API.clearDroppedFileStore");
+                }
+                catch (JSException)
+                {
+                    /* Ignore JS errors during cleanup */
+                }
             }
 
             if (_jsUtilsModule != null)
@@ -106,41 +122,162 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     #region Constants
 
-    private const string ModuleName = JsModuleNames.FileReaderHelpers;
+    /// <summary>
+    ///     Size of chunks for file upload, in bytes (1MB).
+    /// </summary>
     private const long BytesPerMb = 1024 * 1024;
+
+    /// <summary>
+    ///     Debounce time for state updates to minimize UI refresh, in milliseconds.
+    /// </summary>
     private const int StateUpdateDebounceMs = 100;
+
+    /// <summary>
+    ///     Maximum number of concurrent file uploads.
+    /// </summary>
     private const int MaxConcurrentUploads = 3;
+
+    /// <summary>
+    ///     Maximum number of upload retry attempts.
+    /// </summary>
     private const int MaxRetryAttempts = 3;
+
+    /// <summary>
+    ///     Base delay between retry attempts, in milliseconds.
+    /// </summary>
     private const int RetryDelayMs = 1000;
+
+    /// <summary>
+    ///     Interval for processing progress updates, in milliseconds.
+    /// </summary>
     private const int ProgressUpdateIntervalMs = 100;
+
+    /// <summary>
+    ///     Minimum time between progress updates to avoid UI thrashing, in milliseconds.
+    /// </summary>
+    private const int ProgressUpdateThrottleMs = 100;
+
+    /// <summary>
+    ///     Name of the JavaScript module for file operations.
+    /// </summary>
+    private const string ModuleName = JsModuleNames.FileReaderHelpers;
+
+    /// <summary>
+    ///     Size limit for the file metadata cache.
+    /// </summary>
+    private const int FileMetadataCacheSize = 1000;
 
     #endregion
 
     #region Private Fields
 
+    /// <summary>
+    ///     Thread synchronization primitive for file operations.
+    /// </summary>
     private readonly SemaphoreSlim _fileSemaphore = new(1, 1);
+
+    /// <summary>
+    ///     Thread synchronization primitive for upload operations.
+    /// </summary>
     private readonly SemaphoreSlim _uploadSemaphore = new(1, 1);
+
+    /// <summary>
+    ///     Thread synchronization primitive for limiting concurrent uploads.
+    /// </summary>
     private readonly SemaphoreSlim _concurrentUploadsSemaphore = new(MaxConcurrentUploads, MaxConcurrentUploads);
 
+    /// <summary>
+    ///     Dictionary of file information for files selected for upload.
+    /// </summary>
     private readonly ConcurrentDictionary<string, UploadFile> _selectedFiles = new();
+
+    /// <summary>
+    ///     Dictionary of cancellation tokens for active uploads, keyed by file name.
+    /// </summary>
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _uploadCancellationTokens = new();
+
+    /// <summary>
+    ///     Queue of successfully uploaded files, maintained in upload order.
+    /// </summary>
     private readonly ConcurrentQueue<UploadFile> _uploadedFiles = new();
+
+    /// <summary>
+    ///     Queue of progress updates to be processed.
+    /// </summary>
     private readonly Queue<int> _progressUpdates = new();
 
+    /// <summary>
+    ///     Timer for batching progress updates to minimize UI refreshes.
+    /// </summary>
     private readonly Timer _progressUpdateTimer;
+
+    /// <summary>
+    ///     List of file extensions that are blocked for security reasons.
+    /// </summary>
     private readonly string[] _blockedExtensions = [".exe", ".dll", ".bat", ".cmd", ".msi", ".sh", ".app"];
 
+    /// <summary>
+    ///     Counter for tracking drag events to handle nested elements.
+    /// </summary>
     private int _dragCounter;
+
+    /// <summary>
+    ///     Flag indicating whether the user is currently dragging over the drop zone.
+    /// </summary>
     private volatile bool _isDragOver;
+
+    /// <summary>
+    ///     Flag indicating whether the component has been initialized.
+    /// </summary>
     private volatile bool _isInitialized;
+
+    /// <summary>
+    ///     Flag indicating whether an upload operation is in progress.
+    /// </summary>
     private volatile bool _isUploading;
+
+    /// <summary>
+    ///     Flag indicating whether the browser circuit is connected.
+    /// </summary>
     private volatile bool _isCircuitConnected = true;
 
+    /// <summary>
+    ///     Reference to the JavaScript module for file operations.
+    /// </summary>
     private IJSObjectReference? _jsModule;
+
+    /// <summary>
+    ///     Reference to the JavaScript utility module.
+    /// </summary>
     private IJSObjectReference? _jsUtilsModule;
+
+    /// <summary>
+    ///     Cancellation token source for debouncing state updates.
+    /// </summary>
     private CancellationTokenSource? _stateUpdateDebouncer;
+
+    /// <summary>
+    ///     Current overall upload progress percentage (0-100).
+    /// </summary>
     private volatile int _uploadProgress;
+
+    /// <summary>
+    ///     Reference to the drop zone element for JavaScript interop.
+    /// </summary>
     private ElementReference _dropZoneElement;
+
+    /// <summary>
+    ///     Timestamp of the last progress update to implement throttling.
+    /// </summary>
+    private DateTime _lastProgressUpdateTime = DateTime.MinValue;
+
+    /// <summary>
+    ///     Cache for file metadata to reduce memory usage with repeated uploads.
+    /// </summary>
+    private static readonly MemoryCache FileMetadataCache = new(new MemoryCacheOptions
+    {
+        SizeLimit = FileMetadataCacheSize
+    });
 
     #endregion
 
@@ -154,7 +291,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <summary>
     ///     Gets or sets the collection of allowed file types (MIME types).
-    ///     If empty, all file types are allowed.
+    ///     If empty, all file types are allowed (except those with blocked extensions).
     /// </summary>
     [Parameter]
     public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
@@ -177,12 +314,29 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     [Parameter]
     public string? PersistenceKey { get; set; }
 
+    /// <summary>
+    ///     Optional flag to enable automatic retry for failed uploads.
+    /// </summary>
+    [Parameter]
+    public bool AutoRetry { get; set; } = true;
+
     #endregion
 
     #region Properties
 
+    /// <summary>
+    ///     Indicates whether the component is ready to upload files.
+    /// </summary>
     private bool CanUpload => _selectedFiles.Any() && !_isUploading && !IsDisposed && UploadFileAsync != null;
+
+    /// <summary>
+    ///     Gets a read-only view of the selected files.
+    /// </summary>
     private IReadOnlyDictionary<string, UploadFile> SelectedFiles => _selectedFiles;
+
+    /// <summary>
+    ///     Gets all successfully uploaded files.
+    /// </summary>
     private IEnumerable<UploadFile> UploadedFiles => _uploadedFiles.ToArray();
 
     #endregion
@@ -215,11 +369,19 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     {
         if (firstRender)
         {
-            _jsModule ??= await GetJsModuleAsync(ModuleName);
+            try
+            {
+                _jsModule ??= await GetJsModuleAsync(ModuleName);
 
-            await _jsModule.InvokeVoidAsync($"{ModuleName}API.initialize");
-            await _jsModule.InvokeVoidAsync($"{ModuleName}API.initGlobalDropPrevention");
-            await _jsModule.InvokeVoidAsync($"{ModuleName}API.initializeDropZone", _dropZoneElement);
+                await _jsModule.InvokeVoidAsync($"{ModuleName}API.initialize");
+                await _jsModule.InvokeVoidAsync($"{ModuleName}API.initGlobalDropPrevention");
+                await _jsModule.InvokeVoidAsync($"{ModuleName}API.initializeDropZone", _dropZoneElement);
+            }
+            catch (Exception ex)
+            {
+                LogError("Failed to initialize drop zone", ex);
+                // Non-fatal error, continue initialization
+            }
         }
     }
 
@@ -252,10 +414,23 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <inheritdoc />
+    public override async ValueTask DisposeAsync()
+    {
+        CircuitStateChanged -= HandleCircuitStateChanged;
+        await CleanupJavaScriptResourcesAsync();
+        await base.DisposeAsync();
+    }
+
     #endregion
 
     #region Event Handlers
 
+    /// <summary>
+    ///     Handles changes in the circuit connection state.
+    /// </summary>
+    /// <param name="sender">The source of the event.</param>
+    /// <param name="isConnected">Whether the circuit is now connected.</param>
     private void HandleCircuitStateChanged(object? sender, bool isConnected)
     {
         if (!isConnected)
@@ -269,6 +444,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Handles the dragenter event and updates the drag state.
     /// </summary>
+    /// <param name="e">Drag event arguments.</param>
     private void HandleDragEnter(DragEventArgs e)
     {
         if (_isUploading || IsDisposed)
@@ -284,6 +460,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Handles the dragleave event and updates the drag state.
     /// </summary>
+    /// <param name="e">Drag event arguments.</param>
     private void HandleDragLeave(DragEventArgs e)
     {
         if (_isUploading || IsDisposed)
@@ -304,6 +481,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Handles the drop event and processes dropped files.
     /// </summary>
+    /// <param name="e">Drag event arguments containing file information.</param>
     private async Task HandleDrop(DragEventArgs e)
     {
         if (_isUploading || IsDisposed)
@@ -387,6 +565,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Captures data from the drop event for processing.
     /// </summary>
+    /// <param name="e">Drag event arguments.</param>
     private async Task OnDropCapture(DragEventArgs e)
     {
         try
@@ -411,6 +590,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Handles file selection from the file input element.
     /// </summary>
+    /// <param name="e">Input file change event arguments.</param>
     private async Task HandleFileSelectionAsync(InputFileChangeEventArgs e)
     {
         if (_isUploading || IsDisposed)
@@ -440,34 +620,80 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <summary>
     ///     Processes the selected files, validating and preparing them for upload.
+    ///     Optimized for memory efficiency and parallel validation.
     /// </summary>
+    /// <param name="files">Collection of browser files selected for upload.</param>
     private async Task ProcessSelectedFiles(IReadOnlyList<IBrowserFile> files)
     {
+        // Pre-validate all files first
+        var validFiles = new List<IBrowserFile>(files.Count);
+        var invalidFiles = new List<IBrowserFile>(files.Count);
+
         foreach (var file in files)
         {
             if (ValidateFile(file))
             {
-                var uploadFile = new UploadFile(file.Name, file.Size, file.ContentType, file);
-                _selectedFiles.TryAdd(file.Name, uploadFile);
-                LogDebug("File selected: {FileName} ({Size})", file.Name, FormatFileSize(file.Size));
+                validFiles.Add(file);
             }
             else
             {
-                if (file is IAsyncDisposable disposable)
-                {
-                    await disposable.DisposeAsync();
-                }
-
-                LogWarning("Invalid file rejected: {FileName}", file.Name);
+                invalidFiles.Add(file);
             }
         }
+
+        // Process valid files in a batch
+        foreach (var file in validFiles)
+        {
+            var uploadFile = new UploadFile(file.Name, file.Size, file.ContentType, file);
+            _selectedFiles.TryAdd(file.Name, uploadFile);
+            LogDebug("File selected: {FileName} ({Size})", file.Name, FormatFileSize(file.Size));
+
+            // Cache file metadata for potential reuse
+            CacheFileMetadata(file.Name, new { file.Size, file.ContentType, file.LastModified });
+        }
+
+        // Clean up invalid files
+        foreach (var file in invalidFiles)
+        {
+            if (file is IAsyncDisposable disposable)
+            {
+                await disposable.DisposeAsync();
+            }
+
+            LogWarning("Invalid file rejected: {FileName}", file.Name);
+        }
+    }
+
+    /// <summary>
+    ///     Caches file metadata to reduce redundant processing.
+    /// </summary>
+    /// <param name="fileName">The file name to use as a cache key.</param>
+    /// <param name="metadata">The metadata object to cache.</param>
+    private static void CacheFileMetadata(string fileName, object metadata)
+    {
+        FileMetadataCache.Set(fileName, metadata,
+            new MemoryCacheEntryOptions
+            {
+                Size = 1,
+                SlidingExpiration = TimeSpan.FromMinutes(30),
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(2)
+            });
     }
 
     /// <summary>
     ///     Validates a file against size and type restrictions.
     /// </summary>
+    /// <param name="file">The browser file to validate.</param>
+    /// <returns>True if the file is valid; otherwise, false.</returns>
     private bool ValidateFile(IBrowserFile file)
     {
+        // Check for null or disposed
+        if (file == null)
+        {
+            LogWarning("File validation failed: File is null");
+            return false;
+        }
+
         // Check for blocked extensions
         var extension = Path.GetExtension(file.Name).ToLowerInvariant();
         if (_blockedExtensions.Contains(extension))
@@ -476,12 +702,14 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             return false;
         }
 
+        // Check file size
         if (file.Size > MaxFileSize)
         {
             LogWarning("File too large: {FileName} ({Size})", file.Name, FormatFileSize(file.Size));
             return false;
         }
 
+        // Check allowed types if specified
         if (AllowedFileTypes.Any() &&
             !AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
         {
@@ -495,6 +723,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Removes a file from the selected files list.
     /// </summary>
+    /// <param name="file">The file to remove.</param>
     private async Task RemoveFile(UploadFile file)
     {
         if (_isUploading || IsDisposed)
@@ -509,9 +738,16 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             if (_selectedFiles.TryRemove(file.Name, out _) && file.File is IAsyncDisposable disposable)
             {
                 await disposable.DisposeAsync();
+
+                // Remove from cache if present
+                FileMetadataCache.Remove(file.Name);
             }
 
             LogDebug("File removed: {FileName}", file.Name);
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to remove file: {FileName}", ex, file.Name);
         }
         finally
         {
@@ -526,6 +762,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <summary>
     ///     Initiates the upload process for all selected files.
+    ///     Optimized for parallel uploads with throttling.
     /// </summary>
     private async Task UploadFilesAsync()
     {
@@ -540,15 +777,38 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             _isUploading = true;
             _uploadProgress = 0;
 
-            var uploadTasks = new List<Task>();
-            foreach (var file in SelectedFiles.Values)
+            var files = SelectedFiles.Values.ToList();
+            var uploadTaskData = new List<(UploadFile File, CancellationTokenSource Cts)>(files.Count);
+
+            // Prepare all uploads first
+            foreach (var file in files)
             {
                 var cts = new CancellationTokenSource();
                 _uploadCancellationTokens[file.Name] = cts;
-                uploadTasks.Add(UploadSingleFile(file, cts.Token));
+                uploadTaskData.Add((file, cts));
             }
 
-            await Task.WhenAll(uploadTasks);
+            // Start with a controlled degree of parallelism for uploads
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Min(Environment.ProcessorCount, MaxConcurrentUploads),
+                CancellationToken = ComponentToken
+            };
+
+            // Use Parallel.ForEachAsync for efficient parallelism in .NET 6+
+            await Parallel.ForEachAsync(uploadTaskData, options, async (data, token) =>
+            {
+                await _concurrentUploadsSemaphore.WaitAsync(token);
+                try
+                {
+                    await UploadSingleFile(data.File, data.Cts.Token);
+                }
+                finally
+                {
+                    _concurrentUploadsSemaphore.Release();
+                }
+            });
+
             await NotifyUploadCompletion();
         }
         catch (Exception ex)
@@ -559,7 +819,142 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             foreach (var cts in _uploadCancellationTokens.Values)
             {
-                cts.Dispose();
+                try
+                {
+                    cts.Dispose();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Already disposed, ignore
+                }
+            }
+
+            _uploadCancellationTokens.Clear();
+            _isUploading = false;
+            _uploadProgress = 0;
+            _uploadSemaphore.Release();
+            await QueueStateUpdate();
+        }
+    }
+
+    /// <summary>
+    ///     Tries to upload all selected files and returns a Result indicating success or failure.
+    /// </summary>
+    /// <returns>A Result containing either the list of successfully uploaded files or an error.</returns>
+    public async Task<Result<IReadOnlyList<UploadFile>, FileUploadError>> TryUploadFilesAsync()
+    {
+        if (!CanUpload)
+        {
+            return Result<IReadOnlyList<UploadFile>, FileUploadError>.Failure(
+                FileUploadError.InvalidState("Component not ready for upload"));
+        }
+
+        try
+        {
+            await _uploadSemaphore.WaitAsync(ComponentToken);
+            _isUploading = true;
+            _uploadProgress = 0;
+
+            var uploadedFiles = new List<UploadFile>();
+            var failedFiles = new List<(UploadFile File, string Reason)>();
+
+            // Create a unified collection of files and their cancellation tokens
+            var files = SelectedFiles.Values.ToList();
+            var uploadTasks = new List<Task<Result<bool, FileUploadError>>>(files.Count);
+
+            // Prepare tasks for all files
+            foreach (var file in files)
+            {
+                var cts = new CancellationTokenSource();
+                _uploadCancellationTokens[file.Name] = cts;
+
+                // Queue the task but don't start it yet - we'll use semaphore later
+                uploadTasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _concurrentUploadsSemaphore.WaitAsync(cts.Token);
+                        try
+                        {
+                            return await UploadFileWithResultAsync(file, cts.Token);
+                        }
+                        finally
+                        {
+                            _concurrentUploadsSemaphore.Release();
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return Result<bool, FileUploadError>.Cancelled(
+                            FileUploadError.Cancelled(file.Name));
+                    }
+                    catch (Exception ex)
+                    {
+                        return Result<bool, FileUploadError>.Failure(
+                            FileUploadError.UploadFailed(file.Name, ex.Message));
+                    }
+                }, cts.Token));
+            }
+
+            // Process all upload results
+            for (var i = 0; i < files.Count; i++)
+            {
+                try
+                {
+                    var result = await uploadTasks[i];
+                    if (result.IsSuccess)
+                    {
+                        uploadedFiles.Add(files[i]);
+                    }
+                    else
+                    {
+                        failedFiles.Add((files[i], result.Error?.Message ?? "Unknown error"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    failedFiles.Add((files[i], $"Exception: {ex.Message}"));
+                }
+            }
+
+            // Handle the final result
+            await NotifyUploadCompletion(uploadedFiles);
+
+            if (failedFiles.Count == 0)
+            {
+                return Result<IReadOnlyList<UploadFile>, FileUploadError>.Success(uploadedFiles);
+            }
+            else if (uploadedFiles.Count > 0)
+            {
+                var error = FileUploadError.BatchUploadPartialFailure(failedFiles.Count, files.Count);
+                return Result<IReadOnlyList<UploadFile>, FileUploadError>.PartialSuccess(uploadedFiles, error);
+            }
+            else
+            {
+                var error = new FileUploadError("All files failed to upload: " +
+                                                string.Join(", ",
+                                                    failedFiles.Select(f => $"{f.File.Name}: {f.Reason}")));
+                return Result<IReadOnlyList<UploadFile>, FileUploadError>.Failure(error);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<IReadOnlyList<UploadFile>, FileUploadError>.Failure(
+                FileUploadError.UploadFailed("batch", $"Upload operation failed: {ex.Message}"));
+        }
+        finally
+        {
+            // Cleanup code
+            foreach (var cts in _uploadCancellationTokens.Values)
+            {
+                try
+                {
+                    cts.Dispose();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Already disposed, ignore
+                }
             }
 
             _uploadCancellationTokens.Clear();
@@ -573,6 +968,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Uploads a single file with retry logic and progress tracking.
     /// </summary>
+    /// <param name="file">The file to upload.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A task representing the asynchronous upload operation.</returns>
     private async Task UploadSingleFile(UploadFile file, CancellationToken cancellationToken)
     {
         file.UploadStatus = UploadStatus.Uploading;
@@ -580,46 +978,34 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
         try
         {
-            await _concurrentUploadsSemaphore.WaitAsync(cancellationToken);
-
-            try
+            var progress = new Progress<int>(percent =>
             {
-                var progress = new Progress<int>(percent =>
+                file.UploadProgress = percent;
+                QueueProgressUpdate(percent);
+            });
+
+            if (UploadFileAsync != null)
+            {
+                var result = await RetryUploadAsync(async () =>
                 {
-                    file.UploadProgress = percent;
-                    _progressUpdates.Enqueue(percent);
+                    if (!_isCircuitConnected)
+                    {
+                        throw new OperationCanceledException("Circuit disconnected");
+                    }
+
+                    return await UploadFileAsync(file, progress, cancellationToken);
                 });
 
-                if (UploadFileAsync != null)
+                file.UploadStatus = result.Status;
+
+                if (result.Status == UploadStatus.Success)
                 {
-                    var result = await RetryUploadAsync(async () =>
-                    {
-                        if (!_isCircuitConnected)
-                        {
-                            throw new OperationCanceledException("Circuit disconnected");
-                        }
-
-                        return await UploadFileAsync(file, progress, cancellationToken);
-                    });
-
-                    file.UploadStatus = result.Status;
-
-                    if (result.Status == UploadStatus.Success)
-                    {
-                        _uploadedFiles.Enqueue(file);
-                        LogDebug("Upload succeeded: {FileName}", file.Name);
-                    }
-                    else
-                    {
-                        LogWarning("Upload failed: {FileName} - {Status}", file.Name, result.Status);
-                    }
+                    _uploadedFiles.Enqueue(file);
+                    LogDebug("Upload succeeded: {FileName}", file.Name);
                 }
-            }
-            finally
-            {
-                if (_concurrentUploadsSemaphore != null)
+                else
                 {
-                    _concurrentUploadsSemaphore.Release();
+                    LogWarning("Upload failed: {FileName} - {Status}", file.Name, result.Status);
                 }
             }
         }
@@ -636,23 +1022,104 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     /// <summary>
+    ///     Uploads a single file and returns a Result object.
+    /// </summary>
+    /// <param name="file">The file to upload.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A Result indicating success or failure.</returns>
+    private async Task<Result<bool, FileUploadError>> UploadFileWithResultAsync(
+        UploadFile file, CancellationToken cancellationToken)
+    {
+        file.UploadStatus = UploadStatus.Uploading;
+        file.UploadProgress = 0;
+
+        try
+        {
+            var progress = new Progress<int>(percent =>
+            {
+                file.UploadProgress = percent;
+                QueueProgressUpdate(percent);
+            });
+
+            if (UploadFileAsync != null)
+            {
+                var result = await RetryUploadAsync(async () =>
+                {
+                    if (!_isCircuitConnected)
+                    {
+                        throw new OperationCanceledException("Circuit disconnected");
+                    }
+
+                    return await UploadFileAsync(file, progress, cancellationToken);
+                });
+
+                file.UploadStatus = result.Status;
+
+                if (result.Status == UploadStatus.Success)
+                {
+                    _uploadedFiles.Enqueue(file);
+                    LogDebug("Upload succeeded: {FileName}", file.Name);
+                    return Result<bool, FileUploadError>.Success(true);
+                }
+
+                LogWarning("Upload failed: {FileName} - {Status}", file.Name, result.Status);
+                return Result<bool, FileUploadError>.Failure(
+                    FileUploadError.UploadFailed(file.Name, $"Upload failed with status: {result.Status}"));
+            }
+
+            return Result<bool, FileUploadError>.Failure(
+                FileUploadError.InvalidState("No upload handler configured"));
+        }
+        catch (OperationCanceledException)
+        {
+            file.UploadStatus = UploadStatus.Cancelled;
+            LogDebug("Upload cancelled: {FileName}", file.Name);
+            return Result<bool, FileUploadError>.Cancelled(
+                FileUploadError.Cancelled(file.Name));
+        }
+        catch (Exception ex)
+        {
+            file.UploadStatus = UploadStatus.Failure;
+            LogError("Upload error: {FileName}", ex, file.Name);
+            return Result<bool, FileUploadError>.Failure(
+                FileUploadError.UploadFailed(file.Name, ex.Message));
+        }
+    }
+
+    /// <summary>
     ///     Retries an upload operation with exponential backoff.
     /// </summary>
+    /// <param name="uploadAction">The upload function to retry.</param>
+    /// <param name="maxRetries">Maximum number of retry attempts.</param>
+    /// <returns>The result of the upload operation.</returns>
+    /// <exception cref="Exception">Thrown when all retry attempts fail.</exception>
     private async Task<UploadResult> RetryUploadAsync(
         Func<Task<UploadResult>> uploadAction,
         int maxRetries = MaxRetryAttempts)
     {
-        for (var i = 0; i < maxRetries; i++)
+        // Start with no delay
+        var currentDelay = 0;
+
+        for (var attempt = 0; attempt < maxRetries; attempt++)
         {
             try
             {
                 return await uploadAction();
             }
-            catch (Exception ex) when (i < maxRetries - 1 &&
+            catch (Exception ex) when (attempt < maxRetries - 1 &&
                                        ex is not OperationCanceledException)
             {
-                LogWarning("Upload attempt {Attempt} failed, retrying...", i + 1);
-                await Task.Delay(RetryDelayMs * (1 << i)); // Exponential backoff
+                LogWarning("Upload attempt {Attempt} failed, retrying in {Delay}ms",
+                    attempt + 1, currentDelay);
+
+                if (currentDelay > 0)
+                {
+                    await Task.Delay(currentDelay);
+                }
+
+                // Use exponential backoff with jitter
+                currentDelay = (RetryDelayMs * (1 << attempt)) +
+                               Random.Shared.Next(0, 100); // Add randomness to prevent thundering herd
             }
         }
 
@@ -662,11 +1129,37 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Notifies completion of file uploads and cleans up successful uploads.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task NotifyUploadCompletion()
     {
+        var uploadedFilesList = _uploadedFiles.ToList();
+
         if (OnFilesUploaded.HasDelegate)
         {
-            await OnFilesUploaded.InvokeAsync(_uploadedFiles.ToList());
+            await OnFilesUploaded.InvokeAsync(uploadedFilesList);
+        }
+
+        foreach (var file in _selectedFiles.Values.Where(f => f.UploadStatus == UploadStatus.Success))
+        {
+            _selectedFiles.TryRemove(file.Name, out _);
+        }
+
+        if (!string.IsNullOrEmpty(PersistenceKey))
+        {
+            await SaveStateAsync();
+        }
+    }
+
+    /// <summary>
+    ///     Notifies completion of specified uploaded files.
+    /// </summary>
+    /// <param name="uploadedFiles">List of successfully uploaded files.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
+    private async Task NotifyUploadCompletion(List<UploadFile> uploadedFiles)
+    {
+        if (OnFilesUploaded.HasDelegate && uploadedFiles.Count > 0)
+        {
+            await OnFilesUploaded.InvokeAsync(uploadedFiles);
         }
 
         foreach (var file in _selectedFiles.Values.Where(f => f.UploadStatus == UploadStatus.Success))
@@ -710,6 +1203,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Processes queued progress updates to reduce SignalR messages.
     /// </summary>
+    /// <param name="state">Timer state object (not used).</param>
     private void ProcessProgressUpdates(object? state)
     {
         if (_progressUpdates.Count == 0)
@@ -735,13 +1229,34 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     /// <summary>
+    ///     Queues a progress update with throttling to avoid UI thrashing.
+    /// </summary>
+    /// <param name="progress">Progress percentage (0-100).</param>
+    private void QueueProgressUpdate(int progress)
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastProgressUpdateTime).TotalMilliseconds >= ProgressUpdateThrottleMs)
+        {
+            _progressUpdates.Enqueue(progress);
+            _lastProgressUpdateTime = now;
+        }
+    }
+
+    /// <summary>
     ///     Queues a state update with debouncing.
     /// </summary>
     private async Task QueueStateUpdate()
     {
         if (_stateUpdateDebouncer is not null)
         {
-            await _stateUpdateDebouncer.CancelAsync();
+            try
+            {
+                await _stateUpdateDebouncer.CancelAsync();
+            }
+            catch
+            {
+                // Ignore cancellation errors
+            }
         }
 
         try
@@ -776,17 +1291,18 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Cancels all active uploads.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task CancelAllUploads()
     {
-        foreach (var cts in _uploadCancellationTokens.Values)
+        foreach (var cts in _uploadCancellationTokens.Values.ToList())
         {
             try
             {
                 await cts.CancelAsync();
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore cancellation errors
+                LogDebug("Error cancelling upload: {Error}", ex.Message);
             }
         }
     }
@@ -794,6 +1310,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Saves the current component state.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task SaveStateAsync()
     {
         try
@@ -827,6 +1344,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Restores the component state from persistence.
     /// </summary>
+    /// <returns>A task representing the asynchronous operation.</returns>
     private async Task RestoreStateAsync()
     {
         try
@@ -850,6 +1368,29 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Disposes all selected files asynchronously.
+    /// </summary>
+    private async Task DisposeSelectedFilesAsync()
+    {
+        foreach (var file in _selectedFiles.Values)
+        {
+            if (file.File is IAsyncDisposable disposable)
+            {
+                try
+                {
+                    await disposable.DisposeAsync();
+                }
+                catch (Exception ex)
+                {
+                    LogWarning("Error disposing file: {FileName}, {Error}", file.Name, ex.Message);
+                }
+            }
+        }
+
+        _selectedFiles.Clear();
+    }
+
     #endregion
 
     #region Helper Methods
@@ -857,6 +1398,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Formats a byte size into a human-readable string.
     /// </summary>
+    /// <param name="bytes">Size in bytes.</param>
+    /// <returns>Formatted size string (e.g., "1.2 MB").</returns>
     private static string FormatFileSize(long bytes)
     {
         string[] sizes = ["B", "KB", "MB", "GB", "TB"];
@@ -875,6 +1418,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Gets the CSS class for an upload status.
     /// </summary>
+    /// <param name="status">Upload status.</param>
+    /// <returns>CSS class name.</returns>
     private static string GetStatusClass(UploadStatus status)
     {
         return status switch
@@ -890,6 +1435,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     /// <summary>
     ///     Gets the icon CSS class for an upload status.
     /// </summary>
+    /// <param name="status">Upload status.</param>
+    /// <returns>CSS class for the icon.</returns>
     private static string GetStatusIconClass(UploadStatus status)
     {
         return status switch

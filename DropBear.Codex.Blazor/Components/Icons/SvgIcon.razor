@@ -1,21 +1,73 @@
-﻿@using DropBear.Codex.Blazor.Enums
+﻿// Updated SvgIcon.razor
+@using DropBear.Codex.Blazor.Enums
 @using DropBear.Codex.Blazor.Helpers
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="dropbear-snackbar-icon">
-    @(new MarkupString(GetSvgIcon(Type)))
-</div>
-
+<IconBase Title="@Title"
+          Size="@Size"
+          Color="@Color"
+          CssClass="@CssClass"
+          Clickable="@Clickable"
+          OnClick="@OnClick"
+          @attributes="AdditionalAttributes">
+    @if (_svgContent is not null)
+    {
+        @(new MarkupString(_svgContent))
+    }
+</IconBase>
 
 @code {
-    [Parameter]
-    public SnackbarType Type { get; set; }
+    private string? _svgContent;
+    private string? _previousType;
+    private static readonly Dictionary<string, string> SvgCache = new(StringComparer.OrdinalIgnoreCase);
 
-    private string GetSvgIcon(SnackbarType type) => type switch
+    [Parameter] public SnackbarType Type { get; set; }
+
+    [Parameter] public string? Title { get; set; }
+
+    [Parameter] public int Size { get; set; } = 20;
+
+    [Parameter] public string Color { get; set; } = "currentColor";
+
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+
+    [Parameter] public bool Clickable { get; set; } = false;
+
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    protected override void OnParametersSet()
     {
-        SnackbarType.Success => SvgIcons.Success,
-        SnackbarType.Error => SvgIcons.Error,
-        SnackbarType.Warning => SvgIcons.Warning,
-        _ => SvgIcons.Information
-    };
+        base.OnParametersSet();
+
+        if (_previousType != Type.ToString() || _svgContent is null)
+        {
+            _svgContent = GetSvgIcon(Type);
+            _previousType = Type.ToString();
+        }
+    }
+
+    private string GetSvgIcon(SnackbarType type)
+    {
+        var cacheKey = type.ToString();
+
+        if (SvgCache.TryGetValue(cacheKey, out var cachedSvg))
+        {
+            return cachedSvg;
+        }
+
+        var svgContent = type switch
+        {
+            SnackbarType.Success => SvgIcons.Success,
+            SnackbarType.Error => SvgIcons.Error,
+            SnackbarType.Warning => SvgIcons.Warning,
+            _ => SvgIcons.Information
+        };
+
+        SvgCache[cacheKey] = svgContent;
+        return svgContent;
+    }
+
 }
