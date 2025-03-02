@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -15,35 +16,6 @@ namespace DropBear.Codex.Blazor.Components.Progress;
 /// </summary>
 public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 {
-    #region Lifecycle Methods
-
-    /// <inheritdoc />
-    protected override async Task OnParametersSetAsync()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            // If no transition is active and the displayed progress is not at the target,
-            // queue a new transition.
-            if (_transitionQueue.IsEmpty && !IsTransitioning && Math.Abs(DisplayProgress - Progress) > 0.001)
-            {
-                var transition = new ProgressTransition();
-                _transitionQueue.Enqueue(transition);
-                await StartNextTransitionAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBarStep));
-        }
-    }
-
-    #endregion
-
     #region Transition Management
 
     /// <summary>
@@ -54,7 +26,7 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
         await _transitionLock.WaitAsync();
         try
         {
-            if (IsTransitioning || _transitionQueue.IsEmpty)
+            if (_isTransitioning || _transitionQueue.IsEmpty)
             {
                 return;
             }
@@ -68,9 +40,9 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
             IsTransitioning = true;
 
             var token = nextTransition.CancellationToken;
-            var startProgress = DisplayProgress;
-            var targetProgress = Progress;
-            var duration = TimeSpan.FromMilliseconds(Config.MinimumDisplayTimeMs);
+            var startProgress = _displayProgress;
+            var targetProgress = _progress;
+            var duration = TimeSpan.FromMilliseconds(_config?.MinimumDisplayTimeMs ?? 500);
 
             // Start the transition in a separate task.
             _ = Task.Run(async () =>
@@ -80,7 +52,8 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
                     // Generate a sequence of interpolated progress values.
                     await foreach (var progress in ProgressInterpolation.GenerateProgressSequence(
                                        startProgress, targetProgress, duration,
-                                       Config.EasingFunction, cancellationToken: token))
+                                       _config?.EasingFunction ?? EasingFunction.EaseInOutCubic,
+                                       cancellationToken: token))
                     {
                         if (IsDisposed)
                         {
@@ -138,7 +111,7 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     #region Disposal
 
     /// <inheritdoc />
-    public override async ValueTask DisposeAsync()
+    protected override async ValueTask DisposeAsyncCore()
     {
         // Cancel and dispose the active transition if any.
         if (_currentTransition != null)
@@ -155,13 +128,12 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 
         _transitionLock.Dispose();
 
-
-        await base.DisposeAsync();
+        await base.DisposeAsyncCore();
     }
 
     #endregion
 
-    #region Private Fields
+    #region Fields & Constants
 
     // Lock used to synchronize transition animations.
     private readonly SemaphoreSlim _transitionLock = new(1, 1);
@@ -177,22 +149,60 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     private DateTimeOffset _startTime = DateTimeOffset.MinValue;
     private StepStatus _status = StepStatus.NotStarted;
 
+    // Backing fields for parameters
+    private ProgressStepConfig? _config;
+    private double _progress;
+    private StepPosition _position;
+
+    // Internal state
+    private double _displayProgress;
+    private bool _isTransitioning;
+
+    // Flag to track if component should render
+    private bool _shouldRender = true;
+
+    // Cached class names
+    private string? _cachedPositionClass;
+    private string? _cachedStatusClass;
+
     #endregion
 
-    #region Parameters
+    #region Properties & Parameters
 
     /// <summary>
     ///     Required configuration defining step details (ID, Name, Tooltip, etc.).
     /// </summary>
     [Parameter]
     [EditorRequired]
-    public required ProgressStepConfig Config { get; set; }
+    public required ProgressStepConfig Config
+    {
+        get => _config!;
+        set
+        {
+            if (_config != value)
+            {
+                _config = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     The raw progress value for this step (0-100).
     /// </summary>
     [Parameter]
-    public double Progress { get; set; }
+    public double Progress
+    {
+        get => _progress;
+        set
+        {
+            if (Math.Abs(_progress - value) > 0.001)
+            {
+                _progress = value;
+                // Don't set _shouldRender here because we'll update through transitions
+            }
+        }
+    }
 
     /// <summary>
     ///     The current status of the step (e.g., NotStarted, InProgress, Completed, Failed).
@@ -209,6 +219,8 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
             }
 
             _status = value;
+            _cachedStatusClass = null; // Reset cached class
+            _shouldRender = true;
 
             // Record start time when the step transitions into InProgress.
             if (value == StepStatus.InProgress && !_hasStarted)
@@ -223,21 +235,51 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     ///     The position of this step relative to others (Previous, Current, Next).
     /// </summary>
     [Parameter]
-    public StepPosition Position { get; set; }
-
-    #endregion
-
-    #region Public Properties
+    public StepPosition Position
+    {
+        get => _position;
+        set
+        {
+            if (_position != value)
+            {
+                _position = value;
+                _cachedPositionClass = null; // Reset cached class
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     Indicates whether a transition animation is currently in progress.
     /// </summary>
-    public bool IsTransitioning { get; private set; }
+    public bool IsTransitioning
+    {
+        get => _isTransitioning;
+        private set
+        {
+            if (_isTransitioning != value)
+            {
+                _isTransitioning = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     The display value (possibly smoothed) used for the progress bar width.
     /// </summary>
-    public double DisplayProgress { get; private set; }
+    public double DisplayProgress
+    {
+        get => _displayProgress;
+        private set
+        {
+            if (Math.Abs(_displayProgress - value) > 0.001)
+            {
+                _displayProgress = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     The duration this step has been in progress, if it has started.
@@ -246,28 +288,86 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 
     #endregion
 
+    #region Lifecycle Methods
+
+    /// <summary>
+    ///     Controls whether the component should render, optimizing for performance.
+    /// </summary>
+    /// <returns>True if the component should render, false otherwise.</returns>
+    protected override bool ShouldRender()
+    {
+        if (_shouldRender)
+        {
+            _shouldRender = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <inheritdoc />
+    protected override async Task OnParametersSetAsync()
+    {
+        if (IsDisposed)
+        {
+            return;
+        }
+
+        try
+        {
+            // If no transition is active and the displayed progress is not at the target,
+            // queue a new transition.
+            if (_transitionQueue.IsEmpty && !_isTransitioning && Math.Abs(_displayProgress - _progress) > 0.001)
+            {
+                var transition = new ProgressTransition();
+                _transitionQueue.Enqueue(transition);
+                await StartNextTransitionAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBarStep));
+        }
+    }
+
+    #endregion
+
     #region Helper Methods
 
     /// <summary>
     ///     Returns the CSS class corresponding to the step's position.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private string GetPositionClass()
     {
-        return Position switch
+        if (_cachedPositionClass != null)
+        {
+            return _cachedPositionClass;
+        }
+
+        _cachedPositionClass = _position switch
         {
             StepPosition.Previous => "previous-step",
             StepPosition.Current => "current-step",
             StepPosition.Next => "next-step",
             _ => string.Empty
         };
+
+        return _cachedPositionClass;
     }
 
     /// <summary>
     ///     Returns the CSS class corresponding to the step's status.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private string GetStatusClass()
     {
-        return Status switch
+        if (_cachedStatusClass != null)
+        {
+            return _cachedStatusClass;
+        }
+
+        _cachedStatusClass = _status switch
         {
             StepStatus.Completed => "success",
             StepStatus.InProgress => "current",
@@ -276,14 +376,17 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
             StepStatus.Skipped => "skipped",
             _ => string.Empty
         };
+
+        return _cachedStatusClass;
     }
 
     /// <summary>
     ///     Returns a textual description of the step's position.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private string GetStatusText()
     {
-        return Position switch
+        return _position switch
         {
             StepPosition.Previous => "Previous Step",
             StepPosition.Current => "Current Step",

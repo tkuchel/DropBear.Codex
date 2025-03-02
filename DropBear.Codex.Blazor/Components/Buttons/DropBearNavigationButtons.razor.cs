@@ -47,7 +47,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     /// <summary>
     ///     Initializes the component by setting up JS interop
     /// </summary>
-    protected override async Task InitializeComponentAsync()
+    protected override async ValueTask InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
         {

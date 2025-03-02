@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
@@ -21,24 +22,6 @@ namespace DropBear.Codex.Blazor.Components.Notifications;
 /// </summary>
 public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 {
-    #region Lifecycle Methods
-
-    protected override void OnInitialized()
-    {
-        try
-        {
-            SubscribeToEvents();
-            base.OnInitialized();
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to initialize DropBearSnackbarContainer");
-            throw;
-        }
-    }
-
-    #endregion
-
     #region Event Subscriptions
 
     /// <summary>
@@ -46,6 +29,14 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     /// </summary>
     private void SubscribeToEvents()
     {
+        // Unsubscribe from any existing subscriptions
+        foreach (var subscription in _subscriptions)
+        {
+            subscription.Dispose();
+        }
+
+        _subscriptions.Clear();
+
         // Subscribe to snackbar events.
         if (SnackbarService != null)
         {
@@ -54,10 +45,10 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         }
 
         // Subscribe to notification channels.
-        if (!string.IsNullOrEmpty(ChannelId))
+        if (!string.IsNullOrEmpty(_channelId))
         {
             var channelSubscription = NotificationSubscriber.Subscribe(
-                $"{GlobalConstants.UserNotificationChannel}.{ChannelId}",
+                $"{GlobalConstants.UserNotificationChannel}.{_channelId}",
                 HandleNotificationAsync);
             _subscriptions.Add(channelSubscription);
         }
@@ -74,15 +65,11 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 
     #region Disposal
 
-    public override async ValueTask DisposeAsync()
+    /// <summary>
+    ///     Disposes of the component and unsubscribes from events.
+    /// </summary>
+    protected override async ValueTask DisposeAsyncCore()
     {
-        if (_isDisposed)
-        {
-            return;
-        }
-
-
-        _isDisposed = true;
         try
         {
             // Unsubscribe from service events.
@@ -109,8 +96,7 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
             Logger.LogError(ex, "Error during DropBearSnackbarContainer disposal");
         }
 
-
-        await base.DisposeAsync();
+        await base.DisposeAsyncCore();
     }
 
     #endregion
@@ -120,6 +106,15 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     private readonly SemaphoreSlim _renderLock = new(1, 1);
     private readonly List<IDisposable> _subscriptions = new();
     private bool _isDisposed;
+
+    // Backing fields for parameters
+    private string? _channelId;
+    private SnackbarPosition _position = SnackbarPosition.BottomRight;
+
+    // Cached position class
+
+    // Flag to track if component should render
+    private bool _shouldRender = true;
 
     [Inject] private ISnackbarService? SnackbarService { get; set; }
     [Inject] private IAsyncSubscriber<string, Notification> NotificationSubscriber { get; set; } = null!;
@@ -133,24 +128,92 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     ///     Optional channel ID used to subscribe to user-specific notifications.
     /// </summary>
     [Parameter]
-    public string? ChannelId { get; set; }
+    public string? ChannelId
+    {
+        get => _channelId;
+        set
+        {
+            if (_channelId != value)
+            {
+                _channelId = value;
+                // Don't set _shouldRender here because we need to resubscribe to events
+            }
+        }
+    }
 
     /// <summary>
     ///     Specifies the position of the snackbar container.
     /// </summary>
     [Parameter]
-    public SnackbarPosition Position { get; set; } = SnackbarPosition.BottomRight;
+    public SnackbarPosition Position
+    {
+        get => _position;
+        set
+        {
+            if (_position != value)
+            {
+                _position = value;
+                UpdatePositionClass();
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     Gets the CSS class corresponding to the chosen position.
     /// </summary>
-    private string PositionClass => Position switch
+    private string PositionClass { get; set; } = "bottom-right";
+
+    #endregion
+
+    #region Lifecycle Methods
+
+    /// <summary>
+    ///     Controls whether the component should render, optimizing for performance.
+    /// </summary>
+    /// <returns>True if the component should render, false otherwise.</returns>
+    protected override bool ShouldRender()
     {
-        SnackbarPosition.TopLeft => "top-left",
-        SnackbarPosition.TopRight => "top-right",
-        SnackbarPosition.BottomLeft => "bottom-left",
-        _ => "bottom-right"
-    };
+        if (_shouldRender)
+        {
+            _shouldRender = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     Initializes the component by subscribing to events.
+    /// </summary>
+    protected override void OnInitialized()
+    {
+        try
+        {
+            UpdatePositionClass();
+            SubscribeToEvents();
+            base.OnInitialized();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to initialize DropBearSnackbarContainer");
+            throw;
+        }
+    }
+
+    /// <summary>
+    ///     Updates subscriptions when parameters change.
+    /// </summary>
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+
+        // If the channel ID changed, we need to resubscribe
+        if (_channelId != null && _subscriptions.Count == 0)
+        {
+            SubscribeToEvents();
+        }
+    }
 
     #endregion
 
@@ -170,6 +233,9 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         try
         {
             await _renderLock.WaitAsync();
+
+            // Mark for rendering and invoke state change
+            _shouldRender = true;
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -196,6 +262,9 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         try
         {
             await _renderLock.WaitAsync();
+
+            // Mark for rendering and invoke state change
+            _shouldRender = true;
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
@@ -244,6 +313,27 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
 
     #region Helper Methods
 
+    /// <summary>
+    ///     Updates the position class based on the Position property.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void UpdatePositionClass()
+    {
+        PositionClass = _position switch
+        {
+            SnackbarPosition.TopLeft => "top-left",
+            SnackbarPosition.TopRight => "top-right",
+            SnackbarPosition.BottomLeft => "bottom-left",
+            _ => "bottom-right"
+        };
+    }
+
+    /// <summary>
+    ///     Maps notification severity to snackbar type.
+    /// </summary>
+    /// <param name="severity">The notification severity.</param>
+    /// <returns>The corresponding snackbar type.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static SnackbarType MapNotificationSeverityToSnackbarType(NotificationSeverity severity)
     {
         return severity switch
@@ -257,6 +347,12 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         };
     }
 
+    /// <summary>
+    ///     Gets the appropriate duration for a notification based on its severity.
+    /// </summary>
+    /// <param name="severity">The notification severity.</param>
+    /// <returns>The duration in milliseconds.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetDurationForSeverity(NotificationSeverity severity)
     {
         return severity switch
@@ -270,6 +366,12 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
         };
     }
 
+    /// <summary>
+    ///     Determines if a notification requires manual closing based on its severity.
+    /// </summary>
+    /// <param name="severity">The notification severity.</param>
+    /// <returns>True if manual closing is required, false otherwise.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool GetRequiresManualClose(NotificationSeverity severity)
     {
         return severity is NotificationSeverity.Error or NotificationSeverity.Critical;

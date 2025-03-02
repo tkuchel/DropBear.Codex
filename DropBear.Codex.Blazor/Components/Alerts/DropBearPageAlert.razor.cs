@@ -84,7 +84,7 @@ public partial class DropBearPageAlert : DropBearComponentBase
     /// <summary>
     /// Initiates alert setup after the component renders.
     /// </summary>
-    protected override Task InitializeComponentAsync()
+    protected override ValueTask InitializeComponentAsync()
     {
         try
         {
@@ -92,12 +92,16 @@ public partial class DropBearPageAlert : DropBearComponentBase
             {
                 InitializeTimers(Duration.Value);
             }
-            return Task.CompletedTask;
+
+            return base.InitializeComponentAsync();
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Failed to initialize alert component");
-            return Task.CompletedTask;
+
+            // Close the alert immediately on error
+            _ = CloseAlertAsync();
+            return ValueTask.CompletedTask;
         }
     }
 

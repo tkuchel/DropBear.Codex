@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 
 #endregion
@@ -16,6 +17,8 @@ namespace DropBear.Codex.Core.Results.Base;
 public abstract record ResultError : ISpanFormattable
 {
     private const string DefaultErrorMessage = "An unknown error occurred";
+
+    // Cache frequently-used error messages to reduce string allocations
     private static readonly ConcurrentDictionary<string, string> MessageCache = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -123,6 +126,11 @@ public abstract record ResultError : ISpanFormattable
         return this with { Metadata = metadata };
     }
 
+    /// <summary>
+    ///     Validates and formats an error message, using a cached version if available.
+    /// </summary>
+    /// <param name="message">The message to validate and format.</param>
+    /// <returns>The formatted message.</returns>
     private static string ValidateAndFormatMessage(string? message)
     {
         if (string.IsNullOrWhiteSpace(message))
@@ -130,30 +138,56 @@ public abstract record ResultError : ISpanFormattable
             return DefaultErrorMessage;
         }
 
-        // Use message caching for common error messages
-        return MessageCache.GetOrAdd(message, key => string.Create(key.Length, key, (span, msg) =>
+        // Normalize and cache the message
+        return MessageCache.GetOrAdd(message, key =>
         {
-            msg.AsSpan().CopyTo(span);
-            // Normalize line endings in-place
-            for (var i = 0; i < span.Length; i++)
+            var span = key.AsSpan();
+
+            // Count how many \r\n sequences to determine final length
+            var crlfCount = 0;
+            for (var i = 0; i < span.Length - 1; i++)
             {
-                if (span[i] == '\r')
+                if (span[i] == '\r' && span[i + 1] == '\n')
                 {
-                    if (i + 1 < span.Length && span[i + 1] == '\n')
+                    crlfCount++;
+                }
+            }
+
+            // Create the normalized string
+            return string.Create(key.Length - crlfCount, key, (dest, src) =>
+            {
+                var destIndex = 0;
+                var sourceSpan = src.AsSpan();
+
+                for (var i = 0; i < sourceSpan.Length; i++)
+                {
+                    var c = sourceSpan[i];
+
+                    if (c == '\r')
                     {
-                        span[i] = '\n';
-                        span.Slice(i + 1).CopyTo(span.Slice(i));
-                        span = span[..^1];
+                        // Skip \r and replace with \n, skip following \n if present
+                        if (i + 1 < sourceSpan.Length && sourceSpan[i + 1] == '\n')
+                        {
+                            i++; // Skip the following \n
+                        }
+
+                        dest[destIndex++] = '\n';
                     }
                     else
                     {
-                        span[i] = '\n';
+                        dest[destIndex++] = c;
                     }
                 }
-            }
-        })).Trim();
+            }).Trim();
+        });
     }
 
+    /// <summary>
+    ///     Formats a TimeSpan age value into a human-readable string.
+    /// </summary>
+    /// <param name="age">The age to format.</param>
+    /// <returns>A formatted string representing the age.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string FormatAge(TimeSpan age)
     {
         return age switch
@@ -169,6 +203,9 @@ public abstract record ResultError : ISpanFormattable
     /// <summary>
     ///     Creates a new error with the current timestamp.
     /// </summary>
+    /// <typeparam name="T">The specific error type to create.</typeparam>
+    /// <param name="message">The error message.</param>
+    /// <returns>A new error instance.</returns>
     protected static T CreateNow<T>(string message) where T : ResultError
     {
         return (T)Activator.CreateInstance(typeof(T), message, DateTime.UtcNow)!;

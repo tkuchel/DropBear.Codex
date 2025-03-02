@@ -1,8 +1,13 @@
-﻿using DropBear.Codex.Blazor.Components.Bases;
+﻿#region
+
+using System.Runtime.CompilerServices;
+using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
@@ -12,6 +17,8 @@ namespace DropBear.Codex.Blazor.Components.Notifications;
 /// </summary>
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
+    #region Constants & Fields
+
     private const string JsModuleName = JsModuleNames.Snackbar;
 
     private readonly SemaphoreSlim _snackbarSemaphore = new(1, 1);
@@ -19,21 +26,79 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     private IJSObjectReference? _jsModule;
     private DotNetObjectReference<DropBearSnackbar>? _dotNetRef;
 
+    // Flag to track if component should render
+    private bool _shouldRender = true;
+
+    // Cache for computed CSS classes
+    private string? _cachedCssClasses;
+
+    #endregion
+
+    #region Properties & Parameters
+
+    /// <summary>
+    ///     Gets or sets the snackbar instance that contains all the information needed to display the notification.
+    /// </summary>
     [Parameter]
     [EditorRequired]
     public SnackbarInstance SnackbarInstance { get; init; } = null!;
 
+    /// <summary>
+    ///     Event callback that is invoked when the snackbar is closed.
+    /// </summary>
     [Parameter]
     public EventCallback OnClose { get; set; }
 
+    /// <summary>
+    ///     Additional HTML attributes to be applied to the snackbar container.
+    /// </summary>
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
 
-    private string CssClasses => $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
-
-    protected override async Task InitializeComponentAsync()
+    /// <summary>
+    ///     Gets the CSS classes for the snackbar, including the type-specific class.
+    /// </summary>
+    private string CssClasses
     {
-        if (_isInitialized || IsDisposed) return;
+        get
+        {
+            if (_cachedCssClasses == null)
+            {
+                _cachedCssClasses = $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
+            }
+
+            return _cachedCssClasses;
+        }
+    }
+
+    #endregion
+
+    #region Lifecycle Methods
+
+    /// <summary>
+    ///     Controls whether the component should render, optimizing for performance.
+    /// </summary>
+    /// <returns>True if the component should render, false otherwise.</returns>
+    protected override bool ShouldRender()
+    {
+        if (_shouldRender)
+        {
+            _shouldRender = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     Initializes the component by setting up JavaScript interop and starting the snackbar.
+    /// </summary>
+    protected override async ValueTask InitializeComponentAsync()
+    {
+        if (_isInitialized || IsDisposed)
+        {
+            return;
+        }
 
         try
         {
@@ -78,6 +143,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
             _isInitialized = true;
             LogDebug("Snackbar initialized: {Id}", SnackbarInstance.Id);
+            _shouldRender = true;
         }
         catch (Exception ex)
         {
@@ -90,9 +156,21 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         }
     }
 
+    #endregion
+
+    #region Event Handlers
+
+    /// <summary>
+    ///     Handles a click on an action button.
+    /// </summary>
+    /// <param name="action">The action that was clicked.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private async Task HandleActionClick(SnackbarAction action)
     {
-        if (!_isInitialized || IsDisposed) return;
+        if (!_isInitialized || IsDisposed)
+        {
+            return;
+        }
 
         try
         {
@@ -100,6 +178,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             {
                 await action.OnClick.Invoke();
             }
+
             await CloseAsync();
         }
         catch (Exception ex)
@@ -109,9 +188,16 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Closes the snackbar, hiding the UI element and invoking the OnClose callback.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private async Task CloseAsync()
     {
-        if (!_isInitialized || IsDisposed || _jsModule == null) return;
+        if (!_isInitialized || IsDisposed || _jsModule == null)
+        {
+            return;
+        }
 
         try
         {
@@ -136,6 +222,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             }
 
             LogDebug("Snackbar closed: {Id}", SnackbarInstance.Id);
+            _shouldRender = true;
         }
         catch (Exception ex)
         {
@@ -147,6 +234,9 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Method called by JavaScript when the progress animation completes.
+    /// </summary>
     [JSInvokable]
     public async Task OnProgressComplete()
     {
@@ -154,6 +244,13 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         await InvokeAsync(async () => await CloseAsync());
     }
 
+    #endregion
+
+    #region Cleanup & Helpers
+
+    /// <summary>
+    ///     Cleans up JavaScript resources when the component is disposed.
+    /// </summary>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
@@ -201,13 +298,22 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
             _dotNetRef = null;
             _jsModule = null;
             _isInitialized = false;
+            _cachedCssClasses = null;
         }
     }
 
+    /// <summary>
+    ///     Determines if an exception is related to an element being removed from the DOM.
+    /// </summary>
+    /// <param name="ex">The exception to check.</param>
+    /// <returns>True if the exception indicates the element was already removed.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsElementRemovedError(Exception? ex)
     {
         return ex is not null &&
                ex.Message.Contains("removeChild") &&
                ex.Message.Contains("parentNode is null");
     }
+
+    #endregion
 }

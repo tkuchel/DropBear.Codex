@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -18,6 +19,9 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 {
     #region Constructor
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="DropBearValidationErrorsComponent" /> class.
+    /// </summary>
     public DropBearValidationErrorsComponent()
     {
         // Create a unique component ID.
@@ -28,7 +32,9 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
     #region Cleanup
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Cleans up JavaScript resources when the component is disposed.
+    /// </summary>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
@@ -85,8 +91,16 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     private readonly string _componentId;
     private readonly SemaphoreSlim _stateSemaphore = new(1, 1);
     private volatile bool _isInitialized;
-    private volatile bool _isCollapsed;
+    private bool _isCollapsed;
     private IJSObjectReference? _jsModule;
+
+    // Backing fields for parameters
+    private ValidationResult? _validationResult;
+    private bool _initialCollapsed;
+    private string? _cssClass;
+
+    // Flag to track if component should render
+    private bool _shouldRender = true;
 
     #endregion
 
@@ -96,19 +110,57 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     ///     The validation result to display.
     /// </summary>
     [Parameter]
-    public ValidationResult? ValidationResult { get; set; }
+    public ValidationResult? ValidationResult
+    {
+        get => _validationResult;
+        set
+        {
+            if (_validationResult != value)
+            {
+                _validationResult = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     Whether the component is initially collapsed.
     /// </summary>
     [Parameter]
-    public bool InitialCollapsed { get; set; }
+    public bool InitialCollapsed
+    {
+        get => _initialCollapsed;
+        set
+        {
+            if (_initialCollapsed != value)
+            {
+                _initialCollapsed = value;
+                if (!_isInitialized)
+                {
+                    _isCollapsed = value;
+                }
+
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     Optional additional CSS classes.
     /// </summary>
     [Parameter]
-    public string? CssClass { get; set; }
+    public string? CssClass
+    {
+        get => _cssClass;
+        set
+        {
+            if (_cssClass != value)
+            {
+                _cssClass = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     #endregion
 
@@ -117,7 +169,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     /// <summary>
     ///     Determines if there are any validation errors.
     /// </summary>
-    private bool HasErrors => ValidationResult?.HasErrors == true;
+    private bool HasErrors => _validationResult?.HasErrors == true;
 
     /// <summary>
     ///     Gets or sets the collapsed state and triggers ARIA attribute updates when changed.
@@ -133,6 +185,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
             }
 
             _isCollapsed = value;
+            _shouldRender = true;
 
             if (!IsDisposed)
             {
@@ -146,19 +199,39 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
 
     #region Lifecycle Methods
 
+    /// <summary>
+    ///     Controls whether the component should render, optimizing for performance.
+    /// </summary>
+    /// <returns>True if the component should render, false otherwise.</returns>
+    protected override bool ShouldRender()
+    {
+        if (_shouldRender)
+        {
+            _shouldRender = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     Initializes the component with the initial collapsed state.
+    /// </summary>
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        IsCollapsed = InitialCollapsed;
+        _isCollapsed = _initialCollapsed;
 
         if (HasErrors)
         {
-            LogDebug("Initialized with {Count} errors", ValidationResult!.Errors.Count);
+            LogDebug("Initialized with {Count} errors", _validationResult!.Errors.Count);
         }
     }
 
-    /// <inheritdoc />
-    protected override async Task InitializeComponentAsync()
+    /// <summary>
+    ///     Initializes JavaScript resources when the component is first rendered.
+    /// </summary>
+    protected override async ValueTask InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
         {
@@ -206,6 +279,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     /// <summary>
     ///     Toggles the collapsed state of the validation errors UI.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private async Task ToggleCollapseState()
     {
         if (!_isInitialized || IsDisposed)
@@ -239,6 +313,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     /// <summary>
     ///     Updates ARIA attributes via JS interop to reflect the current collapse state.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private async Task UpdateAriaAttributesAsync()
     {
         if (!_isInitialized || IsDisposed)

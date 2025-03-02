@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
@@ -11,6 +12,10 @@ using Microsoft.JSInterop;
 
 namespace DropBear.Codex.Blazor.Components.Menus;
 
+/// <summary>
+///     A Blazor component that provides a context menu triggered by right-clicking on content.
+///     Supports nested submenus, item icons, and custom positioning.
+/// </summary>
 public partial class DropBearContextMenu : DropBearComponentBase
 {
     #region Fields & Constants
@@ -22,9 +27,18 @@ public partial class DropBearContextMenu : DropBearComponentBase
     private DotNetObjectReference<DropBearContextMenu>? _dotNetRef;
     private ElementReference _triggerElement;
     private volatile bool _isInitialized;
-    private volatile bool _isVisible;
+    private bool _isVisible;
     private double _left;
     private double _top;
+
+    // Backing fields for parameters
+    private IReadOnlyCollection<ContextMenuItem> _menuItems = Array.Empty<ContextMenuItem>();
+    private EventCallback<(ContextMenuItem, object?)> _onItemClicked;
+    private Func<object?>? _getContext;
+    private RenderFragment? _childContent;
+
+    // Flag to track if component should render
+    private bool _shouldRender = true;
 
     // Window dimensions cache
     private WindowDimensions? _cachedDimensions;
@@ -35,19 +49,103 @@ public partial class DropBearContextMenu : DropBearComponentBase
 
     #region Parameters
 
-    [Parameter] public IReadOnlyCollection<ContextMenuItem> MenuItems { get; set; } = Array.Empty<ContextMenuItem>();
+    /// <summary>
+    ///     Gets or sets the collection of menu items to display in the context menu.
+    /// </summary>
+    [Parameter]
+    public IReadOnlyCollection<ContextMenuItem> MenuItems
+    {
+        get => _menuItems;
+        set
+        {
+            if (!ReferenceEquals(_menuItems, value))
+            {
+                _menuItems = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
-    [Parameter] public EventCallback<(ContextMenuItem, object?)> OnItemClicked { get; set; }
+    /// <summary>
+    ///     Gets or sets the callback that is invoked when a menu item is clicked.
+    ///     Provides both the clicked item and the optional context object.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(ContextMenuItem, object?)> OnItemClicked
+    {
+        get => _onItemClicked;
+        set
+        {
+            if (_onItemClicked.Equals(value))
+            {
+                return;
+            }
 
-    [Parameter] public Func<object?>? GetContext { get; set; }
+            _onItemClicked = value;
+        }
+    }
 
-    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>
+    ///     Gets or sets a function that returns a context object to be passed to the OnItemClicked callback.
+    ///     This allows for dynamic context to be provided at the time of interaction.
+    /// </summary>
+    [Parameter]
+    public Func<object?>? GetContext
+    {
+        get => _getContext;
+        set
+        {
+            if (_getContext == value)
+            {
+                return;
+            }
+
+            _getContext = value;
+        }
+    }
+
+    /// <summary>
+    ///     Gets or sets the content that will trigger the context menu when right-clicked.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? ChildContent
+    {
+        get => _childContent;
+        set
+        {
+            if (_childContent == value)
+            {
+                return;
+            }
+
+            _childContent = value;
+            _shouldRender = true;
+        }
+    }
 
     #endregion
 
     #region Lifecycle Methods
 
-    protected override async Task InitializeComponentAsync()
+    /// <summary>
+    ///     Controls whether the component should render, optimizing for performance.
+    /// </summary>
+    /// <returns>True if the component should render, false otherwise.</returns>
+    protected override bool ShouldRender()
+    {
+        if (_shouldRender)
+        {
+            _shouldRender = false;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    ///     Initializes the component by creating and configuring the JavaScript context menu.
+    /// </summary>
+    protected override async ValueTask InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
         {
@@ -82,6 +180,9 @@ public partial class DropBearContextMenu : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Cleans up JavaScript resources when the component is disposed.
+    /// </summary>
     protected override async Task CleanupJavaScriptResourcesAsync()
     {
         try
@@ -134,6 +235,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
 
     #region Menu Position Handling
 
+    /// <summary>
+    ///     Gets the current window dimensions, using a cached value if available and not expired.
+    /// </summary>
+    /// <returns>A WindowDimensions object containing the width and height of the window.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private async Task<WindowDimensions> GetWindowDimensionsAsync()
     {
         if (_cachedDimensions != null && DateTime.UtcNow - _lastDimensionsCheck < DimensionsCacheDuration)
@@ -161,6 +267,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Updates the menu position to ensure it stays within the viewport boundaries.
+    /// </summary>
+    /// <param name="x">The initial X coordinate.</param>
+    /// <param name="y">The initial Y coordinate.</param>
     private async Task UpdateMenuPositionAsync(double x, double y)
     {
         var dimensions = await GetWindowDimensionsAsync();
@@ -198,6 +309,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
 
     #region JSInvokable Methods
 
+    /// <summary>
+    ///     Shows the context menu at the specified position. Called from JavaScript.
+    /// </summary>
+    /// <param name="x">The X coordinate where the menu should appear.</param>
+    /// <param name="y">The Y coordinate where the menu should appear.</param>
     [JSInvokable]
     public async Task Show(double x, double y)
     {
@@ -215,6 +331,7 @@ public partial class DropBearContextMenu : DropBearComponentBase
             await QueueStateHasChangedAsync(() =>
             {
                 _isVisible = true;
+                _shouldRender = true;
                 return Task.CompletedTask;
             });
 
@@ -230,6 +347,9 @@ public partial class DropBearContextMenu : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Hides the context menu. Called from JavaScript when clicking outside or pressing Escape.
+    /// </summary>
     [JSInvokable]
     public async Task Hide()
     {
@@ -245,6 +365,7 @@ public partial class DropBearContextMenu : DropBearComponentBase
             await QueueStateHasChangedAsync(() =>
             {
                 _isVisible = false;
+                _shouldRender = true;
                 return Task.CompletedTask;
             });
 
@@ -264,6 +385,10 @@ public partial class DropBearContextMenu : DropBearComponentBase
 
     #region Event Handling
 
+    /// <summary>
+    ///     Shows the context menu in response to a right-click event.
+    /// </summary>
+    /// <param name="e">The mouse event arguments containing cursor position.</param>
     private async Task ShowContextMenuAsync(MouseEventArgs e)
     {
         if (!_isInitialized || IsDisposed)
@@ -304,6 +429,10 @@ public partial class DropBearContextMenu : DropBearComponentBase
         }
     }
 
+    /// <summary>
+    ///     Handles clicking on a menu item by invoking the callback and hiding the menu.
+    /// </summary>
+    /// <param name="item">The menu item that was clicked.</param>
     private async Task OnItemClickAsync(ContextMenuItem item)
     {
         if (IsDisposed)
@@ -315,11 +444,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
         {
             await _menuStateSemaphore.WaitAsync(ComponentToken);
 
-            var context = GetContext?.Invoke();
+            var context = _getContext?.Invoke();
 
-            if (OnItemClicked.HasDelegate)
+            if (_onItemClicked.HasDelegate)
             {
-                await OnItemClicked.InvokeAsync((item, context));
+                await _onItemClicked.InvokeAsync((item, context));
             }
 
             // Don't auto-hide if item has submenu

@@ -29,7 +29,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
             return;
         }
 
-        // Prevent reentrant calls.
+        // Prevent reentrant calls using atomic operations for thread safety
         if (Interlocked.CompareExchange(ref _updateInProgress, 1, 0) != 0)
         {
             return;
@@ -103,15 +103,24 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
     #region Disposal
 
     /// <inheritdoc />
-    public override async ValueTask DisposeAsync()
+    protected override async ValueTask DisposeAsyncCore()
     {
         // Dispose of timer and cancellation resources.
-        _timer?.Dispose();
-        _cts.Cancel();
-        _cts.Dispose();
+        _ = _timer?.DisposeAsync();
+        _timer = null;
+
+        try
+        {
+            await _cts.CancelAsync();
+            _cts.Dispose();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Ignore if already disposed
+        }
 
         // Trigger any asynchronous disposal in the base class.
-        await base.DisposeAsync();
+        await base.DisposeAsyncCore();
     }
 
     #endregion
@@ -127,6 +136,13 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
 
     // Current displayed progress.
     private int _currentProgress;
+
+    // Backing fields for parameters to detect changes
+    private string _title = "Please wait...";
+    private string _message = "Processing your request...";
+    private int _progress;
+    private bool _showCancelButton;
+    private string _cancelButtonText = "Cancel";
 
     // Flag indicating that progress was set (i.e. determinate mode).
     private bool _progressSet;
@@ -145,9 +161,27 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
     /// </summary>
     private bool IsIndeterminate => !_progressSet;
 
+    // Flag to track if component should render
+    private bool _shouldRender = true;
+
     #endregion
 
     #region Lifecycle Methods
+
+    /// <summary>
+    ///     Controls whether the component should render, optimizing for performance.
+    /// </summary>
+    /// <returns>True if the component should render, false otherwise.</returns>
+    protected override bool ShouldRender()
+    {
+        if (_shouldRender)
+        {
+            _shouldRender = false;
+            return true;
+        }
+
+        return false;
+    }
 
     /// <inheritdoc />
     protected override void OnInitialized()
@@ -167,6 +201,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
         {
             _progressSet = true;
             StartTimer();
+            _shouldRender = true;
         }
 
         // When progress reaches 100%, stop the timer.
@@ -174,6 +209,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
         {
             StopTimer();
             Logger.Debug("Progress complete");
+            _shouldRender = true;
         }
     }
 
@@ -212,31 +248,86 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
     ///     The title to display above the progress bar.
     /// </summary>
     [Parameter]
-    public string Title { get; set; } = "Please wait...";
+    public string Title
+    {
+        get => _title;
+        set
+        {
+            if (_title != value)
+            {
+                _title = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     The message displayed alongside the progress bar.
     /// </summary>
     [Parameter]
-    public string Message { get; set; } = "Processing your request...";
+    public string Message
+    {
+        get => _message;
+        set
+        {
+            if (_message != value)
+            {
+                _message = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     The target progress value (0-100).
     /// </summary>
     [Parameter]
-    public int Progress { get; set; }
+    public int Progress
+    {
+        get => _progress;
+        set
+        {
+            if (_progress != value)
+            {
+                _progress = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     Whether to show a cancel button.
     /// </summary>
     [Parameter]
-    public bool ShowCancelButton { get; set; }
+    public bool ShowCancelButton
+    {
+        get => _showCancelButton;
+        set
+        {
+            if (_showCancelButton != value)
+            {
+                _showCancelButton = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     The text for the cancel button.
     /// </summary>
     [Parameter]
-    public string CancelButtonText { get; set; } = "Cancel";
+    public string CancelButtonText
+    {
+        get => _cancelButtonText;
+        set
+        {
+            if (_cancelButtonText != value)
+            {
+                _cancelButtonText = value;
+                _shouldRender = true;
+            }
+        }
+    }
 
     /// <summary>
     ///     Callback invoked when cancellation is requested.

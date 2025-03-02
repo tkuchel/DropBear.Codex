@@ -1,21 +1,26 @@
 ﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
-///     A lightweight async lock implementation wrapping a <see cref="SemaphoreSlim" />.
-///     Call <see cref="LockAsync" /> to acquire, and then dispose the returned object to release.
+///     Asynchronous lock implementation that supports async/await patterns.
+///     Provides an efficient way to control access to a shared resource in an async context.
 /// </summary>
 public sealed class AsyncLock : IDisposable
 {
     private readonly Task<IDisposable> _releaser;
     private readonly SemaphoreSlim _semaphore = new(1, 1);
-    private volatile bool _isDisposed;
+    private bool _isDisposed;
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="AsyncLock" /> class.
+    /// </summary>
     public AsyncLock()
     {
-        // Preallocate a releaser so we don't allocate a new one on every lock acquisition
-        _releaser = Task.FromResult<IDisposable>(new Releaser(this));
+        _releaser = Task.FromResult((IDisposable)new Releaser(this));
     }
 
+    /// <summary>
+    ///     Disposes the AsyncLock.
+    /// </summary>
     public void Dispose()
     {
         if (_isDisposed)
@@ -28,31 +33,31 @@ public sealed class AsyncLock : IDisposable
     }
 
     /// <summary>
-    ///     Acquires the lock asynchronously. The returned <see cref="IDisposable" /> must be disposed to release.
+    ///     Acquires the lock asynchronously.
     /// </summary>
-    /// <exception cref="ObjectDisposedException">Thrown if the lock has been disposed.</exception>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A task that completes with an IDisposable that releases the lock when disposed.</returns>
     public Task<IDisposable> LockAsync(CancellationToken cancellationToken = default)
     {
-        if (_isDisposed)
-        {
-            throw new ObjectDisposedException(nameof(AsyncLock));
-        }
+        var wait = _semaphore.WaitAsync(cancellationToken);
 
-        var waitTask = _semaphore.WaitAsync(cancellationToken);
-        return waitTask.IsCompleted
+        return wait.IsCompleted
             ? _releaser
-            : waitTask.ContinueWith(
-                (_, state) => (IDisposable)new Releaser((AsyncLock)state!),
-                this,
+            : wait.ContinueWith(
+                (_, state) => (IDisposable)state!,
+                _releaser.Result,
                 cancellationToken,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
     }
 
+    /// <summary>
+    ///     Helper class that releases the lock when disposed.
+    /// </summary>
     private sealed class Releaser : IDisposable
     {
         private readonly AsyncLock _toRelease;
-        private volatile bool _isDisposed;
+        private bool _isDisposed;
 
         internal Releaser(AsyncLock toRelease)
         {
@@ -66,11 +71,8 @@ public sealed class AsyncLock : IDisposable
                 return;
             }
 
+            _toRelease._semaphore.Release();
             _isDisposed = true;
-            if (!_toRelease._isDisposed)
-            {
-                _toRelease._semaphore.Release();
-            }
         }
     }
 }

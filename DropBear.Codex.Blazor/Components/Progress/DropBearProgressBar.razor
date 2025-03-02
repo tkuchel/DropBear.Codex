@@ -11,15 +11,15 @@
     <div class="dropbear-progress">
         <div class="progress-header">
             <div class="progress-message">@Message</div>
-            @if (!IsIndeterminate)
+            @if (!IsIndeterminate && _state != null)
             {
-                <div class="progress-step">@($"{_state?.OverallProgress:F0}%")</div>
+                <div class="progress-step">@($"{_state.OverallProgress:F0}%")</div>
             }
         </div>
 
         <div class="progress-bar-container">
             <div class="progress-bar @(IsIndeterminate ? "indeterminate" : "")"
-                 style="@(!IsIndeterminate ? $"width: {_state?.OverallProgress:F1}%" : "")">
+                 style="@(!IsIndeterminate && _state != null ? $"width: {_state.OverallProgress:F1}%" : "")">
             </div>
         </div>
 
@@ -56,27 +56,3 @@
         }
     </div>
 </div>
-
-@code {
-
-    private string GetEstimatedTimeRemaining()
-    {
-        if (_state is null || _state.OverallProgress <= 0) return string.Empty;
-
-        var elapsed = DateTime.UtcNow - _state.StartTime;
-        var estimatedTotal = TimeSpan.FromTicks((long)(elapsed.Ticks / (_state.OverallProgress / 100)));
-        var remaining = estimatedTotal - elapsed;
-
-        return $"Estimated time remaining: {FormatTimeSpan(remaining)}";
-    }
-
-    private string FormatTimeSpan(TimeSpan span)
-    {
-        if (span.TotalHours >= 1)
-            return $"{span.TotalHours:F1} hours";
-        if (span.TotalMinutes >= 1)
-            return $"{span.TotalMinutes:F0} minutes";
-        return $"{span.TotalSeconds:F0} seconds";
-    }
-
-}

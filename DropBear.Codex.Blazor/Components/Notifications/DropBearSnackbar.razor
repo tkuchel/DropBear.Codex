@@ -19,7 +19,7 @@
             @((MarkupString)SnackbarInstance.Message)
         </div>
 
-        @if (SnackbarInstance.Actions.Any())
+        @if (SnackbarInstance.Actions?.Any() == true)
         {
             <div class="dropbear-snackbar-actions">
                 @foreach (var action in SnackbarInstance.Actions)

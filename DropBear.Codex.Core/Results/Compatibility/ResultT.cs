@@ -86,6 +86,69 @@ public class Result<T> : Result<T, LegacyError>, IEnumerable<T>
         return result;
     }
 
+    public static Result<T> Warning(T value, string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Warning, new LegacyError(error));
+        return result;
+    }
+
+    public static Result<T> Cancelled(string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.Cancelled, new LegacyError(error));
+        return result;
+    }
+
+    public static Result<T> Cancelled(T value, string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Cancelled, new LegacyError(error));
+        return result;
+    }
+
+    public static Result<T> Pending(string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.Pending, new LegacyError(error));
+        return result;
+    }
+
+    public static Result<T> Pending(T value, string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Pending, new LegacyError(error));
+        return result;
+    }
+
+    public static Result<T> NoOp(string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.NoOp, new LegacyError(error));
+        return result;
+    }
+
+    public static Result<T> NoOp(T value, string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result<T>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.NoOp, new LegacyError(error));
+        return result;
+    }
+
     public static Result<T> Try(Func<T> func)
     {
         try

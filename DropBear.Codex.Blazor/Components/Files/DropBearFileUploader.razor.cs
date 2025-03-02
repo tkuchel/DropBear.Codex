@@ -386,7 +386,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     }
 
     /// <inheritdoc />
-    protected override async Task InitializeComponentAsync()
+    protected override async ValueTask InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
         {

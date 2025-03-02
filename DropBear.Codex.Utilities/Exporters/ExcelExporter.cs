@@ -117,7 +117,7 @@ public sealed class ExcelExporter<T> where T : class
         catch (OperationCanceledException)
         {
             Logger.Warning("Excel export operation was cancelled for file '{FilePath}'.", filePath);
-            return Result<string, ExportError>.Cancelled(new ExportError("Export operation was cancelled."));
+            return Result<string, ExportError>.Cancelled(string.Empty,new ExportError("Export operation was cancelled."));
         }
         catch (Exception ex)
         {

@@ -108,6 +108,24 @@ public class Result : Result<LegacyError>
         return result;
     }
 
+    public static Result Pending(string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result));
+        var result = pool.Get();
+        result.Initialize(ResultState.Pending, new LegacyError(error));
+        return result;
+    }
+
+    public static Result NoOp(string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        var pool = GetOrCreatePool(typeof(Result));
+        var result = pool.Get();
+        result.Initialize(ResultState.NoOp, new LegacyError(error));
+        return result;
+    }
+
     #endregion
 
     #region Chained Operations

@@ -68,7 +68,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     /// <summary>
     ///     Initialize JS functionality when component is first rendered
     /// </summary>
-    protected override async Task InitializeComponentAsync()
+    protected override async ValueTask InitializeComponentAsync()
     {
         try
         {

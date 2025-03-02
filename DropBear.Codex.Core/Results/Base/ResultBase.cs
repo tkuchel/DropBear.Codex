@@ -24,9 +24,8 @@ public abstract class ResultBase : IResult
     private protected static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ResultBase>();
     private protected static readonly IResultTelemetry Telemetry = new DefaultResultTelemetry();
 
+    // Static pool for exception lists to reduce allocations
     private static readonly ConcurrentDictionary<Type, DefaultObjectPool<List<Exception>>> ExceptionListPool = new();
-
-
     private static readonly HashSet<ResultState> ValidStates = [..Enum.GetValues<ResultState>()];
     private readonly IReadOnlyCollection<Exception> _exceptions;
 
@@ -98,6 +97,7 @@ public abstract class ResultBase : IResult
     /// <summary>
     ///     Executes the specified action safely, catching and logging any exceptions.
     /// </summary>
+    /// <param name="action">The action to execute.</param>
     protected static void SafeExecute(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -116,6 +116,9 @@ public abstract class ResultBase : IResult
     /// <summary>
     ///     Executes an asynchronous action safely, catching and logging any exceptions.
     /// </summary>
+    /// <param name="action">The asynchronous action to execute.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A <see cref="ValueTask" /> representing the asynchronous operation.</returns>
     protected static async ValueTask SafeExecuteAsync(
         Func<CancellationToken, Task> action,
         CancellationToken cancellationToken = default)
@@ -136,6 +139,10 @@ public abstract class ResultBase : IResult
     /// <summary>
     ///     Executes an asynchronous action safely with a timeout.
     /// </summary>
+    /// <param name="action">The asynchronous action to execute.</param>
+    /// <param name="timeout">The timeout period.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A <see cref="ValueTask" /> representing the asynchronous operation.</returns>
     protected static async ValueTask SafeExecuteWithTimeoutAsync(
         Func<CancellationToken, Task> action,
         TimeSpan timeout,
@@ -165,6 +172,11 @@ public abstract class ResultBase : IResult
 
     #region Private Methods
 
+    /// <summary>
+    ///     Validates that the specified state is a valid <see cref="ResultState" />.
+    /// </summary>
+    /// <param name="state">The state to validate.</param>
+    /// <exception cref="ResultValidationException">Thrown if the state is invalid.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ValidateState(ResultState state)
     {
@@ -174,6 +186,11 @@ public abstract class ResultBase : IResult
         }
     }
 
+    /// <summary>
+    ///     Creates a collection of exceptions from a single exception.
+    /// </summary>
+    /// <param name="exception">The exception to include in the collection, if any.</param>
+    /// <returns>A read-only collection of exceptions.</returns>
     private static IReadOnlyCollection<Exception> CreateExceptionCollection(Exception? exception)
     {
         if (exception is null)
@@ -202,6 +219,7 @@ public abstract class ResultBase : IResult
         }
         finally
         {
+            exceptionList.Clear();
             pool.Return(exceptionList);
         }
     }

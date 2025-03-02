@@ -76,16 +76,6 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T
         return EnumerateAsync(cancellationToken);
     }
 
-    public new static AsyncEnumerableResult<T, TError> Success(IAsyncEnumerable<T> value)
-    {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.Success);
-    }
-
-    public new static AsyncEnumerableResult<T, TError> Failure(TError error, Exception? exception = null)
-    {
-        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Failure, error, exception);
-    }
-
     private async IAsyncEnumerator<T> EnumerateAsync(
         CancellationToken cancellationToken = default)
     {
@@ -111,4 +101,114 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T
 
         await Task.CompletedTask.ConfigureAwait(false); // Add await to make the method truly async
     }
+
+    #region Factory Methods
+
+    /// <summary>
+    ///     Creates a new successful AsyncEnumerableResult with the specified enumerable.
+    /// </summary>
+    /// <param name="value">The async enumerable value.</param>
+    /// <returns>A successful result containing the async enumerable.</returns>
+    public new static AsyncEnumerableResult<T, TError> Success(IAsyncEnumerable<T> value)
+    {
+        return new AsyncEnumerableResult<T, TError>(value, ResultState.Success);
+    }
+
+    /// <summary>
+    ///     Creates a new failed AsyncEnumerableResult with the specified error.
+    /// </summary>
+    /// <param name="error">The error that caused the failure.</param>
+    /// <param name="exception">Optional exception associated with the failure.</param>
+    /// <returns>A failed result.</returns>
+    public new static AsyncEnumerableResult<T, TError> Failure(TError error, Exception? exception = null)
+    {
+        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Failure, error, exception);
+    }
+
+    /// <summary>
+    ///     Creates a new warning AsyncEnumerableResult with the specified enumerable and error.
+    /// </summary>
+    /// <param name="value">The async enumerable value.</param>
+    /// <param name="error">The warning information.</param>
+    /// <returns>A result in the warning state.</returns>
+    public new static AsyncEnumerableResult<T, TError> Warning(IAsyncEnumerable<T> value, TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(value, ResultState.Warning, error);
+    }
+
+    /// <summary>
+    ///     Creates a new partial success AsyncEnumerableResult with the specified enumerable and error.
+    /// </summary>
+    /// <param name="value">The async enumerable value.</param>
+    /// <param name="error">Information about the partial success condition.</param>
+    /// <returns>A result in the partial success state.</returns>
+    public new static AsyncEnumerableResult<T, TError> PartialSuccess(IAsyncEnumerable<T> value, TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(value, ResultState.PartialSuccess, error);
+    }
+
+    /// <summary>
+    ///     Creates a new cancelled AsyncEnumerableResult with the specified error.
+    /// </summary>
+    /// <param name="error">Information about the cancellation.</param>
+    /// <returns>A result in the cancelled state.</returns>
+    public new static AsyncEnumerableResult<T, TError> Cancelled(TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Cancelled, error);
+    }
+
+    /// <summary>
+    ///     Creates a new cancelled AsyncEnumerableResult with partial results and an error.
+    /// </summary>
+    /// <param name="value">The partial async enumerable results before cancellation.</param>
+    /// <param name="error">Information about the cancellation.</param>
+    /// <returns>A result in the cancelled state with partial results.</returns>
+    public new static AsyncEnumerableResult<T, TError> Cancelled(IAsyncEnumerable<T> value, TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(value, ResultState.Cancelled, error);
+    }
+
+    /// <summary>
+    ///     Creates a new pending AsyncEnumerableResult with the specified error.
+    /// </summary>
+    /// <param name="error">Information about the pending operation.</param>
+    /// <returns>A result in the pending state.</returns>
+    public new static AsyncEnumerableResult<T, TError> Pending(TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Pending, error);
+    }
+
+    /// <summary>
+    ///     Creates a new pending AsyncEnumerableResult with interim results and an error.
+    /// </summary>
+    /// <param name="value">Interim async enumerable results while the operation is pending.</param>
+    /// <param name="error">Information about the pending operation.</param>
+    /// <returns>A result in the pending state with interim results.</returns>
+    public new static AsyncEnumerableResult<T, TError> Pending(IAsyncEnumerable<T> value, TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(value, ResultState.Pending, error);
+    }
+
+    /// <summary>
+    ///     Creates a new NoOp AsyncEnumerableResult with the specified error.
+    /// </summary>
+    /// <param name="error">Information about why no operation was performed.</param>
+    /// <returns>A result in the NoOp state.</returns>
+    public new static AsyncEnumerableResult<T, TError> NoOp(TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.NoOp, error);
+    }
+
+    /// <summary>
+    ///     Creates a new NoOp AsyncEnumerableResult with context data and an error.
+    /// </summary>
+    /// <param name="value">Context async enumerable data related to the no-op condition.</param>
+    /// <param name="error">Information about why no operation was performed.</param>
+    /// <returns>A result in the NoOp state with context data.</returns>
+    public new static AsyncEnumerableResult<T, TError> NoOp(IAsyncEnumerable<T> value, TError error)
+    {
+        return new AsyncEnumerableResult<T, TError>(value, ResultState.NoOp, error);
+    }
+
+    #endregion
 }

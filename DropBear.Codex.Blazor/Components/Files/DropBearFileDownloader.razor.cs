@@ -25,7 +25,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
     ///     Initializes the component and loads the JavaScript module.
     /// </summary>
     /// <returns>A task that represents the asynchronous operation.</returns>
-    protected override async Task InitializeComponentAsync()
+    protected override async ValueTask InitializeComponentAsync()
     {
         if (_isInitialized || IsDisposed)
         {

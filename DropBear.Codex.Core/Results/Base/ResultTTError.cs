@@ -2,6 +2,7 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
@@ -24,9 +25,15 @@ namespace DropBear.Codex.Core.Results.Base;
 public class Result<T, TError> : Result<TError>, IResult<T, TError>
     where TError : ResultError
 {
-    private static readonly ConcurrentDictionary<Type, DefaultObjectPool<Result<T, TError>>> ResultPool = new();
+    // Global singleton pool provider for consistent pool behavior
+    private static readonly ObjectPoolProvider PoolProvider = new DefaultObjectPoolProvider
+    {
+        MaximumRetained = 1024 // Adjust based on application profile
+    };
 
-    private Lazy<T> _lazyValue;
+    private static readonly ConcurrentDictionary<Type, ObjectPool<Result<T, TError>>> ResultPool = new();
+
+    private readonly Lazy<T> _lazyValue;
 
     #region Properties
 
@@ -37,14 +44,12 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #endregion
 
-    private void ResetLazyValue(Func<T>? factory = null)
-    {
-        // If factory is null, default to creating a Lazy<T> that returns default(T).
-        _lazyValue = new Lazy<T>(factory ?? (() => default!));
-    }
-
     #region Operators
 
+    /// <summary>
+    ///     Implicitly converts a value to a success result containing that value.
+    /// </summary>
+    /// <param name="value">The value to convert.</param>
     public static implicit operator Result<T, TError>(T value)
     {
         return Success(value);
@@ -54,20 +59,28 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #region Private Methods
 
-    private static DefaultObjectPool<Result<T, TError>> GetOrCreatePool(Type type)
+    /// <summary>
+    ///     Gets or creates an object pool for the specified result type.
+    /// </summary>
+    /// <param name="type">The type of result to pool.</param>
+    /// <returns>An object pool for the result type.</returns>
+    private static ObjectPool<Result<T, TError>> GetOrCreatePool(Type type)
     {
         return ResultPool.GetOrAdd(type, _ =>
-            new DefaultObjectPool<Result<T, TError>>(new ResultPooledObjectPolicy()));
+            PoolProvider.Create(new ResultPooledObjectPolicy()));
     }
 
     #endregion
 
-
+    /// <summary>
+    ///     Custom pooling policy for Result objects.
+    /// </summary>
     private sealed class ResultPooledObjectPolicy : IPooledObjectPolicy<Result<T, TError>>
     {
         public Result<T, TError> Create()
         {
-            return new Result<T, TError>(new Lazy<T>(() => default!), ResultState.Success);
+            return new Result<T, TError>(new Lazy<T>(() => default!, LazyThreadSafetyMode.PublicationOnly),
+                ResultState.Success);
         }
 
         public bool Return(Result<T, TError> obj)
@@ -79,6 +92,13 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #region Constructors
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Result{T, TError}" /> class with a lazy value.
+    /// </summary>
+    /// <param name="lazyValue">The lazy value to store.</param>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="error">Optional error if the result is not successful.</param>
+    /// <param name="exception">Optional exception if an error occurred.</param>
     protected Result(
         Lazy<T> lazyValue,
         ResultState state,
@@ -89,14 +109,27 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         _lazyValue = lazyValue;
     }
 
-
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Result{T, TError}" /> class with a value.
+    /// </summary>
+    /// <param name="value">The value to store.</param>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="error">Optional error if the result is not successful.</param>
+    /// <param name="exception">Optional exception if an error occurred.</param>
     protected Result(T value, ResultState state, TError? error = null, Exception? exception = null)
-        : this(new Lazy<T>(() => value), state, error, exception)
+        : this(new Lazy<T>(() => value, LazyThreadSafetyMode.PublicationOnly), state, error, exception)
     {
     }
 
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="Result{T, TError}" /> class with a factory function.
+    /// </summary>
+    /// <param name="valueFactory">A function that produces the value.</param>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="error">Optional error if the result is not successful.</param>
+    /// <param name="exception">Optional exception if an error occurred.</param>
     protected Result(Func<T> valueFactory, ResultState state, TError? error = null, Exception? exception = null)
-        : this(new Lazy<T>(valueFactory), state, error, exception)
+        : this(new Lazy<T>(valueFactory, LazyThreadSafetyMode.PublicationOnly), state, error, exception)
     {
     }
 
@@ -107,6 +140,8 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Returns the Value if successful, otherwise defaultValue.
     /// </summary>
+    /// <param name="defaultValue">The default value to return if the result is not successful.</param>
+    /// <returns>Either the result's value or the default value.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public T ValueOrDefault(T defaultValue = default!)
     {
@@ -116,6 +151,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Returns the Value if successful, otherwise throws.
     /// </summary>
+    /// <param name="errorMessage">Optional error message to include in the exception.</param>
+    /// <returns>The result's value.</returns>
+    /// <exception cref="ResultException">Thrown if the result is not successful.</exception>
     public T ValueOrThrow(string? errorMessage = null)
     {
         if (IsSuccess)
@@ -129,6 +167,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Transforms the success value if successful.
     /// </summary>
+    /// <typeparam name="TNew">The type of the transformed value.</typeparam>
+    /// <param name="mapper">A function that transforms the value.</param>
+    /// <returns>A new result containing the transformed value.</returns>
     public Result<TNew, TError> Map<TNew>(Func<T, TNew> mapper)
     {
         if (!IsSuccess)
@@ -152,6 +193,10 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Asynchronously transforms the success value if successful.
     /// </summary>
+    /// <typeparam name="TNew">The type of the transformed value.</typeparam>
+    /// <param name="mapper">A function that asynchronously transforms the value.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation that returns a new result.</returns>
     public async ValueTask<Result<TNew, TError>> MapAsync<TNew>(
         Func<T, ValueTask<TNew>> mapper,
         CancellationToken cancellationToken = default)
@@ -178,6 +223,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Transforms this result into another result.
     /// </summary>
+    /// <typeparam name="TNew">The type of the new result's value.</typeparam>
+    /// <param name="binder">A function that transforms this result into another result.</param>
+    /// <returns>The transformed result.</returns>
     public Result<TNew, TError> Bind<TNew>(Func<T, Result<TNew, TError>> binder)
     {
         if (!IsSuccess)
@@ -200,6 +248,10 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Asynchronously transforms this result into another result.
     /// </summary>
+    /// <typeparam name="TNew">The type of the new result's value.</typeparam>
+    /// <param name="binder">A function that asynchronously transforms this result into another result.</param>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>A task representing the asynchronous operation that returns the transformed result.</returns>
     public async ValueTask<Result<TNew, TError>> BindAsync<TNew>(
         Func<T, ValueTask<Result<TNew, TError>>> binder,
         CancellationToken cancellationToken = default)
@@ -225,6 +277,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Maps the current error to a new error type.
     /// </summary>
+    /// <typeparam name="TNewError">The type of the new error.</typeparam>
+    /// <param name="errorMapper">A function that transforms the error.</param>
+    /// <returns>A new result with the transformed error.</returns>
     public Result<T, TNewError> MapError<TNewError>(Func<TError, TNewError> errorMapper)
         where TNewError : ResultError
     {
@@ -236,6 +291,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Ensures a specified condition is met on the current Value.
     /// </summary>
+    /// <param name="predicate">A function that returns true if the condition is met.</param>
+    /// <param name="error">The error to return if the condition is not met.</param>
+    /// <returns>Either this result (if successful and the condition is met) or a failure result.</returns>
     public IResult<T, TError> Ensure(Func<T, bool> predicate, TError error)
     {
         if (!IsSuccess)
@@ -262,6 +320,8 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Creates a Success Result containing value.
     /// </summary>
+    /// <param name="value">The success value.</param>
+    /// <returns>A successful result containing the value.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Success(T value)
     {
@@ -271,10 +331,11 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         return result;
     }
 
-
     /// <summary>
     ///     Creates a Success Result that defers value factory execution.
     /// </summary>
+    /// <param name="valueFactory">A function that produces the value when needed.</param>
+    /// <returns>A successful result that will lazily evaluate the factory function.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> LazySuccess(Func<T> valueFactory)
     {
@@ -287,6 +348,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Creates a Failure Result.
     /// </summary>
+    /// <param name="error">The error that caused the failure.</param>
+    /// <param name="exception">Optional exception associated with the failure.</param>
+    /// <returns>A failed result.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public new static Result<T, TError> Failure(TError error, Exception? exception = null)
     {
@@ -299,6 +363,9 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Creates a PartialSuccess Result.
     /// </summary>
+    /// <param name="value">The partial success value.</param>
+    /// <param name="error">Information about the partial success condition.</param>
+    /// <returns>A result in the partial success state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> PartialSuccess(T value, TError error)
     {
@@ -309,8 +376,11 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     /// <summary>
-    ///     Creates a new Result in the Warning state.
+    ///     Creates a Warning Result.
     /// </summary>
+    /// <param name="value">The success value with warning.</param>
+    /// <param name="error">The warning information.</param>
+    /// <returns>A result in the warning state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Warning(T value, TError error)
     {
@@ -321,20 +391,25 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     /// <summary>
-    ///     Creates a new Result in the Cancelled state.
+    ///     Creates a Cancelled Result.
     /// </summary>
+    /// <param name="error">Information about the cancellation.</param>
+    /// <returns>A result in the cancelled state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> Cancelled(TError error, Exception? exception = null)
+    public static Result<T, TError> Cancelled(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
-        result.Initialize(default(T)!, ResultState.Cancelled, error, exception);
+        result.Initialize(default(T)!, ResultState.Cancelled, error);
         return result;
     }
 
     /// <summary>
-    ///     Creates a new Result in the Cancelled state with a value.
+    ///     Creates a Cancelled Result with a partial value.
     /// </summary>
+    /// <param name="value">The partial value that was captured before cancellation.</param>
+    /// <param name="error">Information about the cancellation.</param>
+    /// <returns>A result in the cancelled state with a partial value.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Cancelled(T value, TError error)
     {
@@ -345,10 +420,41 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     /// <summary>
-    ///     Creates a new Result in the NoOp state.
+    ///     Creates a Pending Result.
     /// </summary>
+    /// <param name="error">Information about the pending operation.</param>
+    /// <returns>A result in the pending state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> NoOp(TError error)
+    public static Result<T, TError> Pending(TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(default(T)!, ResultState.Pending, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a Pending Result with an interim value.
+    /// </summary>
+    /// <param name="value">An interim or partial value available while the operation is pending.</param>
+    /// <param name="error">Information about the pending operation.</param>
+    /// <returns>A result in the pending state with an interim value.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> Pending(T value, TError error)
+    {
+        var pool = GetOrCreatePool(typeof(Result<T, TError>));
+        var result = pool.Get();
+        result.Initialize(value, ResultState.Pending, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a NoOp (No Operation) Result.
+    /// </summary>
+    /// <param name="error">Information about why no operation was performed.</param>
+    /// <returns>A result in the NoOp state.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> NoOp(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
@@ -357,14 +463,17 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     /// <summary>
-    ///     Creates a new Result in the Pending state.
+    ///     Creates a NoOp (No Operation) Result with a context value.
     /// </summary>
+    /// <param name="value">A context value related to the no-op condition.</param>
+    /// <param name="error">Information about why no operation was performed.</param>
+    /// <returns>A result in the NoOp state with a context value.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> Pending(TError error)
+    public static Result<T, TError> NoOp(T value, TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
-        result.Initialize(default(T)!, ResultState.Pending, error);
+        result.Initialize(value, ResultState.NoOp, error);
         return result;
     }
 
@@ -372,32 +481,57 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #region Protected Methods
 
+    /// <summary>
+    ///     Initializes or reinitializes the result instance.
+    /// </summary>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="error">Optional error if the result is not successful.</param>
+    /// <param name="exception">Optional exception if an error occurred.</param>
     protected override void Initialize(ResultState state, TError? error = null, Exception? exception = null)
     {
-        // For no value: just pass null for factory, which yields default(T).
         base.Initialize(state, error, exception);
-        ResetLazyValue();
+        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(this, new Lazy<T>(() => default!, LazyThreadSafetyMode.PublicationOnly));
     }
 
+    /// <summary>
+    ///     Initializes or reinitializes the result instance with a value.
+    /// </summary>
+    /// <param name="value">The value to store.</param>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="error">Optional error if the result is not successful.</param>
+    /// <param name="exception">Optional exception if an error occurred.</param>
     protected void Initialize(T value, ResultState state, TError? error = null, Exception? exception = null)
     {
-        // For a known immediate value: reset the lazy to produce that value.
         base.Initialize(state, error, exception);
-        ResetLazyValue(() => value);
+        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(this, new Lazy<T>(() => value, LazyThreadSafetyMode.PublicationOnly));
     }
 
+    /// <summary>
+    ///     Initializes or reinitializes the result instance with a factory function.
+    /// </summary>
+    /// <param name="valueFactory">A function that produces the value.</param>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="error">Optional error if the result is not successful.</param>
+    /// <param name="exception">Optional exception if an error occurred.</param>
     protected void Initialize(Func<T> valueFactory, ResultState state, TError? error = null,
         Exception? exception = null)
     {
-        // For a delayed/lazy factory: reset the lazy with the user-provided function.
         base.Initialize(state, error, exception);
-        ResetLazyValue(valueFactory);
+        var field = GetType().GetField("_lazyValue", BindingFlags.NonPublic | BindingFlags.Instance);
+        field?.SetValue(this, new Lazy<T>(valueFactory, LazyThreadSafetyMode.PublicationOnly));
     }
 
     #endregion
 
     #region Equality Members
 
+    /// <summary>
+    ///     Determines whether this result is equal to another object.
+    /// </summary>
+    /// <param name="obj">The object to compare with.</param>
+    /// <returns>True if the objects are equal.</returns>
     public override bool Equals(object? obj)
     {
         if (!base.Equals(obj))
@@ -410,6 +544,10 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
                EqualityComparer<T>.Default.Equals(Value, other.Value);
     }
 
+    /// <summary>
+    ///     Gets a hash code for this result.
+    /// </summary>
+    /// <returns>A hash code value.</returns>
     public override int GetHashCode()
     {
         unchecked

@@ -29,9 +29,9 @@
                 {
                     <th>
                         <input class="form-control"
-                               @bind="column.FilterValue"
-                               @bind:event="oninput"
-                               placeholder="Filter..." />
+                               value="@column.FilterValue"
+                               @oninput="e => { column.FilterValue = e.Value?.ToString() ?? string.Empty; OnFilterValueChanged(column.FilterValue); }"
+                               placeholder="Filter..."/>
                     </th>
                 }
             }

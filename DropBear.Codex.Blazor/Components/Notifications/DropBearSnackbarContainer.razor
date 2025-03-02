@@ -4,10 +4,13 @@
 <div class="dropbear-snackbar-container @PositionClass"
      role="alert"
      aria-live="polite">
-    @foreach (var snackbar in SnackbarService?.GetActiveSnackbars().OrderByDescending(s => s.CreatedAt)!)
+    @if (SnackbarService?.GetActiveSnackbars() is { } snackbars)
     {
-        <DropBearSnackbar @key="snackbar.Id"
-                          SnackbarInstance="snackbar"
-                          OnClose="async () => await SnackbarService.RemoveSnackbar(snackbar.Id)"/>
+        @foreach (var snackbar in snackbars.OrderByDescending(s => s.CreatedAt))
+        {
+            <DropBearSnackbar @key="snackbar.Id"
+                              SnackbarInstance="snackbar"
+                              OnClose="async () => await SnackbarService.RemoveSnackbar(snackbar.Id)"/>
+        }
     }
 </div>
