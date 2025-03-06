@@ -193,7 +193,11 @@ public partial class DropBearSectionContainer : DropBearComponentBase
             Interlocked.Increment(ref _debouncePending);
 
             // Debounce resize events
-            await _resizeDebouncer?.CancelAsync();
+            if (_resizeDebouncer != null)
+            {
+                await _resizeDebouncer.CancelAsync();
+            }
+
             _resizeDebouncer = new CancellationTokenSource();
             var token = _resizeDebouncer.Token;
 

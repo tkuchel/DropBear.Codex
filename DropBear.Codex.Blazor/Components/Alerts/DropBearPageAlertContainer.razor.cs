@@ -77,7 +77,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             _alertModule = await GetJsModuleAsync("DropBearPageAlert");
-            _isModuleInitialized = await SafeJsInteropAsync<bool>("DropBearPageAlertAPI.isInitialized");
+            _isModuleInitialized = await SafeJsInteropAsync<bool>("DropBearPageAlertAPI.__initialized");
 
             if (!_isModuleInitialized)
             {

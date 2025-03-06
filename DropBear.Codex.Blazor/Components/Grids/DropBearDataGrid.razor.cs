@@ -334,9 +334,11 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     /// </summary>
     private Dictionary<string, string> ComputeSearchableValues(TItem item)
     {
-        var values = new Dictionary<string, string>(_columns.Count);
+        // Make a thread-safe copy of the columns collection
+        var columnsCopy = _columns.ToList(); // Create a local copy for thread safety
+        var values = new Dictionary<string, string>(columnsCopy.Count);
 
-        foreach (var column in _columns.Where(c => c.PropertySelector != null && c.Filterable))
+        foreach (var column in columnsCopy.Where(c => c.PropertySelector != null && c.Filterable))
         {
             try
             {
