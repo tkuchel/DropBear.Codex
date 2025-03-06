@@ -3,7 +3,9 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Interfaces;
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
@@ -429,6 +431,44 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #endregion
 
     #region Helper Methods
+
+    /// <summary>
+    ///     Executes an operation safely and returns a Result with success or error information.
+    /// </summary>
+    /// <typeparam name="T">The type of data to return on success.</typeparam>
+    /// <param name="operation">The operation to execute.</param>
+    /// <param name="operationName">The name of the operation, used for error reporting.</param>
+    /// <param name="caller">The calling method name (automatically populated).</param>
+    /// <returns>A Result containing either the successful value or error details.</returns>
+    protected async Task<Result<T, DataFetchError>> ExecuteSafeResultAsync<T>(
+        Func<Task<T>> operation,
+        string operationName,
+        [CallerMemberName] string? caller = null)
+    {
+        try
+        {
+            EnsureNotDisposed(caller);
+
+            // Use cancellation token for timeout protection
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(30)); // Configurable timeout
+
+            var result = await operation();
+            return Result<T, DataFetchError>.Success(result);
+        }
+        catch (OperationCanceledException)
+        {
+            LogWarning("Operation timed out: {Operation}", operationName);
+            return Result<T, DataFetchError>.Failure(
+                new DataFetchError("The operation timed out after 30 seconds", operationName));
+        }
+        catch (Exception ex)
+        {
+            LogError("Operation failed: {Operation}", ex, operationName);
+            return Result<T, DataFetchError>.Failure(
+                new DataFetchError($"Failed to execute operation: {ex.Message}", operationName));
+        }
+    }
 
     /// <summary>
     ///     Ensures the component has not been disposed before executing operations.
