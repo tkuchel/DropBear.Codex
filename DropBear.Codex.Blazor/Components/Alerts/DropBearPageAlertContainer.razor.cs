@@ -76,12 +76,19 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     {
         try
         {
+            // Load the module first
             _alertModule = await GetJsModuleAsync("DropBearPageAlert");
-            _isModuleInitialized = await SafeJsInteropAsync<bool>("DropBearPageAlertAPI.__initialized");
+
+            // Give the module a moment to register in the global scope
+            await Task.Delay(50);
+
+            // Now check if it's initialized, but use the module reference directly
+            _isModuleInitialized = await _alertModule.InvokeAsync<bool>("isInitialized");
 
             if (!_isModuleInitialized)
             {
-                await SafeJsVoidInteropAsync("DropBearPageAlertAPI.initialize");
+                // Initialize through the module reference, not global scope
+                await _alertModule.InvokeVoidAsync("initialize");
                 _isModuleInitialized = true;
             }
 

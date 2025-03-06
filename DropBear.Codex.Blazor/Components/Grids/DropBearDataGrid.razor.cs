@@ -172,12 +172,21 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
             _searchableValues.Clear();
 
-            // Clear memory caches
+            // Clear memory caches BEFORE disposing them
+            try
+            {
+                _searchTermCache.Clear();
+                _compiledSelectors.Clear();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Cache might already be disposed, which is fine
+            }
+
+            // Now dispose the caches
             _searchTermCache.Dispose();
             _compiledSelectors.Dispose();
             _updateLock.Dispose();
-
-            _compiledSelectors.Clear();
         }
         catch (Exception ex)
         {
