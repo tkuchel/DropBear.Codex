@@ -83,7 +83,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             await Task.Delay(50);
 
             // Now check if it's initialized, but use the module reference directly
-            _isModuleInitialized = await _alertModule.InvokeAsync<bool>("isInitialized");
+            _isModuleInitialized = await _alertModule.InvokeAsync<bool>("DropBearPageAlertAPI.isInitialized");
 
             if (!_isModuleInitialized)
             {
