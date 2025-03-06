@@ -80,4 +80,14 @@ public sealed record DataGridError : ResultError
     {
         return new DataGridError($"Pagination operation failed: {details}");
     }
+
+    /// <summary>
+    ///     Creates an error for when a general grid operation fails.
+    /// </summary>
+    /// <param name="details">Details about the operation failure.</param>
+    /// <returns>A new <see cref="DataGridError" /> with appropriate message.</returns>
+    public static DataGridError OperationFailed(string details)
+    {
+        return new DataGridError($"Operation failed: {details}");
+    }
 }

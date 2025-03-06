@@ -9,13 +9,13 @@ namespace DropBear.Codex.Blazor.Models;
 /// <summary>
 ///     Represents an alert instance displayed on a page.
 /// </summary>
-public  class PageAlertInstance
+public class PageAlertInstance
 {
     /// <summary>
     ///     Gets or sets the unique identifier for this alert.
     ///     Required for distinguishing multiple alerts.
     /// </summary>
-    public required string Id { get; init; }
+    public required string Id { get; init; } = $"alert-{Guid.NewGuid():N}";
 
     /// <summary>
     ///     Gets or sets the title of the alert.
@@ -43,4 +43,10 @@ public  class PageAlertInstance
     ///     (i.e., does not automatically disappear).
     /// </summary>
     public bool IsPermanent { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the time at which the snackbar was created.
+    ///     Used to calculate the time remaining before the snackbar is automatically dismissed.
+    /// </summary>
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }

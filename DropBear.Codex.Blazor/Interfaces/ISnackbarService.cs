@@ -1,5 +1,6 @@
 ﻿#region
 
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Exceptions;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Results.Base;

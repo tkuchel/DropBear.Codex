@@ -62,5 +62,5 @@ public sealed class SnackbarInstance
     ///     Gets or sets the time at which the snackbar was created.
     ///     Used to calculate the time remaining before the snackbar is automatically dismissed.
     /// </summary>
-    public DateTime CreatedAt { get; init; }
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
 }

@@ -9,6 +9,7 @@ using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.TaskExecutionEngine;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using MessagePipe;
+using ProgressManagerError = DropBear.Codex.Blazor.Services.ProgressManagerError;
 
 #endregion
 
