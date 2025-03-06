@@ -1,4 +1,10 @@
-﻿namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
+﻿#region
+
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
+
+#endregion
+
+namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 
 /// <summary>
 ///     Configurable options for an execution engine, including batching intervals,
@@ -33,6 +39,7 @@ public sealed class ExecutionOptions
 
     /// <summary>
     ///     If <c>true</c>, tasks are executed in parallel (subject to <see cref="MaxDegreeOfParallelism" />).
+    ///     This is kept for backward compatibility; new code should use <see cref="ExecutionStrategy" /> instead.
     /// </summary>
     public bool EnableParallelExecution { get; set; } = false;
 
@@ -53,6 +60,25 @@ public sealed class ExecutionOptions
     public bool VerboseLogging { get; set; } = false;
 
     /// <summary>
+    ///     The strategy to use when executing tasks.
+    ///     If null, defaults to Adaptive which selects the best strategy based on task characteristics.
+    /// </summary>
+    public ExecutionStrategy? ExecutionStrategy { get; set; } = null;
+
+    /// <summary>
+    ///     The minimum number of available processor cores required to consider parallel execution.
+    ///     On machines with fewer cores, sequential execution will be chosen automatically.
+    /// </summary>
+    public int MinimumCoresForParallelExecution { get; set; } = 2;
+
+    /// <summary>
+    ///     The threshold of dependencies beyond which tasks will be executed sequentially.
+    ///     A value between 0.0 and 1.0 representing the ratio of actual dependencies to maximum possible dependencies.
+    ///     Default is 0.5 (50% dependency density).
+    /// </summary>
+    public double DependencyDensityThreshold { get; set; } = 0.5;
+
+    /// <summary>
     ///     Validates the consistency of these options.
     /// </summary>
     /// <exception cref="InvalidOperationException">
@@ -63,6 +89,18 @@ public sealed class ExecutionOptions
         if (EnableParallelExecution && StopOnFirstFailure)
         {
             throw new InvalidOperationException("EnableParallelExecution cannot be used with StopOnFirstFailure.");
+        }
+
+        if (MinimumCoresForParallelExecution < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MinimumCoresForParallelExecution),
+                "Minimum cores for parallel execution must be at least 1.");
+        }
+
+        if (DependencyDensityThreshold < 0.0 || DependencyDensityThreshold > 1.0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(DependencyDensityThreshold),
+                "Dependency density threshold must be between 0.0 and 1.0.");
         }
     }
 }

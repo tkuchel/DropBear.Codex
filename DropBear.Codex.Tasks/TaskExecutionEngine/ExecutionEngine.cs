@@ -5,6 +5,8 @@ using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.Errors;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Cache;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Extensions;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Models;
@@ -33,6 +35,7 @@ public sealed class ExecutionEngine : IAsyncDisposable
     private readonly MessagePublisher _messagePublisher;
     private readonly ExecutionOptions _options;
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly SequentialTaskExecutor _sequentialExecutor;
     private readonly TaskPriorityQueue _taskQueue = new();
     private readonly ConcurrentDictionary<string, ITask> _tasks;
     private readonly ParallelTaskScheduler _taskScheduler;
@@ -83,6 +86,8 @@ public sealed class ExecutionEngine : IAsyncDisposable
             _options.MaxDegreeOfParallelism ?? Environment.ProcessorCount,
             Tracker.GetStats(),
             new ConcurrentDictionary<string, TaskExecutionMetrics>(StringComparer.Ordinal));
+
+        _sequentialExecutor = new SequentialTaskExecutor(Tracker);
 
         _logger.Debug("ExecutionEngine initialized with Channel ID: {ChannelId}", channelId);
     }
@@ -148,6 +153,22 @@ public sealed class ExecutionEngine : IAsyncDisposable
         }
     }
 
+
+    /// <summary>
+    ///     Determines the optimal execution strategy based on the current state of tasks and options.
+    /// </summary>
+    private ExecutionStrategy DetermineExecutionStrategy()
+    {
+        // If an explicit strategy is set, use it
+        if (_options.ExecutionStrategy.HasValue)
+        {
+            return _options.ExecutionStrategy.Value;
+        }
+
+        // Use the extension method to determine the optimal strategy
+        return ExecutionEngineExtensions.DetermineOptimalExecutionStrategy(_tasks, _options);
+    }
+
     /// <summary>
     ///     Adds a task to the engine, provided execution has not started yet.
     /// </summary>
@@ -209,7 +230,8 @@ public sealed class ExecutionEngine : IAsyncDisposable
     }
 
     /// <summary>
-    ///     Resolves dependencies and executes all tasks in the engine asynchronously.
+    ///     Resolves dependencies and executes all tasks in the engine asynchronously,
+    ///     using the appropriate execution strategy.
     /// </summary>
     public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(CancellationToken cancellationToken)
     {
@@ -240,12 +262,6 @@ public sealed class ExecutionEngine : IAsyncDisposable
                         return resolveResult;
                     }
 
-                    // Queue tasks in dependency order
-                    foreach (var task in orderedTasks)
-                    {
-                        _taskQueue.Enqueue(task);
-                    }
-
                     // Initialize execution context
                     using var rootScope = _scopeFactory.CreateScope();
                     var executionContext = new ExecutionContext(_options, _scopeFactory)
@@ -261,17 +277,43 @@ public sealed class ExecutionEngine : IAsyncDisposable
                         executionContext,
                         _logger);
 
-                    // Execute tasks with parallel scheduler
-                    var result = await _taskScheduler.ExecuteTasksAsync(
-                        _taskQueue,
-                        executionScope,
-                        linkedCts.Token).ConfigureAwait(false);
+                    // Determine optimal execution strategy
+                    var strategy = DetermineExecutionStrategy();
+                    _logger.Information("Using execution strategy: {Strategy}", strategy);
+
+                    // Queue tasks in dependency order
+                    foreach (var task in orderedTasks)
+                    {
+                        _taskQueue.Enqueue(task);
+                    }
+
+                    // Execute tasks with the selected strategy
+                    Result<Unit, TaskExecutionError> result;
+                    switch (strategy)
+                    {
+                        case ExecutionStrategy.Sequential:
+                            result = await _sequentialExecutor.ExecuteTasksAsync(
+                                _taskQueue,
+                                executionScope,
+                                linkedCts.Token).ConfigureAwait(false);
+                            break;
+
+                        case ExecutionStrategy.Parallel:
+                        case ExecutionStrategy.Adaptive:
+                        default:
+                            result = await _taskScheduler.ExecuteTasksAsync(
+                                _taskQueue,
+                                executionScope,
+                                linkedCts.Token).ConfigureAwait(false);
+                            break;
+                    }
 
                     metrics.Stop();
                     _logger.Information(
-                        "Execution completed in {Duration}. Success: {IsSuccess}",
+                        "Execution completed in {Duration}. Success: {IsSuccess}, Strategy: {Strategy}",
                         metrics.Elapsed,
-                        result.IsSuccess);
+                        result.IsSuccess,
+                        strategy);
 
                     return result;
                 }
