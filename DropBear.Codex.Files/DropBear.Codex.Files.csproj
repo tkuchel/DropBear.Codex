@@ -7,8 +7,8 @@
     <LangVersion>latest</LangVersion>
 
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.2.0</Version>
-    <PackageVersion>2025.2.0</PackageVersion>
+    <Version>2025.3.0</Version>
+    <PackageVersion>2025.3.0</PackageVersion>
     <PackageId>DropBear.Codex.Files</PackageId>
     <Title>DropBear Codex Files</Title>
     <Description>Provides file management and storage capabilities for the DropBear.Codex ecosystem</Description>

@@ -8,8 +8,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.2.0</Version>
-    <PackageVersion>22025.2.0</PackageVersion>
+    <Version>2025.3.0</Version>
+    <PackageVersion>2025.3.0</PackageVersion>
     <PackageId>DropBear.Codex.Blazor</PackageId>
     <!-- … other package properties … -->
 

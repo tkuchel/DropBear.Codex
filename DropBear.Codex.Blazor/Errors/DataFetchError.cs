@@ -5,7 +5,7 @@ namespace DropBear.Codex.Blazor.Errors;
 /// <summary>
 ///     Represents errors that can occur during data fetching operations.
 /// </summary>
-public sealed record DataFetchError : ResultError
+public record DataFetchError : ResultError
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="DataFetchError"/> record.

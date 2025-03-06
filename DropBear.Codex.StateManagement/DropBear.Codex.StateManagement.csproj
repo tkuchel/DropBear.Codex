@@ -11,8 +11,8 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.2.0</Version>
-    <PackageVersion>2025.2.0</PackageVersion> <!-- Specifies the version of the package -->
+    <Version>2025.3.0</Version>
+    <PackageVersion>2025.3.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.StateManagement</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex State Management</Title>
     <Description>Simplified state management and snapshot system for the DropBear Codex framework.</Description>
