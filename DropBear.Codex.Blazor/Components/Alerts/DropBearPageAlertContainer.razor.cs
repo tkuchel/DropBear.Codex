@@ -7,6 +7,7 @@ using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Notifications.Enums;
 using DropBear.Codex.Notifications.Models;
 using MessagePipe;
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 
@@ -42,6 +43,9 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     private ErrorBoundary? _errorBoundary;
     private bool _isModuleInitialized;
     private IDisposable? _notificationSubscription;
+
+    [Parameter]
+    public string ChannelId { get; set; } = "Alerts";
 
     /// <summary>
     ///     Initialize and set up event subscriptions
@@ -107,7 +111,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
             // Subscribe to the "Alerts" channel using the MessagePipe interface
             _notificationSubscription = NotificationSubscriber.Subscribe(
-                "Alerts", // The channel key
+                ChannelId, // The channel key
                 handler // The message handler
             );
 
