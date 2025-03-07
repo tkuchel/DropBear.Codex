@@ -361,7 +361,7 @@ public class Result<TError> : ResultBase, IResult<TError>
     ///     Creates a default error with a generic message.
     /// </summary>
     /// <returns>A default error instance.</returns>
-    private TError CreateDefaultError()
+    protected TError CreateDefaultError()
     {
         return (TError)Activator.CreateInstance(typeof(TError), "Operation failed with unhandled exception")!;
     }

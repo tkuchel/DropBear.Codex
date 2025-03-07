@@ -246,6 +246,99 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     }
 
     /// <summary>
+    ///     Performs pattern matching on the current state of this <see cref="Result{T, TError}" />,
+    ///     invoking the appropriate callback function.
+    /// </summary>
+    /// <typeparam name="TResult">
+    ///     The return type for each of the match functions.
+    /// </typeparam>
+    /// <param name="onSuccess">
+    ///     A function to call if the result is <see cref="ResultState.Success" />.
+    ///     Receives the successful <typeparamref name="T" /> value.
+    /// </param>
+    /// <param name="onFailure">
+    ///     A function to call if the result is <see cref="ResultState.Failure" />.
+    ///     Receives the <typeparamref name="TError" /> and the associated <see cref="Exception" /> (if any).
+    /// </param>
+    /// <param name="onWarning">
+    ///     An optional function to call if the result is <see cref="ResultState.Warning" />.
+    ///     Receives the partial <typeparamref name="T" /> value and the <typeparamref name="TError" />.
+    /// </param>
+    /// <param name="onPartialSuccess">
+    ///     An optional function to call if the result is <see cref="ResultState.PartialSuccess" />.
+    ///     Receives the partial <typeparamref name="T" /> value and the <typeparamref name="TError" />.
+    /// </param>
+    /// <param name="onCancelled">
+    ///     An optional function to call if the result is <see cref="ResultState.Cancelled" />.
+    ///     Receives the partial <typeparamref name="T" /> value (if any) and the <typeparamref name="TError" />.
+    /// </param>
+    /// <param name="onPending">
+    ///     An optional function to call if the result is <see cref="ResultState.Pending" />.
+    ///     Receives the partial <typeparamref name="T" /> value (if any) and the <typeparamref name="TError" />.
+    /// </param>
+    /// <param name="onNoOp">
+    ///     An optional function to call if the result is <see cref="ResultState.NoOp" />.
+    ///     Receives the partial <typeparamref name="T" /> value (if any) and the <typeparamref name="TError" />.
+    /// </param>
+    /// <returns>
+    ///     The value returned by whichever callback was invoked.
+    /// </returns>
+    /// <remarks>
+    ///     If a given state callback (e.g., <paramref name="onWarning" />) is not provided,
+    ///     and this <see cref="ResultState" /> matches that state, the method will fall back
+    ///     to using <paramref name="onFailure" />.
+    /// </remarks>
+    public TResult Match<TResult>(
+        Func<T, TResult> onSuccess,
+        Func<TError, Exception?, TResult> onFailure,
+        Func<T, TError, TResult>? onWarning = null,
+        Func<T, TError, TResult>? onPartialSuccess = null,
+        Func<T, TError, TResult>? onCancelled = null,
+        Func<T, TError, TResult>? onPending = null,
+        Func<T, TError, TResult>? onNoOp = null)
+    {
+        ArgumentNullException.ThrowIfNull(onSuccess);
+        ArgumentNullException.ThrowIfNull(onFailure);
+
+        try
+        {
+            // Helper to simplify falling back to onFailure if a specialized callback is null
+            TResult InvokeOrDefault(
+                Func<T, TError, TResult>? handler,
+                TError theError,
+                Exception? ex)
+            {
+                return handler is not null
+                    ? handler(Value!, theError)
+                    : onFailure(theError, ex);
+            }
+
+            // Switch over the ResultState
+            return State switch
+            {
+                ResultState.Success => onSuccess(Value!),
+                ResultState.Failure => onFailure(Error!, Exception),
+                ResultState.Warning => InvokeOrDefault(onWarning, Error!, Exception),
+                ResultState.PartialSuccess => InvokeOrDefault(onPartialSuccess, Error!, Exception),
+                ResultState.Cancelled => InvokeOrDefault(onCancelled, Error!, Exception),
+                ResultState.Pending => InvokeOrDefault(onPending, Error!, Exception),
+                ResultState.NoOp => InvokeOrDefault(onNoOp, Error!, Exception),
+                _ => throw new ResultException($"Unhandled state: {State}")
+            };
+        }
+        catch (Exception ex)
+        {
+            // Log the unexpected exception during the callback
+            Logger.Error(ex, "Exception during Match operation");
+            Telemetry.TrackException(ex, State, GetType());
+
+            // If we have a known error, use it; otherwise, create a default one
+            return onFailure(Error ?? CreateDefaultError(), ex);
+        }
+    }
+
+
+    /// <summary>
     ///     Asynchronously transforms this result into another result.
     /// </summary>
     /// <typeparam name="TNew">The type of the new result's value.</typeparam>
@@ -396,7 +489,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <param name="error">Information about the cancellation.</param>
     /// <returns>A result in the cancelled state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> Cancelled(TError error)
+    public new static Result<T, TError> Cancelled(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
@@ -425,7 +518,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <param name="error">Information about the pending operation.</param>
     /// <returns>A result in the pending state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> Pending(TError error)
+    public new static Result<T, TError> Pending(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
@@ -454,7 +547,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <param name="error">Information about why no operation was performed.</param>
     /// <returns>A result in the NoOp state.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> NoOp(TError error)
+    public new static Result<T, TError> NoOp(TError error)
     {
         var pool = GetOrCreatePool(typeof(Result<T, TError>));
         var result = pool.Get();
