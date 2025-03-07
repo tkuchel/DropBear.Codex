@@ -9,10 +9,123 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Extension methods for working with AsyncEnumerableResult.
+///     Provides extension methods for working with asynchronous Result types and enumerables.
+///     Consolidates functionality from AsyncEnumerableExtensions and AsyncEnumerableResultExtensions.
 /// </summary>
-public static class AsyncEnumerableResultExtensions
+public static class AsyncExtensions
 {
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates an empty async enumerable.
+    /// </summary>
+    private static async IAsyncEnumerable<T> Empty<T>(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (cancellationToken.IsCancellationRequested)
+        {
+            yield break;
+        }
+
+        await Task.CompletedTask.ConfigureAwait(false); // Make this method truly async
+    }
+
+    #endregion
+
+    #region Async Result Task Extensions
+
+    /// <summary>
+    ///     Asynchronously maps a Result to a new Result with a transformed value.
+    /// </summary>
+    public static async ValueTask<Result<TResult, TError>> MapAsync<T, TResult, TError>(
+        this Result<T, TError> result,
+        Func<T, CancellationToken, ValueTask<TResult>> mapperAsync,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
+    {
+        if (!result.IsSuccess)
+        {
+            return Result<TResult, TError>.Failure(result.Error!);
+        }
+
+        try
+        {
+            var mappedValue = await mapperAsync(result.Value!, cancellationToken).ConfigureAwait(false);
+            return Result<TResult, TError>.Success(mappedValue);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Result<TResult, TError>.Failure(result.Error!, ex);
+        }
+    }
+
+    /// <summary>
+    ///     Asynchronously binds a Result to a new Result using an async function.
+    /// </summary>
+    public static async ValueTask<Result<TResult, TError>> BindAsync<T, TResult, TError>(
+        this Result<T, TError> result,
+        Func<T, CancellationToken, ValueTask<Result<TResult, TError>>> binderAsync,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
+    {
+        if (!result.IsSuccess)
+        {
+            return Result<TResult, TError>.Failure(result.Error!);
+        }
+
+        try
+        {
+            return await binderAsync(result.Value!, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Result<TResult, TError>.Failure(result.Error!, ex);
+        }
+    }
+
+    /// <summary>
+    ///     Converts a Task returning a Result to a flat Result, handling task-level exceptions.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> FlattenAsync<T, TError>(
+        this Task<Result<T, TError>> resultTask,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return await resultTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Create a cancelled error result
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), "Operation was cancelled")!;
+            return Result<T, TError>.Cancelled(errorInstance);
+        }
+        catch (Exception ex)
+        {
+            // Create a failure result with the exception details
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), $"Task failed: {ex.Message}")!;
+            return Result<T, TError>.Failure(errorInstance, ex);
+        }
+    }
+
+    #endregion
+
+    #region IAsyncEnumerable Extensions
+
+    /// <summary>
+    ///     Configures how awaiting is performed within an async enumerable.
+    /// </summary>
+    public static IAsyncEnumerable<T> ConfigureAwait<T>(
+        this IAsyncEnumerable<T> enumerable,
+        bool continueOnCapturedContext)
+    {
+        return new ConfiguredAsyncEnumerable<T>(enumerable, continueOnCapturedContext);
+    }
+
     /// <summary>
     ///     Converts an IAsyncEnumerable to an AsyncEnumerableResult.
     /// </summary>
@@ -23,8 +136,12 @@ public static class AsyncEnumerableResultExtensions
         return AsyncEnumerableResult<T, TError>.Success(enumerable);
     }
 
+    #endregion
+
+    #region AsyncEnumerableResult Extensions
+
     /// <summary>
-    ///     Filters items in an AsyncEnumerableResult.
+    ///     Filters items in an AsyncEnumerableResult based on a predicate.
     /// </summary>
     public static AsyncEnumerableResult<T, TError> Where<T, TError>(
         this AsyncEnumerableResult<T, TError> result,
@@ -51,7 +168,7 @@ public static class AsyncEnumerableResultExtensions
     }
 
     /// <summary>
-    ///     Maps items in an AsyncEnumerableResult.
+    ///     Maps items in an AsyncEnumerableResult using a transformation function.
     /// </summary>
     public static AsyncEnumerableResult<TResult, TError> Select<T, TResult, TError>(
         this AsyncEnumerableResult<T, TError> result,
@@ -76,7 +193,32 @@ public static class AsyncEnumerableResultExtensions
     }
 
     /// <summary>
-    ///     Converts an AsyncEnumerableResult to a list.
+    ///     Applies an async transformation to each item in an AsyncEnumerableResult.
+    /// </summary>
+    public static AsyncEnumerableResult<TResult, TError> SelectAsync<T, TResult, TError>(
+        this AsyncEnumerableResult<T, TError> result,
+        Func<T, ValueTask<TResult>> selector)
+        where TError : ResultError
+    {
+        if (!result.IsSuccess)
+        {
+            return AsyncEnumerableResult<TResult, TError>.Failure(result.Error!);
+        }
+
+        async IAsyncEnumerable<TResult> SelectAsyncEnumerable(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return await selector(item).ConfigureAwait(false);
+            }
+        }
+
+        return AsyncEnumerableResult<TResult, TError>.Success(SelectAsyncEnumerable());
+    }
+
+    /// <summary>
+    ///     Converts an AsyncEnumerableResult to a List within a Result.
     /// </summary>
     public static async ValueTask<Result<List<T>, TError>> ToListAsync<T, TError>(
         this AsyncEnumerableResult<T, TError> result,
@@ -216,40 +358,5 @@ public static class AsyncEnumerableResultExtensions
         return AsyncEnumerableResult<T, TError>.Success(SkipAsync());
     }
 
-    /// <summary>
-    ///     Applies an async transform to each item in an AsyncEnumerableResult.
-    /// </summary>
-    public static AsyncEnumerableResult<TResult, TError> SelectAsync<T, TResult, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        Func<T, ValueTask<TResult>> selector)
-        where TError : ResultError
-    {
-        if (!result.IsSuccess)
-        {
-            return AsyncEnumerableResult<TResult, TError>.Failure(result.Error!);
-        }
-
-        async IAsyncEnumerable<TResult> SelectAsyncEnumerable(
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                yield return await selector(item).ConfigureAwait(false);
-            }
-        }
-
-        return AsyncEnumerableResult<TResult, TError>.Success(SelectAsyncEnumerable());
-    }
-
-    /// <summary>
-    ///     Creates an empty async enumerable.
-    /// </summary>
-    private static async IAsyncEnumerable<T> Empty<T>(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            yield break;
-        }
-    }
+    #endregion
 }

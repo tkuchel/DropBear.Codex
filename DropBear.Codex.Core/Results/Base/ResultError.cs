@@ -11,7 +11,7 @@ namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
 ///     An abstract record representing an error in a result-based operation.
-///     Derived types can provide domain-specific error information.
+///     This forms the base type for all domain-specific errors in the Result pattern.
 /// </summary>
 [DebuggerDisplay("{ToString(),nq}")]
 public abstract record ResultError : ISpanFormattable
@@ -37,7 +37,7 @@ public abstract record ResultError : ISpanFormattable
     /// <summary>
     ///     Gets the error message.
     /// </summary>
-    public string Message { get; private init; }
+    public string Message { get; init; }
 
     /// <summary>
     ///     Gets the UTC timestamp when this error was created.
@@ -66,6 +66,8 @@ public abstract record ResultError : ISpanFormattable
     /// </summary>
     [JsonIgnore]
     public TimeSpan Age => DateTime.UtcNow - Timestamp;
+
+    #region String Formatting
 
     /// <inheritdoc />
     public string ToString(string? format, IFormatProvider? formatProvider)
@@ -100,6 +102,10 @@ public abstract record ResultError : ISpanFormattable
         return $"{GetType().Name}: {Message} (occurred {FormatAge(Age)} ago)";
     }
 
+    #endregion
+
+    #region Error Modification Methods
+
     /// <summary>
     ///     Creates a new error object with an updated message.
     /// </summary>
@@ -126,6 +132,10 @@ public abstract record ResultError : ISpanFormattable
         return this with { Metadata = metadata };
     }
 
+    #endregion
+
+    #region Helper Methods
+
     /// <summary>
     ///     Validates and formats an error message, using a cached version if available.
     /// </summary>
@@ -138,47 +148,12 @@ public abstract record ResultError : ISpanFormattable
             return DefaultErrorMessage;
         }
 
-        // Normalize and cache the message
+        // Use our cache to avoid repeated string allocations for same messages
         return MessageCache.GetOrAdd(message, key =>
         {
-            var span = key.AsSpan();
-
-            // Count how many \r\n sequences to determine final length
-            var crlfCount = 0;
-            for (var i = 0; i < span.Length - 1; i++)
-            {
-                if (span[i] == '\r' && span[i + 1] == '\n')
-                {
-                    crlfCount++;
-                }
-            }
-
-            // Create the normalized string
-            return string.Create(key.Length - crlfCount, key, (dest, src) =>
-            {
-                var destIndex = 0;
-                var sourceSpan = src.AsSpan();
-
-                for (var i = 0; i < sourceSpan.Length; i++)
-                {
-                    var c = sourceSpan[i];
-
-                    if (c == '\r')
-                    {
-                        // Skip \r and replace with \n, skip following \n if present
-                        if (i + 1 < sourceSpan.Length && sourceSpan[i + 1] == '\n')
-                        {
-                            i++; // Skip the following \n
-                        }
-
-                        dest[destIndex++] = '\n';
-                    }
-                    else
-                    {
-                        dest[destIndex++] = c;
-                    }
-                }
-            }).Trim();
+            // Replace CRLF with \n
+            var normalized = key.Replace("\r\n", "\n").Replace('\r', '\n');
+            return normalized.Trim();
         });
     }
 
@@ -200,22 +175,5 @@ public abstract record ResultError : ISpanFormattable
         };
     }
 
-    /// <summary>
-    ///     Creates a new error with the current timestamp.
-    /// </summary>
-    /// <typeparam name="T">The specific error type to create.</typeparam>
-    /// <param name="message">The error message.</param>
-    /// <returns>A new error instance.</returns>
-    protected static T CreateNow<T>(string message) where T : ResultError
-    {
-        return (T)Activator.CreateInstance(typeof(T), message, DateTime.UtcNow)!;
-    }
-
-    /// <summary>
-    ///     Extension point for derived types to customize error creation.
-    /// </summary>
-    protected virtual void OnErrorCreated()
-    {
-        // Default implementation does nothing
-    }
+    #endregion
 }

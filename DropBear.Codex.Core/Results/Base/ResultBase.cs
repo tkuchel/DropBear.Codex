@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
@@ -8,7 +7,6 @@ using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Diagnostics;
 using DropBear.Codex.Core.Results.Errors;
-using Microsoft.Extensions.ObjectPool;
 using Serilog;
 
 #endregion
@@ -17,19 +15,26 @@ namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
 ///     An abstract base class for all Result types, providing common functionality.
+///     Consolidates shared behavior for result types and provides a unified foundation.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
-public abstract class ResultBase : IResult
+public abstract class ResultBase : IResult, IResultDiagnostics
 {
+    // Static resources shared by all result types
     private protected static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ResultBase>();
     private protected static readonly IResultTelemetry Telemetry = new DefaultResultTelemetry();
 
-    // Static pool for exception lists to reduce allocations
-    private static readonly ConcurrentDictionary<Type, DefaultObjectPool<List<Exception>>> ExceptionListPool = new();
+    // Set of valid result states for validation
     private static readonly HashSet<ResultState> ValidStates = [..Enum.GetValues<ResultState>()];
+
+    // Diagnostic info for this result
+    private readonly DiagnosticInfo _diagnosticInfo;
+
+    // Exception collection for this result
     private readonly IReadOnlyCollection<Exception> _exceptions;
 
-    #region Constructor
+    // Gets the creation timestamp for this result
+    public DateTime CreatedAt => _diagnosticInfo.CreatedAt;
 
     /// <summary>
     ///     Initializes a new instance of <see cref="ResultBase" />.
@@ -44,6 +49,13 @@ public abstract class ResultBase : IResult
         Exception = exception;
         _exceptions = CreateExceptionCollection(exception);
 
+        // Initialize diagnostic data
+        _diagnosticInfo = new DiagnosticInfo(
+            state,
+            GetType(),
+            DateTime.UtcNow,
+            Activity.Current?.Id);
+
         // Track telemetry
         Telemetry.TrackResultCreated(state, GetType());
 
@@ -53,9 +65,7 @@ public abstract class ResultBase : IResult
         }
     }
 
-    #endregion
-
-    #region Properties
+    #region IResult Properties
 
     /// <summary>
     ///     Gets the <see cref="ResultState" /> of this result.
@@ -89,6 +99,26 @@ public abstract class ResultBase : IResult
     ///     Gets all exceptions associated with this result.
     /// </summary>
     public virtual IReadOnlyCollection<Exception> Exceptions => _exceptions;
+
+    #endregion
+
+    #region IResultDiagnostics Implementation
+
+    /// <summary>
+    ///     Gets diagnostic information about this result.
+    /// </summary>
+    public DiagnosticInfo GetDiagnostics()
+    {
+        return _diagnosticInfo;
+    }
+
+    /// <summary>
+    ///     Gets the trace context for this result operation.
+    /// </summary>
+    public ActivityContext GetTraceContext()
+    {
+        return Activity.Current?.Context ?? default;
+    }
 
     #endregion
 
@@ -198,30 +228,12 @@ public abstract class ResultBase : IResult
             return Array.Empty<Exception>();
         }
 
-        var pool = ExceptionListPool.GetOrAdd(
-            typeof(ResultBase),
-            _ => new DefaultObjectPool<List<Exception>>(
-                new DefaultPooledObjectPolicy<List<Exception>>()));
-
-        var exceptionList = pool.Get();
-        try
+        if (exception is AggregateException aggregateException)
         {
-            if (exception is AggregateException aggregateException)
-            {
-                exceptionList.AddRange(aggregateException.InnerExceptions);
-            }
-            else
-            {
-                exceptionList.Add(exception);
-            }
+            return aggregateException.InnerExceptions;
+        }
 
-            return exceptionList.ToArray();
-        }
-        finally
-        {
-            exceptionList.Clear();
-            pool.Return(exceptionList);
-        }
+        return new[] { exception };
     }
 
     #endregion

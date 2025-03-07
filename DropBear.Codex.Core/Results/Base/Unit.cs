@@ -12,6 +12,7 @@ namespace DropBear.Codex.Core.Results.Base;
 /// <summary>
 ///     Represents a type that has a single possible value, commonly used in functional programming
 ///     to indicate "no meaningful return value" without using <see langword="void" />.
+///     This is useful for operations that succeed or fail but don't produce a value.
 /// </summary>
 [DebuggerDisplay("Unit")]
 [JsonConverter(typeof(UnitJsonConverter))]
@@ -22,38 +23,57 @@ public readonly struct Unit : IEquatable<Unit>, ISpanFormattable
     /// </summary>
     public static Unit Value { get; } = default;
 
-    /// <inheritdoc />
+    #region Equality Implementation
+
+    /// <summary>
+    ///     Always returns true since all Unit values are equal.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool Equals(Unit other)
     {
         return true;
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Returns true if the object is a Unit.
+    /// </summary>
     public override bool Equals(object? obj)
     {
         return obj is Unit;
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Returns a constant hash code for all Unit values.
+    /// </summary>
     public override int GetHashCode()
     {
         return 0;
     }
 
-    /// <inheritdoc />
+    public static bool operator ==(Unit left, Unit right)
+    {
+        return true;
+    }
+
+    public static bool operator !=(Unit left, Unit right)
+    {
+        return false;
+    }
+
+    #endregion
+
+    #region Formatting
+
     public override string ToString()
     {
         return "()";
     }
 
-    /// <inheritdoc />
     public string ToString(string? format, IFormatProvider? formatProvider)
     {
         return "()";
     }
 
-    /// <inheritdoc />
     public bool TryFormat(
         Span<char> destination,
         out int charsWritten,
@@ -72,29 +92,19 @@ public readonly struct Unit : IEquatable<Unit>, ISpanFormattable
         return true;
     }
 
-    public static bool operator ==(Unit left, Unit right)
-    {
-        return true;
-    }
+    #endregion
 
-    public static bool operator !=(Unit left, Unit right)
-    {
-        return false;
-    }
+    #region Task Conversions
 
-    /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to <see cref="ValueTask" />.
-    /// </summary>
     public static implicit operator ValueTask(Unit _)
     {
         return default;
     }
 
-    /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to <see cref="Task" />.
-    /// </summary>
     public static implicit operator Task(Unit _)
     {
         return Task.CompletedTask;
     }
+
+    #endregion
 }

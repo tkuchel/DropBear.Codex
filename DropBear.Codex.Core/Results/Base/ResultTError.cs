@@ -1,11 +1,10 @@
 ﻿#region
 
-using System.Collections.Concurrent;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using DropBear.Codex.Core.Common;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Compatibility;
@@ -17,7 +16,8 @@ using Microsoft.Extensions.ObjectPool;
 namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
-///     A base Result implementation parameterized by an error type.
+///     A robust Result type for operations without return values, carrying rich error information.
+///     This class forms the foundation of the Result pattern in the library.
 /// </summary>
 /// <typeparam name="TError">A type inheriting from ResultError.</typeparam>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
@@ -25,57 +25,11 @@ namespace DropBear.Codex.Core.Results.Base;
 public class Result<TError> : ResultBase, IResult<TError>
     where TError : ResultError
 {
-    // Global singleton pool provider for consistent pool behavior
-    private static readonly ObjectPoolProvider PoolProvider = new DefaultObjectPoolProvider
-    {
-        MaximumRetained = 1024 // Adjust based on application profile
-    };
+    // Shared object pool for result instances
+    private static readonly ObjectPool<Result<TError>> ResultPool =
+        ObjectPoolManager.GetPool(() => new Result<TError>(ResultState.Success));
 
-    private static readonly ConcurrentDictionary<Type, ObjectPool<Result<TError>>> ResultPool = new();
-    private readonly ReadOnlyCollection<Exception> _exceptions;
-
-    #region Protected Methods
-
-    /// <summary>
-    ///     Initializes or reinitializes the result instance.
-    /// </summary>
-    /// <param name="state">The state of the result.</param>
-    /// <param name="error">Optional error if the result is not successful.</param>
-    /// <param name="exception">Optional exception if an error occurred.</param>
-    protected virtual void Initialize(ResultState state, TError? error = null, Exception? exception = null)
-    {
-        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
-
-        // Use field info variables to avoid repetitive lookups
-        var stateField = GetType().GetField("_state", flags);
-        var errorField = GetType().GetField("_error", flags);
-        var exceptionField = GetType().GetField("_exception", flags);
-
-        stateField?.SetValue(this, state);
-        errorField?.SetValue(this, error);
-        exceptionField?.SetValue(this, exception);
-    }
-
-    #endregion
-
-    /// <summary>
-    ///     Custom pooling policy for Result objects.
-    /// </summary>
-    private sealed class ResultPooledObjectPolicy : IPooledObjectPolicy<Result<TError>>
-    {
-        public Result<TError> Create()
-        {
-            return new Result<TError>(ResultState.Success);
-        }
-
-        public bool Return(Result<TError> obj)
-        {
-            obj.Initialize(ResultState.Success);
-            return true;
-        }
-    }
-
-    #region Constructors and Initialization
+    #region Constructors
 
     /// <summary>
     ///     Initializes a new instance of Result{TError}.
@@ -88,21 +42,6 @@ public class Result<TError> : ResultBase, IResult<TError>
     {
         ValidateErrorState(state, error);
         Error = error;
-        _exceptions = new ReadOnlyCollection<Exception>(CreateExceptionList(exception));
-    }
-
-    /// <summary>
-    ///     Validates that the error state is consistent with the result state.
-    /// </summary>
-    /// <param name="state">The result state.</param>
-    /// <param name="error">The error object, if any.</param>
-    /// <exception cref="ResultValidationException">Thrown if the state and error are inconsistent.</exception>
-    private static void ValidateErrorState(ResultState state, TError? error)
-    {
-        if (state is ResultState.Failure or ResultState.PartialSuccess && error is null)
-        {
-            throw new ResultValidationException("Error is required for non-success results");
-        }
     }
 
     #endregion
@@ -112,118 +51,59 @@ public class Result<TError> : ResultBase, IResult<TError>
     /// <summary>
     ///     Gets the error object if the result is unsuccessful.
     /// </summary>
-    public TError? Error { get; }
-
-    /// <summary>
-    ///     Gets the read-only collection of exceptions associated with this result.
-    /// </summary>
-    public override IReadOnlyCollection<Exception> Exceptions => _exceptions;
+    public TError? Error { get; private set; }
 
     #endregion
 
-    #region Factory Methods
+    #region Match / Recover / Ensure
 
     /// <summary>
-    ///     Creates a new Result in the Success state.
+    ///     Performs pattern matching on the current state.
     /// </summary>
-    /// <returns>A successful result.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> Success()
+    /// <typeparam name="T">The return type of the pattern matching.</typeparam>
+    /// <param name="onSuccess">Function to call if the result is successful.</param>
+    /// <param name="onFailure">Function to call if the result is a failure.</param>
+    /// <param name="onWarning">Optional function to call if the result is a warning.</param>
+    /// <param name="onPartialSuccess">Optional function to call if the result is a partial success.</param>
+    /// <param name="onCancelled">Optional function to call if the result is cancelled.</param>
+    /// <param name="onPending">Optional function to call if the result is pending.</param>
+    /// <param name="onNoOp">Optional function to call if the result is a no-op.</param>
+    /// <returns>The result of the matching function.</returns>
+    public T Match<T>(
+        Func<T> onSuccess,
+        Func<TError, Exception?, T> onFailure,
+        Func<TError, T>? onWarning = null,
+        Func<TError, T>? onPartialSuccess = null,
+        Func<TError, T>? onCancelled = null,
+        Func<TError, T>? onPending = null,
+        Func<TError, T>? onNoOp = null)
     {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.Success);
-        return result;
+        try
+        {
+            return State switch
+            {
+                ResultState.Success => onSuccess(),
+                ResultState.Failure => onFailure(Error!, Exception),
+                ResultState.Warning => InvokeOrDefault(onWarning, onFailure),
+                ResultState.PartialSuccess => InvokeOrDefault(onPartialSuccess, onFailure),
+                ResultState.Cancelled => InvokeOrDefault(onCancelled, onFailure),
+                ResultState.Pending => InvokeOrDefault(onPending, onFailure),
+                ResultState.NoOp => InvokeOrDefault(onNoOp, onFailure),
+                _ => throw new ResultException($"Unhandled state: {State}")
+            };
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during match operation");
+            Telemetry.TrackException(ex, State, GetType());
+            return onFailure(Error ?? CreateDefaultError(), ex);
+        }
+
+        T InvokeOrDefault(Func<TError, T>? handler, Func<TError, Exception?, T> defaultHandler)
+        {
+            return handler is not null ? handler(Error!) : defaultHandler(Error!, Exception);
+        }
     }
-
-    /// <summary>
-    ///     Creates a new Result in the Failure state.
-    /// </summary>
-    /// <param name="error">The error that caused the failure.</param>
-    /// <param name="exception">Optional exception associated with the failure.</param>
-    /// <returns>A failed result.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> Failure(TError error, Exception? exception = null)
-    {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.Failure, error, exception);
-        return result;
-    }
-
-    /// <summary>
-    ///     Creates a new Result in the Warning state.
-    /// </summary>
-    /// <param name="error">The warning information.</param>
-    /// <returns>A result in the warning state.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> Warning(TError error)
-    {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.Warning, error);
-        return result;
-    }
-
-    /// <summary>
-    ///     Creates a new Result in the PartialSuccess state.
-    /// </summary>
-    /// <param name="error">Information about the partial success condition.</param>
-    /// <returns>A result in the partial success state.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> PartialSuccess(TError error)
-    {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.PartialSuccess, error);
-        return result;
-    }
-
-    /// <summary>
-    ///     Creates a new Result in the Cancelled state.
-    /// </summary>
-    /// <param name="error">Information about the cancellation.</param>
-    /// <returns>A result in the cancelled state.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> Cancelled(TError error)
-    {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.Cancelled, error);
-        return result;
-    }
-
-    /// <summary>
-    ///     Creates a new Result in the Pending state.
-    /// </summary>
-    /// <param name="error">Information about the pending operation.</param>
-    /// <returns>A result in the pending state.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> Pending(TError error)
-    {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.Pending, error);
-        return result;
-    }
-
-    /// <summary>
-    ///     Creates a new Result in the NoOp (No Operation) state.
-    /// </summary>
-    /// <param name="error">Information about why no operation was performed.</param>
-    /// <returns>A result in the NoOp state.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> NoOp(TError error)
-    {
-        var pool = GetOrCreatePool(typeof(Result<TError>));
-        var result = pool.Get();
-        result.Initialize(ResultState.NoOp, error);
-        return result;
-    }
-
-    #endregion
-
-    #region Operation Methods
 
     /// <summary>
     ///     Attempts to recover from a failure by invoking a recovery function.
@@ -274,107 +154,212 @@ public class Result<TError> : ResultBase, IResult<TError>
         }
     }
 
+    #endregion
+
+    #region NEW Async Versions of Recover / Ensure
+
     /// <summary>
-    ///     Performs pattern matching on the current state.
+    ///     Attempts to recover from a failure asynchronously by invoking a recovery function.
     /// </summary>
-    /// <typeparam name="T">The return type of the pattern matching.</typeparam>
-    /// <param name="onSuccess">Function to call if the result is successful.</param>
-    /// <param name="onFailure">Function to call if the result is a failure.</param>
-    /// <param name="onWarning">Optional function to call if the result is a warning.</param>
-    /// <param name="onPartialSuccess">Optional function to call if the result is a partial success.</param>
-    /// <param name="onCancelled">Optional function to call if the result is cancelled.</param>
-    /// <param name="onPending">Optional function to call if the result is pending.</param>
-    /// <param name="onNoOp">Optional function to call if the result is a no-op.</param>
-    /// <returns>The result of the matching function.</returns>
-    public T Match<T>(
-        Func<T> onSuccess,
-        Func<TError, Exception?, T> onFailure,
-        Func<TError, T>? onWarning = null,
-        Func<TError, T>? onPartialSuccess = null,
-        Func<TError, T>? onCancelled = null,
-        Func<TError, T>? onPending = null,
-        Func<TError, T>? onNoOp = null)
+    /// <param name="recovery">A function that attempts to recover from the failure asynchronously.</param>
+    /// <returns>A ValueTask returning either this result (if successful) or the recovered result.</returns>
+    public async ValueTask<Result<TError>> RecoverAsync(
+        Func<TError, Exception?, ValueTask<Result<TError>>> recovery)
     {
+        if (IsSuccess)
+        {
+            return this;
+        }
+
         try
         {
-            return State switch
-            {
-                ResultState.Success => onSuccess(),
-                ResultState.Failure => onFailure(Error!, Exception),
-                ResultState.Warning => InvokeOrDefault(onWarning, onFailure),
-                ResultState.PartialSuccess => InvokeOrDefault(onPartialSuccess, onFailure),
-                ResultState.Cancelled => InvokeOrDefault(onCancelled, onFailure),
-                ResultState.Pending => InvokeOrDefault(onPending, onFailure),
-                ResultState.NoOp => InvokeOrDefault(onNoOp, onFailure),
-                _ => throw new ResultException($"Unhandled state: {State}")
-            };
+            return await recovery(Error!, Exception).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Exception during match operation");
+            Logger.Error(ex, "Exception during async recovery");
             Telemetry.TrackException(ex, State, GetType());
-            return onFailure(Error ?? CreateDefaultError(), ex);
+            return this;
+        }
+    }
+
+    /// <summary>
+    ///     Ensures a specified condition is met asynchronously.
+    /// </summary>
+    /// <param name="predicate">A function that returns true if the condition is met.</param>
+    /// <param name="error">The error to return if the condition is not met.</param>
+    /// <returns>A ValueTask returning either this result (if successful) or a failure result.</returns>
+    public async ValueTask<Result<TError>> EnsureAsync(
+        Func<ValueTask<bool>> predicate,
+        TError error)
+    {
+        if (!IsSuccess)
+        {
+            return this;
         }
 
-        T InvokeOrDefault(Func<TError, T>? handler, Func<TError, Exception?, T> defaultHandler)
+        try
         {
-            return handler is not null ? handler(Error!) : defaultHandler(Error!, Exception);
+            var success = await predicate().ConfigureAwait(false);
+            return success ? this : Failure(error);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Exception during async ensure predicate");
+            Telemetry.TrackException(ex, State, GetType());
+            return Failure(error, ex);
         }
     }
 
     #endregion
 
-    #region Private Methods
+    #region Internal Implementation
 
     /// <summary>
-    ///     Creates a list of exceptions from an exception.
+    ///     Validates that the error state is consistent with the result state.
     /// </summary>
-    /// <param name="exception">The exception to process.</param>
-    /// <returns>A list of exceptions.</returns>
-    private static List<Exception> CreateExceptionList(Exception? exception)
+    /// <param name="state">The result state.</param>
+    /// <param name="error">The error object, if any.</param>
+    /// <exception cref="ResultValidationException">Thrown if the state and error are inconsistent.</exception>
+    private static void ValidateErrorState(ResultState state, TError? error)
     {
-        if (exception == null)
+        if (state is ResultState.Failure or ResultState.PartialSuccess && error is null)
         {
-            return new List<Exception>();
+            throw new ResultValidationException("Error is required for non-success results");
         }
-
-        if (exception is AggregateException aggregateException)
-        {
-            return [..aggregateException.InnerExceptions];
-        }
-
-        return [exception];
-    }
-
-    /// <summary>
-    ///     Gets or creates an object pool for the specified result type.
-    /// </summary>
-    /// <param name="type">The type of result to pool.</param>
-    /// <returns>An object pool for the result type.</returns>
-    private static ObjectPool<Result<TError>> GetOrCreatePool(Type type)
-    {
-        return ResultPool.GetOrAdd(type, _ =>
-            PoolProvider.Create(new ResultPooledObjectPolicy()));
     }
 
     /// <summary>
     ///     Creates a default error with a generic message.
     /// </summary>
-    /// <returns>A default error instance.</returns>
-    protected TError CreateDefaultError()
+    private TError CreateDefaultError()
     {
         return (TError)Activator.CreateInstance(typeof(TError), "Operation failed with unhandled exception")!;
     }
 
+    /// <summary>
+    ///     Initializes or reinitializes the result instance for pooling.
+    ///     This is purely internal – you might hide or rename it if desired.
+    /// </summary>
+    internal void InitializeInternal(ResultState state, TError? error = null, Exception? exception = null)
+    {
+        // Bypass normal constructor logic using reflection or direct field assignment
+        var baseType = typeof(ResultBase);
+        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+
+        // Set the "State" field (on the base class)
+        baseType.GetField("<State>k__BackingField", flags)?.SetValue(this, state);
+
+        // Set the "Exception" field (on the base class)
+        baseType.GetField("<Exception>k__BackingField", flags)?.SetValue(this, exception);
+
+        // Then set ours
+        Error = error;
+    }
+
     #endregion
 
-    #region Equality Members
+    #region Factory Methods
+
+    /// <summary>
+    ///     Creates a new Result in the Success state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> Success()
+    {
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.Success);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Failure state.
+    /// </summary>
+    /// <param name="error">The error that caused the failure.</param>
+    /// <param name="exception">Optional exception associated with the failure.</param>
+    /// <returns>A failed result.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> Failure(TError error, Exception? exception = null)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.Failure, error, exception);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Warning state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> Warning(TError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.Warning, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the PartialSuccess state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> PartialSuccess(TError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.PartialSuccess, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Cancelled state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> Cancelled(TError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.Cancelled, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the Pending state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> Pending(TError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.Pending, error);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a new Result in the NoOp (No Operation) state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<TError> NoOp(TError error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        var result = ResultPool.Get();
+        result.InitializeInternal(ResultState.NoOp, error);
+        return result;
+    }
+
+    #endregion
+
+    #region Equality / Debugging
 
     /// <summary>
     ///     Determines whether this result is equal to an error.
     /// </summary>
-    /// <param name="other">The error to compare with.</param>
-    /// <returns>True if the result's error equals the specified error.</returns>
     public bool Equals(TError? other)
     {
         if (other is null)
@@ -388,8 +373,6 @@ public class Result<TError> : ResultBase, IResult<TError>
     /// <summary>
     ///     Determines whether this result is equal to another object.
     /// </summary>
-    /// <param name="obj">The object to compare with.</param>
-    /// <returns>True if the objects are equal.</returns>
     public override bool Equals(object? obj)
     {
         if (obj is null)
@@ -409,22 +392,16 @@ public class Result<TError> : ResultBase, IResult<TError>
 
         return State == other.State &&
                EqualityComparer<TError?>.Default.Equals(Error, other.Error) &&
-               Equals(Exception, other.Exception) &&
-               Exceptions.SequenceEqual(other.Exceptions);
+               Equals(Exception, other.Exception);
     }
 
     /// <summary>
     ///     Gets a hash code for this result.
     /// </summary>
-    /// <returns>A hash code value.</returns>
     public override int GetHashCode()
     {
-        return HashCode.Combine(State, Error, Exception, Exceptions);
+        return HashCode.Combine(State, Error, Exception);
     }
-
-    #endregion
-
-    #region Debugging Support
 
     private string DebuggerDisplay => $"State = {State}, Error = {Error?.Message ?? "None"}";
 
@@ -435,8 +412,7 @@ public class Result<TError> : ResultBase, IResult<TError>
             { "State", State },
             { "IsSuccess", IsSuccess },
             { "Error", Error?.Message },
-            { "Exception", Exception?.Message },
-            { "ExceptionCount", Exceptions.Count }
+            { "Exception", Exception?.Message }
         };
 
     #endregion

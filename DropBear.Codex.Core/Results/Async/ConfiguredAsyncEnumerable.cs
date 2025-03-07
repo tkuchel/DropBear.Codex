@@ -1,8 +1,4 @@
-﻿#region
-
-#endregion
-
-namespace DropBear.Codex.Core.Results.Async;
+﻿namespace DropBear.Codex.Core.Results.Async;
 
 /// <summary>
 ///     Wrapper for configuring async enumerable behavior.

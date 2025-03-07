@@ -51,7 +51,6 @@ public static class ServiceCollectionExtensions
 
         // Register telemetry if not already registered
         services.TryAddSingleton<IResultTelemetry, DefaultResultTelemetry>();
-        services.TryAddSingleton<IResultDiagnostics, DefaultResultDiagnostics>();
 
         // Register time provider for testability (added in .NET 8)
         services.TryAddSingleton(TimeProvider.System);

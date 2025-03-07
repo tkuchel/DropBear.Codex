@@ -1,23 +1,24 @@
-﻿#region
-
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Attributes;
 using DropBear.Codex.Core.Results.Base;
 
-#endregion
-
 namespace DropBear.Codex.Core.Results.Async;
 
 /// <summary>
 ///     Represents a Result that contains an IAsyncEnumerable value.
+///     Provides a unified way to handle asynchronous sequences with error handling.
 /// </summary>
+/// <typeparam name="T">Type of the items in the enumerable.</typeparam>
+/// <typeparam name="TError">Type of error that may occur.</typeparam>
 [AsyncEnumerableResult(typeof(IAsyncEnumerable<>))]
 public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T>, TError>, IAsyncEnumerableResult<T>
     where TError : ResultError
 {
+    // The underlying async enumerable
     private readonly IAsyncEnumerable<T>? _enumerable;
+    // Cached count for optimization
     private int? _count;
 
     private AsyncEnumerableResult(
@@ -30,6 +31,11 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T
         _enumerable = enumerable;
     }
 
+    #region IAsyncEnumerableResult Implementation
+
+    /// <summary>
+    ///     Gets the count of items in the enumerable.
+    /// </summary>
     public async ValueTask<int> GetCountAsync(CancellationToken cancellationToken = default)
     {
         if (_count.HasValue)
@@ -48,6 +54,9 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T
         return count;
     }
 
+    /// <summary>
+    ///     Checks if the enumerable has any items.
+    /// </summary>
     public async ValueTask<bool> HasItemsAsync(CancellationToken cancellationToken = default)
     {
         if (_count.HasValue)
@@ -66,18 +75,27 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T
         return false;
     }
 
+    /// <summary>
+    ///     Gets the async enumerator for the underlying sequence.
+    /// </summary>
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         if (!IsSuccess || _enumerable == null)
         {
-            return EmptyAsyncEnumerator();
+            return Empty().GetAsyncEnumerator(cancellationToken);
         }
 
         return EnumerateAsync(cancellationToken);
     }
 
-    private async IAsyncEnumerator<T> EnumerateAsync(
-        CancellationToken cancellationToken = default)
+    #endregion
+
+    #region Private Helpers
+
+    /// <summary>
+    ///     Provides the enumerator that iterates through the underlying enumerable.
+    /// </summary>
+    private async IAsyncEnumerator<T> EnumerateAsync(CancellationToken cancellationToken = default)
     {
         await foreach (var item in _enumerable!.ConfigureAwait(false).WithCancellation(cancellationToken))
         {
@@ -86,21 +104,20 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T
         }
     }
 
-    private static IAsyncEnumerator<T> EmptyAsyncEnumerator()
-    {
-        return Empty().GetAsyncEnumerator();
-    }
-
-    private static async IAsyncEnumerable<T> Empty(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    /// <summary>
+    ///     Creates an empty async enumerable for use when the result is a failure.
+    /// </summary>
+    private static async IAsyncEnumerable<T> Empty([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         if (cancellationToken.IsCancellationRequested)
         {
             yield break;
         }
 
-        await Task.CompletedTask.ConfigureAwait(false); // Add await to make the method truly async
+        await Task.CompletedTask.ConfigureAwait(false); // Make the method truly async
     }
+
+    #endregion
 
     #region Factory Methods
 

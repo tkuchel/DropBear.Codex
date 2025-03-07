@@ -9,10 +9,130 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Provides extension methods for working with Result types.
+///     Provides core extension methods for working with Result types.
+///     Consolidates common functionality from multiple extension classes.
 /// </summary>
 public static class ResultExtensions
 {
+    #region Error Handling Utilities
+
+    /// <summary>
+    ///     Creates an error of type TError with the specified message and optional exception.
+    /// </summary>
+    internal static TError CreateError<TError>(string message, Exception? exception = null)
+        where TError : ResultError
+    {
+        if (exception == null)
+        {
+            return (TError)Activator.CreateInstance(typeof(TError), message)!;
+        }
+
+        try
+        {
+            // Try to create with message and exception parameters (common pattern)
+            return (TError)Activator.CreateInstance(typeof(TError), message, exception)!;
+        }
+        catch
+        {
+            // Fall back to just message if the constructor with exception doesn't exist
+            var error = (TError)Activator.CreateInstance(typeof(TError), message)!;
+            return (TError)error.WithMetadata("Exception", exception.ToString());
+        }
+    }
+
+    #endregion
+
+    #region Value Conversion Extensions
+
+    /// <summary>
+    ///     Converts a value to a Success result.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> ToResult<T, TError>(this T value)
+        where TError : ResultError
+    {
+        return Result<T, TError>.Success(value);
+    }
+
+    /// <summary>
+    ///     Converts a nullable value to a Result.
+    /// </summary>
+    public static Result<T, TError> ToResult<T, TError>(
+        this T? value,
+        Func<TError> onNull)
+        where T : class
+        where TError : ResultError
+    {
+        return value != null
+            ? Result<T, TError>.Success(value)
+            : Result<T, TError>.Failure(onNull());
+    }
+
+    /// <summary>
+    ///     Converts a ValueTask to a Result.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> ToResult<T, TError>(
+        this ValueTask<T> task,
+        Func<Exception, TError> onError)
+        where TError : ResultError
+    {
+        try
+        {
+            var result = await task.ConfigureAwait(false);
+            return Result<T, TError>.Success(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, TError>.Failure(onError(ex), ex);
+        }
+    }
+
+    #endregion
+
+    #region Try/Catch Extensions
+
+    /// <summary>
+    ///     Safely executes an operation that might throw, converting the result to a Result type.
+    /// </summary>
+    public static Result<T, TError> Try<T, TError>(
+        Func<T> operation,
+        Func<Exception, TError> onError)
+        where TError : ResultError
+    {
+        try
+        {
+            var result = operation();
+            return Result<T, TError>.Success(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, TError>.Failure(onError(ex), ex);
+        }
+    }
+
+    /// <summary>
+    ///     Safely executes an async operation that might throw, converting the result to a Result type.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> TryAsync<T, TError>(
+        Func<ValueTask<T>> operation,
+        Func<Exception, TError> onError)
+        where TError : ResultError
+    {
+        try
+        {
+            var result = await operation().ConfigureAwait(false);
+            return Result<T, TError>.Success(result);
+        }
+        catch (Exception ex)
+        {
+            return Result<T, TError>.Failure(onError(ex), ex);
+        }
+    }
+
+    #endregion
+
+    #region Collection Result Extensions
+
     /// <summary>
     ///     Combines multiple results into a single result.
     /// </summary>
@@ -58,6 +178,10 @@ public static class ResultExtensions
         var completedResults = await Task.WhenAll(results).ConfigureAwait(false);
         return completedResults.Combine(errorAggregator);
     }
+
+    #endregion
+
+    #region Parallelism Extensions
 
     /// <summary>
     ///     Executes an async operation for each item in parallel, with a maximum degree of parallelism.
@@ -166,89 +290,5 @@ public static class ResultExtensions
             .ToResult<IReadOnlyList<TResult>, TError>();
     }
 
-    /// <summary>
-    ///     Converts a value to a Success result.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> ToResult<T, TError>(this T value)
-        where TError : ResultError
-    {
-        return Result<T, TError>.Success(value);
-    }
-
-    /// <summary>
-    ///     Converts a nullable value to a Result.
-    /// </summary>
-    public static Result<T, TError> ToResult<T, TError>(
-        this T? value,
-        Func<TError> onNull)
-        where T : class
-        where TError : ResultError
-    {
-        return value != null
-            ? Result<T, TError>.Success(value)
-            : Result<T, TError>.Failure(onNull());
-    }
-
-    /// <summary>
-    ///     Converts a ValueTask to a Result.
-    /// </summary>
-    public static async ValueTask<Result<T, TError>> ToResult<T, TError>(
-        this ValueTask<T> task,
-        Func<Exception, TError> onError)
-        where TError : ResultError
-    {
-        try
-        {
-            var result = await task.ConfigureAwait(false);
-            return Result<T, TError>.Success(result);
-        }
-        catch (Exception ex)
-        {
-            return Result<T, TError>.Failure(onError(ex), ex);
-        }
-    }
-
-    /// <summary>
-    ///     Safely executes an operation that might throw, converting the result to a Result type.
-    /// </summary>
-    public static Result<T, TError> Try<T, TError>(
-        Func<T> operation,
-        Func<Exception, TError> onError)
-        where TError : ResultError
-    {
-        try
-        {
-            var result = operation();
-            return Result<T, TError>.Success(result);
-        }
-        catch (Exception ex)
-        {
-            return Result<T, TError>.Failure(onError(ex), ex);
-        }
-    }
-
-    /// <summary>
-    ///     Safely executes an async operation that might throw, converting the result to a Result type.
-    /// </summary>
-    public static async ValueTask<Result<T, TError>> TryAsync<T, TError>(
-        Func<ValueTask<T>> operation,
-        Func<Exception, TError> onError)
-        where TError : ResultError
-    {
-        try
-        {
-            var result = await operation().ConfigureAwait(false);
-            return Result<T, TError>.Success(result);
-        }
-        catch (Exception ex)
-        {
-            return Result<T, TError>.Failure(onError(ex), ex);
-        }
-    }
-
-    private static TError CreateError<TError>(string message, Exception? exception = null) where TError : ResultError
-    {
-        return (TError)Activator.CreateInstance(typeof(TError), message,exception)!;
-    }
+    #endregion
 }

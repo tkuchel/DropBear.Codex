@@ -1,8 +1,8 @@
 ﻿#region
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using DropBear.Codex.Core.Common;
 using DropBear.Codex.Core.Enums;
 using Microsoft.Extensions.ObjectPool;
 
@@ -11,43 +11,63 @@ using Microsoft.Extensions.ObjectPool;
 namespace DropBear.Codex.Core.Results.Compatibility;
 
 /// <summary>
-///     A backwards-compatible Result class that maintains the old API surface
-///     while leveraging the new implementation internally.
+///     A backwards-compatible, untyped Result class that leverages <see cref="LegacyError" />
+///     and uses <see cref="ObjectPoolManager" /> under the hood.
+///     Inherits from <c>Result&lt;LegacyError&gt;</c>, which defines <c>InitializeInternal(...)</c>.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
-public class Result : Result<LegacyError>
+public class Result : Base.Result<LegacyError>
 {
-    private static readonly ConcurrentDictionary<Type, DefaultObjectPool<Result>> ResultPool = new();
+    // Single shared pool, created via ObjectPoolManager
+    private static readonly ObjectPool<Result> Pool =
+        ObjectPoolManager.GetPool(() => new Result(ResultState.Success, null, null));
 
-    protected Result(ResultState state, string? error, Exception? exception)
-        : base(new LegacyError(error ?? string.Empty), state, error, exception)
+    /// <summary>
+    ///     Protected constructor bridging to the base <see cref="Result{TError}" />.
+    /// </summary>
+    /// <param name="state">The result state (e.g., Success, Failure).</param>
+    /// <param name="error">An optional string error message.</param>
+    /// <param name="exception">An optional exception if the result represents an error scenario.</param>
+    protected Result(
+            ResultState state,
+            string? error,
+            Exception? exception)
+        // Convert `error` into a LegacyError if present, or null otherwise
+        : base(state, error is null ? null : new LegacyError(error), exception)
     {
+        // The base constructor sets this.Error (and calls ValidateErrorState(...)) as needed.
     }
 
     /// <summary>
     ///     Gets the error message, maintaining backwards compatibility.
     /// </summary>
-    public new string ErrorMessage => Error?.Message ?? string.Empty;
+    public string ErrorMessage => Error?.Message ?? string.Empty;
 
-    private string DebuggerDisplay => $"State = {State}, Success = {IsSuccess}, Error = {ErrorMessage}";
+    private string DebuggerDisplay =>
+        $"State = {State}, Success = {IsSuccess}, Error = {ErrorMessage}";
 
-    private static DefaultObjectPool<Result> GetOrCreatePool(Type type)
+    /// <summary>
+    ///     Central helper for creating a <see cref="Result" /> from the shared pool
+    ///     and setting its <see cref="ResultState" />, error, and exception.
+    /// </summary>
+    private static Result FromPool(
+        ResultState state,
+        string? error,
+        Exception? exception = null)
     {
-        return ResultPool.GetOrAdd(type, _ => new DefaultObjectPool<Result>(new ResultPooledObjectPolicy()));
-    }
+        var result = Pool.Get();
 
-    private sealed class ResultPooledObjectPolicy : IPooledObjectPolicy<Result>
-    {
-        public Result Create()
-        {
-            return new Result(ResultState.Success, null, null);
-        }
-
-        public bool Return(Result obj)
-        {
-            obj.Initialize(ResultState.Success);
-            return true;
-        }
+        // The parent class "Result<TError>" defines "InitializeInternal" as:
+        //   internal void InitializeInternal(
+        //       ResultState newState, TError? newError = null, Exception? ex = null
+        //   )
+        // Here TError = LegacyError, so we pass either a new LegacyError or null.
+        result.InitializeInternal(
+            state,
+            error is null ? null : new LegacyError(error),
+            exception
+        );
+        return result;
     }
 
     #region Static Factory Methods
@@ -55,81 +75,68 @@ public class Result : Result<LegacyError>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public new static Result Success()
     {
-        var pool = GetOrCreatePool(typeof(Result));
-        return pool.Get();
+        return FromPool(ResultState.Success, null);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result Failure(string error, Exception? exception = null)
+    public static Result Failure(string error, Exception? exception = null)
     {
         ArgumentNullException.ThrowIfNull(error);
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.Failure, new LegacyError(error), exception);
-        return result;
+        return FromPool(ResultState.Failure, error, exception);
     }
 
     public static Result Failure(IEnumerable<Exception> exceptions)
     {
         ArgumentNullException.ThrowIfNull(exceptions);
-        var exceptionList = exceptions.ToList();
-        var error = new LegacyError(exceptionList.FirstOrDefault()?.Message ?? "Multiple errors occurred");
 
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.Failure, error, exceptionList.FirstOrDefault());
-        return result;
+        var exceptionList = exceptions.ToList();
+        var primaryException = exceptionList.FirstOrDefault();
+        var combinedErrorMessage = primaryException?.Message ?? "Multiple errors occurred";
+
+        return FromPool(
+            ResultState.Failure,
+            combinedErrorMessage,
+            primaryException
+        );
     }
 
     public static Result Warning(string error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.Warning, new LegacyError(error));
-        return result;
+        return FromPool(ResultState.Warning, error);
     }
 
     public static Result PartialSuccess(string error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.PartialSuccess, new LegacyError(error));
-        return result;
+        return FromPool(ResultState.PartialSuccess, error);
     }
 
     public static Result Cancelled(string error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.Cancelled, new LegacyError(error));
-        return result;
+        return FromPool(ResultState.Cancelled, error);
     }
 
     public static Result Pending(string error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.Pending, new LegacyError(error));
-        return result;
+        return FromPool(ResultState.Pending, error);
     }
 
     public static Result NoOp(string error)
     {
         ArgumentNullException.ThrowIfNull(error);
-        var pool = GetOrCreatePool(typeof(Result));
-        var result = pool.Get();
-        result.Initialize(ResultState.NoOp, new LegacyError(error));
-        return result;
+        return FromPool(ResultState.NoOp, error);
     }
 
     #endregion
 
     #region Chained Operations
 
+    /// <summary>
+    ///     Executes the given action if the result is in a Failure state.
+    /// </summary>
     public Result OnFailure(Action<string, Exception?> action)
     {
         if (State == ResultState.Failure)
@@ -140,6 +147,9 @@ public class Result : Result<LegacyError>
         return this;
     }
 
+    /// <summary>
+    ///     Executes the given action if the result is in a Success state.
+    /// </summary>
     public void OnSuccess(Action action)
     {
         if (IsSuccess)
@@ -148,6 +158,9 @@ public class Result : Result<LegacyError>
         }
     }
 
+    /// <summary>
+    ///     Pattern matches the result state, providing callbacks for each scenario.
+    /// </summary>
     public T Match<T>(
         Func<T> onSuccess,
         Func<string, Exception?, T> onFailure,
@@ -157,14 +170,27 @@ public class Result : Result<LegacyError>
         Func<string, T>? onPending = null,
         Func<string, T>? onNoOp = null)
     {
+        // "base.Match" calls into Result<LegacyError>.Match, bridging error
+        // to string for backwards compatibility.
         return base.Match(
             onSuccess,
-            (error, ex) => onFailure(error.Message, ex),
-            error => onWarning is not null ? onWarning(error.Message) : onFailure(error.Message, null),
-            error => onPartialSuccess is not null ? onPartialSuccess(error.Message) : onFailure(error.Message, null),
-            error => onCancelled is not null ? onCancelled(error.Message) : onFailure(error.Message, null),
-            error => onPending is not null ? onPending(error.Message) : onFailure(error.Message, null),
-            error => onNoOp is not null ? onNoOp(error.Message) : onFailure(error.Message, null));
+            (err, ex) => onFailure(err.Message, ex),
+            err => onWarning is not null
+                ? onWarning(err.Message)
+                : onFailure(err.Message, null),
+            err => onPartialSuccess is not null
+                ? onPartialSuccess(err.Message)
+                : onFailure(err.Message, null),
+            err => onCancelled is not null
+                ? onCancelled(err.Message)
+                : onFailure(err.Message, null),
+            err => onPending is not null
+                ? onPending(err.Message)
+                : onFailure(err.Message, null),
+            err => onNoOp is not null
+                ? onNoOp(err.Message)
+                : onFailure(err.Message, null)
+        );
     }
 
     #endregion

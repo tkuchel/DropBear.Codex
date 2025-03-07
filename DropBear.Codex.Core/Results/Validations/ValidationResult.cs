@@ -12,12 +12,16 @@ namespace DropBear.Codex.Core.Results.Validations;
 
 /// <summary>
 ///     Represents the result of a validation operation.
+///     Provides a specialized implementation of Result for validation scenarios.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ValidationResultJsonConverter))]
 public sealed class ValidationResult : Base.Result<ValidationError>
 {
+    // Default error to use when a specific error isn't provided
     private static readonly ValidationError DefaultError = new("Validation failed");
+
+    // Shared success instance for efficiency
 
     private ValidationResult(ResultState state, ValidationError? error = null, Exception? exception = null)
         : base(state, error, exception)
@@ -39,9 +43,11 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     /// <summary>
     ///     Gets a successful validation result.
     /// </summary>
-    public new static ValidationResult Success => new(ResultState.Success);
+    public new static ValidationResult Success { get; } = new(ResultState.Success);
 
     private string DebuggerDisplay => $"IsValid = {IsValid}, Message = {ErrorMessage}";
+
+    #region Factory Methods
 
     /// <summary>
     ///     Creates a failed validation result with the specified error message.
@@ -57,6 +63,7 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     public static ValidationResult PropertyFailed(string propertyName, string message, object? attemptedValue = null)
     {
         var error = new ValidationError(message) { PropertyName = propertyName, AttemptedValue = attemptedValue };
+
         return new ValidationResult(ResultState.Failure, error);
     }
 
@@ -66,6 +73,7 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     public static ValidationResult RuleFailed(string rule, string message, object? attemptedValue = null)
     {
         var error = new ValidationError(message) { ValidationRule = rule, AttemptedValue = attemptedValue };
+
         return new ValidationResult(ResultState.Failure, error);
     }
 
@@ -91,6 +99,10 @@ public sealed class ValidationResult : Base.Result<ValidationError>
 
         return Failed(combinedMessage);
     }
+
+    #endregion
+
+    #region Validation Helpers
 
     /// <summary>
     ///     Ensures a condition is met, returning a failed result if not.
@@ -129,6 +141,10 @@ public sealed class ValidationResult : Base.Result<ValidationError>
         }
     }
 
+    #endregion
+
+    #region Conversion Methods
+
     /// <summary>
     ///     Returns the validation result as a Result{T, ValidationError}.
     /// </summary>
@@ -148,4 +164,6 @@ public sealed class ValidationResult : Base.Result<ValidationError>
             ? Result<T, ValidationError>.Success(default!)
             : Result<T, ValidationError>.Failure(Error!);
     }
+
+    #endregion
 }

@@ -7,18 +7,29 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Provides LINQ-friendly extension methods for <see cref="Result{T,TError}" /> types,
-///     allowing usage of <c>Select</c>, <c>SelectMany</c>, and <c>Where</c> in a LINQ expression style.
+///     Provides LINQ-friendly extension methods for Result types.
+///     These allow for familiar query expressions and transformations.
 /// </summary>
-public static class ResultLinqExtensions
+public static class LinqExtensions
 {
-#pragma warning disable CS1584 // XML comment has syntactically incorrect cref attribute
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates an error of type TError with the specified message.
+    /// </summary>
+    private static TError CreateError<TError>(string message)
+        where TError : ResultError
+    {
+        return (TError)Activator.CreateInstance(typeof(TError), message)!;
+    }
+
+    #endregion
 
     #region Single Value Operations
 
     /// <summary>
-    ///     Projects the value of a <see cref="Result{T, TError}" /> into a new form via <paramref name="selector" />.
-    ///     (Equivalent to <c>result.Map(selector)</c>.)
+    ///     Projects the value of a Result into a new form via selector.
+    ///     (Equivalent to result.Map(selector).)
     /// </summary>
     public static Result<TResult, TError> Select<T, TResult, TError>(
         this Result<T, TError> result,
@@ -30,8 +41,9 @@ public static class ResultLinqExtensions
     }
 
     /// <summary>
-    ///     Projects each value in <paramref name="result" /> into an intermediate <see cref="Result{TIntermediate, TError}" />
-    ///     and then combines the intermediate with the original value to produce a final <typeparamref name="TResult" />.
+    ///     Projects each value in result into an intermediate Result
+    ///     and then combines the intermediate with the original value to produce a final result.
+    ///     This enables LINQ query expressions with multiple from clauses.
     /// </summary>
     public static Result<TResult, TError> SelectMany<T, TIntermediate, TResult, TError>(
         this Result<T, TError> result,
@@ -47,7 +59,7 @@ public static class ResultLinqExtensions
     }
 
     /// <summary>
-    ///     Filters the value of a <see cref="Result{T, TError}" /> based on <paramref name="predicate" />.
+    ///     Filters the value of a Result based on a predicate.
     ///     If the predicate fails, returns a new failure result.
     /// </summary>
     public static Result<T, TError> Where<T, TError>(
@@ -69,7 +81,8 @@ public static class ResultLinqExtensions
     #region Collection Operations
 
     /// <summary>
-    ///     Maps each element of a <see cref="Result{IEnumerable{T}, TError}" /> to a new form, optionally preserving order.
+    ///     Maps each element of a Result containing a collection to a new form,
+    ///     optionally preserving the original order.
     /// </summary>
     public static Result<IEnumerable<TResult>, TError> Select<T, TResult, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -87,7 +100,7 @@ public static class ResultLinqExtensions
     }
 
     /// <summary>
-    ///     Performs a parallel projection of each element in a <see cref="Result{IEnumerable{T}, TError}" />.
+    ///     Performs a parallel projection of each element in a Result containing a collection.
     /// </summary>
     public static Result<IEnumerable<TResult>, TError> SelectParallel<T, TResult, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -126,14 +139,8 @@ public static class ResultLinqExtensions
         });
     }
 
-    private static TError CreateError<TError>(string message)
-        where TError : ResultError
-    {
-        return (TError)Activator.CreateInstance(typeof(TError), message)!;
-    }
-
     /// <summary>
-    ///     Filters elements of a <see cref="Result{IEnumerable{T}, TError}" /> based on <paramref name="predicate" />,
+    ///     Filters elements of a Result containing a collection based on predicate,
     ///     optionally preserving the original order.
     /// </summary>
     public static Result<IEnumerable<T>, TError> Where<T, TError>(
@@ -152,8 +159,8 @@ public static class ResultLinqExtensions
     }
 
     /// <summary>
-    ///     Projects each element of a <see cref="Result{IEnumerable{T}, TError}" /> into
-    ///     a flattened collection via <paramref name="selector" />.
+    ///     Projects each element of a Result containing a collection into
+    ///     a flattened collection via selector.
     /// </summary>
     public static Result<IEnumerable<TResult>, TError> SelectMany<T, TResult, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -175,8 +182,8 @@ public static class ResultLinqExtensions
     #region Aggregation Operations
 
     /// <summary>
-    ///     Aggregates the elements of a <see cref="Result{IEnumerable{T}, TError}" />
-    ///     with a specified <paramref name="func" /> and initial <paramref name="seed" />.
+    ///     Aggregates the elements of a Result containing a collection
+    ///     with a specified func and initial seed.
     /// </summary>
     public static Result<TAccumulate, TError> Aggregate<T, TAccumulate, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -189,7 +196,7 @@ public static class ResultLinqExtensions
     }
 
     /// <summary>
-    ///     Retrieves the first element of a <see cref="Result{IEnumerable{T}, TError}" /> or returns a failure if none exist.
+    ///     Retrieves the first element of a Result containing a collection or returns a failure if none exist.
     /// </summary>
     public static Result<T, TError> FirstOrFailure<T, TError>(
         this Result<IEnumerable<T>, TError> result,
@@ -208,6 +215,4 @@ public static class ResultLinqExtensions
     }
 
     #endregion
-
-#pragma warning restore CS1584 // XML comment has syntactically incorrect cref attribute
 }
