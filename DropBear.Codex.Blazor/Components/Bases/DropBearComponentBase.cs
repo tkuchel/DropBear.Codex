@@ -492,7 +492,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <returns>True if the exception was handled, false otherwise.</returns>
     private bool HandleJsException(Exception ex, string identifier, string? caller)
     {
-        if (ex is JSDisconnectedException or TaskCanceledException)
+        // Check for connection-related exceptions
+        if (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
         {
             if (IsConnected)
             {

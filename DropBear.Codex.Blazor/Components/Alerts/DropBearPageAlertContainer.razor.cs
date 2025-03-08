@@ -333,10 +333,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             {
                 await SafeJsVoidInteropAsync("DropBearPageAlertAPI.hideAll");
             }
+            catch (ObjectDisposedException objectDisposedException)
+            {
+                LogDebug("Failed to clean up JS resources", objectDisposedException);
+            }
             catch (Exception ex)
             {
-                LogError("Error cleaning up alerts", ex);
+                LogError("Failed to clean up JS resources", ex);
             }
+
         }
     }
 
