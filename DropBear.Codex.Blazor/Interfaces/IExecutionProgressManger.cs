@@ -2,14 +2,14 @@
 
 using DropBear.Codex.Blazor.Components.Progress;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Blazor.Exceptions;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Blazor.Services;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.TaskExecutionEngine;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using MessagePipe;
-using ProgressManagerError = DropBear.Codex.Blazor.Services.ProgressManagerError;
+
 
 #endregion
 
@@ -20,6 +20,12 @@ namespace DropBear.Codex.Blazor.Interfaces;
 /// </summary>
 public interface IExecutionProgressManager : IAsyncDisposable
 {
+    /// <summary>
+    ///     A flag indicating whether this manager has been disposed.
+    /// </summary>
+    /// <returns>A bool indicating if the manager has been disposed.</returns>
+    bool IsDisposed { get; }
+
     /// <summary>
     ///     An event that fires whenever the manager updates progress (indeterminate, normal, or stepped).
     ///     Useful for other UI elements or logs that also need to react to changes.
@@ -79,13 +85,6 @@ public interface IExecutionProgressManager : IAsyncDisposable
     /// </summary>
     /// <returns>A result indicating success or failure.</returns>
     ValueTask<Result<Unit, ProgressManagerError>> CompleteAsync();
-
-
-    /// <summary>
-    ///     A flag indicating whether this manager has been disposed.
-    /// </summary>
-    /// <returns>A bool indicating if the manager has been disposed.</returns>
-    bool IsDisposed { get; }
 
     /// <summary>
     ///     Subscribes to execution engine events (started, progress, completed, failed) using the given

@@ -4,7 +4,8 @@ using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using DropBear.Codex.Blazor.Components.Progress;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Blazor.Exceptions;
+using DropBear.Codex.Blazor.Errors;
+
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;

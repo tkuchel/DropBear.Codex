@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
@@ -780,48 +781,5 @@ internal static class TaskExtensions
             t => logger.Error(t.Exception!, "Unhandled task error"),
             TaskContinuationOptions.OnlyOnFaulted
         );
-    }
-}
-
-/// <summary>
-///     Represents errors that occur during progress management operations.
-/// </summary>
-public sealed record ProgressManagerError : ResultError
-{
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="ProgressManagerError" /> class.
-    /// </summary>
-    /// <param name="message">The error message.</param>
-    /// <param name="exception">Optional exception that caused the error.</param>
-    public ProgressManagerError(string message, Exception? exception = null)
-        : base(message)
-    {
-        Exception = exception;
-    }
-
-    /// <summary>
-    ///     Gets the exception that caused this error, if any.
-    /// </summary>
-    public Exception? Exception { get; }
-
-    /// <summary>
-    ///     Creates an error for operation failures.
-    /// </summary>
-    /// <param name="operation">The operation that failed.</param>
-    /// <param name="details">Details about the failure.</param>
-    /// <returns>A new <see cref="ProgressManagerError" /> instance.</returns>
-    public static ProgressManagerError OperationFailed(string operation, string details)
-    {
-        return new ProgressManagerError($"Operation '{operation}' failed: {details}");
-    }
-
-    /// <summary>
-    ///     Creates an error for invalid state conditions.
-    /// </summary>
-    /// <param name="details">Details about the invalid state.</param>
-    /// <returns>A new <see cref="ProgressManagerError" /> instance.</returns>
-    public static ProgressManagerError InvalidState(string details)
-    {
-        return new ProgressManagerError($"Invalid state: {details}");
     }
 }

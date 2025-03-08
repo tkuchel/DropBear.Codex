@@ -44,8 +44,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
     private bool _isModuleInitialized;
     private IDisposable? _notificationSubscription;
 
-    [Parameter]
-    public string ChannelId { get; set; } = "Alerts";
+    [Parameter] public string ChannelId { get; set; } = "Alerts";
 
     /// <summary>
     ///     Initialize and set up event subscriptions
@@ -341,7 +340,6 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             {
                 LogError("Failed to clean up JS resources", ex);
             }
-
         }
     }
 

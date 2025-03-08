@@ -4,7 +4,7 @@ using DropBear.Codex.Core.Results.Base;
 
 #endregion
 
-namespace DropBear.Codex.Blazor.Exceptions;
+namespace DropBear.Codex.Blazor.Errors;
 
 /// <summary>
 ///     Represents errors that can occur during progress management operations.
