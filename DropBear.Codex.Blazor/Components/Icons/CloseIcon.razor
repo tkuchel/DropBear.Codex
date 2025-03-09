@@ -1,5 +1,4 @@
-﻿// Updated CloseIcon.razor
-@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <IconBase Title="@Title"
           Size="@Size"
@@ -14,21 +13,17 @@
 </IconBase>
 
 @code {
-    [Parameter]
-    public string? Title { get; set; } = "Close";
+    [Parameter] public string? Title { get; set; } = "Close";
 
-    [Parameter]
-    public int Size { get; set; } = 20;
+    [Parameter] public int Size { get; set; } = 20;
 
-    [Parameter]
-    public string Color { get; set; } = "currentColor";
+    [Parameter] public string Color { get; set; } = "currentColor";
 
-    [Parameter]
-    public string CssClass { get; set; } = string.Empty;
+    [Parameter] public string CssClass { get; set; } = string.Empty;
 
-    [Parameter]
-    public float StrokeWidth { get; set; } = 1.5f;
+    [Parameter] public float StrokeWidth { get; set; } = 1.5f;
 
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
 }
