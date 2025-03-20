@@ -1,0 +1,65 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Panels
+@typeparam T
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="dropbear-selection-panel" id="@ComponentId">
+    <div class="selection-panel-header">
+        <h3 class="panel-title">@Title</h3>
+        <div class="selection-count">@SelectedItems?.Count items selected</div>
+    </div>
+
+    <div class="selection-panel-content @(IsCollapsed ? "collapsed" : "")">
+        @if (SelectedItems != null && SelectedItems.Any())
+        {
+            <div class="selection-list">
+                @foreach (var item in SelectedItems)
+                {
+                    <div class="selection-item">
+                        <div class="item-content">
+                            @if (ItemTemplate != null)
+                            {
+                                @ItemTemplate(item)
+                            }
+                            else
+                            {
+                                <span>@(ItemDisplayExpression?.Invoke(item) ?? item?.ToString())</span>
+                            }
+                        </div>
+                        <button type="button" class="remove-button" @onclick="@(() => RemoveItem(item))" title="Remove">
+                            <span class="remove-icon">×</span>
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="selection-actions">
+                @if (ActionButtons != null && ActionButtons.Any())
+                {
+                    @foreach (var button in ActionButtons.Take(3))
+                    {
+                        <button type="button"
+                                class="action-button @button.ButtonClass"
+                                @onclick="@(() => button.OnClick.InvokeAsync(SelectedItems))"
+                                disabled="@(!SelectedItems.Any() || button.IsDisabled)">
+                            @if (!string.IsNullOrEmpty(button.IconClass))
+                            {
+                                <i class="@button.IconClass"></i>
+                            }
+                            <span>@button.Text</span>
+                        </button>
+                    }
+                }
+            </div>
+        }
+        else
+        {
+            <div class="empty-selection">
+                <p>@EmptySelectionText</p>
+            </div>
+        }
+    </div>
+
+    <div class="selection-panel-toggle" @onclick="ToggleCollapse">
+        <span class="toggle-icon @(IsCollapsed ? "collapsed" : "")"></span>
+    </div>
+</div>
