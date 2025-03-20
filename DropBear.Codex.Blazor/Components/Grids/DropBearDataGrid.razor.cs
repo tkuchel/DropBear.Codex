@@ -737,69 +737,88 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     }
 
     /// <summary>
-    ///     Updates the subset of items to be displayed based on filtering, sorting, and pagination.
-    /// </summary>
-    private void UpdateDisplayedItems()
+///     Updates the subset of items to be displayed based on filtering, sorting, and pagination.
+/// </summary>
+private void UpdateDisplayedItems()
+{
+    if (_cachedFilteredItems is null || _cachedFilteredItems.Count == 0)
     {
-        if (_cachedFilteredItems is null)
-        {
-            DisplayedItems = Array.Empty<TItem>();
-            return;
-        }
-
-        IEnumerable<TItem> items = _cachedFilteredItems;
-
-        if (_currentSortColumn?.PropertySelector != null)
-        {
-            try
-            {
-                var selectorKey = $"{typeof(TItem).Name}.{_currentSortColumn.PropertyName}";
-
-                if (!_compiledSelectors.TryGetValue(selectorKey, out Func<TItem, object>? selector))
-                {
-                    selector = _currentSortColumn.PropertySelector.Compile();
-                    var cacheOptions = new MemoryCacheEntryOptions
-                    {
-                        Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
-                    };
-                    _compiledSelectors.Set(selectorKey, selector, cacheOptions);
-                }
-
-                // Use OrderBy instead of recreating the list if possible
-                items = _currentSortDirection == SortDirection.Ascending
-                    ? _cachedFilteredItems.OrderBy(selector!)
-                    : _cachedFilteredItems.OrderByDescending(selector!);
-            }
-            catch (Exception ex)
-            {
-                Logger.Error(ex, "Error sorting column {Column}", _currentSortColumn.PropertyName);
-
-                // Fall back to unsorted list
-                items = _cachedFilteredItems;
-
-                _lastOperationResult = Result<bool, DataGridError>.Failure(
-                    DataGridError.SortingFailed(_currentSortColumn.PropertyName, ex.Message), ex);
-
-                _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
-            }
-        }
-
-        // Apply pagination
-        var skip = (CurrentPage - 1) * ItemsPerPage;
-        var take = ItemsPerPage;
-
-        // Check that skip doesn't exceed the collection length
-        if (items is ICollection<TItem> collection)
-        {
-            if (skip >= collection.Count)
-            {
-                skip = Math.Max(0, collection.Count - take);
-                CurrentPage = Math.Max(1, (skip / take) + 1);
-            }
-        }
-
-        DisplayedItems = items.Skip(skip).Take(take).ToList();
+        DisplayedItems = Array.Empty<TItem>();
+        return;
     }
+
+    IEnumerable<TItem> items = _cachedFilteredItems;
+
+    // Apply sorting if a sort column is specified
+    if (_currentSortColumn?.PropertySelector != null)
+    {
+        try
+        {
+            var selectorKey = $"{typeof(TItem).Name}.{_currentSortColumn.PropertyName}";
+
+            if (!_compiledSelectors.TryGetValue(selectorKey, out Func<TItem, object>? selector))
+            {
+                selector = _currentSortColumn.PropertySelector.Compile();
+                var cacheOptions = new MemoryCacheEntryOptions
+                {
+                    Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
+                };
+                _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+            }
+
+            // Use OrderBy instead of recreating the list if possible
+            items = _currentSortDirection == SortDirection.Ascending
+                ? _cachedFilteredItems.OrderBy(selector!)
+                : _cachedFilteredItems.OrderByDescending(selector!);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error sorting column {Column}", _currentSortColumn.PropertyName);
+
+            // Fall back to unsorted list
+            items = _cachedFilteredItems;
+
+            _lastOperationResult = Result<bool, DataGridError>.Failure(
+                DataGridError.SortingFailed(_currentSortColumn.PropertyName, ex.Message), ex);
+
+            _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
+        }
+    }
+    // If no sort column specified but we have data, ensure we have a stable sort order
+    else if (_cachedFilteredItems.Count > 0)
+    {
+        // Optional: Apply a default sort if needed
+        // For example, if your items have an ID or similar property that could be used
+        // This ensures a consistent display order even without explicit sorting
+
+        // Just use the items as they are (no default sort)
+        items = _cachedFilteredItems;
+    }
+
+    // Apply pagination
+    var skip = (CurrentPage - 1) * ItemsPerPage;
+    var take = ItemsPerPage;
+
+    // Check that skip doesn't exceed the collection length
+    if (items is ICollection<TItem> collection)
+    {
+        if (skip >= collection.Count)
+        {
+            skip = Math.Max(0, collection.Count - take);
+            CurrentPage = Math.Max(1, (skip / take) + 1);
+        }
+    }
+
+    // Ensure we convert to a list for stable behavior
+    DisplayedItems = items.Skip(skip).Take(take).ToList();
+
+    // Debug logging if needed
+    if (EnableDebugMode)
+    {
+        Logger.Debug("Updated displayed items: {Count} items shown out of {TotalCount} filtered items",
+            DisplayedItems.Count(), _cachedFilteredItems.Count);
+    }
+}
 
     #endregion
 
