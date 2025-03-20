@@ -198,18 +198,73 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
 
         await base.DisposeAsync();
-
     }
 
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
+        // Add detailed logging to track the state
+        if (EnableDebugMode)
+        {
+            Logger.Debug("OnParametersSetAsync - Previous Items: {PreviousItems}, New Items: {NewItems}",
+                _previousItems != null ? "not null" : "null",
+                Items != null ? "not null" : "null");
+
+            if (Items != null)
+            {
+                // Force evaluation of Items to check if it contains data
+                var count = Items.Count();
+                Logger.Debug("Items count: {Count}", count);
+            }
+        }
+
         if (!ReferenceEquals(_previousItems, Items))
         {
+            // Store the previous reference
             _previousItems = Items;
-            _cachedItems = Items?.ToList();
+
+            // Ensure Items is evaluated into a concrete List
+            if (Items != null)
+            {
+                try
+                {
+                    var tempList = Items.ToList();
+
+                    if (EnableDebugMode)
+                    {
+                        Logger.Debug("Created cached items list with {Count} items", tempList.Count);
+                    }
+
+                    _cachedItems = tempList;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error converting Items to List");
+                    _cachedItems = new List<TItem>();
+                }
+            }
+            else
+            {
+                _cachedItems = new List<TItem>();
+
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("Items was null, created empty cached items list");
+                }
+            }
+
             await LoadDataAsync();
+        }
+        else if (_cachedItems == null || _cachedItems.Count == 0)
+        {
+            // Safety check: if _cachedItems is empty but Items contains data, refresh it
+            if (Items != null && Items.Any())
+            {
+                Logger.Debug("Items contains data but _cachedItems is empty, refreshing cache");
+                _cachedItems = Items.ToList();
+                await LoadDataAsync();
+            }
         }
 
         _isInitialized = true;
@@ -234,6 +289,13 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 IsLoading = true;
                 _metricsService.IsEnabled = EnableDebugMode;
                 await _metricsService.StartSearchTimerAsync();
+
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("LoadDataAsync - Cached Items: {CachedItems}",
+                        _cachedItems != null ? $"not null (Count: {_cachedItems.Count})" : "null");
+                }
+
                 StateHasChanged();
 
                 // Use a fresh weak table to avoid memory issues
@@ -253,9 +315,35 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                     // Replace the old table with the new one atomically
                     Interlocked.Exchange(ref _searchableValues, newSearchableValues);
                 }
+                else if (EnableDebugMode)
+                {
+                    Logger.Debug("_cachedItems is null in LoadDataAsync");
+                }
 
-                _cachedFilteredItems = _cachedItems;
+                // Ensure we set _cachedFilteredItems with data if available
+                if (_cachedItems?.Count > 0)
+                {
+                    _cachedFilteredItems = _cachedItems;
+                    if (EnableDebugMode)
+                    {
+                        Logger.Debug("Set _cachedFilteredItems with {Count} items", _cachedFilteredItems.Count);
+                    }
+                }
+                else
+                {
+                    _cachedFilteredItems = new List<TItem>();
+                    if (EnableDebugMode)
+                    {
+                        Logger.Debug("No cached items available, using empty list for _cachedFilteredItems");
+                    }
+                }
+
                 UpdateDisplayedItems();
+
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("After UpdateDisplayedItems: DisplayedItems count = {Count}", DisplayedItems.Count());
+                }
 
                 await _metricsService.StopSearchTimerAsync(
                     _cachedItems?.Count ?? 0,
@@ -412,7 +500,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     {
         return value switch
         {
-            DateTime date => string.IsNullOrEmpty(format) ? date.ToString(CultureInfo.InvariantCulture) : date.ToString(format),
+            DateTime date => string.IsNullOrEmpty(format)
+                ? date.ToString(CultureInfo.InvariantCulture)
+                : date.ToString(format),
             DateTimeOffset dto => string.IsNullOrEmpty(format) ? dto.ToString() : dto.ToString(format),
             IFormattable formattable => formattable.ToString(format, null),
             _ => value.ToString() ?? string.Empty
@@ -737,88 +827,88 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     }
 
     /// <summary>
-///     Updates the subset of items to be displayed based on filtering, sorting, and pagination.
-/// </summary>
-private void UpdateDisplayedItems()
-{
-    if (_cachedFilteredItems is null || _cachedFilteredItems.Count == 0)
+    ///     Updates the subset of items to be displayed based on filtering, sorting, and pagination.
+    /// </summary>
+    private void UpdateDisplayedItems()
     {
-        DisplayedItems = Array.Empty<TItem>();
-        return;
-    }
-
-    IEnumerable<TItem> items = _cachedFilteredItems;
-
-    // Apply sorting if a sort column is specified
-    if (_currentSortColumn?.PropertySelector != null)
-    {
-        try
+        if (_cachedFilteredItems is null || _cachedFilteredItems.Count == 0)
         {
-            var selectorKey = $"{typeof(TItem).Name}.{_currentSortColumn.PropertyName}";
+            DisplayedItems = Array.Empty<TItem>();
+            return;
+        }
 
-            if (!_compiledSelectors.TryGetValue(selectorKey, out Func<TItem, object>? selector))
+        IEnumerable<TItem> items = _cachedFilteredItems;
+
+        // Apply sorting if a sort column is specified
+        if (_currentSortColumn?.PropertySelector != null)
+        {
+            try
             {
-                selector = _currentSortColumn.PropertySelector.Compile();
-                var cacheOptions = new MemoryCacheEntryOptions
+                var selectorKey = $"{typeof(TItem).Name}.{_currentSortColumn.PropertyName}";
+
+                if (!_compiledSelectors.TryGetValue(selectorKey, out Func<TItem, object>? selector))
                 {
-                    Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
-                };
-                _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+                    selector = _currentSortColumn.PropertySelector.Compile();
+                    var cacheOptions = new MemoryCacheEntryOptions
+                    {
+                        Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
+                    };
+                    _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+                }
+
+                // Use OrderBy instead of recreating the list if possible
+                items = _currentSortDirection == SortDirection.Ascending
+                    ? _cachedFilteredItems.OrderBy(selector!)
+                    : _cachedFilteredItems.OrderByDescending(selector!);
             }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error sorting column {Column}", _currentSortColumn.PropertyName);
 
-            // Use OrderBy instead of recreating the list if possible
-            items = _currentSortDirection == SortDirection.Ascending
-                ? _cachedFilteredItems.OrderBy(selector!)
-                : _cachedFilteredItems.OrderByDescending(selector!);
+                // Fall back to unsorted list
+                items = _cachedFilteredItems;
+
+                _lastOperationResult = Result<bool, DataGridError>.Failure(
+                    DataGridError.SortingFailed(_currentSortColumn.PropertyName, ex.Message), ex);
+
+                _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
+            }
         }
-        catch (Exception ex)
+        // If no sort column specified but we have data, ensure we have a stable sort order
+        else if (_cachedFilteredItems.Count > 0)
         {
-            Logger.Error(ex, "Error sorting column {Column}", _currentSortColumn.PropertyName);
+            // Optional: Apply a default sort if needed
+            // For example, if your items have an ID or similar property that could be used
+            // This ensures a consistent display order even without explicit sorting
 
-            // Fall back to unsorted list
+            // Just use the items as they are (no default sort)
             items = _cachedFilteredItems;
-
-            _lastOperationResult = Result<bool, DataGridError>.Failure(
-                DataGridError.SortingFailed(_currentSortColumn.PropertyName, ex.Message), ex);
-
-            _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
         }
-    }
-    // If no sort column specified but we have data, ensure we have a stable sort order
-    else if (_cachedFilteredItems.Count > 0)
-    {
-        // Optional: Apply a default sort if needed
-        // For example, if your items have an ID or similar property that could be used
-        // This ensures a consistent display order even without explicit sorting
 
-        // Just use the items as they are (no default sort)
-        items = _cachedFilteredItems;
-    }
+        // Apply pagination
+        var skip = (CurrentPage - 1) * ItemsPerPage;
+        var take = ItemsPerPage;
 
-    // Apply pagination
-    var skip = (CurrentPage - 1) * ItemsPerPage;
-    var take = ItemsPerPage;
-
-    // Check that skip doesn't exceed the collection length
-    if (items is ICollection<TItem> collection)
-    {
-        if (skip >= collection.Count)
+        // Check that skip doesn't exceed the collection length
+        if (items is ICollection<TItem> collection)
         {
-            skip = Math.Max(0, collection.Count - take);
-            CurrentPage = Math.Max(1, (skip / take) + 1);
+            if (skip >= collection.Count)
+            {
+                skip = Math.Max(0, collection.Count - take);
+                CurrentPage = Math.Max(1, (skip / take) + 1);
+            }
+        }
+
+        // Ensure we convert to a list for stable behavior
+        DisplayedItems = items.Skip(skip).Take(take).ToList();
+
+        // Debug logging if needed
+        if (EnableDebugMode)
+        {
+            Logger.Debug("Updated displayed items: {Count} items shown out of {TotalCount} filtered items",
+                DisplayedItems.Count(), _cachedFilteredItems.Count);
         }
     }
-
-    // Ensure we convert to a list for stable behavior
-    DisplayedItems = items.Skip(skip).Take(take).ToList();
-
-    // Debug logging if needed
-    if (EnableDebugMode)
-    {
-        Logger.Debug("Updated displayed items: {Count} items shown out of {TotalCount} filtered items",
-            DisplayedItems.Count(), _cachedFilteredItems.Count);
-    }
-}
 
     #endregion
 
