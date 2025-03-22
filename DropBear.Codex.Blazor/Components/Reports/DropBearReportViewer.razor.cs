@@ -33,6 +33,12 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     {
         Logger.Debug("Exporting data to Excel.");
 
+        if (_downloadModule == null)
+        {
+            Logger.Error("Download module not initialized");
+            return;
+        }
+
         var dataToExport = FilteredData.ToList();
         var exportStreamResult = await _excelExporter.ExportToExcelStreamAsync(dataToExport);
 
@@ -55,11 +61,22 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         // Use a DotNetStreamReference for JavaScript-based file download.
         using var streamRef = new DotNetStreamReference(ms);
-        _downloadModule?.InvokeVoidAsync(
-            "downloadFileFromStream",
-            "ExportedData.xlsx",
-            streamRef,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+        try
+        {
+            // Directly invoke the method from the module reference
+            await _downloadModule.InvokeVoidAsync(
+                "downloadFileFromStream", // No need for "DropBearFileDownloader." prefix
+                "ExportedData.xlsx",
+                streamRef,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+            Logger.Debug("File download initiated successfully");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to invoke download function");
+        }
     }
 
     #endregion
@@ -87,6 +104,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private readonly SemaphoreSlim _dataSemaphore = new(1, 1);
     private IJSObjectReference? _downloadModule;
     private bool _isModuleInitialized;
+
     #endregion
 
     #region Parameters
@@ -186,7 +204,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             await Task.Delay(50);
 
             // Now check if it's initialized, but use the module reference directly
-            _isModuleInitialized = await _downloadModule.InvokeAsync<bool>("DropBearFileDownloaderAPI.isInitialized");
+            _isModuleInitialized = await _downloadModule.InvokeAsync<bool>("isInitialized");
 
             if (!_isModuleInitialized)
             {
