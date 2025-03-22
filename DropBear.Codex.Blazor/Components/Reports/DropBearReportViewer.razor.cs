@@ -186,7 +186,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             await Task.Delay(50);
 
             // Now check if it's initialized, but use the module reference directly
-            _isModuleInitialized = await _downloadModule.InvokeAsync<bool>("DropBearFileDownloader.isInitialized");
+            _isModuleInitialized = await _downloadModule.InvokeAsync<bool>("DropBearFileDownloaderAPI.isInitialized");
 
             if (!_isModuleInitialized)
             {
@@ -201,10 +201,8 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         }
         catch (Exception ex)
         {
-            LogError("Failed to initialize alert container JS module", ex);
+            LogError("Failed to initialize file downloader JS module", ex);
         }
-
-
     }
 
     /// <summary>
