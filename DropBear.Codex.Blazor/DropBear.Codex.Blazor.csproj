@@ -82,4 +82,8 @@
   <ItemGroup>
     <TypeScriptCompile Include="wwwroot\scripts\base.d.ts"/>
   </ItemGroup>
+
+  <ItemGroup>
+    <UpToDateCheckInput Remove="Components\Wizards\DropBearMailMergeWizard.razor" />
+  </ItemGroup>
 </Project>

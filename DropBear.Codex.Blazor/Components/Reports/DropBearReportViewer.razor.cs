@@ -55,7 +55,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         // Use a DotNetStreamReference for JavaScript-based file download.
         using var streamRef = new DotNetStreamReference(ms);
-        await JsRuntime.InvokeVoidAsync(
+        _downloadModule?.InvokeVoidAsync(
             "downloadFileFromStream",
             "ExportedData.xlsx",
             streamRef,
@@ -85,7 +85,8 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
     // Semaphore for thread safety
     private readonly SemaphoreSlim _dataSemaphore = new(1, 1);
-
+    private IJSObjectReference? _downloadModule;
+    private bool _isModuleInitialized;
     #endregion
 
     #region Parameters
@@ -174,10 +175,36 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     /// <summary>
     ///     Initializes the component by generating columns if needed.
     /// </summary>
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        InitializeColumns();
-        base.OnInitialized();
+        try
+        {
+            // Load the module first
+            _downloadModule = await GetJsModuleAsync("DropBearFileDownloader");
+
+            // Give the module a moment to register in the global scope
+            await Task.Delay(50);
+
+            // Now check if it's initialized, but use the module reference directly
+            _isModuleInitialized = await _downloadModule.InvokeAsync<bool>("DropBearFileDownloader.isInitialized");
+
+            if (!_isModuleInitialized)
+            {
+                // Initialize through the module reference, not global scope
+                await _downloadModule.InvokeVoidAsync("initialize");
+                _isModuleInitialized = true;
+            }
+
+            InitializeColumns();
+            await base.OnInitializedAsync();
+            LogDebug("Alert container initialized with JS module");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to initialize alert container JS module", ex);
+        }
+
+
     }
 
     /// <summary>
