@@ -431,6 +431,145 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #endregion
 
     #region Helper Methods
+/// <summary>
+///     Analyzes and logs the structure of a loaded JavaScript module for debugging purposes.
+///     This non-production utility helps diagnose JavaScript interop issues by revealing
+///     available methods and properties on a module.
+/// </summary>
+/// <param name="module">The JavaScript module reference to analyze.</param>
+/// <param name="moduleName">
+///     A descriptive name for the module to include in logs.
+///     If not provided, a generic name will be used.
+/// </param>
+/// <param name="testPaths">
+///     Optional array of dot-notation paths to explicitly test for existence
+///     (e.g., "DropBearFileDownloaderAPI.downloadFileFromStream").
+/// </param>
+/// <param name="caller">The calling method name (automatically populated).</param>
+/// <returns>A task representing the analysis operation.</returns>
+/// <remarks>
+///     This method should primarily be used during development and debugging.
+///     It attempts to safely inspect module properties without causing side effects.
+/// </remarks>
+protected async Task DebugModuleStructure(
+    IJSObjectReference module,
+    string moduleName = "UnknownModule",
+    string[]? testPaths = null,
+    [CallerMemberName] string? caller = null)
+{
+    if (module == null)
+    {
+        LogWarning("Cannot debug null module reference (called from {Caller})", caller ?? "unknown");
+        return;
+    }
+
+    try
+    {
+        EnsureNotDisposed(caller);
+
+        // Create a linked token with timeout to prevent hanging
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+        cts.CancelAfter(JsOperationTimeout);
+
+        // Log basic module information
+        LogDebug("Analyzing module structure: {ModuleName} (called from {Caller})",
+            moduleName, caller ?? "unknown");
+
+        // Print the module to browser console for direct inspection
+        await module.InvokeVoidAsync("console.dir", cts.Token,
+            new object[] { module, { depth: 2 } });
+
+        // Test for existence of specific global exports
+        var hasGlobalNamespace = await SafeJsInteropAsync<bool>(
+            "typeof window." + moduleName + " !== 'undefined'");
+
+        LogDebug("Module has global namespace: {HasGlobalNamespace}", hasGlobalNamespace);
+
+        if (hasGlobalNamespace)
+        {
+            // Test initialization status if available
+            try
+            {
+                var isInitialized = await SafeJsInteropAsync<bool>(
+                    "typeof window." + moduleName + ".isInitialized === 'function' ? " +
+                    "window." + moduleName + ".isInitialized() : false");
+
+                LogDebug("Module initialization status: {IsInitialized}", isInitialized);
+            }
+            catch (Exception ex)
+            {
+                LogDebug("Could not determine module initialization status: {Error}",
+                    ex.Message);
+            }
+        }
+
+        // If specific paths were provided, test each one
+        if (testPaths != null && testPaths.Length > 0)
+        {
+            foreach (var path in testPaths)
+            {
+                try
+                {
+                    var exists = await SafeJsInteropAsync<bool>(
+                        $"typeof {path} !== 'undefined'");
+
+                    LogDebug("Path '{Path}' exists: {Exists}", path, exists);
+
+                    // If it's a function, log that as well
+                    if (exists)
+                    {
+                        var isFunction = await SafeJsInteropAsync<bool>(
+                            $"typeof {path} === 'function'");
+
+                        if (isFunction)
+                        {
+                            LogDebug("Path '{Path}' is a function", path);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogDebug("Error testing path '{Path}': {Error}", path, ex.Message);
+                }
+            }
+        }
+
+        // Attempt to list exported properties directly on the module
+        try
+        {
+            var exportedProps = await module.InvokeAsync<string[]>(
+                "Object.getOwnPropertyNames", cts.Token);
+
+            if (exportedProps.Length > 0)
+            {
+                LogDebug("Module direct exports: {Exports}",
+                    string.Join(", ", exportedProps));
+            }
+            else
+            {
+                LogDebug("Module has no direct property exports");
+            }
+        }
+        catch (Exception ex)
+        {
+            LogDebug("Could not list module exports: {Error}", ex.Message);
+        }
+    }
+    catch (TaskCanceledException)
+    {
+        LogWarning("Module analysis timed out after {Timeout}s (called from {Caller})",
+            JsOperationTimeoutSeconds, caller ?? "unknown");
+    }
+    catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException)
+    {
+        LogWarning("Module analysis interrupted: {Reason} (called from {Caller})",
+            ex.GetType().Name, caller ?? "unknown");
+    }
+    catch (Exception ex)
+    {
+        LogError("Module analysis failed (called from {Caller})", ex, caller ?? "unknown");
+    }
+}
 
     /// <summary>
     ///     Executes an operation safely and returns a Result with success or error information.

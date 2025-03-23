@@ -66,7 +66,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         {
             // Directly invoke the method from the module reference
             await _downloadModule.InvokeVoidAsync(
-                "downloadFileFromStream", // No need for "DropBearFileDownloader." prefix
+                "DropBearFileDownloaderAPI.downloadFileFromStream",
                 "ExportedData.xlsx",
                 streamRef,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -204,8 +204,11 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             await Task.Delay(50);
 
             InitializeColumns();
+
+            await base.DebugModuleStructure();
+
             await base.OnInitializedAsync();
-            LogDebug("Alert container initialized with JS module");
+            LogDebug("File downloader initialized with JS module");
         }
         catch (Exception ex)
         {
@@ -418,4 +421,5 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     }
 
     #endregion
+
 }
