@@ -203,16 +203,6 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             // Give the module a moment to register in the global scope
             await Task.Delay(50);
 
-            // Now check if it's initialized, but use the module reference directly
-            _isModuleInitialized = await _downloadModule.InvokeAsync<bool>("isInitialized");
-
-            if (!_isModuleInitialized)
-            {
-                // Initialize through the module reference, not global scope
-                await _downloadModule.InvokeVoidAsync("initialize");
-                _isModuleInitialized = true;
-            }
-
             InitializeColumns();
             await base.OnInitializedAsync();
             LogDebug("Alert container initialized with JS module");
