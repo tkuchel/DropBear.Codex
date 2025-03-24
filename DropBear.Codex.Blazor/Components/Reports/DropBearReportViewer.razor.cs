@@ -29,55 +29,67 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     /// <summary>
     ///     Exports the currently filtered dataset to Excel.
     /// </summary>
-    private async Task ExportToExcelAsync()
+private async Task ExportToExcelAsync()
+{
+    Logger.Debug("Exporting data to Excel.");
+
+    if (_downloadModule == null)
     {
-        Logger.Debug("Exporting data to Excel.");
+        Logger.Error("Download module not initialized");
+        return;
+    }
 
-        if (_downloadModule == null)
-        {
-            Logger.Error("Download module not initialized");
-            return;
-        }
+    var dataToExport = FilteredData.ToList();
+    var exportStreamResult = await _excelExporter.ExportToExcelStreamAsync(dataToExport);
 
-        var dataToExport = FilteredData.ToList();
-        var exportStreamResult = await _excelExporter.ExportToExcelStreamAsync(dataToExport);
+    if (exportStreamResult.IsFailure)
+    {
+        Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error.Message);
+        return;
+    }
 
-        if (exportStreamResult.IsFailure)
-        {
-            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error.Message);
-            return;
-        }
+    using var ms = exportStreamResult.Value;
 
-        using var ms = exportStreamResult.Value;
+    if (ms.Length == 0)
+    {
+        Logger.Error("Excel export resulted in an empty file.");
+        return;
+    }
 
-        if (ms.Length == 0)
-        {
-            Logger.Error("Excel export resulted in an empty file.");
-            return;
-        }
+    Logger.Debug("Data exported to Excel successfully.");
+    ms.Position = 0;
 
-        Logger.Debug("Data exported to Excel successfully.");
-        ms.Position = 0;
+    // Use a DotNetStreamReference for JavaScript-based file download.
+    using var streamRef = new DotNetStreamReference(ms);
 
-        // Use a DotNetStreamReference for JavaScript-based file download.
-        using var streamRef = new DotNetStreamReference(ms);
+    try {
+        // Try with the DropBearFileDownloaderAPI namespace
+        await _downloadModule.InvokeVoidAsync(
+            "DropBearFileDownloaderAPI.downloadFileFromStream",
+            "ExportedData.xlsx",
+            streamRef,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-        try
-        {
-            // Directly invoke the method from the module reference
+        Logger.Debug("File download initiated successfully");
+    }
+    catch (Exception ex) {
+        Logger.Error(ex, "Failed to invoke download function with API namespace, trying direct function");
+
+        // Fall back to direct function if first approach fails
+        try {
             await _downloadModule.InvokeVoidAsync(
-                "DropBearFileDownloaderAPI.downloadFileFromStream",
+                "downloadFileFromStream",
                 "ExportedData.xlsx",
                 streamRef,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-            Logger.Debug("File download initiated successfully");
+            Logger.Debug("File download initiated successfully with direct function");
         }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Failed to invoke download function");
+        catch (Exception innerEx) {
+            Logger.Error(innerEx, "All download function attempts failed");
         }
     }
+}
 
     #endregion
 

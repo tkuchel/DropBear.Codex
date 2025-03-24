@@ -433,23 +433,17 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region Helper Methods
 
     /// <summary>
-    ///     Analyzes and logs the structure of a loaded JavaScript module for debugging purposes.
-    ///     This non-production utility helps diagnose JavaScript interop issues by revealing
-    ///     available methods and properties on a module.
+    ///     Analyzes and logs the basic structure of a loaded JavaScript module for debugging purposes.
+    ///     This utility helps diagnose JavaScript interop issues in Blazor environments.
     /// </summary>
     /// <param name="module">The JavaScript module reference to analyze.</param>
-    /// <param name="moduleName">
-    ///     A descriptive name for the module to include in logs.
-    ///     If not provided, a generic name will be used.
-    /// </param>
-    /// <param name="functionsToTest">
-    ///     Optional array of function names to explicitly test for on the module.
-    /// </param>
+    /// <param name="moduleName">A descriptive name for the module to include in logs.</param>
+    /// <param name="functionsToTest">Array of function names to test for on the module.</param>
     /// <param name="caller">The calling method name (automatically populated).</param>
     /// <returns>A task representing the analysis operation.</returns>
     /// <remarks>
-    ///     This method should primarily be used during development and debugging.
-    ///     It attempts to safely inspect module properties without causing side effects.
+    ///     Use this method during development to troubleshoot JavaScript interop issues.
+    ///     It performs safe checks that won't cause exceptions in common Blazor environments.
     /// </remarks>
     protected async Task DebugModuleStructure(
         IJSObjectReference module,
@@ -471,65 +465,42 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
             cts.CancelAfter(JsOperationTimeout);
 
-            // Log basic module information
             LogDebug("Analyzing module structure: {ModuleName} (called from {Caller})",
                 moduleName, caller ?? "unknown");
 
-            // Analyze module structure using a simpler approach
+            // Test for common ES module indicator
             try
             {
-                // This small JS function executes in the module context and extracts property info
-                var propInfo = await module.InvokeAsync<Dictionary<string, string>>(
-                    "function() { " +
-                    "  const result = {}; " +
-                    "  for (const key in this) { " +
-                    "    try { " +
-                    "      result[key] = typeof this[key]; " +
-                    "    } catch (e) { " +
-                    "      result[key] = 'ERROR: ' + e.message; " +
-                    "    } " +
-                    "  } " +
-                    "  return result; " +
-                    "}",
-                    cts.Token);
-
-                if (propInfo != null && propInfo.Count > 0)
-                {
-                    LogDebug("Module contains {Count} direct properties:", propInfo.Count);
-                    foreach (var prop in propInfo)
-                    {
-                        LogDebug("  - {PropertyName}: {PropertyType}", prop.Key, prop.Value);
-                    }
-                }
-                else
-                {
-                    LogDebug("Module appears to have no direct properties");
-                }
+                var moduleType = await module.InvokeAsync<string>("eval", cts.Token, "typeof this");
+                LogDebug("Module this context type: {Type}", moduleType);
             }
             catch (Exception ex)
             {
-                LogDebug("Could not analyze module properties: {Error}", ex.Message);
+                LogDebug("Unable to determine module context: {Error}", ex.Message);
             }
 
-            // If specific functions were provided to test, try invoking each one
+            // Test specific functions if provided
             if (functionsToTest != null && functionsToTest.Length > 0)
             {
-                LogDebug("Testing {Count} specific functions on module:", functionsToTest.Length);
+                LogDebug("Testing {Count} specific functions:", functionsToTest.Length);
 
                 foreach (var funcName in functionsToTest)
                 {
                     try
                     {
-                        // Try to check if the function exists using a basic invocation pattern
-                        var exists = await module.InvokeAsync<bool>(
-                            $"function() {{ return typeof this.{funcName} === 'function'; }}",
-                            cts.Token);
-
-                        LogDebug("  - Function '{FunctionName}' exists: {Exists}", funcName, exists);
+                        // Use a simple test that just checks if invoking the function name throws
+                        await module.InvokeVoidAsync("eval", cts.Token, $"typeof {funcName}");
+                        LogDebug("  - '{FunctionName}' exists on module", funcName);
+                    }
+                    catch (JSException ex)
+                    {
+                        LogDebug("  - '{FunctionName}' not found: {Error}",
+                            funcName, ex.Message.Split('\n')[0]);
                     }
                     catch (Exception ex)
                     {
-                        LogDebug("  - Function '{FunctionName}' test failed: {Error}", funcName, ex.Message);
+                        LogDebug("  - Error testing '{FunctionName}': {Error}",
+                            funcName, ex.Message.Split('\n')[0]);
                     }
                 }
             }
