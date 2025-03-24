@@ -442,9 +442,8 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     ///     A descriptive name for the module to include in logs.
     ///     If not provided, a generic name will be used.
     /// </param>
-    /// <param name="testPaths">
-    ///     Optional array of dot-notation paths to explicitly test for existence
-    ///     (e.g., "DropBearFileDownloaderAPI.downloadFileFromStream").
+    /// <param name="functionsToTest">
+    ///     Optional array of function names to explicitly test for on the module.
     /// </param>
     /// <param name="caller">The calling method name (automatically populated).</param>
     /// <returns>A task representing the analysis operation.</returns>
@@ -455,7 +454,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     protected async Task DebugModuleStructure(
         IJSObjectReference module,
         string moduleName = "UnknownModule",
-        string[]? testPaths = null,
+        string[]? functionsToTest = null,
         [CallerMemberName] string? caller = null)
     {
         if (module == null)
@@ -476,129 +475,66 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             LogDebug("Analyzing module structure: {ModuleName} (called from {Caller})",
                 moduleName, caller ?? "unknown");
 
-            // Test for existence of specific global exports
-            var hasGlobalNamespace = await SafeJsInteropAsync<bool>(
-                "typeof window." + moduleName + " !== 'undefined'");
-
-            LogDebug("Module has global namespace: {HasGlobalNamespace}", hasGlobalNamespace);
-
-            if (hasGlobalNamespace)
-            {
-                // Test initialization status if available
-                try
-                {
-                    var isInitialized = await SafeJsInteropAsync<bool>(
-                        "typeof window." + moduleName + ".isInitialized === 'function' ? " +
-                        "window." + moduleName + ".isInitialized() : false");
-
-                    LogDebug("Module initialization status: {IsInitialized}", isInitialized);
-                }
-                catch (Exception ex)
-                {
-                    LogDebug("Could not determine module initialization status: {Error}",
-                        ex.Message);
-                }
-
-                // Test for specific module API functions
-                try
-                {
-                    var hasFunctions = await SafeJsInteropAsync<Dictionary<string, bool>>(
-                        @"(function() {
-                        const obj = window." + moduleName + @";
-                        const result = {};
-                        for (const key in obj) {
-                            result[key] = typeof obj[key] === 'function';
-                        }
-                        return result;
-                    })()");
-
-                    if (hasFunctions != null && hasFunctions.Count > 0)
-                    {
-                        foreach (var func in hasFunctions)
-                        {
-                            LogDebug("Global module function '{Key}': {IsFunction}",
-                                func.Key, func.Value ? "Function" : "Non-function");
-                        }
-                    }
-                    else
-                    {
-                        LogDebug("No properties found on global module object");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    LogDebug("Failed to enumerate global module functions: {Error}", ex.Message);
-                }
-            }
-
-            // If specific paths were provided, test each one
-            if (testPaths != null && testPaths.Length > 0)
-            {
-                foreach (var path in testPaths)
-                {
-                    try
-                    {
-                        var exists = await SafeJsInteropAsync<bool>(
-                            $"typeof {path} !== 'undefined'");
-
-                        LogDebug("Path '{Path}' exists: {Exists}", path, exists);
-
-                        // If it's a function, log that as well
-                        if (exists)
-                        {
-                            var isFunction = await SafeJsInteropAsync<bool>(
-                                $"typeof {path} === 'function'");
-
-                            if (isFunction)
-                            {
-                                LogDebug("Path '{Path}' is a function", path);
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogDebug("Error testing path '{Path}': {Error}", path, ex.Message);
-                    }
-                }
-            }
-
-            // Try to get direct module exports if the module supports it
+            // Analyze module structure using a simpler approach
             try
             {
-                // This uses a self-executing function to analyze the module
-                var moduleInfo = await module.InvokeAsync<Dictionary<string, string>>(
-                    @"function() {
-                    const info = {};
-                    try {
-                        const descriptors = Object.getOwnPropertyDescriptors(this);
-                        for (const key in descriptors) {
-                            info[key] = typeof this[key];
-                        }
-                    } catch (e) {
-                        info['ERROR'] = e.toString();
-                    }
-                    return info;
-                }",
+                // This small JS function executes in the module context and extracts property info
+                var propInfo = await module.InvokeAsync<Dictionary<string, string>>(
+                    "function() { " +
+                    "  const result = {}; " +
+                    "  for (const key in this) { " +
+                    "    try { " +
+                    "      result[key] = typeof this[key]; " +
+                    "    } catch (e) { " +
+                    "      result[key] = 'ERROR: ' + e.message; " +
+                    "    } " +
+                    "  } " +
+                    "  return result; " +
+                    "}",
                     cts.Token);
 
-                if (moduleInfo != null && moduleInfo.Count > 0)
+                if (propInfo != null && propInfo.Count > 0)
                 {
-                    foreach (var entry in moduleInfo)
+                    LogDebug("Module contains {Count} direct properties:", propInfo.Count);
+                    foreach (var prop in propInfo)
                     {
-                        LogDebug("Module export '{Key}': {Type}", entry.Key, entry.Value);
+                        LogDebug("  - {PropertyName}: {PropertyType}", prop.Key, prop.Value);
                     }
                 }
                 else
                 {
-                    LogDebug("No direct exports found on module");
+                    LogDebug("Module appears to have no direct properties");
                 }
             }
             catch (Exception ex)
             {
-                LogDebug("Could not analyze direct module exports: {Error}", ex.Message);
+                LogDebug("Could not analyze module properties: {Error}", ex.Message);
             }
 
-            LogDebug("Module analysis complete: {ModuleName}", moduleName);
+            // If specific functions were provided to test, try invoking each one
+            if (functionsToTest != null && functionsToTest.Length > 0)
+            {
+                LogDebug("Testing {Count} specific functions on module:", functionsToTest.Length);
+
+                foreach (var funcName in functionsToTest)
+                {
+                    try
+                    {
+                        // Try to check if the function exists using a basic invocation pattern
+                        var exists = await module.InvokeAsync<bool>(
+                            $"function() {{ return typeof this.{funcName} === 'function'; }}",
+                            cts.Token);
+
+                        LogDebug("  - Function '{FunctionName}' exists: {Exists}", funcName, exists);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogDebug("  - Function '{FunctionName}' test failed: {Error}", funcName, ex.Message);
+                    }
+                }
+            }
+
+            LogDebug("Module analysis complete for: {ModuleName}", moduleName);
         }
         catch (TaskCanceledException)
         {
