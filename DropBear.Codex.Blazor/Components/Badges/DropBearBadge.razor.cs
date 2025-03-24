@@ -199,7 +199,16 @@ public partial class DropBearBadge : DropBearComponentBase
         try
         {
             await _tooltipSemaphore.WaitAsync();
-            _jsModule = await GetJsModuleAsync(JsModuleName);
+            var jsModuleResult = await GetJsModuleAsync(JsModuleName);
+
+            if (!jsModuleResult.IsSuccess)
+            {
+                LogError("Failed to load JS module: {Error}", jsModuleResult.Exception);
+                return;
+            }
+
+            _jsModule = jsModuleResult.Value;
+
             LogDebug("DropBearBadge JS module loaded successfully");
         }
         finally

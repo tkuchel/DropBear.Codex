@@ -371,7 +371,18 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             try
             {
-                _jsModule ??= await GetJsModuleAsync(ModuleName);
+                if (_jsModule == null)
+                {
+                    var jsModuleResult = await GetJsModuleAsync(ModuleName);
+                    if (jsModuleResult.IsSuccess)
+                    {
+                        _jsModule = jsModuleResult.Value;
+                    }
+                    else
+                    {
+                        LogError("Failed to load JS module", jsModuleResult.Exception);
+                    }
+                }
 
                 await _jsModule.InvokeVoidAsync($"{ModuleName}API.initialize");
                 await _jsModule.InvokeVoidAsync($"{ModuleName}API.initGlobalDropPrevention");
@@ -397,8 +408,33 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
         {
             await _uploadSemaphore.WaitAsync(ComponentToken);
 
-            _jsModule ??= await GetJsModuleAsync(ModuleName);
-            _jsUtilsModule ??= await GetJsModuleAsync(JsModuleNames.Utils);
+            if (_jsModule == null)
+            {
+                var jsModuleResult = await GetJsModuleAsync(ModuleName);
+                if (jsModuleResult.IsSuccess)
+                {
+                    _jsModule = jsModuleResult.Value;
+                }
+                else
+                {
+                    LogError("Failed to load JS module", jsModuleResult.Exception);
+                }
+            }
+
+            if (_jsUtilsModule == null)
+            {
+                var jsUtilsModuleResult = await GetJsModuleAsync(JsModuleNames.Utils);
+
+                if (jsUtilsModuleResult.IsSuccess)
+                {
+                    _jsUtilsModule = jsUtilsModuleResult.Value;
+                }
+                else
+                {
+                    LogError("Failed to load JS utils module", jsUtilsModuleResult.Exception);
+                }
+            }
+
 
             _isInitialized = true;
             LogDebug("File uploader initialized");

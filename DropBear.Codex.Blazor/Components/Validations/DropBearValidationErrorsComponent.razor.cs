@@ -243,7 +243,15 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
             await _stateSemaphore.WaitAsync(ComponentToken);
 
             // Load the JavaScript module.
-            _jsModule = await GetJsModuleAsync(JsModuleName);
+            var jsModuleResult = await GetJsModuleAsync(JsModuleName);
+
+            if (jsModuleResult.IsFailure)
+            {
+                LogError("Failed to load JS module: {Module}", jsModuleResult.Exception);
+                return;
+            }
+
+            _jsModule = jsModuleResult.Value;
 
             // Create the validation container via JS interop.
             await _jsModule.InvokeVoidAsync(

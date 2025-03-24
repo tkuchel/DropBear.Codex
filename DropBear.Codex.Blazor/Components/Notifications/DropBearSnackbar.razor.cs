@@ -104,7 +104,15 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         {
             await _snackbarSemaphore.WaitAsync(ComponentToken);
 
-            _jsModule = await GetJsModuleAsync(JsModuleName);
+            var jsModuleResult = await GetJsModuleAsync(JsModuleName);
+
+            if (jsModuleResult.IsFailure)
+            {
+                LogError("Failed to load JS module: {Module}", jsModuleResult.Exception);
+                return;
+            }
+
+            _jsModule = jsModuleResult.Value;
 
             // Create the snackbar in JS
             await _jsModule.InvokeVoidAsync(

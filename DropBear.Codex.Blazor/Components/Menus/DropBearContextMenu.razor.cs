@@ -157,7 +157,15 @@ public partial class DropBearContextMenu : DropBearComponentBase
             await _menuStateSemaphore.WaitAsync(ComponentToken);
 
             _dotNetRef = DotNetObjectReference.Create(this);
-            _jsModule = await GetJsModuleAsync(ModuleName);
+            var jsModuleResult = await GetJsModuleAsync(ModuleName);
+
+            if (jsModuleResult.IsFailure)
+            {
+                LogError("Failed to get JS module: {Error}", jsModuleResult.Exception);
+                return;
+            }
+
+            _jsModule = jsModuleResult.Value;
 
             await _jsModule.InvokeVoidAsync(
                 $"{ModuleName}API.createContextMenu",
@@ -250,7 +258,15 @@ public partial class DropBearContextMenu : DropBearComponentBase
         try
         {
             // Get the Utils module instead of trying to use the context menu module
-            var utilsModule = await GetJsModuleAsync(JsModuleNames.Utils);
+            var utilsModuleResult = await GetJsModuleAsync(JsModuleNames.Utils);
+
+            if (utilsModuleResult.IsFailure)
+            {
+                LogError("Failed to get Utils module: {Error}", utilsModuleResult.Exception);
+                throw new InvalidOperationException("Failed to get Utils module");
+            }
+
+            var utilsModule = utilsModuleResult.Value;
 
             _cachedDimensions = await utilsModule.InvokeAsync<WindowDimensions>(
                 $"{JsModuleNames.Utils}API.getWindowDimensions",

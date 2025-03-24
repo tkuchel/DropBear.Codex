@@ -76,7 +76,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
         try
         {
             // Load the module first
-            _alertModule = await GetJsModuleAsync("DropBearPageAlert");
+            var alertModuleResult = await GetJsModuleAsync("DropBearPageAlert");
+
+            if (!alertModuleResult.IsSuccess)
+            {
+                LogError("Failed to load alert container JSmodule", alertModuleResult.Exception);
+                return;
+            }
+
+            _alertModule = alertModuleResult.Value;
 
             // Give the module a moment to register in the global scope
             await Task.Delay(50);

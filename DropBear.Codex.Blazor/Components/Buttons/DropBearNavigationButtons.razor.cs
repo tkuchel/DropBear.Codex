@@ -66,7 +66,16 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             try
             {
                 // Load the JS module and initialize
-                _module = await GetJsModuleAsync(JsModuleName);
+                var moduleResult = await GetJsModuleAsync(JsModuleName);
+
+                if (moduleResult.IsFailure)
+                {
+                    LogError("Failed to load JS module: {Error}", moduleResult.Exception);
+                    return;
+                }
+
+                _module = moduleResult.Value;
+
                 await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", _navigationCts.Token);
 
                 // Create .NET reference for JS callbacks
@@ -123,7 +132,14 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
                 {
                     if (_module == null)
                     {
-                        _module = await GetJsModuleAsync(JsModuleName);
+                        var moduleResult = await GetJsModuleAsync(JsModuleName);
+                        if (moduleResult.IsFailure)
+                        {
+                            LogError("Failed to load JS module: {Error}", moduleResult.Exception);
+                            return;
+                        }
+
+                        _module = moduleResult.Value;
                     }
 
                     // Navigate back using JS
@@ -209,7 +225,14 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
                 {
                     if (_module == null)
                     {
-                        _module = await GetJsModuleAsync(JsModuleName);
+                        var moduleResult = await GetJsModuleAsync(JsModuleName);
+                        if (moduleResult.IsFailure)
+                        {
+                            LogError("Failed to load JS module: {Error}", moduleResult.Exception);
+                            return;
+                        }
+
+                        _module = moduleResult.Value;
                     }
 
                     // Scroll to top using JS

@@ -223,62 +223,73 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="moduleName">The name of the module.</param>
     /// <param name="modulePath">The path format for the module.</param>
     /// <param name="caller">The calling method name (automatically populated).</param>
-    /// <returns>A task that resolves to the JavaScript module reference.</returns>
-    protected async Task<IJSObjectReference> GetJsModuleAsync(
+    /// <returns>A result containing the JavaScript module reference or an error.</returns>
+    protected async Task<Result<IJSObjectReference, JsInteropError>> GetJsModuleAsync(
         string moduleName,
         string modulePath = "./_content/DropBear.Codex.Blazor/js/{0}.module.js",
         [CallerMemberName] string? caller = null)
     {
-        EnsureNotDisposed();
-
-        // Fast path: check if already cached
-        if (_jsModuleCache.TryGetValue(moduleName, out var cachedModule))
+        try
         {
-            return cachedModule;
+            EnsureNotDisposed();
+
+            // Fast path: check if already cached
+            if (_jsModuleCache.TryGetValue(moduleName, out var cachedModule))
+            {
+                return Result<IJSObjectReference, JsInteropError>.Success(cachedModule);
+            }
+
+            // Use lock to prevent multiple simultaneous imports of the same module
+            using (await _moduleCacheLock.LockAsync(ComponentToken))
+            {
+                // Check again after acquiring the lock
+                if (_jsModuleCache.TryGetValue(moduleName, out cachedModule))
+                {
+                    return Result<IJSObjectReference, JsInteropError>.Success(cachedModule);
+                }
+
+                try
+                {
+                    using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+                    cts.CancelAfter(JsOperationTimeout);
+
+                    var module = await JsRuntime
+                        .InvokeAsync<IJSObjectReference>(
+                            "import",
+                            cts.Token,
+                            string.Format(modulePath, moduleName));
+
+                    _jsModuleCache[moduleName] = module;
+
+                    await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName,
+                        cancellationToken: cts.Token);
+
+                    if (caller != null)
+                    {
+                        LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
+                    }
+
+                    return Result<IJSObjectReference, JsInteropError>.Success(module);
+                }
+                catch (Exception ex)
+                {
+                    if (caller != null)
+                    {
+                        LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
+                    }
+
+                    return Result<IJSObjectReference, JsInteropError>.Failure(
+                        new JsInteropError($"Failed to load JS module: {moduleName}", ex));
+                }
+            }
         }
-
-        // Use lock to prevent multiple simultaneous imports of the same module
-        using (await _moduleCacheLock.LockAsync(ComponentToken))
+        catch (Exception ex)
         {
-            // Check again after acquiring the lock
-            if (_jsModuleCache.TryGetValue(moduleName, out cachedModule))
-            {
-                return cachedModule;
-            }
-
-            try
-            {
-                using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-                cts.CancelAfter(JsOperationTimeout);
-
-                var module = await JsRuntime
-                    .InvokeAsync<IJSObjectReference>(
-                        "import",
-                        cts.Token,
-                        string.Format(modulePath, moduleName));
-
-                _jsModuleCache[moduleName] = module;
-
-                await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName, cancellationToken: cts.Token);
-
-                if (caller != null)
-                {
-                    LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
-                }
-
-                return module;
-            }
-            catch (Exception ex)
-            {
-                if (caller != null)
-                {
-                    LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
-                }
-
-                throw new InvalidOperationException($"Failed to load JS module: {moduleName}", ex);
-            }
+            return Result<IJSObjectReference, JsInteropError>.Failure(
+                new JsInteropError($"Error in GetJsModuleAsync: {ex.Message}", ex));
         }
     }
+
 
     /// <summary>
     ///     Safely invokes a JavaScript function with timeout protection.
@@ -287,24 +298,27 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="identifier">The JavaScript function identifier.</param>
     /// <param name="caller">The calling method name (automatically populated).</param>
     /// <param name="args">Arguments to pass to the JavaScript function.</param>
-    /// <returns>A task that resolves to the result of the JavaScript function.</returns>
-    protected async Task<T> SafeJsInteropAsync<T>(
+    /// <returns>A result containing the JS interop result or an error.</returns>
+    protected async Task<Result<T, JsInteropError>> SafeJsInteropAsync<T>(
         string identifier,
         [CallerMemberName] string? caller = null,
         params object[] args)
     {
-        EnsureNotDisposed();
-
         try
         {
+            EnsureNotDisposed();
+
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
             cts.CancelAfter(JsOperationTimeout);
 
-            return await JsRuntime.InvokeAsync<T>(identifier, cts.Token, args);
+            var result = await JsRuntime.InvokeAsync<T>(identifier, cts.Token, args);
+            return Result<T, JsInteropError>.Success(result);
         }
-        catch (Exception ex) when (HandleJsException(ex, identifier, caller))
+        catch (Exception ex)
         {
-            throw;
+            HandleJsException(ex, identifier, caller);
+            return Result<T, JsInteropError>.Failure(
+                new JsInteropError($"JS interop failed for '{identifier}'", ex));
         }
     }
 
@@ -314,24 +328,27 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="identifier">The JavaScript function identifier.</param>
     /// <param name="caller">The calling method name (automatically populated).</param>
     /// <param name="args">Arguments to pass to the JavaScript function.</param>
-    /// <returns>A task representing the operation.</returns>
-    protected async Task SafeJsVoidInteropAsync(
+    /// <returns>A result indicating success or error.</returns>
+    protected async Task<Result<Unit, JsInteropError>> SafeJsVoidInteropAsync(
         string identifier,
         [CallerMemberName] string? caller = null,
         params object[] args)
     {
-        EnsureNotDisposed();
-
         try
         {
+            EnsureNotDisposed();
+
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
             cts.CancelAfter(JsOperationTimeout);
 
             await JsRuntime.InvokeVoidAsync(identifier, cts.Token, args);
+            return Result<Unit, JsInteropError>.Success(Unit.Value);
         }
-        catch (Exception ex) when (HandleJsException(ex, identifier, caller))
+        catch (Exception ex)
         {
-            throw;
+            HandleJsException(ex, identifier, caller);
+            return Result<Unit, JsInteropError>.Failure(
+                new JsInteropError($"JS interop failed for '{identifier}'", ex));
         }
     }
 
@@ -396,9 +413,11 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <summary>
     ///     Disposes all JavaScript modules in the cache.
     /// </summary>
-    /// <returns>A task representing the operation.</returns>
-    private async Task DisposeJsModulesAsync()
+    /// <returns>A result indicating success or error.</returns>
+    private async Task<Result<Unit, JsInteropError>> DisposeJsModulesAsync()
     {
+        var errors = new List<Exception>();
+
         foreach (var (moduleName, moduleRef) in _jsModuleCache)
         {
             try
@@ -413,10 +432,21 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             catch (Exception ex)
             {
                 LogError("Error disposing JS module: {Module}", ex, moduleName);
+                errors.Add(ex);
             }
         }
 
         _jsModuleCache.Clear();
+
+        if (errors.Count > 0)
+        {
+            var combinedMessage = $"Failed to dispose {errors.Count} JS modules";
+            return Result<Unit, JsInteropError>.PartialSuccess(
+                Unit.Value,
+                new JsInteropError(combinedMessage, errors.Count > 1 ? new AggregateException(errors) : errors[0]));
+        }
+
+        return Result<Unit, JsInteropError>.Success(Unit.Value);
     }
 
     /// <summary>
@@ -433,19 +463,15 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region Helper Methods
 
     /// <summary>
-    ///     Analyzes and logs the basic structure of a loaded JavaScript module for debugging purposes.
-    ///     This utility helps diagnose JavaScript interop issues in Blazor environments.
+    ///     Performs minimal safe diagnostics on a JavaScript module reference.
+    ///     Designed for strict Blazor JS isolation environments where dynamic evaluation is restricted.
     /// </summary>
-    /// <param name="module">The JavaScript module reference to analyze.</param>
-    /// <param name="moduleName">A descriptive name for the module to include in logs.</param>
-    /// <param name="functionsToTest">Array of function names to test for on the module.</param>
+    /// <param name="module">The JavaScript module reference to test.</param>
+    /// <param name="moduleName">A descriptive name for logging.</param>
+    /// <param name="functionsToTest">Array of function names to test individually.</param>
     /// <param name="caller">The calling method name (automatically populated).</param>
-    /// <returns>A task representing the analysis operation.</returns>
-    /// <remarks>
-    ///     Use this method during development to troubleshoot JavaScript interop issues.
-    ///     It performs safe checks that won't cause exceptions in common Blazor environments.
-    /// </remarks>
-    protected async Task DebugModuleStructure(
+    /// <returns>A result containing diagnostic information or an error.</returns>
+    protected async Task<Result<Dictionary<string, bool>, JsInteropError>> DebugModuleStructure(
         IJSObjectReference module,
         string moduleName = "UnknownModule",
         string[]? functionsToTest = null,
@@ -454,32 +480,20 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         if (module == null)
         {
             LogWarning("Cannot debug null module reference (called from {Caller})", caller ?? "unknown");
-            return;
+            return Result<Dictionary<string, bool>, JsInteropError>.Failure(
+                new JsInteropError("Module reference is null"));
         }
 
         try
         {
             EnsureNotDisposed(caller);
 
-            // Create a linked token with timeout to prevent hanging
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
-            cts.CancelAfter(JsOperationTimeout);
-
             LogDebug("Analyzing module structure: {ModuleName} (called from {Caller})",
                 moduleName, caller ?? "unknown");
 
-            // Test for common ES module indicator
-            try
-            {
-                var moduleType = await module.InvokeAsync<string>("eval", cts.Token, "typeof this");
-                LogDebug("Module this context type: {Type}", moduleType);
-            }
-            catch (Exception ex)
-            {
-                LogDebug("Unable to determine module context: {Error}", ex.Message);
-            }
+            var functionResults = new Dictionary<string, bool>();
 
-            // Test specific functions if provided
+            // Only test specific functions if provided (simplest approach)
             if (functionsToTest != null && functionsToTest.Length > 0)
             {
                 LogDebug("Testing {Count} specific functions:", functionsToTest.Length);
@@ -488,38 +502,39 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 {
                     try
                     {
-                        // Use a simple test that just checks if invoking the function name throws
-                        await module.InvokeVoidAsync("eval", cts.Token, $"typeof {funcName}");
-                        LogDebug("  - '{FunctionName}' exists on module", funcName);
+                        // Try to directly invoke the function with no parameters
+                        await module.InvokeVoidAsync(funcName, ComponentToken);
+                        LogDebug("  - '{FunctionName}' exists and executes without error", funcName);
+                        functionResults[funcName] = true;
                     }
                     catch (JSException ex)
                     {
-                        LogDebug("  - '{FunctionName}' not found: {Error}",
-                            funcName, ex.Message.Split('\n')[0]);
+                        // Extract just the first line of the error for cleaner logs
+                        var errorMessage = ex.Message.Contains('\n')
+                            ? ex.Message.Substring(0, ex.Message.IndexOf('\n'))
+                            : ex.Message;
+
+                        LogDebug("  - '{FunctionName}' error: {Error}",
+                            funcName, errorMessage);
+                        functionResults[funcName] = false;
                     }
                     catch (Exception ex)
                     {
                         LogDebug("  - Error testing '{FunctionName}': {Error}",
-                            funcName, ex.Message.Split('\n')[0]);
+                            funcName, ex.Message);
+                        functionResults[funcName] = false;
                     }
                 }
             }
 
             LogDebug("Module analysis complete for: {ModuleName}", moduleName);
-        }
-        catch (TaskCanceledException)
-        {
-            LogWarning("Module analysis timed out after {Timeout}s (called from {Caller})",
-                JsOperationTimeoutSeconds, caller ?? "unknown");
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException or ObjectDisposedException)
-        {
-            LogWarning("Module analysis interrupted: {Reason} (called from {Caller})",
-                ex.GetType().Name, caller ?? "unknown");
+            return Result<Dictionary<string, bool>, JsInteropError>.Success(functionResults);
         }
         catch (Exception ex)
         {
             LogError("Module analysis failed (called from {Caller})", ex, caller ?? "unknown");
+            return Result<Dictionary<string, bool>, JsInteropError>.Failure(
+                new JsInteropError($"Failed to analyze module: {ex.Message}", ex));
         }
     }
 
