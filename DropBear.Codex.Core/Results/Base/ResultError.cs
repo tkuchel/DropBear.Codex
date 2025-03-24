@@ -116,21 +116,6 @@ public abstract record ResultError : ISpanFormattable
         return this with { Message = ValidateAndFormatMessage(newMessage) };
     }
 
-    /// <summary>
-    ///     Adds metadata to the error context.
-    /// </summary>
-    /// <param name="key">The metadata key.</param>
-    /// <param name="value">The metadata value.</param>
-    /// <returns>A new instance with updated metadata.</returns>
-    public ResultError WithMetadata(string key, object value)
-    {
-        var metadata = Metadata is null
-            ? new Dictionary<string, object>(StringComparer.Ordinal)
-            : new Dictionary<string, object>(Metadata, StringComparer.Ordinal);
-
-        metadata[key] = value;
-        return this with { Metadata = metadata };
-    }
 
     #endregion
 

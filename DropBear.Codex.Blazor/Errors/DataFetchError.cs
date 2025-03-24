@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Core.Results.Extensions;
 
 #endregion
 
@@ -31,7 +32,6 @@ public record DataFetchError : ResultError
     public DataFetchError(string message, string operationName) : base(message)
     {
         OperationName = operationName;
-        WithMetadata("Operation", operationName);
     }
 
     /// <summary>
@@ -84,23 +84,4 @@ public record DataFetchError : ResultError
             operationName) { ErrorType = ErrorType.PermissionDenied };
     }
 
-    /// <summary>
-    ///     Adds metadata to the error context.
-    ///     Overrides the base implementation to return the correct derived type.
-    /// </summary>
-    /// <param name="key">The metadata key.</param>
-    /// <param name="value">The metadata value.</param>
-    /// <returns>A new instance with updated metadata.</returns>
-    public new DataFetchError WithMetadata(string key, object value)
-    {
-        // Call the base implementation which returns ResultError
-        var baseResult = base.WithMetadata(key, value);
-
-        // Create a new DataFetchError with the same properties
-        return this with
-        {
-            // Copy the updated metadata dictionary from the base result
-            Metadata = baseResult.Metadata
-        };
-    }
 }
