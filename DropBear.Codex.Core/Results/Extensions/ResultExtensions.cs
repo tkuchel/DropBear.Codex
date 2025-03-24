@@ -40,6 +40,23 @@ public static class ResultExtensions
         }
     }
 
+    public static TError WithMetadata<TError>(
+        this TError error,
+        string key,
+        object value)
+        where TError : ResultError
+    {
+        var metadata = error.Metadata is null
+            ? new Dictionary<string, object>(StringComparer.Ordinal)
+            : new Dictionary<string, object>(error.Metadata, StringComparer.Ordinal);
+
+        metadata[key] = value;
+
+        // Force the 'with' expression result back to TError via an explicit cast:
+        return (TError)(error with { Metadata = metadata });
+    }
+
+
     #endregion
 
     #region Value Conversion Extensions

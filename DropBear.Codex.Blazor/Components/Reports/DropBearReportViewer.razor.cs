@@ -230,13 +230,13 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             InitializeColumns();
 
             // Debug the module structure
-            await DebugModuleStructure(_downloadModule, "DropBearFileDownloader",
-                new[] {
-                    "DropBearFileDownloaderAPI.downloadFileFromStream",
-                    "DropBearFileDownloaderAPI.initialize",
-                    "DropBearFileDownloaderAPI.isInitialized",
-                    "DropBearFileDownloaderAPI.dispose"
-                });
+            // await DebugModuleStructure(_downloadModule, "DropBearFileDownloader",
+            //     new[] {
+            //         "DropBearFileDownloaderAPI.downloadFileFromStream",
+            //         "DropBearFileDownloaderAPI.initialize",
+            //         "DropBearFileDownloaderAPI.isInitialized",
+            //         "DropBearFileDownloaderAPI.dispose"
+            //     });
 
 
             await base.OnInitializedAsync();
