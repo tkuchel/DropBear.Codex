@@ -476,9 +476,6 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             LogDebug("Analyzing module structure: {ModuleName} (called from {Caller})",
                 moduleName, caller ?? "unknown");
 
-// Print the module to browser console for direct inspection
-            await module.InvokeVoidAsync("console.dir", cts.Token, module, new { depth = 2 });
-
             // Test for existence of specific global exports
             var hasGlobalNamespace = await SafeJsInteropAsync<bool>(
                 "typeof window." + moduleName + " !== 'undefined'");
@@ -500,6 +497,37 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 {
                     LogDebug("Could not determine module initialization status: {Error}",
                         ex.Message);
+                }
+
+                // Test for specific module API functions
+                try
+                {
+                    var hasFunctions = await SafeJsInteropAsync<Dictionary<string, bool>>(
+                        @"(function() {
+                        const obj = window." + moduleName + @";
+                        const result = {};
+                        for (const key in obj) {
+                            result[key] = typeof obj[key] === 'function';
+                        }
+                        return result;
+                    })()");
+
+                    if (hasFunctions != null && hasFunctions.Count > 0)
+                    {
+                        foreach (var func in hasFunctions)
+                        {
+                            LogDebug("Global module function '{Key}': {IsFunction}",
+                                func.Key, func.Value ? "Function" : "Non-function");
+                        }
+                    }
+                    else
+                    {
+                        LogDebug("No properties found on global module object");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogDebug("Failed to enumerate global module functions: {Error}", ex.Message);
                 }
             }
 
@@ -534,26 +562,43 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 }
             }
 
-            // Attempt to list exported properties directly on the module
+            // Try to get direct module exports if the module supports it
             try
             {
-                var exportedProps = await module.InvokeAsync<string[]>(
-                    "Object.getOwnPropertyNames", cts.Token);
+                // This uses a self-executing function to analyze the module
+                var moduleInfo = await module.InvokeAsync<Dictionary<string, string>>(
+                    @"function() {
+                    const info = {};
+                    try {
+                        const descriptors = Object.getOwnPropertyDescriptors(this);
+                        for (const key in descriptors) {
+                            info[key] = typeof this[key];
+                        }
+                    } catch (e) {
+                        info['ERROR'] = e.toString();
+                    }
+                    return info;
+                }",
+                    cts.Token);
 
-                if (exportedProps.Length > 0)
+                if (moduleInfo != null && moduleInfo.Count > 0)
                 {
-                    LogDebug("Module direct exports: {Exports}",
-                        string.Join(", ", exportedProps));
+                    foreach (var entry in moduleInfo)
+                    {
+                        LogDebug("Module export '{Key}': {Type}", entry.Key, entry.Value);
+                    }
                 }
                 else
                 {
-                    LogDebug("Module has no direct property exports");
+                    LogDebug("No direct exports found on module");
                 }
             }
             catch (Exception ex)
             {
-                LogDebug("Could not list module exports: {Error}", ex.Message);
+                LogDebug("Could not analyze direct module exports: {Error}", ex.Message);
             }
+
+            LogDebug("Module analysis complete: {ModuleName}", moduleName);
         }
         catch (TaskCanceledException)
         {
