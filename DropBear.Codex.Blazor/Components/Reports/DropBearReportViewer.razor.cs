@@ -231,7 +231,13 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
             // Debug the module structure
             await DebugModuleStructure(_downloadModule, "DropBearFileDownloader",
-                new[] { "downloadFileFromStream", "initialize", "isInitialized", "dispose" });
+                new[] {
+                    "DropBearFileDownloaderAPI.downloadFileFromStream",
+                    "DropBearFileDownloaderAPI.initialize",
+                    "DropBearFileDownloaderAPI.isInitialized",
+                    "DropBearFileDownloaderAPI.dispose"
+                });
+
 
             await base.OnInitializedAsync();
             LogDebug("File downloader initialized with JS module");

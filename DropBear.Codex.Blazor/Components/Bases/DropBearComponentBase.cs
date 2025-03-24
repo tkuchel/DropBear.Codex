@@ -509,14 +509,25 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                     }
                     catch (JSException ex)
                     {
-                        // Extract just the first line of the error for cleaner logs
-                        var errorMessage = ex.Message.Contains('\n')
-                            ? ex.Message.Substring(0, ex.Message.IndexOf('\n'))
-                            : ex.Message;
+                        try
+                        {
+                            // Try to directly invoke the function with no parameters
+                            await module.InvokeVoidAsync($"API.{funcName}", ComponentToken);
+                            LogDebug("  - '{FunctionName}' exists and executes without error", funcName);
+                            functionResults[funcName] = true;
+                        }
+                        catch (Exception e)
+                        {
+                            // Extract just the first line of the error for cleaner logs
+                            var errorMessage = ex.Message.Contains('\n')
+                                ? ex.Message.Substring(0, ex.Message.IndexOf('\n'))
+                                : ex.Message;
 
-                        LogDebug("  - '{FunctionName}' error: {Error}",
-                            funcName, errorMessage);
-                        functionResults[funcName] = false;
+                            LogDebug("  - '{FunctionName}' error: {Error}",
+                                funcName, errorMessage);
+                            functionResults[funcName] = false;
+                        }
+
                     }
                     catch (Exception ex)
                     {
