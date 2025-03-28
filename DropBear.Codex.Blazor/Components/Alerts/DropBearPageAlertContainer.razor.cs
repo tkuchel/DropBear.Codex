@@ -189,6 +189,15 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
             if (_activeAlerts.TryAdd(alert.Id, alert))
             {
                 await QueueStateHasChangedAsync(() => { });
+
+                if (_isModuleInitialized && _alertModule != null)
+                {
+                    // Duration is in milliseconds
+                    await _alertModule.InvokeVoidAsync("DropBearPageAlertAPI.create",
+                        alert.Id,
+                        alert.Duration,
+                        alert.IsPermanent);
+                }
             }
         }
         catch (Exception ex)
