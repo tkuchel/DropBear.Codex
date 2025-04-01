@@ -333,6 +333,12 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     #region Parameters
 
     /// <summary>
+    /// Determines whether the rendered content is disabled (non-interactable).
+    /// </summary>
+    [Parameter]
+    public bool Disabled { get; set; } = false;
+
+    /// <summary>
     ///     A synchronous predicate function determining if the section should be rendered.
     /// </summary>
     [Parameter]
