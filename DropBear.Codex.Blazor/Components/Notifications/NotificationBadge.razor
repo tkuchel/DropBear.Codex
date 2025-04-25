@@ -1,0 +1,11 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Components.Icons
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="notification-badge @(UnreadCount > 0 ? "has-notifications" : "")" @onclick="OnClick">
+    <NotificationIcon/>
+    @if (UnreadCount > 0)
+    {
+        <span class="badge">@(UnreadCount > 99 ? "99+" : UnreadCount.ToString())</span>
+    }
+</div>

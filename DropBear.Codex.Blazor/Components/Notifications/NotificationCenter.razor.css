@@ -1,0 +1,94 @@
+﻿/* NotificationCenter.razor.css */
+
+.notification-center {
+  --notification-width: 100%;
+  --notification-max-width: 800px;
+  --notification-bg: var(--clr-surface);
+  --notification-border: var(--clr-border);
+  --notification-shadow: var(--shadow-md);
+  --notification-radius: var(--br-md);
+
+  width: var(--notification-width);
+  max-width: var(--notification-max-width);
+  background-color: var(--notification-bg);
+  border: 1px solid var(--notification-border);
+  border-radius: var(--notification-radius);
+  box-shadow: var(--notification-shadow);
+  overflow: hidden;
+}
+
+.notification-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--notification-border);
+}
+
+.notification-header h2 {
+  margin: 0;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-medium);
+}
+
+.notification-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.notification-list {
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.notification-loading,
+.notification-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  text-align: center;
+  color: var(--clr-text-muted);
+}
+
+.notification-loading svg,
+.notification-empty-state svg {
+  width: 48px;
+  height: 48px;
+  margin-bottom: var(--spacing-md);
+  opacity: 0.5;
+}
+
+.notification-empty-state h3 {
+  margin: 0 0 var(--spacing-sm);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+}
+
+.notification-empty-state p {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.notification-pagination {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--notification-border);
+}
+
+.filter-dropdown {
+  position: relative;
+}
+
+@media (max-width: 768px) {
+  .notification-center {
+    --notification-max-width: 100%;
+    --notification-radius: 0;
+  }
+
+  .notification-list {
+    max-height: calc(100vh - 160px);
+  }
+}

@@ -1,5 +1,5 @@
-﻿@using DropBear.Codex.Blazor.Helpers
-@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@using DropBear.Codex.Blazor.Helpers
 
 <IconBase Title="@Title"
           Size="@Size"
@@ -8,11 +8,11 @@
           Clickable="@Clickable"
           OnClick="@OnClick"
           @attributes="AdditionalAttributes">
-    @((MarkupString)SvgIcons.Close)
+    @((MarkupString)SvgIcons.SortDescending)
 </IconBase>
 
 @code {
-    [Parameter] public string? Title { get; set; } = "Close";
+    [Parameter] public string? Title { get; set; } = "Sort descending";
     [Parameter] public int Size { get; set; } = 20;
     [Parameter] public string Color { get; set; } = "currentColor";
     [Parameter] public string CssClass { get; set; } = string.Empty;
@@ -21,5 +21,4 @@
 
     [Parameter(CaptureUnmatchedValues = true)]
     public Dictionary<string, object>? AdditionalAttributes { get; set; }
-
 }

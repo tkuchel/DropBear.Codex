@@ -1,0 +1,111 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Components.Icons
+@using DropBear.Codex.Notifications.Enums
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="notification-filter" @onclick:stopPropagation="true">
+    <div class="filter-header">
+        <h3>Filter Notifications</h3>
+        <button class="btn-close" @onclick="CloseFilter" aria-label="Close filter panel">
+            <CloseIcon/>
+        </button>
+    </div>
+
+    <div class="filter-body">
+        <div class="filter-group">
+            <label>Status</label>
+            <div class="filter-options">
+                <div class="filter-option">
+                    <input type="radio" id="status-all" name="status"
+                           checked="@(LocalFilter.IsRead == null)"
+                           @onchange="@(() => SetReadStatus(null))"/>
+                    <label for="status-all">All</label>
+                </div>
+                <div class="filter-option">
+                    <input type="radio" id="status-unread" name="status"
+                           checked="@(LocalFilter.IsRead == false)"
+                           @onchange="@(() => SetReadStatus(false))"/>
+                    <label for="status-unread">Unread</label>
+                </div>
+                <div class="filter-option">
+                    <input type="radio" id="status-read" name="status"
+                           checked="@(LocalFilter.IsRead == true)"
+                           @onchange="@(() => SetReadStatus(true))"/>
+                    <label for="status-read">Read</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label>Severity</label>
+            <select @bind="SelectedSeverity">
+                <option value="">All Severities</option>
+                <option value="@NotificationSeverity.Information">Information</option>
+                <option value="@NotificationSeverity.Success">Success</option>
+                <option value="@NotificationSeverity.Warning">Warning</option>
+                <option value="@NotificationSeverity.Error">Error</option>
+                <option value="@NotificationSeverity.Critical">Critical</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Type</label>
+            <select @bind="SelectedType">
+                <option value="">All Types</option>
+                <option value="@NotificationType.PageAlert">Page Alert</option>
+                <option value="@NotificationType.Toast">Toast</option>
+                <option value="@NotificationType.TaskProgress">Task Progress</option>
+            </select>
+        </div>
+
+        <div class="filter-group">
+            <label>Date Range</label>
+            <div class="date-range">
+                <div class="date-input">
+                    <label for="from-date">From</label>
+                    <input type="date" id="from-date"
+                           value="@(LocalFilter.FromDate?.ToString("yyyy-MM-dd"))"
+                           @onchange="@(e => UpdateFromDate(e.Value?.ToString()))"/>
+                </div>
+                <div class="date-input">
+                    <label for="to-date">To</label>
+                    <input type="date" id="to-date"
+                           value="@(LocalFilter.ToDate?.ToString("yyyy-MM-dd"))"
+                           @onchange="@(e => UpdateToDate(e.Value?.ToString()))"/>
+                </div>
+            </div>
+        </div>
+
+        <div class="filter-group">
+            <label for="search-text">Search</label>
+            <input type="text" id="search-text" placeholder="Search in notifications..."
+                   @bind="LocalFilter.SearchText" @bind:event="oninput"/>
+        </div>
+
+        <div class="filter-group">
+            <label>Sort By</label>
+            <div class="sort-options">
+                <select @bind="LocalFilter.SortBy">
+                    <option value="CreatedAt">Date</option>
+                    <option value="Severity">Severity</option>
+                    <option value="Type">Type</option>
+                </select>
+                <div class="sort-direction">
+                    <button class="@(LocalFilter.SortDescending ? "active" : "")"
+                            @onclick="() => LocalFilter.SortDescending = true">
+                        <SortDescendingIcon/>
+                    </button>
+                    <button class="@(!LocalFilter.SortDescending ? "active" : "")"
+                            @onclick="() => LocalFilter.SortDescending = false">
+                        <SortAscendingIcon/>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="filter-footer">
+        <button class="btn btn-secondary" @onclick="ResetFilter">Reset</button>
+        <button class="btn btn-primary" @onclick="ApplyFilter">Apply</button>
+    </div>
+</div>

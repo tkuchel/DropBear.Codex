@@ -8,11 +8,11 @@
           Clickable="@Clickable"
           OnClick="@OnClick"
           @attributes="AdditionalAttributes">
-    @((MarkupString)SvgIcons.Close)
+    @((MarkupString)SvgIcons.Expand)
 </IconBase>
 
 @code {
-    [Parameter] public string? Title { get; set; } = "Close";
+    [Parameter] public string? Title { get; set; } = "Expand";
     [Parameter] public int Size { get; set; } = 20;
     [Parameter] public string Color { get; set; } = "currentColor";
     [Parameter] public string CssClass { get; set; } = string.Empty;
