@@ -222,7 +222,7 @@ public partial class DropBearBadge : DropBearComponentBase
     {
         try
         {
-            await _tooltipCts.CancelAsync();
+            // await _tooltipCts.CancelAsync();
             ShowTooltip = false;
             TooltipStyle = string.Empty;
             _cachedDimensions = null;
