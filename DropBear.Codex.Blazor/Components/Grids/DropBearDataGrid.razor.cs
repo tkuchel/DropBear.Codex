@@ -1044,6 +1044,28 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
     #region Selection and Row Events
 
+    private async Task ClearSelectionAsync()
+    {
+        try
+        {
+            _selectedItems.Clear();
+            if (OnSelectionChanged.HasDelegate)
+            {
+                await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error clearing selection");
+            _lastOperationResult = Result<bool, DataGridError>.Failure(
+                new DataGridError($"Failed to clear selection: {ex.Message}"), ex);
+            _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
+            StateHasChanged();
+        }
+    }
+
+
     /// <summary>
     ///     Handles changes in row selection, notifying subscribers via the OnSelectionChanged event.
     /// </summary>
