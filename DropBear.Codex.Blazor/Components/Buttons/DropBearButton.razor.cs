@@ -162,6 +162,11 @@ public sealed partial class DropBearButton : DropBearComponentBase
                 await OnClick.InvokeAsync(args);
             });
         }
+        catch (ObjectDisposedException objDisposed)
+        {
+            // Handle case where component is disposed during click
+            Logger.Warning(objDisposed, "Click ignored - button component was disposed during click handling.");
+        }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error handling button click: {Color} {ButtonStyle}", Color, ButtonStyle);
