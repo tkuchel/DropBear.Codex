@@ -1,5 +1,5 @@
-using DropBear.Codex.Workflow.Results;
 using DropBear.Codex.Workflow.Persistence.Models;
+using DropBear.Codex.Workflow.Results;
 
 namespace DropBear.Codex.Workflow.Persistence.Steps;
 
@@ -26,8 +26,8 @@ public abstract class UserModificationStep<TContext, TModificationData> : WaitFo
     /// Validates and applies the user's modifications
     /// </summary>
     public override async ValueTask<StepResult> ProcessSignalAsync(
-        TContext context, 
-        TModificationData? modificationData, 
+        TContext context,
+        TModificationData? modificationData,
         CancellationToken cancellationToken = default)
     {
         if (modificationData == null)
@@ -59,15 +59,15 @@ public abstract class UserModificationStep<TContext, TModificationData> : WaitFo
     /// Validates the user's modifications
     /// </summary>
     protected abstract ValueTask<ValidationResult> ValidateModificationsAsync(
-        TContext context, 
-        TModificationData modificationData, 
+        TContext context,
+        TModificationData modificationData,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Stores the pending changes without committing them
     /// </summary>
     protected abstract ValueTask StorePendingChangesAsync(
-        TContext context, 
-        TModificationData modificationData, 
+        TContext context,
+        TModificationData modificationData,
         CancellationToken cancellationToken = default);
 }

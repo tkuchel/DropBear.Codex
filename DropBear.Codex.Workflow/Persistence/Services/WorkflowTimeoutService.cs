@@ -1,18 +1,21 @@
+#region
+
+using DropBear.Codex.Workflow.Persistence.Interfaces;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using DropBear.Codex.Workflow.Persistence.Interfaces;
-using DropBear.Codex.Workflow.Persistence.Models;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Persistence.Services;
 
 /// <summary>
-/// Background service for processing workflow timeouts
+///     Background service for processing workflow timeouts
 /// </summary>
 public sealed class WorkflowTimeoutService : BackgroundService
 {
-    private readonly IPersistentWorkflowEngine _workflowEngine;
-    private readonly IWorkflowStateRepository _stateRepository;
     private readonly ILogger<WorkflowTimeoutService> _logger;
+    private readonly IWorkflowStateRepository _stateRepository;
+    private readonly IPersistentWorkflowEngine _workflowEngine;
 
     public WorkflowTimeoutService(
         IPersistentWorkflowEngine workflowEngine,
@@ -53,18 +56,19 @@ public sealed class WorkflowTimeoutService : BackgroundService
     private async Task ProcessExpiredWorkflows(CancellationToken cancellationToken)
     {
         // Get workflows that have exceeded their signal timeout
-        var expiredWorkflows = await _stateRepository.GetWaitingWorkflowsAsync<object>(cancellationToken: cancellationToken);
-        
+        var expiredWorkflows =
+            await _stateRepository.GetWaitingWorkflowsAsync<object>(cancellationToken: cancellationToken);
+
         var now = DateTimeOffset.UtcNow;
-        
+
         foreach (var workflow in expiredWorkflows.Where(w => w.SignalTimeoutAt.HasValue && w.SignalTimeoutAt < now))
         {
-            _logger.LogWarning("Workflow {WorkflowInstanceId} has timed out waiting for signal {SignalName}", 
+            _logger.LogWarning("Workflow {WorkflowInstanceId} has timed out waiting for signal {SignalName}",
                 workflow.WorkflowInstanceId, workflow.WaitingForSignal);
 
             await _workflowEngine.CancelWorkflowAsync(
-                workflow.WorkflowInstanceId, 
-                $"Timed out waiting for signal: {workflow.WaitingForSignal}", 
+                workflow.WorkflowInstanceId,
+                $"Timed out waiting for signal: {workflow.WaitingForSignal}",
                 cancellationToken);
         }
     }

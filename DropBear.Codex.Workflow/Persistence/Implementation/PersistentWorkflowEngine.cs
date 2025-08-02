@@ -9,6 +9,8 @@ using Microsoft.Extensions.Logging;
 
 #endregion
 
+namespace DropBear.Codex.Workflow.Persistence.Implementation;
+
 /// <summary>
 ///     Fixed implementation of persistent workflow engine that properly handles workflow definition persistence
 /// </summary>

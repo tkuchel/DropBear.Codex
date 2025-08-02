@@ -1,6 +1,5 @@
 using DropBear.Codex.Workflow.Core;
 using DropBear.Codex.Workflow.Results;
-using DropBear.Codex.Workflow.Persistence.Models;
 
 namespace DropBear.Codex.Workflow.Persistence.Steps;
 
@@ -9,7 +8,7 @@ namespace DropBear.Codex.Workflow.Persistence.Steps;
 /// </summary>
 /// <typeparam name="TContext">The workflow context type</typeparam>
 /// <typeparam name="TSignalData">The type of data expected with the signal</typeparam>
-public abstract class WaitForSignalStep<TContext, TSignalData> : WorkflowStepBase<TContext> 
+public abstract class WaitForSignalStep<TContext, TSignalData> : WorkflowStepBase<TContext>
     where TContext : class
 {
     /// <summary>
@@ -53,7 +52,7 @@ public abstract class WaitForSignalStep<TContext, TSignalData> : WorkflowStepBas
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>Result of processing the signal</returns>
     public abstract ValueTask<StepResult> ProcessSignalAsync(
-        TContext context, 
-        TSignalData? signalData, 
+        TContext context,
+        TSignalData? signalData,
         CancellationToken cancellationToken = default);
 }

@@ -1,5 +1,5 @@
-using DropBear.Codex.Workflow.Results;
 using DropBear.Codex.Workflow.Persistence.Models;
+using DropBear.Codex.Workflow.Results;
 
 namespace DropBear.Codex.Workflow.Persistence.Steps;
 
@@ -24,8 +24,8 @@ public abstract class WaitForApprovalStep<TContext> : WaitForSignalStep<TContext
     /// Validates the approval response and updates the context
     /// </summary>
     public override async ValueTask<StepResult> ProcessSignalAsync(
-        TContext context, 
-        ApprovalResponse? approvalResponse, 
+        TContext context,
+        ApprovalResponse? approvalResponse,
         CancellationToken cancellationToken = default)
     {
         if (approvalResponse == null)
@@ -44,8 +44,8 @@ public abstract class WaitForApprovalStep<TContext> : WaitForSignalStep<TContext
             ["ApprovalComments"] = approvalResponse.Comments ?? ""
         };
 
-        return approvalResponse.IsApproved 
-            ? Success(metadata) 
+        return approvalResponse.IsApproved
+            ? Success(metadata)
             : Failure($"Approval denied by {approvalResponse.ApprovedBy}: {approvalResponse.Comments}", false, metadata);
     }
 
