@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using DropBear.Codex.Workflow.Core;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Results;
@@ -7,27 +8,30 @@ using DropBear.Codex.Workflow.Configuration;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
 
-namespace DropBear.Codex.Workflow.Persistence.Implementation;
+namespace DropBear.Codex.Workflow.Implementation;
 
 /// <summary>
-/// Implementation of persistent workflow engine
+/// Fixed implementation of persistent workflow engine that properly handles workflow definition persistence
 /// </summary>
 public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
 {
     private readonly IWorkflowEngine _baseEngine;
     private readonly IWorkflowStateRepository _stateRepository;
     private readonly IWorkflowNotificationService _notificationService;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ILogger<PersistentWorkflowEngine> _logger;
 
     public PersistentWorkflowEngine(
         IWorkflowEngine baseEngine,
         IWorkflowStateRepository stateRepository,
         IWorkflowNotificationService notificationService,
+        IServiceProvider serviceProvider,
         ILogger<PersistentWorkflowEngine> logger)
     {
         _baseEngine = baseEngine ?? throw new ArgumentNullException(nameof(baseEngine));
         _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
         _notificationService = notificationService ?? throw new ArgumentNullException(nameof(notificationService));
+        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -57,8 +61,8 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         CancellationToken cancellationToken = default) where TContext : class
     {
         var workflowInstanceId = Guid.NewGuid().ToString();
-        
-        // Create initial workflow state
+
+        // Create initial workflow state - STORE THE TYPE NAME instead of serializing the interface
         var workflowState = new WorkflowInstanceState<TContext>
         {
             WorkflowInstanceId = workflowInstanceId,
@@ -68,17 +72,17 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
             Status = WorkflowStatus.Running,
             CreatedAt = DateTimeOffset.UtcNow,
             LastUpdatedAt = DateTimeOffset.UtcNow,
-            SerializedWorkflowDefinition = JsonSerializer.Serialize(definition)
+            SerializedWorkflowDefinition = definition.GetType().AssemblyQualifiedName // Store type name instead
         };
 
         // Save initial state
         await _stateRepository.SaveWorkflowStateAsync(workflowState, cancellationToken);
 
-        _logger.LogInformation("Started persistent workflow {WorkflowId} with instance {InstanceId}", 
+        _logger.LogInformation("Started persistent workflow {WorkflowId} with instance {InstanceId}",
             definition.WorkflowId, workflowInstanceId);
 
         // Try to execute the workflow
-        return await ContinueWorkflowExecutionAsync(workflowState, cancellationToken);
+        return await ContinueWorkflowExecutionAsync(workflowState, definition, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -104,7 +108,10 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
 
         _logger.LogInformation("Resuming workflow instance {InstanceId}", workflowInstanceId);
 
-        return await ContinueWorkflowExecutionAsync(workflowState, cancellationToken);
+        // Reconstruct the workflow definition from the service provider
+        var definition = await ReconstructWorkflowDefinitionAsync<TContext>(workflowState);
+
+        return await ContinueWorkflowExecutionAsync(workflowState, definition, cancellationToken);
     }
 
     /// <inheritdoc />
@@ -123,22 +130,22 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
 
         if (workflowState.Status != WorkflowStatus.WaitingForSignal && workflowState.Status != WorkflowStatus.WaitingForApproval)
         {
-            _logger.LogWarning("Cannot signal workflow {InstanceId} - not waiting for signal (Status: {Status})", 
+            _logger.LogWarning("Cannot signal workflow {InstanceId} - not waiting for signal (Status: {Status})",
                 workflowInstanceId, workflowState.Status);
             return false;
         }
 
         if (workflowState.WaitingForSignal != signalName)
         {
-            _logger.LogWarning("Signal mismatch for workflow {InstanceId}. Expected: {Expected}, Received: {Received}", 
+            _logger.LogWarning("Signal mismatch for workflow {InstanceId}. Expected: {Expected}, Received: {Received}",
                 workflowInstanceId, workflowState.WaitingForSignal, signalName);
             return false;
         }
 
         // Store the signal data in metadata
         workflowState.Metadata[$"signal_{signalName}"] = signalData ?? new object();
-        workflowState = workflowState with 
-        { 
+        workflowState = workflowState with
+        {
             Status = WorkflowStatus.Running,
             WaitingForSignal = null,
             SignalTimeoutAt = null,
@@ -175,8 +182,8 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
             return false;
         }
 
-        workflowState = workflowState with 
-        { 
+        workflowState = workflowState with
+        {
             Status = WorkflowStatus.Cancelled,
             LastUpdatedAt = DateTimeOffset.UtcNow
         };
@@ -190,31 +197,67 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
     }
 
     /// <summary>
+    /// Reconstructs workflow definition from service provider using the stored type name
+    /// </summary>
+    private async ValueTask<IWorkflowDefinition<TContext>> ReconstructWorkflowDefinitionAsync<TContext>(
+        WorkflowInstanceState<TContext> workflowState) where TContext : class
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(workflowState.SerializedWorkflowDefinition))
+            {
+                throw new InvalidOperationException("No workflow definition type stored");
+            }
+
+            // Get the type from the assembly qualified name
+            var workflowType = Type.GetType(workflowState.SerializedWorkflowDefinition);
+            if (workflowType == null)
+            {
+                throw new InvalidOperationException($"Could not resolve workflow type: {workflowState.SerializedWorkflowDefinition}");
+            }
+
+            // Try to get the workflow from the service provider
+            var workflowDefinition = _serviceProvider.GetService(workflowType) as IWorkflowDefinition<TContext>;
+            if (workflowDefinition != null)
+            {
+                return workflowDefinition;
+            }
+
+            // If not registered, try to create an instance
+            workflowDefinition = Activator.CreateInstance(workflowType) as IWorkflowDefinition<TContext>;
+            if (workflowDefinition == null)
+            {
+                throw new InvalidOperationException($"Could not create instance of workflow type: {workflowType.Name}");
+            }
+
+            return workflowDefinition;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to reconstruct workflow definition for instance {InstanceId}",
+                workflowState.WorkflowInstanceId);
+            throw;
+        }
+    }
+
+    /// <summary>
     /// Continues workflow execution and handles suspension points
     /// </summary>
     private async ValueTask<PersistentWorkflowResult<TContext>> ContinueWorkflowExecutionAsync<TContext>(
         WorkflowInstanceState<TContext> workflowState,
+        IWorkflowDefinition<TContext> definition,
         CancellationToken cancellationToken) where TContext : class
     {
         try
         {
-            // Deserialize workflow definition (in real implementation, you'd cache this)
-            var definition = JsonSerializer.Deserialize<IWorkflowDefinition<TContext>>(
-                workflowState.SerializedWorkflowDefinition ?? "");
-
-            if (definition == null)
-            {
-                throw new InvalidOperationException("Could not deserialize workflow definition");
-            }
-
             // Execute workflow until completion or suspension
             var result = await _baseEngine.ExecuteAsync(definition, workflowState.Context, cancellationToken);
 
             if (result.IsSuccess)
             {
                 // Workflow completed successfully
-                workflowState = workflowState with 
-                { 
+                workflowState = workflowState with
+                {
                     Status = WorkflowStatus.Completed,
                     LastUpdatedAt = DateTimeOffset.UtcNow
                 };
@@ -237,9 +280,9 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
                 if (result.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:") == true)
                 {
                     var signalName = result.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
-                    
-                    workflowState = workflowState with 
-                    { 
+
+                    workflowState = workflowState with
+                    {
                         Status = signalName.StartsWith("approval_") ? WorkflowStatus.WaitingForApproval : WorkflowStatus.WaitingForSignal,
                         WaitingForSignal = signalName,
                         LastUpdatedAt = DateTimeOffset.UtcNow
@@ -248,8 +291,8 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
                     // Set timeout if specified
                     if (result.ExecutionTrace?.LastOrDefault()?.Result.Metadata?.ContainsKey("SignalTimeoutAt") == true)
                     {
-                        workflowState = workflowState with 
-                        { 
+                        workflowState = workflowState with
+                        {
                             SignalTimeoutAt = (DateTimeOffset)result.ExecutionTrace.Last().Result.Metadata["SignalTimeoutAt"]
                         };
                     }
@@ -268,8 +311,8 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
                 else
                 {
                     // Workflow failed
-                    workflowState = workflowState with 
-                    { 
+                    workflowState = workflowState with
+                    {
                         Status = WorkflowStatus.Failed,
                         LastUpdatedAt = DateTimeOffset.UtcNow
                     };
@@ -296,8 +339,8 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         {
             _logger.LogError(ex, "Error continuing workflow execution for instance {InstanceId}", workflowState.WorkflowInstanceId);
 
-            workflowState = workflowState with 
-            { 
+            workflowState = workflowState with
+            {
                 Status = WorkflowStatus.Failed,
                 LastUpdatedAt = DateTimeOffset.UtcNow
             };

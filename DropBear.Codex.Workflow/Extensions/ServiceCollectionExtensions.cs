@@ -3,15 +3,15 @@
 using System.Reflection;
 using DropBear.Codex.Workflow.Configuration;
 using DropBear.Codex.Workflow.Core;
+using DropBear.Codex.Workflow.Implementation;
 using DropBear.Codex.Workflow.Interfaces;
-using DropBear.Codex.Workflow.Persistence.Implementation;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 #endregion
 
-namespace DropBear.Codex.Workflow.Persistence.Extensions;
+namespace DropBear.Codex.Workflow.Extensions;
 
 /// <summary>
 ///     Extension methods for registering persistent workflow services
