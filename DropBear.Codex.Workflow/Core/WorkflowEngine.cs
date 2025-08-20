@@ -9,6 +9,7 @@ namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
 /// Main workflow execution engine with retry logic, metrics collection, and error handling.
+/// FIXED: Better signal detection for workflow suspension.
 /// </summary>
 public sealed class WorkflowEngine : IWorkflowEngine
 {
@@ -85,7 +86,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 Logger = _logger
             };
 
-            var success = await ExecuteWorkflowGraphAsync(
+            var (success, suspensionInfo) = await ExecuteWorkflowGraphAsync(
                 rootNode,
                 context,
                 executionContext,
@@ -103,6 +104,22 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 PeakMemoryUsage = options.EnableMemoryMetrics ? GC.GetTotalMemory(false) : null,
                 CustomMetrics = options.CustomOptions
             };
+
+            // FIXED: Handle suspension signals properly
+            if (suspensionInfo.HasValue)
+            {
+                _logger.Information("Workflow suspended for signal: {WorkflowId} (Signal: {SignalName})",
+                    definition.WorkflowId, suspensionInfo.Value.SignalName);
+
+                return new WorkflowResult<TContext>
+                {
+                    IsSuccess = false, // Suspended workflows return false but with specific error message
+                    Context = context,
+                    ErrorMessage = $"WAITING_FOR_SIGNAL:{suspensionInfo.Value.SignalName}",
+                    Metrics = finalMetrics,
+                    ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
+                };
+            }
 
             _logger.Information("Workflow execution completed: {WorkflowId} (Success: {Success}, Duration: {Duration})",
                 definition.WorkflowId, success, stopwatch.Elapsed);
@@ -144,8 +161,9 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
     /// <summary>
     /// Executes the workflow graph using breadth-first traversal.
+    /// FIXED: Returns suspension information when a signal step is encountered.
     /// </summary>
-    private async ValueTask<bool> ExecuteWorkflowGraphAsync<TContext>(
+    private async ValueTask<(bool success, SuspensionInfo? suspensionInfo)> ExecuteWorkflowGraphAsync<TContext>(
         IWorkflowNode<TContext> rootNode,
         TContext context,
         WorkflowExecutionContext<TContext> executionContext,
@@ -175,11 +193,23 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 executionContext,
                 cancellationToken);
 
+            // FIXED: Check for suspension signals in step results
             if (!nodeResult.StepResult.IsSuccess)
             {
+                // Check if this is a suspension signal
+                if (nodeResult.StepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:") == true)
+                {
+                    var signalName = nodeResult.StepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
+
+                    _logger.Information("Workflow suspended at node {NodeId} for signal '{SignalName}'",
+                        currentNode.NodeId, signalName);
+
+                    return (false, new SuspensionInfo { SignalName = signalName, Metadata = nodeResult.StepResult.Metadata });
+                }
+
                 _logger.Error("Node execution failed: {NodeId} - {Error}",
                     currentNode.NodeId, nodeResult.StepResult.ErrorMessage);
-                return false;
+                return (false, null);
             }
 
             // Enqueue next nodes for processing
@@ -189,7 +219,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
             }
         }
 
-        return true;
+        return (true, null);
     }
 
     /// <summary>
@@ -231,7 +261,14 @@ public sealed class WorkflowEngine : IWorkflowEngine
                     executionContext.ExecutionTrace.Add(stepTrace);
                 }
 
-                if (result.StepResult.IsSuccess || !result.StepResult.ShouldRetry)
+                // FIXED: Don't retry suspension signals - they are not failures
+                if (result.StepResult.IsSuccess ||
+                    result.StepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:") == true)
+                {
+                    return result;
+                }
+
+                if (!result.StepResult.ShouldRetry)
                 {
                     return result;
                 }
@@ -296,6 +333,13 @@ public sealed class WorkflowEngine : IWorkflowEngine
         activity.SetTag("correlation.id", correlationId);
         return activity.Start();
     }
+
+    /// <summary>
+    /// Information about workflow suspension
+    /// </summary>
+    private record struct SuspensionInfo
+    {
+        public string SignalName { get; init; }
+        public IReadOnlyDictionary<string, object>? Metadata { get; init; }
+    }
 }
-
-
