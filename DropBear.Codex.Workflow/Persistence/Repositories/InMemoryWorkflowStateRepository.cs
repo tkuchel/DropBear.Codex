@@ -14,18 +14,23 @@ public class InMemoryWorkflowStateRepository : IWorkflowStateRepository
     private readonly Dictionary<string, (object State, string ContextTypeName)> _states = new();
     private readonly Lock _lock = new Lock();
     private readonly ILogger<PersistentWorkflowEngine> _logger;
-    public ValueTask<string> SaveWorkflowStateAsync<TContext>(WorkflowInstanceState<TContext> state, CancellationToken cancellationToken = default) where TContext : class
+
+    public ValueTask<string> SaveWorkflowStateAsync<TContext>(WorkflowInstanceState<TContext> state,
+        CancellationToken cancellationToken = default) where TContext : class
     {
         lock (_lock)
         {
             var contextTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
             _states[state.WorkflowInstanceId] = (state, contextTypeName);
-            _logger.LogDebug($"  🔍 REPO: Saved workflow {state.WorkflowInstanceId} with context type {contextTypeName}");
+            _logger.LogDebug(
+                $"  🔍 REPO: Saved workflow {state.WorkflowInstanceId} with context type {contextTypeName}");
         }
+
         return ValueTask.FromResult(state.WorkflowInstanceId);
     }
 
-    public ValueTask<WorkflowInstanceState<TContext>?> GetWorkflowStateAsync<TContext>(string workflowInstanceId, CancellationToken cancellationToken = default) where TContext : class
+    public ValueTask<WorkflowInstanceState<TContext>?> GetWorkflowStateAsync<TContext>(string workflowInstanceId,
+        CancellationToken cancellationToken = default) where TContext : class
     {
         lock (_lock)
         {
@@ -36,28 +41,34 @@ public class InMemoryWorkflowStateRepository : IWorkflowStateRepository
             }
 
             var requestedTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
-            _logger.LogDebug($"  🔍 REPO: Found workflow {workflowInstanceId}, stored type: {stateInfo.ContextTypeName}, requested: {requestedTypeName}");
+            _logger.LogDebug(
+                $"  🔍 REPO: Found workflow {workflowInstanceId}, stored type: {stateInfo.ContextTypeName}, requested: {requestedTypeName}");
 
             // Check if the stored type matches the requested type
-            if (stateInfo.ContextTypeName == requestedTypeName && stateInfo.State is WorkflowInstanceState<TContext> typedState)
+            if (stateInfo.ContextTypeName == requestedTypeName &&
+                stateInfo.State is WorkflowInstanceState<TContext> typedState)
             {
                 _logger.LogDebug($"  🔍 REPO: Direct cast successful to {requestedTypeName}");
                 return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(typedState);
             }
 
-            _logger.LogDebug($"  🔍 REPO: Type mismatch - cannot cast {stateInfo.ContextTypeName} to {requestedTypeName}");
+            _logger.LogDebug(
+                $"  🔍 REPO: Type mismatch - cannot cast {stateInfo.ContextTypeName} to {requestedTypeName}");
             return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(null);
         }
     }
 
-    public ValueTask UpdateWorkflowStateAsync<TContext>(WorkflowInstanceState<TContext> state, CancellationToken cancellationToken = default) where TContext : class
+    public ValueTask UpdateWorkflowStateAsync<TContext>(WorkflowInstanceState<TContext> state,
+        CancellationToken cancellationToken = default) where TContext : class
     {
         lock (_lock)
         {
             var contextTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
             _states[state.WorkflowInstanceId] = (state, contextTypeName);
-            _logger.LogDebug($"  🔍 REPO: Updated workflow {state.WorkflowInstanceId} with context type {contextTypeName}");
+            _logger.LogDebug(
+                $"  🔍 REPO: Updated workflow {state.WorkflowInstanceId} with context type {contextTypeName}");
         }
+
         return ValueTask.CompletedTask;
     }
 
@@ -68,10 +79,12 @@ public class InMemoryWorkflowStateRepository : IWorkflowStateRepository
             _states.Remove(workflowInstanceId);
             _logger.LogDebug($"  🔍 REPO: Deleted workflow {workflowInstanceId}");
         }
+
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask<IEnumerable<WorkflowInstanceState<TContext>>> GetWaitingWorkflowsAsync<TContext>(string? signalName = null, CancellationToken cancellationToken = default) where TContext : class
+    public ValueTask<IEnumerable<WorkflowInstanceState<TContext>>> GetWaitingWorkflowsAsync<TContext>(
+        string? signalName = null, CancellationToken cancellationToken = default) where TContext : class
     {
         lock (_lock)
         {
@@ -83,7 +96,8 @@ public class InMemoryWorkflowStateRepository : IWorkflowStateRepository
                 if (kvp.Value.ContextTypeName == requestedTypeName &&
                     kvp.Value.State is WorkflowInstanceState<TContext> typedState)
                 {
-                    if ((typedState.Status == WorkflowStatus.WaitingForSignal || typedState.Status == WorkflowStatus.WaitingForApproval) &&
+                    if ((typedState.Status == WorkflowStatus.WaitingForSignal ||
+                         typedState.Status == WorkflowStatus.WaitingForApproval) &&
                         (signalName == null || typedState.WaitingForSignal == signalName))
                     {
                         waitingWorkflows.Add(typedState);
@@ -91,7 +105,8 @@ public class InMemoryWorkflowStateRepository : IWorkflowStateRepository
                 }
             }
 
-            _logger.LogDebug($"  🔍 REPO: Found {waitingWorkflows.Count} waiting workflows for type {requestedTypeName}");
+            _logger.LogDebug(
+                $"  🔍 REPO: Found {waitingWorkflows.Count} waiting workflows for type {requestedTypeName}");
             return ValueTask.FromResult<IEnumerable<WorkflowInstanceState<TContext>>>(waitingWorkflows);
         }
     }

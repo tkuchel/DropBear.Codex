@@ -5,7 +5,7 @@ using DropBear.Codex.Workflow.Results;
 namespace DropBear.Codex.Workflow.Nodes;
 
 /// <summary>
-/// Workflow node that executes a single step.
+/// IMPROVED: Workflow node that executes a single step with proper next node handling.
 /// </summary>
 /// <typeparam name="TContext">The type of workflow context</typeparam>
 /// <typeparam name="TStep">The type of step to execute</typeparam>
@@ -13,7 +13,7 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>
     where TContext : class
     where TStep : class, IWorkflowStep<TContext>
 {
-    private readonly IWorkflowNode<TContext>? _nextNode;
+    private IWorkflowNode<TContext>? _nextNode;
     private readonly string _nodeId;
 
     /// <summary>
@@ -30,6 +30,15 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>
     /// <inheritdoc />
     public override string NodeId => _nodeId;
 
+    /// <summary>
+    /// IMPROVED: Property to access and set the next node (used by WorkflowBuilder).
+    /// </summary>
+    internal IWorkflowNode<TContext>? NextNode
+    {
+        get => _nextNode;
+        set => _nextNode = value;
+    }
+
     /// <inheritdoc />
     public override async ValueTask<NodeExecutionResult<TContext>> ExecuteAsync(
         TContext context,
@@ -38,13 +47,20 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>
     {
         // Resolve the step from DI container
         var step = serviceProvider.GetRequiredService<TStep>();
-        
+
         try
         {
             // Execute the step with timeout if specified
             var stepResult = step.Timeout.HasValue
                 ? await ExecuteWithTimeout(step, context, step.Timeout.Value, cancellationToken)
                 : await step.ExecuteAsync(context, cancellationToken);
+
+            // CRITICAL: Check for suspension signals first - these should NOT proceed to next nodes
+            if (!stepResult.IsSuccess && IsSuspensionSignal(stepResult))
+            {
+                // Return suspension signal immediately without next nodes
+                return NodeExecutionResult<TContext>.Failure(stepResult);
+            }
 
             // Determine next nodes based on execution result
             var nextNodes = stepResult.IsSuccess && _nextNode is not null
@@ -84,10 +100,24 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>
         {
             return await step.ExecuteAsync(context, timeoutCts.Token);
         }
-        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested &&
+                                                 !cancellationToken.IsCancellationRequested)
         {
             // Timeout occurred
             return StepResult.Failure($"Step '{step.StepName}' timed out after {timeout}", step.CanRetry);
         }
     }
+
+    /// <summary>
+    /// Checks if a step result represents a suspension signal.
+    /// </summary>
+    private static bool IsSuspensionSignal(StepResult stepResult)
+    {
+        return stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    /// <summary>
+    /// Gets the step type name for debugging.
+    /// </summary>
+    public string StepTypeName => typeof(TStep).Name;
 }

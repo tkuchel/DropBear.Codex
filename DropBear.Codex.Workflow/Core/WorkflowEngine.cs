@@ -191,12 +191,13 @@ public sealed class WorkflowEngine : IWorkflowEngine
                     _logger.Information("Node {NodeId} returned suspension signal '{SignalName}'",
                         currentNode.NodeId, signalName);
 
-                    return (false, new SuspensionInfo
-                    {
-                        SignalName = signalName,
-                        Metadata = nodeResult.StepResult.Metadata,
-                        NodeId = currentNode.NodeId
-                    });
+                    return (false,
+                        new SuspensionInfo
+                        {
+                            SignalName = signalName,
+                            Metadata = nodeResult.StepResult.Metadata,
+                            NodeId = currentNode.NodeId
+                        });
                 }
 
                 _logger.Error("Node execution failed: {NodeId} - {Error}",
@@ -245,11 +246,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
                 var result = await node.ExecuteAsync(context, executionContext.ServiceProvider, cancellationToken);
 
-                stepTrace = stepTrace with
-                {
-                    EndTime = DateTimeOffset.UtcNow,
-                    Result = result.StepResult
-                };
+                stepTrace = stepTrace with { EndTime = DateTimeOffset.UtcNow, Result = result.StepResult };
 
                 if (executionContext.Options.EnableExecutionTracing)
                 {
@@ -291,13 +288,10 @@ public sealed class WorkflowEngine : IWorkflowEngine
             }
             catch (Exception ex)
             {
-                _logger.Warning(ex, "Node {NodeId} execution failed with exception (attempt {Attempt})", node.NodeId, attempt + 1);
+                _logger.Warning(ex, "Node {NodeId} execution failed with exception (attempt {Attempt})", node.NodeId,
+                    attempt + 1);
 
-                stepTrace = stepTrace with
-                {
-                    EndTime = DateTimeOffset.UtcNow,
-                    Result = StepResult.Failure(ex)
-                };
+                stepTrace = stepTrace with { EndTime = DateTimeOffset.UtcNow, Result = StepResult.Failure(ex) };
 
                 if (executionContext.Options.EnableExecutionTracing)
                 {
@@ -337,6 +331,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
         {
             return stepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
         }
+
         return "unknown_signal";
     }
 
