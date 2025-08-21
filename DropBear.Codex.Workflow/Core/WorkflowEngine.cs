@@ -8,24 +8,19 @@ using DropBear.Codex.Workflow.Metrics;
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-/// FIXED: Main workflow execution engine with better signal detection for workflow suspension.
+/// FIXED: WorkflowEngine that properly detects and handles signal suspension at the node level
 /// </summary>
 public sealed class WorkflowEngine : IWorkflowEngine
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly Serilog.ILogger _logger;
 
-    /// <summary>
-    /// Initializes a new workflow engine instance.
-    /// </summary>
-    /// <param name="serviceProvider">Service provider for dependency injection</param>
     public WorkflowEngine(IServiceProvider serviceProvider)
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = LoggerFactory.Logger.ForContext<WorkflowEngine>() ?? throw new ArgumentNullException(nameof(_logger));
     }
 
-    /// <inheritdoc />
     public ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
@@ -34,7 +29,6 @@ public sealed class WorkflowEngine : IWorkflowEngine
         return ExecuteAsync(definition, context, WorkflowExecutionOptions.Default, cancellationToken);
     }
 
-    /// <inheritdoc />
     public async ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
@@ -56,7 +50,6 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
         try
         {
-            // Apply workflow-level timeout if specified
             using var workflowCts = definition.WorkflowTimeout.HasValue
                 ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
                 : null;
@@ -68,14 +61,12 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
             var effectiveCancellationToken = workflowCts?.Token ?? cancellationToken;
 
-            // Build the workflow execution graph
             var rootNode = definition.BuildWorkflow();
             if (rootNode is null)
             {
                 throw new InvalidOperationException($"Workflow '{definition.WorkflowId}' returned null root node");
             }
 
-            // Execute the workflow graph
             var executionContext = new WorkflowExecutionContext<TContext>
             {
                 Options = options,
@@ -93,7 +84,6 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
             stopwatch.Stop();
 
-            // Build final metrics
             var finalMetrics = new WorkflowExecutionMetrics
             {
                 TotalExecutionTime = stopwatch.Elapsed,
@@ -112,7 +102,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
                 return new WorkflowResult<TContext>
                 {
-                    IsSuccess = false, // Suspended workflows return false but with specific error message
+                    IsSuccess = false,
                     Context = context,
                     ErrorMessage = $"WAITING_FOR_SIGNAL:{suspensionInfo.Value.SignalName}",
                     Metrics = finalMetrics,
@@ -159,7 +149,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// FIXED: Executes the workflow graph using breadth-first traversal with better suspension detection.
+    /// FIXED: Enhanced workflow graph execution with proper suspension detection
     /// </summary>
     private async ValueTask<(bool success, SuspensionInfo? suspensionInfo)> ExecuteWorkflowGraphAsync<TContext>(
         IWorkflowNode<TContext> rootNode,
@@ -178,7 +168,6 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
             var currentNode = nodesToProcess.Dequeue();
 
-            // Prevent infinite loops by tracking processed nodes
             if (!processedNodes.Add(currentNode.NodeId))
             {
                 _logger.Warning("Skipping already processed node: {NodeId}", currentNode.NodeId);
@@ -193,15 +182,13 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 executionContext,
                 cancellationToken);
 
-            // FIXED: Enhanced suspension signal detection
+            // CRITICAL FIX: Check for suspension at node level, not just step level
             if (!nodeResult.StepResult.IsSuccess)
             {
-                // Check if this is a suspension signal
                 if (IsSuspensionSignal(nodeResult.StepResult))
                 {
                     var signalName = ExtractSignalName(nodeResult.StepResult);
-
-                    _logger.Information("Workflow suspended at node {NodeId} for signal '{SignalName}'",
+                    _logger.Information("Node {NodeId} returned suspension signal '{SignalName}'",
                         currentNode.NodeId, signalName);
 
                     return (false, new SuspensionInfo
@@ -217,7 +204,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 return (false, null);
             }
 
-            // Enqueue next nodes for processing
+            // Continue with next nodes
             foreach (var nextNode in nodeResult.NextNodes)
             {
                 nodesToProcess.Enqueue(nextNode);
@@ -229,28 +216,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// FIXED: Enhanced method to detect suspension signals
-    /// </summary>
-    private static bool IsSuspensionSignal(StepResult stepResult)
-    {
-        return !stepResult.IsSuccess &&
-               stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true;
-    }
-
-    /// <summary>
-    /// FIXED: Enhanced method to extract signal name from suspension signals
-    /// </summary>
-    private static string ExtractSignalName(StepResult stepResult)
-    {
-        if (stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true)
-        {
-            return stepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
-        }
-        return "unknown_signal";
-    }
-
-    /// <summary>
-    /// Executes a single node with retry logic.
+    /// FIXED: Execute node with retry, properly handling suspension signals
     /// </summary>
     private async ValueTask<NodeExecutionResult<TContext>> ExecuteNodeWithRetryAsync<TContext>(
         IWorkflowNode<TContext> node,
@@ -290,10 +256,17 @@ public sealed class WorkflowEngine : IWorkflowEngine
                     executionContext.ExecutionTrace.Add(stepTrace);
                 }
 
-                // FIXED: Don't retry suspension signals - they are not failures
-                if (result.StepResult.IsSuccess || IsSuspensionSignal(result.StepResult))
+                // CRITICAL FIX: Don't retry suspension signals and propagate them immediately
+                if (result.StepResult.IsSuccess)
                 {
-                    _logger.Debug("Node {NodeId} completed successfully or suspended", node.NodeId);
+                    _logger.Debug("Node {NodeId} completed successfully", node.NodeId);
+                    return result;
+                }
+
+                // CRITICAL FIX: Check for suspension signal and return immediately without retry
+                if (IsSuspensionSignal(result.StepResult))
+                {
+                    _logger.Debug("Node {NodeId} returned suspension signal, propagating immediately", node.NodeId);
                     return result;
                 }
 
@@ -347,8 +320,26 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// Calculates the delay for retry attempts using exponential backoff.
+    /// FIXED: Enhanced suspension signal detection
     /// </summary>
+    private static bool IsSuspensionSignal(StepResult stepResult)
+    {
+        return !stepResult.IsSuccess &&
+               stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    /// <summary>
+    /// Extract signal name from suspension signal
+    /// </summary>
+    private static string ExtractSignalName(StepResult stepResult)
+    {
+        if (stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return stepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
+        }
+        return "unknown_signal";
+    }
+
     private static TimeSpan CalculateRetryDelay(int attemptNumber, WorkflowExecutionOptions options)
     {
         var delay = TimeSpan.FromMilliseconds(
@@ -357,9 +348,6 @@ public sealed class WorkflowEngine : IWorkflowEngine
         return delay > options.MaxRetryDelay ? options.MaxRetryDelay : delay;
     }
 
-    /// <summary>
-    /// Creates a diagnostic activity for workflow execution.
-    /// </summary>
     private static Activity? CreateActivity(string workflowId, string correlationId)
     {
         var activity = new Activity("WorkflowExecution");
@@ -368,9 +356,6 @@ public sealed class WorkflowEngine : IWorkflowEngine
         return activity.Start();
     }
 
-    /// <summary>
-    /// FIXED: Enhanced suspension information with additional context
-    /// </summary>
     private record struct SuspensionInfo
     {
         public string SignalName { get; init; }
