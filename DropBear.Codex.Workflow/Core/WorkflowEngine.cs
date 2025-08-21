@@ -8,7 +8,7 @@ using DropBear.Codex.Workflow.Metrics;
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-/// FIXED: WorkflowEngine that properly detects and handles signal suspension at the node level
+/// FIXED: WorkflowEngine that properly processes NextNodes from successful step executions
 /// </summary>
 public sealed class WorkflowEngine : IWorkflowEngine
 {
@@ -76,7 +76,8 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 Logger = _logger
             };
 
-            var (success, suspensionInfo) = await ExecuteWorkflowGraphAsync(
+            // CRITICAL FIX: Use the corrected workflow graph execution
+            var (success, suspensionInfo) = await ExecuteWorkflowGraphFixed<TContext>(
                 rootNode,
                 context,
                 executionContext,
@@ -94,7 +95,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 CustomMetrics = options.CustomOptions
             };
 
-            // FIXED: Handle suspension signals properly
+            // Handle suspension signals properly
             if (suspensionInfo.HasValue)
             {
                 _logger.Information("Workflow suspended for signal: {WorkflowId} (Signal: {SignalName})",
@@ -149,9 +150,9 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// FIXED: Enhanced workflow graph execution with proper suspension detection
+    /// CRITICAL FIX: Enhanced workflow graph execution that properly follows NextNodes
     /// </summary>
-    private async ValueTask<(bool success, SuspensionInfo? suspensionInfo)> ExecuteWorkflowGraphAsync<TContext>(
+    private async ValueTask<(bool success, SuspensionInfo? suspensionInfo)> ExecuteWorkflowGraphFixed<TContext>(
         IWorkflowNode<TContext> rootNode,
         TContext context,
         WorkflowExecutionContext<TContext> executionContext,
@@ -161,6 +162,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
         var processedNodes = new HashSet<string>();
 
         nodesToProcess.Enqueue(rootNode);
+        _logger.Debug("Starting workflow execution with root node: {NodeId}", rootNode.NodeId);
 
         while (nodesToProcess.Count > 0)
         {
@@ -168,21 +170,27 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
             var currentNode = nodesToProcess.Dequeue();
 
-            if (!processedNodes.Add(currentNode.NodeId))
+            // CRITICAL FIX: Allow nodes to be processed multiple times if they appear in different branches
+            // but track processing for infinite loop detection
+            var nodeKey = $"{currentNode.NodeId}_{currentNode.GetHashCode()}";
+
+            if (processedNodes.Contains(nodeKey))
             {
-                _logger.Warning("Skipping already processed node: {NodeId}", currentNode.NodeId);
+                _logger.Debug("Skipping already processed node: {NodeId}", currentNode.NodeId);
                 continue;
             }
 
-            _logger.Debug("Processing node: {NodeId}", currentNode.NodeId);
+            processedNodes.Add(nodeKey);
+            _logger.Debug("Processing node: {NodeId} (Queue depth: {QueueDepth})", currentNode.NodeId,
+                nodesToProcess.Count);
 
-            var nodeResult = await ExecuteNodeWithRetryAsync(
+            var nodeResult = await ExecuteNodeWithRetryFixed(
                 currentNode,
                 context,
                 executionContext,
                 cancellationToken);
 
-            // CRITICAL FIX: Check for suspension at node level, not just step level
+            // CRITICAL FIX: Check for suspension at node level
             if (!nodeResult.StepResult.IsSuccess)
             {
                 if (IsSuspensionSignal(nodeResult.StepResult))
@@ -205,21 +213,42 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 return (false, null);
             }
 
-            // Continue with next nodes
+            // CRITICAL FIX: Properly enqueue ALL next nodes for continued execution
+            _logger.Debug("Node {NodeId} completed successfully, found {NextNodeCount} next nodes",
+                currentNode.NodeId, nodeResult.NextNodes.Count);
+
             foreach (var nextNode in nodeResult.NextNodes)
             {
                 nodesToProcess.Enqueue(nextNode);
-                _logger.Debug("Enqueued next node: {NodeId}", nextNode.NodeId);
+                _logger.Debug("Enqueued next node: {NodeId} -> {NextNodeId}", currentNode.NodeId, nextNode.NodeId);
+            }
+
+            // CRITICAL FIX: If no next nodes, check if queue is empty to determine completion
+            if (nodeResult.NextNodes.Count == 0)
+            {
+                _logger.Debug("Node {NodeId} has no next nodes", currentNode.NodeId);
+
+                if (nodesToProcess.Count == 0)
+                {
+                    _logger.Debug("No more nodes to process - workflow complete");
+                    break;
+                }
+                else
+                {
+                    _logger.Debug("No next nodes for this branch, but {RemainingNodes} nodes still in queue",
+                        nodesToProcess.Count);
+                }
             }
         }
 
+        _logger.Information("Workflow graph execution completed successfully");
         return (true, null);
     }
 
     /// <summary>
     /// FIXED: Execute node with retry, properly handling suspension signals
     /// </summary>
-    private async ValueTask<NodeExecutionResult<TContext>> ExecuteNodeWithRetryAsync<TContext>(
+    private async ValueTask<NodeExecutionResult<TContext>> ExecuteNodeWithRetryFixed<TContext>(
         IWorkflowNode<TContext> node,
         TContext context,
         WorkflowExecutionContext<TContext> executionContext,
@@ -256,7 +285,8 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 // CRITICAL FIX: Don't retry suspension signals and propagate them immediately
                 if (result.StepResult.IsSuccess)
                 {
-                    _logger.Debug("Node {NodeId} completed successfully", node.NodeId);
+                    _logger.Debug("Node {NodeId} completed successfully with {NextNodeCount} next nodes",
+                        node.NodeId, result.NextNodes.Count);
                     return result;
                 }
 
@@ -314,7 +344,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// FIXED: Enhanced suspension signal detection
+    /// Enhanced suspension signal detection
     /// </summary>
     private static bool IsSuspensionSignal(StepResult stepResult)
     {
