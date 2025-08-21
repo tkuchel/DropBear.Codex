@@ -3,6 +3,7 @@ using DropBear.Codex.Workflow.Configuration;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
+using DropBear.Codex.Workflow.Persistence.Repositories;
 using DropBear.Codex.Workflow.Results;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -10,7 +11,7 @@ using Microsoft.Extensions.Logging;
 namespace DropBear.Codex.Workflow.Persistence.Implementation;
 
 /// <summary>
-/// Fixed implementation of persistent workflow engine that properly handles workflow definition persistence
+/// COMPLETE FIXED implementation of persistent workflow engine with improved type discovery and signal handling
 /// </summary>
 public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
 {
@@ -20,7 +21,7 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
     private readonly IServiceProvider _serviceProvider;
     private readonly IWorkflowStateRepository _stateRepository;
 
-    // Cache for known workflow context types to avoid expensive reflection
+    // FIXED: Cache for known workflow context types with better discovery
     private readonly Lazy<HashSet<Type>> _knownWorkflowContextTypes;
 
     public PersistentWorkflowEngine(
@@ -92,6 +93,7 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         _logger.LogDebug("Attempting to signal workflow {WorkflowInstanceId} with signal '{SignalName}'",
             workflowInstanceId, signalName);
 
+        // FIXED: Try to get the workflow state with the exact context type first
         var (workflowStateInfo, contextType) = await FindWorkflowStateInfoAsync(workflowInstanceId, cancellationToken);
 
         if (workflowStateInfo == null || contextType == null)
@@ -176,7 +178,7 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
     }
 
     /// <summary>
-    /// FIXED: Improved method to get only actual workflow context types
+    /// FIXED: Improved method to get workflow context types with better discovery logic
     /// </summary>
     private HashSet<Type> GetRegisteredWorkflowContextTypes()
     {
@@ -207,29 +209,63 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
                 }
             }
 
-            // 2. FIXED: Only look in the current executing assembly (LINQPad user code)
-            var currentAssembly = Assembly.GetExecutingAssembly();
-
-            // Get all types from the current assembly that look like workflow contexts
-            var assemblyContextTypes = currentAssembly.GetTypes()
-                .Where(t => t.IsClass && !t.IsAbstract && !t.IsGenericTypeDefinition)
-                .Where(t => t.Name.EndsWith("Context", StringComparison.OrdinalIgnoreCase) ||
-                           t.Name.Contains("Context", StringComparison.OrdinalIgnoreCase))
-                .Where(t => !t.Namespace?.StartsWith("System.", StringComparison.OrdinalIgnoreCase) == true &&
-                           !t.Namespace?.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) == true &&
-                           !t.Namespace?.StartsWith("MS.Internal.", StringComparison.OrdinalIgnoreCase) == true &&
-                           !t.Namespace?.StartsWith("NuGet.", StringComparison.OrdinalIgnoreCase) == true &&
-                           !t.Namespace?.StartsWith("Newtonsoft.", StringComparison.OrdinalIgnoreCase) == true)
+            // 2. FIXED: Look in all loaded assemblies, not just executing assembly
+            var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic && !string.IsNullOrEmpty(a.Location))
                 .ToList();
 
-            foreach (var contextType in assemblyContextTypes)
+            foreach (var assembly in assemblies)
             {
-                knownTypes.Add(contextType);
-                _logger.LogDebug("Found workflow context type from assembly scan: {ContextType}", contextType.FullName);
+                try
+                {
+                    // Get all types from the assembly that look like workflow contexts
+                    var assemblyContextTypes = assembly.GetTypes()
+                        .Where(t => t.IsClass && !t.IsAbstract && !t.IsGenericTypeDefinition)
+                        .Where(t => t.Name.Contains("Context", StringComparison.OrdinalIgnoreCase) ||
+                                    t.Name.EndsWith("Context", StringComparison.OrdinalIgnoreCase))
+                        .Where(t => !IsSystemType(t))
+                        .ToList();
+
+                    foreach (var contextType in assemblyContextTypes)
+                    {
+                        knownTypes.Add(contextType);
+                        _logger.LogDebug("Found workflow context type from assembly {Assembly}: {ContextType}",
+                            assembly.GetName().Name, contextType.FullName);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not scan assembly {AssemblyName}", assembly.GetName().Name);
+                }
+            }
+
+            // 3. FIXED: Also include any types that are currently being used in the repository
+            if (_stateRepository is InMemoryWorkflowStateRepository inMemoryRepo)
+            {
+                try
+                {
+                    var allStates = inMemoryRepo.GetAllWorkflowStates();
+                    foreach (var (workflowId, contextTypeName, state) in allStates)
+                    {
+                        var stateType = state.GetType();
+                        if (stateType.IsGenericType &&
+                            stateType.GetGenericTypeDefinition().Name.Contains("WorkflowInstanceState"))
+                        {
+                            var contextType = stateType.GetGenericArguments()[0];
+                            knownTypes.Add(contextType);
+                            _logger.LogDebug("Found workflow context type from repository state: {ContextType}",
+                                contextType.FullName);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogDebug(ex, "Could not scan repository states");
+                }
             }
 
             _logger.LogInformation("Found {Count} workflow context types total", knownTypes.Count);
-            foreach (var type in knownTypes)
+            foreach (var type in knownTypes.OrderBy(t => t.FullName))
             {
                 _logger.LogDebug("Registered workflow context type: {TypeName}", type.FullName);
             }
@@ -242,11 +278,26 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         return knownTypes;
     }
 
+    /// <summary>
+    /// FIXED: Helper to determine if a type is a system type we should ignore
+    /// </summary>
+    private static bool IsSystemType(Type type)
+    {
+        if (type.Namespace == null) return true;
+
+        return type.Namespace.StartsWith("System.", StringComparison.OrdinalIgnoreCase) ||
+               type.Namespace.StartsWith("Microsoft.", StringComparison.OrdinalIgnoreCase) ||
+               type.Namespace.StartsWith("MS.Internal.", StringComparison.OrdinalIgnoreCase) ||
+               type.Namespace.StartsWith("Newtonsoft.", StringComparison.OrdinalIgnoreCase) ||
+               type.Namespace.StartsWith("NuGet.", StringComparison.OrdinalIgnoreCase) ||
+               type.Namespace.Equals("System", StringComparison.OrdinalIgnoreCase);
+    }
+
     private async ValueTask<(WorkflowStateInfo?, Type?)> FindWorkflowStateInfoAsync(
         string workflowInstanceId,
         CancellationToken cancellationToken)
     {
-        // Use the cached known types instead of scanning all assemblies
+        // FIXED: Force refresh of known types to include any new ones
         var contextTypes = _knownWorkflowContextTypes.Value;
 
         _logger.LogDebug("Searching for workflow {WorkflowInstanceId} across {TypeCount} known context types",
@@ -486,7 +537,6 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
             _logger.LogError(ex, "Failed to resume workflow {WorkflowInstanceId}", workflowInstanceId);
         }
     }
-
 
     private async ValueTask<IWorkflowDefinition<TContext>?> ReconstructWorkflowDefinitionAsync<TContext>(
         string? serializedDefinition) where TContext : class

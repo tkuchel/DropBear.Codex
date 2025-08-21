@@ -8,8 +8,7 @@ using DropBear.Codex.Workflow.Metrics;
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-/// Main workflow execution engine with retry logic, metrics collection, and error handling.
-/// FIXED: Better signal detection for workflow suspension.
+/// FIXED: Main workflow execution engine with better signal detection for workflow suspension.
 /// </summary>
 public sealed class WorkflowEngine : IWorkflowEngine
 {
@@ -160,8 +159,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// Executes the workflow graph using breadth-first traversal.
-    /// FIXED: Returns suspension information when a signal step is encountered.
+    /// FIXED: Executes the workflow graph using breadth-first traversal with better suspension detection.
     /// </summary>
     private async ValueTask<(bool success, SuspensionInfo? suspensionInfo)> ExecuteWorkflowGraphAsync<TContext>(
         IWorkflowNode<TContext> rootNode,
@@ -187,24 +185,31 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 continue;
             }
 
+            _logger.Debug("Processing node: {NodeId}", currentNode.NodeId);
+
             var nodeResult = await ExecuteNodeWithRetryAsync(
                 currentNode,
                 context,
                 executionContext,
                 cancellationToken);
 
-            // FIXED: Check for suspension signals in step results
+            // FIXED: Enhanced suspension signal detection
             if (!nodeResult.StepResult.IsSuccess)
             {
                 // Check if this is a suspension signal
-                if (nodeResult.StepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:") == true)
+                if (IsSuspensionSignal(nodeResult.StepResult))
                 {
-                    var signalName = nodeResult.StepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
+                    var signalName = ExtractSignalName(nodeResult.StepResult);
 
                     _logger.Information("Workflow suspended at node {NodeId} for signal '{SignalName}'",
                         currentNode.NodeId, signalName);
 
-                    return (false, new SuspensionInfo { SignalName = signalName, Metadata = nodeResult.StepResult.Metadata });
+                    return (false, new SuspensionInfo
+                    {
+                        SignalName = signalName,
+                        Metadata = nodeResult.StepResult.Metadata,
+                        NodeId = currentNode.NodeId
+                    });
                 }
 
                 _logger.Error("Node execution failed: {NodeId} - {Error}",
@@ -216,10 +221,32 @@ public sealed class WorkflowEngine : IWorkflowEngine
             foreach (var nextNode in nodeResult.NextNodes)
             {
                 nodesToProcess.Enqueue(nextNode);
+                _logger.Debug("Enqueued next node: {NodeId}", nextNode.NodeId);
             }
         }
 
         return (true, null);
+    }
+
+    /// <summary>
+    /// FIXED: Enhanced method to detect suspension signals
+    /// </summary>
+    private static bool IsSuspensionSignal(StepResult stepResult)
+    {
+        return !stepResult.IsSuccess &&
+               stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true;
+    }
+
+    /// <summary>
+    /// FIXED: Enhanced method to extract signal name from suspension signals
+    /// </summary>
+    private static string ExtractSignalName(StepResult stepResult)
+    {
+        if (stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            return stepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
+        }
+        return "unknown_signal";
     }
 
     /// <summary>
@@ -248,6 +275,8 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
             try
             {
+                _logger.Debug("Executing node {NodeId} (attempt {Attempt})", node.NodeId, attempt + 1);
+
                 var result = await node.ExecuteAsync(context, executionContext.ServiceProvider, cancellationToken);
 
                 stepTrace = stepTrace with
@@ -262,14 +291,15 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 }
 
                 // FIXED: Don't retry suspension signals - they are not failures
-                if (result.StepResult.IsSuccess ||
-                    result.StepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:") == true)
+                if (result.StepResult.IsSuccess || IsSuspensionSignal(result.StepResult))
                 {
+                    _logger.Debug("Node {NodeId} completed successfully or suspended", node.NodeId);
                     return result;
                 }
 
                 if (!result.StepResult.ShouldRetry)
                 {
+                    _logger.Debug("Node {NodeId} failed and should not retry", node.NodeId);
                     return result;
                 }
 
@@ -277,15 +307,19 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 if (attempt < maxAttempts)
                 {
                     var delay = CalculateRetryDelay(attempt, executionContext.Options);
+                    _logger.Debug("Node {NodeId} failed, retrying in {Delay}ms", node.NodeId, delay.TotalMilliseconds);
                     await Task.Delay(delay, cancellationToken);
                 }
             }
             catch (OperationCanceledException)
             {
+                _logger.Debug("Node {NodeId} execution cancelled", node.NodeId);
                 throw;
             }
             catch (Exception ex)
             {
+                _logger.Warning(ex, "Node {NodeId} execution failed with exception (attempt {Attempt})", node.NodeId, attempt + 1);
+
                 stepTrace = stepTrace with
                 {
                     EndTime = DateTimeOffset.UtcNow,
@@ -335,11 +369,12 @@ public sealed class WorkflowEngine : IWorkflowEngine
     }
 
     /// <summary>
-    /// Information about workflow suspension
+    /// FIXED: Enhanced suspension information with additional context
     /// </summary>
     private record struct SuspensionInfo
     {
         public string SignalName { get; init; }
         public IReadOnlyDictionary<string, object>? Metadata { get; init; }
+        public string? NodeId { get; init; }
     }
 }
