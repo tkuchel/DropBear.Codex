@@ -9,6 +9,7 @@ namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
 /// FIXED: WorkflowEngine that properly processes NextNodes from successful step executions
+/// and correctly propagates error messages from failed steps.
 /// </summary>
 public sealed class WorkflowEngine : IWorkflowEngine
 {
@@ -76,8 +77,8 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 Logger = _logger
             };
 
-            // CRITICAL FIX: Use the corrected workflow graph execution
-            var (success, suspensionInfo) = await ExecuteWorkflowGraphFixed<TContext>(
+            // CRITICAL FIX: Use the corrected workflow graph execution with proper error handling
+            var executionResult = await ExecuteWorkflowGraphFixed<TContext>(
                 rootNode,
                 context,
                 executionContext,
@@ -95,28 +96,45 @@ public sealed class WorkflowEngine : IWorkflowEngine
                 CustomMetrics = options.CustomOptions
             };
 
-            // Handle suspension signals properly
-            if (suspensionInfo.HasValue)
+            // FIXED: Handle suspension signals properly
+            if (executionResult.suspensionInfo.HasValue)
             {
                 _logger.Information("Workflow suspended for signal: {WorkflowId} (Signal: {SignalName})",
-                    definition.WorkflowId, suspensionInfo.Value.SignalName);
+                    definition.WorkflowId, executionResult.suspensionInfo.Value.SignalName);
 
                 return new WorkflowResult<TContext>
                 {
                     IsSuccess = false,
                     Context = context,
-                    ErrorMessage = $"WAITING_FOR_SIGNAL:{suspensionInfo.Value.SignalName}",
+                    ErrorMessage = $"WAITING_FOR_SIGNAL:{executionResult.suspensionInfo.Value.SignalName}",
+                    Metrics = finalMetrics,
+                    ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
+                };
+            }
+
+            // FIXED: Properly handle failures with error message propagation
+            if (!executionResult.success)
+            {
+                _logger.Warning("Workflow execution failed: {WorkflowId} (Error: {ErrorMessage})",
+                    definition.WorkflowId, executionResult.errorMessage);
+
+                return new WorkflowResult<TContext>
+                {
+                    IsSuccess = false,
+                    Context = context,
+                    ErrorMessage = executionResult.errorMessage ?? "Workflow execution failed",
+                    Exception = executionResult.exception,
                     Metrics = finalMetrics,
                     ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
                 };
             }
 
             _logger.Information("Workflow execution completed: {WorkflowId} (Success: {Success}, Duration: {Duration})",
-                definition.WorkflowId, success, stopwatch.Elapsed);
+                definition.WorkflowId, executionResult.success, stopwatch.Elapsed);
 
             return new WorkflowResult<TContext>
             {
-                IsSuccess = success,
+                IsSuccess = true,
                 Context = context,
                 Metrics = finalMetrics,
                 ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
@@ -151,8 +169,9 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
     /// <summary>
     /// CRITICAL FIX: Enhanced workflow graph execution that properly follows NextNodes
+    /// and correctly propagates error messages from failed steps.
     /// </summary>
-    private async ValueTask<(bool success, SuspensionInfo? suspensionInfo)> ExecuteWorkflowGraphFixed<TContext>(
+    private async ValueTask<WorkflowExecutionResult> ExecuteWorkflowGraphFixed<TContext>(
         IWorkflowNode<TContext> rootNode,
         TContext context,
         WorkflowExecutionContext<TContext> executionContext,
@@ -199,18 +218,28 @@ public sealed class WorkflowEngine : IWorkflowEngine
                     _logger.Information("Node {NodeId} returned suspension signal '{SignalName}'",
                         currentNode.NodeId, signalName);
 
-                    return (false,
-                        new SuspensionInfo
+                    return new WorkflowExecutionResult
+                    {
+                        success = false,
+                        suspensionInfo = new SuspensionInfo
                         {
                             SignalName = signalName,
                             Metadata = nodeResult.StepResult.Metadata,
                             NodeId = currentNode.NodeId
-                        });
+                        }
+                    };
                 }
 
-                _logger.Error("Node execution failed: {NodeId} - {Error}",
-                    currentNode.NodeId, nodeResult.StepResult.ErrorMessage);
-                return (false, null);
+                // FIXED: Properly capture and propagate error details from failed nodes
+                var errorMessage = nodeResult.StepResult.ErrorMessage ?? $"Node '{currentNode.NodeId}' execution failed";
+                _logger.Error("Node execution failed: {NodeId} - {Error}", currentNode.NodeId, errorMessage);
+
+                return new WorkflowExecutionResult
+                {
+                    success = false,
+                    errorMessage = errorMessage,
+                    exception = nodeResult.StepResult.Exception
+                };
             }
 
             // CRITICAL FIX: Properly enqueue ALL next nodes for continued execution
@@ -242,7 +271,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
         }
 
         _logger.Information("Workflow graph execution completed successfully");
-        return (true, null);
+        return new WorkflowExecutionResult { success = true };
     }
 
     /// <summary>
@@ -256,6 +285,7 @@ public sealed class WorkflowEngine : IWorkflowEngine
     {
         var attempt = 0;
         var maxAttempts = executionContext.Options.MaxRetryAttempts + 1;
+        Exception? lastException = null;
 
         while (attempt < maxAttempts)
         {
@@ -299,16 +329,27 @@ public sealed class WorkflowEngine : IWorkflowEngine
 
                 if (!result.StepResult.ShouldRetry)
                 {
-                    _logger.Debug("Node {NodeId} failed and should not retry", node.NodeId);
+                    _logger.Debug("Node {NodeId} failed and should not retry: {ErrorMessage}",
+                        node.NodeId, result.StepResult.ErrorMessage);
                     return result;
                 }
+
+                // Store the last result for potential retry
+                lastException = result.StepResult.Exception;
 
                 attempt++;
                 if (attempt < maxAttempts)
                 {
                     var delay = CalculateRetryDelay(attempt, executionContext.Options);
-                    _logger.Debug("Node {NodeId} failed, retrying in {Delay}ms", node.NodeId, delay.TotalMilliseconds);
+                    _logger.Debug("Node {NodeId} failed, retrying in {Delay}ms (attempt {Attempt}/{MaxAttempts})",
+                        node.NodeId, delay.TotalMilliseconds, attempt + 1, maxAttempts);
                     await Task.Delay(delay, cancellationToken);
+                }
+                else
+                {
+                    _logger.Warning("Node {NodeId} failed after {MaxAttempts} attempts: {ErrorMessage}",
+                        node.NodeId, maxAttempts, result.StepResult.ErrorMessage);
+                    return result; // Return the last failed result
                 }
             }
             catch (OperationCanceledException)
@@ -318,8 +359,9 @@ public sealed class WorkflowEngine : IWorkflowEngine
             }
             catch (Exception ex)
             {
-                _logger.Warning(ex, "Node {NodeId} execution failed with exception (attempt {Attempt})", node.NodeId,
-                    attempt + 1);
+                lastException = ex;
+                _logger.Warning(ex, "Node {NodeId} execution failed with exception (attempt {Attempt}/{MaxAttempts})",
+                    node.NodeId, attempt + 1, maxAttempts);
 
                 stepTrace = stepTrace with { EndTime = DateTimeOffset.UtcNow, Result = StepResult.Failure(ex) };
 
@@ -339,8 +381,10 @@ public sealed class WorkflowEngine : IWorkflowEngine
             }
         }
 
+        // FIXED: Provide detailed error message when all retries are exhausted
+        var finalErrorMessage = lastException?.Message ?? $"Node '{node.NodeId}' failed after {maxAttempts} attempts";
         return NodeExecutionResult<TContext>.Failure(
-            StepResult.Failure($"Node '{node.NodeId}' failed after {maxAttempts} attempts"));
+            StepResult.Failure(finalErrorMessage, false, null));
     }
 
     /// <summary>
@@ -379,6 +423,17 @@ public sealed class WorkflowEngine : IWorkflowEngine
         activity.SetTag("workflow.id", workflowId);
         activity.SetTag("correlation.id", correlationId);
         return activity.Start();
+    }
+
+    /// <summary>
+    /// FIXED: Enhanced execution result structure with proper error information
+    /// </summary>
+    private record struct WorkflowExecutionResult
+    {
+        public bool success { get; init; }
+        public SuspensionInfo? suspensionInfo { get; init; }
+        public string? errorMessage { get; init; }
+        public Exception? exception { get; init; }
     }
 
     private record struct SuspensionInfo
