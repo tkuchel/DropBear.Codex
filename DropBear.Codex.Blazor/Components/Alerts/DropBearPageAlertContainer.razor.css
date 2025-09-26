@@ -1,82 +1,160 @@
-﻿.page-alert-container {
-  --alert-container-width: 500px;
-  --alert-container-padding: var(--spacing-md);
-  --alert-container-gap: var(--spacing-md);
+﻿/* Modern Alert Container Styles */
+.alert-container {
+  --container-max-width: 28rem;
+  --container-padding: 1rem;
+  --container-gap: 0.75rem;
+  --container-z-index: 9999;
 
   position: fixed;
-  top: var(--alert-container-padding);
-  left: 50%;
-  transform: translateX(-50%);
+  top: var(--container-padding);
+  right: var(--container-padding);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--alert-container-gap);
+  gap: var(--container-gap);
   width: 100%;
-  max-width: var(--alert-container-width);
-  z-index: var(--z-index-dropdown, 1050); /* Fallback z-index matches JS module */
-  padding: var(--alert-container-padding);
-  pointer-events: none; /* Allow clicking through container */
+  max-width: var(--container-max-width);
+  z-index: var(--container-z-index);
+  pointer-events: none;
 }
 
-/* Re-enable pointer events for alerts and maintain width */
-.page-alert-container > * {
+/* Enable pointer events for alerts */
+.alert-container > *,
+.alert-container__list > * {
   pointer-events: auto;
-  width: 100%; /* Ensure alerts take full container width */
 }
 
-/* Alert stacking order */
-.page-alert-container :is(.error, .critical) {
-  order: -2;
+/* Alert list with smooth transitions */
+.alert-container__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--container-gap);
+  width: 100%;
 }
 
-.page-alert-container .warning {
-  order: -1;
+/* Container state classes for enhanced styling */
+.alert-container--has-alerts {
+  /* Optional: Add backdrop or styling when alerts are present */
 }
 
-/* Animation container for JS-managed alerts */
-.page-alert-container .page-alert {
-  transform-origin: center top;
-  will-change: transform, opacity;
+/* Alert stacking with improved z-index management */
+.alert-container__list > .alert--error {
+  z-index: calc(var(--container-z-index) + 3);
 }
 
-/* Improved responsive design */
+.alert-container__list > .alert--warning {
+  z-index: calc(var(--container-z-index) + 2);
+}
+
+.alert-container__list > .alert--success {
+  z-index: calc(var(--container-z-index) + 1);
+}
+
+.alert-container__list > .alert--info {
+  z-index: var(--container-z-index);
+}
+
+/* Responsive Design */
 @media (max-width: 768px) {
-  .page-alert-container {
-    --alert-container-width: 90%;
-    --alert-container-padding: var(--spacing-sm);
-    --alert-container-gap: var(--spacing-sm);
+  .alert-container {
+    --container-max-width: calc(100vw - 2rem);
+    --container-padding: 1rem;
 
-    top: var(--spacing-sm);
-  }
-
-  /* Adjust alert padding on mobile */
-  .page-alert-container .page-alert {
-    padding: var(--spacing-sm);
+    top: var(--container-padding);
+    right: var(--container-padding);
+    left: var(--container-padding);
+    max-width: none;
   }
 }
 
-/* Reduced motion preference */
+@media (max-width: 480px) {
+  .alert-container {
+    --container-padding: 0.75rem;
+    --container-gap: 0.5rem;
+  }
+}
+
+/* Tablet Portrait */
+@media (max-width: 1024px) and (orientation: portrait) {
+  .alert-container {
+    --container-max-width: 24rem;
+  }
+}
+
+/* Large Screens */
+@media (min-width: 1440px) {
+  .alert-container {
+    --container-max-width: 32rem;
+    --container-padding: 1.5rem;
+  }
+}
+
+/* High DPI Displays */
+@media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+  .alert-container {
+    /* Ensure crisp rendering on high DPI displays */
+    transform: translateZ(0);
+    backface-visibility: hidden;
+  }
+}
+
+/* Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
-  .page-alert-container > * {
-    transition: none !important;
+  .alert-container__list > * {
     animation: none !important;
-  }
-
-  .page-alert-container .page-alert {
-    transform: none !important;
+    transition: none !important;
   }
 }
 
-/* High contrast mode support */
+/* High Contrast Mode */
 @media (forced-colors: active) {
-  .page-alert-container .page-alert {
-    border: 2px solid;
+  .alert-container {
+    forced-color-adjust: none;
+  }
+
+  .alert-container__list > .alert {
+    border: 2px solid CanvasText;
+    background: Canvas;
+    color: CanvasText;
   }
 }
 
-/* Print styles */
+/* Print Styles */
 @media print {
-  .page-alert-container {
-    display: none !important;
+  .alert-container {
+    position: static;
+    max-width: none;
+    box-shadow: none;
+    page-break-inside: avoid;
   }
+
+  .alert-container__list > .alert {
+    break-inside: avoid;
+    margin-bottom: 0.5rem;
+  }
+}
+
+/* Focus Management */
+.alert-container:focus-within {
+  /* Ensure focus is visible when alerts have focus */
+}
+
+/* Animation Performance Optimizations */
+.alert-container,
+.alert-container__list,
+.alert-container__list > * {
+  will-change: transform;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Container for better layering */
+.alert-container::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: -1;
 }

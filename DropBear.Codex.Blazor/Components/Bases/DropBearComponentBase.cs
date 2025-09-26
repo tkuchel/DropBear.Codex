@@ -662,6 +662,17 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     }
 
     /// <summary>
+    ///     Logs an error message with the component type name.
+    /// </summary>
+    /// <param name="ex">The exception that occurred.</param>
+    /// <param name="message">The error message.</param>
+    /// <param name="args">Additional message format arguments.</param>
+    protected void LogError(Exception ex, string message, params object[] args)
+    {
+        Logger.Error(ex, $"{GetType().Name}: {message}", args);
+    }
+
+    /// <summary>
     ///     Logs a warning message with the component type name.
     /// </summary>
     /// <param name="message">The warning message.</param>

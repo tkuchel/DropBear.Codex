@@ -1,151 +1,400 @@
-﻿.dropbear-badge {
-  --badge-height: 1.5rem;
-  --badge-font-size: var(--fs-xs);
-  --badge-padding: var(--spacing-xs);
-  --badge-icon-size: 1rem;
-  --badge-transition-duration: 0.15s;
+﻿/* Badge Component - Modern Design System */
+.badge {
+  /* Base styles */
+  --badge-font-family: var(--ff-primary);
+  --badge-font-weight: var(--fw-medium);
+  --badge-line-height: 1;
+  --badge-border-width: 1px;
+  --badge-transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* Size variables */
+  --badge-xs-height: 1rem;
+  --badge-xs-font-size: var(--fs-xxs);
+  --badge-xs-padding: 0.125rem 0.25rem;
+  --badge-xs-icon-size: 0.75rem;
+
+  --badge-sm-height: 1.25rem;
+  --badge-sm-font-size: var(--fs-xs);
+  --badge-sm-padding: 0.125rem 0.375rem;
+  --badge-sm-icon-size: 0.875rem;
+
+  --badge-md-height: 1.5rem;
+  --badge-md-font-size: var(--fs-sm);
+  --badge-md-padding: 0.25rem 0.5rem;
+  --badge-md-icon-size: 1rem;
+
+  --badge-lg-height: 1.75rem;
+  --badge-lg-font-size: var(--fs-md);
+  --badge-lg-padding: 0.375rem 0.75rem;
+  --badge-lg-icon-size: 1.125rem;
+
+  /* Base component styles */
   position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: var(--badge-height);
-  padding: var(--badge-padding);
-  font-size: var(--badge-font-size);
-  font-weight: 500;
-  line-height: 1;
+  gap: 0.25rem;
+  font-family: var(--badge-font-family);
+  font-weight: var(--badge-font-weight);
+  line-height: var(--badge-line-height);
   text-align: center;
   white-space: nowrap;
-  vertical-align: baseline;
-  border-radius: var(--br-md);
-  transition: all var(--badge-transition-duration) ease-in-out;
+  vertical-align: middle;
+  border: var(--badge-border-width) solid transparent;
+  transition: var(--badge-transition);
   user-select: none;
+  cursor: default;
 }
 
-/* Badge Shapes */
-.dropbear-badge-pill {
-  border-radius: calc(var(--badge-height) / 2);
-  padding-left: calc(var(--badge-padding) * 2);
-  padding-right: calc(var(--badge-padding) * 2);
+/* Size variants */
+.badge--extrasmall {
+  height: var(--badge-xs-height);
+  padding: var(--badge-xs-padding);
+  font-size: var(--badge-xs-font-size);
+  border-radius: calc(var(--badge-xs-height) * 0.25);
 }
 
-.dropbear-badge-icon-only {
-  width: var(--badge-height);
-  padding: calc(var(--badge-padding) / 2);
+.badge--small {
+  height: var(--badge-sm-height);
+  padding: var(--badge-sm-padding);
+  font-size: var(--badge-sm-font-size);
+  border-radius: calc(var(--badge-sm-height) * 0.25);
+}
+
+.badge--medium {
+  height: var(--badge-md-height);
+  padding: var(--badge-md-padding);
+  font-size: var(--badge-md-font-size);
+  border-radius: calc(var(--badge-md-height) * 0.25);
+}
+
+.badge--large {
+  height: var(--badge-lg-height);
+  padding: var(--badge-lg-padding);
+  font-size: var(--badge-lg-font-size);
+  border-radius: calc(var(--badge-lg-height) * 0.25);
+}
+
+/* Shape variants */
+.badge--pill {
+  border-radius: 9999px;
+}
+
+.badge--square {
+  border-radius: 0;
+}
+
+.badge--circle {
   border-radius: 50%;
+  aspect-ratio: 1;
+  padding: 0;
 }
 
-/* Icon Styling */
-.dropbear-badge i {
-  font-size: var(--badge-icon-size);
-  line-height: 1;
-  margin-right: 0.25em;
+/* Icon-only badges */
+.badge--icon-only {
+  aspect-ratio: 1;
+  padding: 0;
 }
 
-.dropbear-badge-icon-only i {
-  margin-right: 0;
+/* Icon styling */
+.badge i {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Badge Colors with Hover States */
-.dropbear-badge-default {
-  color: var(--clr-black);
+.badge--extrasmall i { font-size: var(--badge-xs-icon-size); }
+.badge--small i { font-size: var(--badge-sm-icon-size); }
+.badge--medium i { font-size: var(--badge-md-icon-size); }
+.badge--large i { font-size: var(--badge-lg-icon-size); }
+
+/* Text styling */
+.badge-text {
+  display: inline;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Color variants - Solid */
+.badge--default.badge--solid {
   background-color: var(--clr-grey-500);
+  color: var(--clr-white);
 }
 
-.dropbear-badge-default:hover {
-  background-color: var(--clr-grey-600);
+.badge--primary.badge--solid {
+  background-color: var(--clr-primary);
+  color: var(--clr-white);
 }
 
-.dropbear-badge-secondary {
-  color: var(--clr-black);
+.badge--secondary.badge--solid {
   background-color: var(--clr-secondary);
+  color: var(--clr-white);
 }
 
-.dropbear-badge-secondary:hover {
-  background-color: color-mix(in srgb, var(--clr-secondary) 90%, black);
-}
-
-.dropbear-badge-success {
-  color: var(--clr-black);
+.badge--success.badge--solid {
   background-color: var(--clr-success);
+  color: var(--clr-white);
 }
 
-.dropbear-badge-success:hover {
-  background-color: color-mix(in srgb, var(--clr-success) 90%, black);
-}
-
-.dropbear-badge-information {
-  color: var(--clr-black);
+.badge--information.badge--solid {
   background-color: var(--clr-information);
+  color: var(--clr-white);
 }
 
-.dropbear-badge-information:hover {
-  background-color: color-mix(in srgb, var(--clr-information) 90%, black);
-}
-
-.dropbear-badge-warning {
-  color: var(--clr-black);
+.badge--warning.badge--solid {
   background-color: var(--clr-warning);
-}
-
-.dropbear-badge-warning:hover {
-  background-color: color-mix(in srgb, var(--clr-warning) 90%, black);
-}
-
-.dropbear-badge-error {
   color: var(--clr-black);
-  background-color: var(--clr-error);
 }
 
-.dropbear-badge-error:hover {
-  background-color: color-mix(in srgb, var(--clr-error) 90%, black);
+.badge--error.badge--solid {
+  background-color: var(--clr-error);
+  color: var(--clr-white);
+}
+
+.badge--neutral.badge--solid {
+  background-color: var(--clr-grey-600);
+  color: var(--clr-white);
+}
+
+/* Color variants - Outline */
+.badge--default.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-grey-500);
+  color: var(--clr-grey-500);
+}
+
+.badge--primary.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-primary);
+  color: var(--clr-primary);
+}
+
+.badge--secondary.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-secondary);
+  color: var(--clr-secondary);
+}
+
+.badge--success.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-success);
+  color: var(--clr-success);
+}
+
+.badge--information.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-information);
+  color: var(--clr-information);
+}
+
+.badge--warning.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-warning);
+  color: var(--clr-warning);
+}
+
+.badge--error.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-error);
+  color: var(--clr-error);
+}
+
+.badge--neutral.badge--outline {
+  background-color: transparent;
+  border-color: var(--clr-grey-600);
+  color: var(--clr-grey-600);
+}
+
+/* Color variants - Soft */
+.badge--default.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-grey-500) 15%, transparent);
+  color: var(--clr-grey-700);
+}
+
+.badge--primary.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-primary) 15%, transparent);
+  color: var(--clr-primary);
+}
+
+.badge--secondary.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-secondary) 15%, transparent);
+  color: var(--clr-secondary);
+}
+
+.badge--success.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-success) 15%, transparent);
+  color: var(--clr-success-dark);
+}
+
+.badge--information.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-information) 15%, transparent);
+  color: var(--clr-information-dark);
+}
+
+.badge--warning.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-warning) 15%, transparent);
+  color: var(--clr-warning-dark);
+}
+
+.badge--error.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-error) 15%, transparent);
+  color: var(--clr-error-dark);
+}
+
+.badge--neutral.badge--soft {
+  background-color: color-mix(in srgb, var(--clr-grey-600) 15%, transparent);
+  color: var(--clr-grey-700);
+}
+
+/* Color variants - Ghost */
+.badge--default.badge--ghost,
+.badge--primary.badge--ghost,
+.badge--secondary.badge--ghost,
+.badge--success.badge--ghost,
+.badge--information.badge--ghost,
+.badge--warning.badge--ghost,
+.badge--error.badge--ghost,
+.badge--neutral.badge--ghost {
+  background-color: transparent;
+  border-color: transparent;
+}
+
+.badge--default.badge--ghost { color: var(--clr-grey-600); }
+.badge--primary.badge--ghost { color: var(--clr-primary); }
+.badge--secondary.badge--ghost { color: var(--clr-secondary); }
+.badge--success.badge--ghost { color: var(--clr-success); }
+.badge--information.badge--ghost { color: var(--clr-information); }
+.badge--warning.badge--ghost { color: var(--clr-warning); }
+.badge--error.badge--ghost { color: var(--clr-error); }
+.badge--neutral.badge--ghost { color: var(--clr-grey-600); }
+
+/* Dismissible badges */
+.badge--dismissible {
+  padding-right: 0.125rem;
+}
+
+.badge-dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  margin-left: 0.25rem;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 150ms ease;
+}
+
+.badge-dismiss:hover {
+  opacity: 1;
+}
+
+.badge-dismiss:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
 }
 
 /* Tooltip */
-.dropbear-badge-tooltip {
+.badge-tooltip {
   position: fixed;
+  z-index: var(--z-index-tooltip);
   max-width: 200px;
   padding: var(--spacing-xs) var(--spacing-sm);
-  background-color: var(--clr-background);
-  color: var(--clr-white);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-xs);
   line-height: 1.4;
+  color: var(--clr-white);
+  background-color: var(--clr-black);
   border-radius: var(--br-sm);
-  box-shadow: var(--shadow-md);
-  z-index: var(--z-index-tooltip);
+  box-shadow: var(--shadow-lg);
   pointer-events: none;
-  opacity: 0;
-  transform: translateY(4px);
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  opacity: 0.95;
+  animation: tooltipFadeIn 150ms ease-out;
 }
 
-/* Tooltip Animation States */
-.dropbear-badge-tooltip[data-show="true"] {
-  opacity: 0.98;
-  transform: translateY(0);
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 0.95;
+    transform: translateY(0);
+  }
 }
 
-/* Focus and Keyboard Navigation */
-.dropbear-badge:focus-visible {
+/* Focus states */
+.badge:focus-visible {
   outline: 2px solid var(--clr-focus);
   outline-offset: 2px;
 }
 
-/* Accessibility */
+/* Hover states for interactive badges */
+.badge[tabindex]:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .badge--default.badge--solid {
+    background-color: var(--clr-grey-600);
+  }
+
+  .badge--warning.badge--solid {
+    color: var(--clr-black);
+  }
+
+  .badge-tooltip {
+    background-color: var(--clr-surface-secondary);
+    color: var(--clr-text-primary);
+    border: 1px solid var(--clr-border);
+  }
+}
+
+/* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
-  .dropbear-badge,
-  .dropbear-badge-tooltip {
+  .badge {
     transition: none;
+  }
+
+  .badge-tooltip {
+    animation: none;
+  }
+
+  .badge[tabindex]:hover {
+    transform: none;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .badge {
+    border-width: 2px;
+  }
+
+  .badge--outline {
+    border-width: 2px;
+  }
+
+  .badge--soft,
+  .badge--ghost {
+    border: 2px solid currentColor;
   }
 }
 
 /* Print styles */
 @media print {
-  .dropbear-badge-tooltip {
+  .badge-tooltip {
     display: none;
   }
 
-  .dropbear-badge {
-    border: 1px solid currentColor;
+  .badge {
+    border: 1px solid currentColor !important;
+    background: transparent !important;
+    color: black !important;
   }
 }

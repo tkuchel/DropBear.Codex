@@ -1,16 +1,17 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Notifications
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="dropbear-snackbar-container @PositionClass"
-     role="alert"
-     aria-live="polite">
-    @if (SnackbarService?.GetActiveSnackbars() is { } snackbars)
+<div class="@ContainerCssClasses"
+     role="region"
+     aria-live="polite"
+     aria-label="Notifications"
+     data-position="@Position.ToString().ToLowerInvariant()"
+     data-max-visible="@MaxVisibleSnackbars">
+
+    @foreach (var snackbar in VisibleSnackbars)
     {
-        @foreach (var snackbar in snackbars.OrderByDescending(s => s.CreatedAt))
-        {
-            <DropBearSnackbar @key="snackbar.Id"
-                              SnackbarInstance="snackbar"
-                              OnClose="async () => await SnackbarService.RemoveSnackbar(snackbar.Id)"/>
-        }
+        <DropBearSnackbar @key="snackbar.Id"
+                          SnackbarInstance="snackbar"
+                          OnClose="@(() => HandleSnackbarCloseAsync(snackbar.Id))" />
     }
 </div>

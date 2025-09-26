@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
@@ -11,144 +12,37 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     A versatile progress bar component that supports indeterminate, normal, and stepped progress modes.
-///     Optimized for Blazor Server.
+///     Modern progress bar component optimized for .NET 8+ and Blazor Server.
+///     Features smooth animations, accessibility support, and responsive design.
 /// </summary>
 public sealed partial class DropBearProgressBar : DropBearComponentBase
 {
-    #region UI Update Methods
-
-    /// <summary>
-    ///     Requests a UI render update if the component is not disposed.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private async Task RequestRenderAsync()
-    {
-        if (!IsDisposed)
-        {
-            try
-            {
-                _shouldRender = true;
-                await InvokeAsync(StateHasChanged);
-            }
-            catch (ObjectDisposedException)
-            {
-                // Ignore if disposed
-            }
-        }
-    }
-
-    #endregion
-
-    #region Disposal
-
-    /// <summary>
-    ///     Disposes the component and releases all resources.
-    /// </summary>
-    protected override async ValueTask DisposeAsyncCore()
-    {
-        try
-        {
-            await _disposalCts.CancelAsync();
-
-            if (_smoothingCts != null)
-            {
-                await _smoothingCts.CancelAsync();
-                _smoothingCts.Dispose();
-            }
-
-            if (_state != null)
-            {
-                await _state.DisposeAsync();
-                _statePool.Return(_state);
-                _state = null;
-            }
-
-            _updateLock.Dispose();
-        }
-        catch (Exception ex)
-        {
-            LogError("Error disposing progress bar", ex);
-        }
-
-        _disposalCts.Dispose();
-        await base.DisposeAsyncCore();
-    }
-
-    #endregion
-
-    #region Helper Methods
-
-    /// <summary>
-    ///     Gets a human-readable string representing the estimated time remaining for the operation.
-    /// </summary>
-    /// <returns>A formatted time string.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private string GetEstimatedTimeRemaining()
-    {
-        if (_state is null || _state.OverallProgress <= 0)
-        {
-            return string.Empty;
-        }
-
-        var elapsed = DateTime.UtcNow - _state.StartTime;
-        var estimatedTotal = TimeSpan.FromTicks((long)(elapsed.Ticks / (_state.OverallProgress / 100)));
-        var remaining = estimatedTotal - elapsed;
-
-        return $"Estimated time remaining: {FormatTimeSpan(remaining)}";
-    }
-
-    /// <summary>
-    ///     Formats a TimeSpan into a human-readable string.
-    /// </summary>
-    /// <param name="span">The TimeSpan to format.</param>
-    /// <returns>A formatted time string.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static string FormatTimeSpan(TimeSpan span)
-    {
-        if (span.TotalHours >= 1)
-        {
-            return $"{span.TotalHours:F1} hours";
-        }
-
-        if (span.TotalMinutes >= 1)
-        {
-            return $"{span.TotalMinutes:F0} minutes";
-        }
-
-        return $"{span.TotalSeconds:F0} seconds";
-    }
-
-    #endregion
-
-    #region Constants & Fields
+    #region Constants & Static Members
 
     private const double MinProgress = 0;
     private const double MaxProgress = 100;
-    private readonly CancellationTokenSource _disposalCts = new();
+    private static readonly TimeSpan DefaultAnimationDuration = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan EstimationUpdateInterval = TimeSpan.FromSeconds(1);
 
-    private readonly ProgressStatePool _statePool = new();
-    private readonly SemaphoreSlim _updateLock = new(1, 1);
+    #endregion
 
-    private int _currentStepIndex;
-    private List<ProgressStepConfig>? _currentSteps;
-    private volatile bool _isInitialized;
-    private string? _lastMessage = string.Empty;
+    #region Fields
+
+    private readonly CancellationTokenSource _componentCts = new();
+    private readonly Dictionary<string, ProgressStepState> _stepStates = new(StringComparer.OrdinalIgnoreCase);
+    private readonly PeriodicTimer? _estimationTimer;
+
+    private DateTime _startTime = DateTime.UtcNow;
+    private DateTime _lastUpdateTime = DateTime.UtcNow;
     private double _lastProgress;
-    private CancellationTokenSource? _smoothingCts;
-    private ProgressState? _state;
+    private bool _hasStarted;
+    private int _currentStepIndex;
 
-    // Backing fields for parameters
-    private bool _isIndeterminate;
-    private string _message = string.Empty;
-    private double _progress;
-    private IReadOnlyList<ProgressStepConfig>? _steps;
-    private int _minStepDisplayTimeMs = 500;
-    private bool _useSmoothProgress = true;
-    private EasingFunction _easingFunction = EasingFunction.EaseInOutCubic;
-
-    // Flag to track if component should render
-    private bool _shouldRender = true;
+    // Cached computations for performance
+    private string? _cachedProgressStyle;
+    private double _cachedProgressValue = -1;
+    private string? _cachedTimeEstimation;
+    private DateTime _lastTimeEstimationUpdate = DateTime.MinValue;
 
     #endregion
 
@@ -158,547 +52,458 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     ///     Gets or sets whether the progress bar is in indeterminate mode.
     /// </summary>
     [Parameter]
-    public bool IsIndeterminate
-    {
-        get => _isIndeterminate;
-        set
-        {
-            if (_isIndeterminate != value)
-            {
-                _isIndeterminate = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public bool IsIndeterminate { get; set; }
 
     /// <summary>
-    ///     Gets or sets the message displayed next to the progress bar.
+    ///     Gets or sets the main message displayed above the progress bar.
     /// </summary>
     [Parameter]
-    public string Message
-    {
-        get => _message;
-        set
-        {
-            if (_message != value)
-            {
-                _message = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public string Message { get; set; } = string.Empty;
 
     /// <summary>
     ///     Gets or sets the current progress value (0-100).
     /// </summary>
     [Parameter]
-    public double Progress
-    {
-        get => _progress;
-        set
-        {
-            if (Math.Abs(_progress - value) > 0.001)
-            {
-                _progress = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public double Progress { get; set; }
 
     /// <summary>
-    ///     Gets or sets the steps to display in the progress bar.
+    ///     Gets or sets the collection of progress steps.
     /// </summary>
     [Parameter]
-    public IReadOnlyList<ProgressStepConfig>? Steps
-    {
-        get => _steps;
-        set
-        {
-            if (_steps != value)
-            {
-                _steps = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
 
     /// <summary>
-    ///     Gets or sets the minimum time to display a step before moving to the next one (in milliseconds).
+    ///     Gets or sets the visual variant/theme of the progress bar.
     /// </summary>
     [Parameter]
-    public int MinStepDisplayTimeMs
-    {
-        get => _minStepDisplayTimeMs;
-        set
-        {
-            if (_minStepDisplayTimeMs != value)
-            {
-                _minStepDisplayTimeMs = value;
-            }
-        }
-    }
+    public ProgressVariant Variant { get; set; } = ProgressVariant.Primary;
 
     /// <summary>
-    ///     Gets or sets whether to use smooth progress transitions.
+    ///     Gets or sets the layout mode for progress steps.
     /// </summary>
     [Parameter]
-    public bool UseSmoothProgress
-    {
-        get => _useSmoothProgress;
-        set
-        {
-            if (_useSmoothProgress != value)
-            {
-                _useSmoothProgress = value;
-            }
-        }
-    }
+    public StepsLayout StepsLayout { get; set; } = StepsLayout.Horizontal;
 
     /// <summary>
-    ///     Gets or sets the easing function to use for progress transitions.
+    ///     Gets or sets whether to show percentage text.
     /// </summary>
     [Parameter]
-    public EasingFunction EasingFunction
-    {
-        get => _easingFunction;
-        set
-        {
-            if (_easingFunction != value)
-            {
-                _easingFunction = value;
-            }
-        }
-    }
+    public bool ShowPercentage { get; set; } = true;
 
     /// <summary>
-    ///     Event callback that is invoked when a step's state changes.
+    ///     Gets or sets whether to show estimated time remaining.
     /// </summary>
     [Parameter]
-    public EventCallback<(string StepId, StepStatus Status)> OnStepStateChanged { get; set; }
+    public bool ShowEstimatedTime { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets whether to show a subtle glow effect on the progress fill.
+    /// </summary>
+    [Parameter]
+    public bool ShowProgressGlow { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets whether to use compact mode for steps display.
+    /// </summary>
+    [Parameter]
+    public bool CompactSteps { get; set; }
+
+    /// <summary>
+    ///     Gets or sets whether to show status icons.
+    /// </summary>
+    [Parameter]
+    public bool ShowStatusIcon { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets a custom status message.
+    /// </summary>
+    [Parameter]
+    public string? StatusMessage { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the animation duration for progress changes.
+    /// </summary>
+    [Parameter]
+    public TimeSpan AnimationDuration { get; set; } = DefaultAnimationDuration;
+
+    /// <summary>
+    ///     Event callback fired when progress changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<double> OnProgressChanged { get; set; }
+
+    /// <summary>
+    ///     Event callback fired when a step changes status.
+    /// </summary>
+    [Parameter]
+    public EventCallback<(string StepId, StepStatus Status)> OnStepStatusChanged { get; set; }
+
+    /// <summary>
+    ///     Event callback fired when progress is completed.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnCompleted { get; set; }
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    ///     Gets the current effective progress value.
+    /// </summary>
+    public double CurrentProgress => IsIndeterminate ? 0 : Math.Clamp(Progress, MinProgress, MaxProgress);
+
+    /// <summary>
+    ///     Gets whether this progress bar has steps configured.
+    /// </summary>
+    public bool HasSteps => Steps?.Count > 0;
+
+    /// <summary>
+    ///     Gets whether the progress operation has started.
+    /// </summary>
+    public bool IsStarted => _hasStarted || CurrentProgress > 0;
+
+    /// <summary>
+    ///     Gets whether the progress is completed.
+    /// </summary>
+    public bool IsCompleted => !IsIndeterminate && CurrentProgress >= MaxProgress;
+
+    /// <summary>
+    ///     Gets the total elapsed time since progress started.
+    /// </summary>
+    public TimeSpan ElapsedTime => DateTime.UtcNow - _startTime;
 
     #endregion
 
     #region Lifecycle Methods
 
     /// <summary>
-    ///     Controls whether the component should render, optimizing for performance.
-    /// </summary>
-    /// <returns>True if the component should render, false otherwise.</returns>
-    protected override bool ShouldRender()
-    {
-        if (_shouldRender)
-        {
-            _shouldRender = false;
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    ///     Initializes the component, setting up state management.
+    ///     Component initialization.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
-        try
+        await base.OnInitializedAsync();
+
+        _startTime = DateTime.UtcNow;
+        _lastUpdateTime = _startTime;
+
+        // Initialize step states
+        if (HasSteps)
         {
-            _state = _statePool.Get();
-            _smoothingCts = new CancellationTokenSource();
-            await InitializeStateAsync();
-            _isInitialized = true;
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to initialize progress bar", ex);
-            throw;
+            foreach (var step in Steps!)
+            {
+                _stepStates[step.Id] = new ProgressStepState(step.Id);
+            }
         }
     }
 
     /// <summary>
-    ///     Initializes the component state based on parameter values.
-    /// </summary>
-    private async Task InitializeStateAsync()
-    {
-        await _updateLock.WaitAsync();
-        try
-        {
-            if (_isIndeterminate)
-            {
-                await _state!.SetIndeterminateAsync(_message);
-            }
-            else
-            {
-                await _state!.UpdateOverallProgressAsync(_progress, _message);
-            }
-
-            if (_steps?.Any() == true)
-            {
-                _currentSteps = [.._steps];
-                foreach (var step in _currentSteps)
-                {
-                    _state.GetOrCreateStepState(step.Id);
-                }
-            }
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-    }
-
-    /// <summary>
-    ///     Updates the component when parameters change.
+    ///     Handles parameter updates with optimized change detection.
     /// </summary>
     protected override async Task OnParametersSetAsync()
     {
-        if (!_isInitialized || IsDisposed)
-        {
-            return;
-        }
+        var currentTime = DateTime.UtcNow;
+        var progressChanged = Math.Abs(Progress - _lastProgress) > 0.01;
 
-        try
+        if (progressChanged)
         {
-            await _updateLock.WaitAsync(_disposalCts.Token);
-            try
+            if (!_hasStarted && Progress > 0)
             {
-                if (_state is null)
-                {
-                    return;
-                }
-
-                var shouldUpdate =
-                    _isIndeterminate != _state.IsIndeterminate ||
-                    _message != _lastMessage ||
-                    (!_isIndeterminate && Math.Abs(_progress - _lastProgress) > 0.001);
-
-                if (shouldUpdate)
-                {
-                    _lastMessage = _message;
-                    _lastProgress = _progress;
-
-                    if (_isIndeterminate)
-                    {
-                        await _state.SetIndeterminateAsync(_message, _disposalCts.Token);
-                    }
-                    else
-                    {
-                        await _state.UpdateOverallProgressAsync(_progress, _message, _disposalCts.Token);
-                    }
-
-                    _shouldRender = true;
-                }
+                _hasStarted = true;
+                _startTime = currentTime;
             }
-            finally
+
+            // Clear cached values when progress changes
+            _cachedProgressStyle = null;
+            _cachedProgressValue = -1;
+
+            _lastProgress = Progress;
+            _lastUpdateTime = currentTime;
+
+            await OnProgressChanged.InvokeAsync(CurrentProgress);
+
+            // Check for completion
+            if (IsCompleted && OnCompleted.HasDelegate)
             {
-                _updateLock.Release();
+                await OnCompleted.InvokeAsync();
             }
         }
-        catch (Exception ex) when (ex is not ObjectDisposedException)
-        {
-            LogError("Failed to update parameters", ex);
-        }
+
+        await base.OnParametersSetAsync();
+    }
+
+    /// <summary>
+    ///     Optimized rendering control.
+    /// </summary>
+    protected override bool ShouldRender()
+    {
+        // Only render if we have meaningful changes
+        return !IsDisposed && (
+            Math.Abs(Progress - _lastProgress) > 0.01 ||
+            _cachedProgressStyle == null ||
+            (ShowEstimatedTime && ShouldUpdateTimeEstimation())
+        );
+    }
+
+    /// <summary>
+    ///     Component disposal.
+    /// </summary>
+    protected override async ValueTask DisposeAsyncCore()
+    {
+        await _componentCts.CancelAsync();
+        _estimationTimer?.Dispose();
+        _componentCts.Dispose();
+
+        await base.DisposeAsyncCore();
     }
 
     #endregion
 
-    #region Public Methods
+    #region Public API Methods
 
     /// <summary>
-    ///     Updates the progress and status of a specific step.
+    ///     Updates progress with optional smooth animation.
+    /// </summary>
+    /// <param name="newProgress">The new progress value (0-100).</param>
+    /// <param name="message">Optional message update.</param>
+    /// <param name="animateTransition">Whether to animate the transition.</param>
+    public async Task UpdateProgressAsync(double newProgress, string? message = null, bool animateTransition = true)
+    {
+        if (IsDisposed) return;
+
+        Progress = Math.Clamp(newProgress, MinProgress, MaxProgress);
+
+        if (!string.IsNullOrEmpty(message))
+        {
+            Message = message;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    ///     Updates the status of a specific step.
     /// </summary>
     /// <param name="stepId">The ID of the step to update.</param>
-    /// <param name="progress">The new progress value (0-100).</param>
-    /// <param name="status">The new status of the step.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    public async Task UpdateStepProgressAsync(
-        string stepId,
-        double progress,
-        StepStatus status,
-        CancellationToken cancellationToken = default)
+    /// <param name="progress">The step's progress (0-100).</param>
+    /// <param name="status">The step's status.</param>
+    public async Task UpdateStepAsync(string stepId, double progress, StepStatus status)
     {
-        if (!_isInitialized || IsDisposed)
-        {
+        if (IsDisposed || !_stepStates.TryGetValue(stepId, out var stepState))
             return;
-        }
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
+        var oldStatus = stepState.Status;
+        stepState.UpdateProgress(progress, status);
 
-        try
+        if (status != oldStatus)
         {
-            await _updateLock.WaitAsync(cts.Token);
-            try
-            {
-                var stepState = _state!.GetOrCreateStepState(stepId);
-                var previousStatus = stepState.Status;
-
-                await stepState.UpdateProgressAsync(progress, status, cts.Token);
-
-                if (status != previousStatus)
-                {
-                    await OnStepStateChanged.InvokeAsync((stepId, status));
-                }
-
-                if (status is StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped)
-                {
-                    await MoveToNextStepAsync();
-                }
-
-                await RequestRenderAsync();
-            }
-            finally
-            {
-                _updateLock.Release();
-            }
+            await OnStepStatusChanged.InvokeAsync((stepId, status));
         }
-        catch (Exception ex) when (ex is not ObjectDisposedException)
-        {
-            LogError("Failed to update step progress", ex);
-        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     /// <summary>
-    ///     Moves to the next step in the sequence.
+    ///     Resets the progress bar to initial state.
     /// </summary>
-    private async Task MoveToNextStepAsync()
+    public async Task ResetAsync()
     {
-        if (_currentSteps == null || _currentStepIndex >= _currentSteps.Count - 1)
+        if (IsDisposed) return;
+
+        Progress = MinProgress;
+        _hasStarted = false;
+        _startTime = DateTime.UtcNow;
+        _lastUpdateTime = _startTime;
+        _cachedProgressStyle = null;
+        _cachedProgressValue = -1;
+        _cachedTimeEstimation = null;
+
+        foreach (var stepState in _stepStates.Values)
         {
-            return;
+            stepState.Reset();
         }
 
-        await _smoothingCts?.CancelAsync()!;
-        _smoothingCts?.Dispose();
-        _smoothingCts = new CancellationTokenSource();
-
-        try
-        {
-            _currentStepIndex++;
-
-            if (_useSmoothProgress)
-            {
-                await Task.Delay(_minStepDisplayTimeMs, _smoothingCts.Token);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Transition cancelled
-        }
+        await InvokeAsync(StateHasChanged);
     }
 
+    #endregion
+
+    #region Helper Methods
+
     /// <summary>
-    ///     Gets the steps that should be visible in the UI.
+    ///     Gets the CSS style for the progress fill element.
     /// </summary>
-    /// <returns>A sequence of visible steps with their position indices.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private IEnumerable<(ProgressStepConfig Config, int Index)> GetVisibleSteps()
+    private string GetProgressFillStyle()
     {
-        if (_currentSteps == null)
+        if (IsIndeterminate)
         {
-            yield break;
+            return string.Empty;
         }
 
-        var startIdx = Math.Max(0, _currentStepIndex - 1);
-        var endIdx = Math.Min(_currentSteps.Count - 1, startIdx + 2);
-
-        for (var i = startIdx; i <= endIdx; i++)
+        var progress = CurrentProgress;
+        if (Math.Abs(progress - _cachedProgressValue) < 0.1 && _cachedProgressStyle != null)
         {
-            yield return (_currentSteps[i], i - startIdx);
+            return _cachedProgressStyle;
+        }
+
+        _cachedProgressValue = progress;
+        _cachedProgressStyle = $"width: {progress:F1}%; transition-duration: {AnimationDuration.TotalMilliseconds}ms";
+
+        return _cachedProgressStyle;
+    }
+
+    /// <summary>
+    ///     Gets formatted estimated time remaining.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetEstimatedTimeRemaining()
+    {
+        if (!ShowEstimatedTime || IsIndeterminate || CurrentProgress <= 0 || CurrentProgress >= 100)
+        {
+            return string.Empty;
+        }
+
+        var now = DateTime.UtcNow;
+        if (now - _lastTimeEstimationUpdate < EstimationUpdateInterval && _cachedTimeEstimation != null)
+        {
+            return _cachedTimeEstimation;
+        }
+
+        var elapsed = now - _startTime;
+        var rate = CurrentProgress / elapsed.TotalSeconds;
+        var remainingProgress = 100 - CurrentProgress;
+        var estimatedSeconds = remainingProgress / rate;
+        var estimatedRemaining = TimeSpan.FromSeconds(estimatedSeconds);
+
+        _cachedTimeEstimation = FormatTimeSpan(estimatedRemaining);
+        _lastTimeEstimationUpdate = now;
+
+        return _cachedTimeEstimation;
+    }
+
+    /// <summary>
+    ///     Formats a TimeSpan for display.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static string FormatTimeSpan(TimeSpan span)
+    {
+        // Handle negative timespans
+        if (span < TimeSpan.Zero)
+        {
+            return "0s";
+        }
+
+        // For spans >= 1 hour, show hours and minutes
+        if (span.TotalHours >= 1)
+        {
+            // Use total hours (rounded down) for spans > 24 hours
+            var totalHours = (int)Math.Floor(span.TotalHours);
+            return $"{totalHours}h {span.Minutes:D2}m";
+        }
+
+        // For spans >= 1 minute, show minutes and seconds
+        if (span.TotalMinutes >= 1)
+        {
+            return $"{span.Minutes}m {span.Seconds:D2}s";
+        }
+
+        // For spans < 1 minute, show seconds with proper rounding
+        var totalSeconds = span.TotalSeconds;
+
+        // Use Math.Round with AwayFromZero to ensure 0.5 rounds up to 1
+        var roundedSeconds = (int)Math.Round(totalSeconds, MidpointRounding.AwayFromZero);
+
+        return $"{roundedSeconds}s";
+    }
+
+    /// <summary>
+    ///     Determines if time estimation should be updated.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool ShouldUpdateTimeEstimation()
+    {
+        return ShowEstimatedTime &&
+               DateTime.UtcNow - _lastTimeEstimationUpdate >= EstimationUpdateInterval;
+    }
+
+    /// <summary>
+    ///     Gets the visible steps with their positions.
+    /// </summary>
+    private IEnumerable<(ProgressStepConfig Config, StepPosition Position)> GetVisibleSteps()
+    {
+        if (!HasSteps) yield break;
+
+        var steps = Steps!;
+        var totalSteps = steps.Count;
+
+        for (var i = 0; i < totalSteps; i++)
+        {
+            var position = i switch
+            {
+                _ when i < _currentStepIndex => StepPosition.Previous,
+                _ when i == _currentStepIndex => StepPosition.Current,
+                _ => StepPosition.Next
+            };
+
+            yield return (steps[i], position);
         }
     }
 
     /// <summary>
-    ///     Sets the progress bar to indeterminate mode.
+    ///     Gets the progress for a specific step.
     /// </summary>
-    /// <param name="message">The message to display.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    public async Task SetIndeterminateModeAsync(
-        string message,
-        CancellationToken cancellationToken = default)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private double GetStepProgress(string stepId)
     {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
-
-        await _updateLock.WaitAsync(cts.Token);
-        try
-        {
-            _isIndeterminate = true;
-            _message = message;
-            _progress = MinProgress;
-
-            if (_isInitialized && _state != null)
-            {
-                await _state.SetIndeterminateAsync(message, cts.Token);
-            }
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-
-        await RequestRenderAsync();
+        return _stepStates.TryGetValue(stepId, out var state) ? state.Progress : 0;
     }
 
     /// <summary>
-    ///     Sets the progress bar to normal (determinate) mode with a specific progress value and message.
+    ///     Gets the status for a specific step.
     /// </summary>
-    /// <param name="progress">The progress value (0-100).</param>
-    /// <param name="message">The message to display.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    public async Task SetNormalProgressAsync(
-        double progress,
-        string message,
-        CancellationToken cancellationToken = default)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private StepStatus GetStepStatus(string stepId)
     {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
-
-        await _updateLock.WaitAsync(cts.Token);
-        try
-        {
-            _isIndeterminate = false;
-            _progress = Math.Clamp(progress, MinProgress, MaxProgress);
-            _message = message;
-
-            if (_isInitialized && _state != null)
-            {
-                await _state.UpdateOverallProgressAsync(_progress, _message, cts.Token);
-            }
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-
-        await RequestRenderAsync();
+        return _stepStates.TryGetValue(stepId, out var state) ? state.Status : StepStatus.NotStarted;
     }
 
     /// <summary>
-    ///     Sets the steps to be displayed in the progress bar.
+    ///     Gets the current overall status type.
     /// </summary>
-    /// <param name="steps">The steps configuration.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    public async Task SetStepsAsync(
-        IReadOnlyList<ProgressStepConfig>? steps,
-        CancellationToken cancellationToken = default)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetCurrentStatusType()
     {
-        if (IsDisposed)
-        {
-            return;
-        }
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
-
-        await _updateLock.WaitAsync(cts.Token);
-        try
-        {
-            _steps = steps;
-
-            if (_isInitialized && steps?.Any() == true)
-            {
-                _currentSteps = [..steps];
-                foreach (var step in _currentSteps)
-                {
-                    _state?.GetOrCreateStepState(step.Id);
-                }
-            }
-            else
-            {
-                _currentSteps = null;
-            }
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-
-        await RequestRenderAsync();
+        if (IsCompleted) return "success";
+        if (HasSteps && _stepStates.Values.Any(s => s.Status == StepStatus.Failed)) return "error";
+        if (HasSteps && _stepStates.Values.Any(s => s.Status == StepStatus.Warning)) return "warning";
+        if (IsStarted) return "info";
+        return "default";
     }
 
     /// <summary>
-    ///     Sets all parameters of the progress bar at once.
+    ///     Gets the appropriate status icon markup.
     /// </summary>
-    /// <param name="isIndeterminate">Whether the progress bar is in indeterminate mode.</param>
-    /// <param name="progress">The progress value (0-100).</param>
-    /// <param name="message">The message to display.</param>
-    /// <param name="steps">The steps configuration.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    public async Task SetParametersManuallyAsync(
-        bool isIndeterminate,
-        double progress,
-        string message,
-        IReadOnlyList<ProgressStepConfig>? steps,
-        CancellationToken cancellationToken = default)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private MarkupString GetStatusIcon()
     {
-        if (IsDisposed)
+        var iconSvg = GetCurrentStatusType() switch
         {
-            return;
-        }
+            "success" =>
+                """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>""",
+            "error" =>
+                """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>""",
+            "warning" =>
+                """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>""",
+            "info" =>
+                """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>""",
+            _ =>
+                """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/></svg>"""
+        };
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
-
-        await _updateLock.WaitAsync(cts.Token);
-        try
-        {
-            _isIndeterminate = isIndeterminate;
-            _progress = Math.Clamp(progress, MinProgress, MaxProgress);
-            _message = message;
-            _steps = steps;
-
-            if (_isInitialized && _state != null)
-            {
-                if (isIndeterminate)
-                {
-                    await _state.SetIndeterminateAsync(message, cts.Token);
-                }
-                else
-                {
-                    await _state.UpdateOverallProgressAsync(_progress, _message, cts.Token);
-                }
-
-                if (steps?.Any() == true)
-                {
-                    _currentSteps = [..steps];
-                    foreach (var step in _currentSteps)
-                    {
-                        _state.GetOrCreateStepState(step.Id);
-                    }
-                }
-                else
-                {
-                    _currentSteps = null;
-                }
-            }
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-
-        await RequestRenderAsync();
+        return new MarkupString(iconSvg);
     }
 
     #endregion
 }
+

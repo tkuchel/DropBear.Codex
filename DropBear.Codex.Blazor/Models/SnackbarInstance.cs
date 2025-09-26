@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.ComponentModel.DataAnnotations;
 using DropBear.Codex.Blazor.Enums;
 
 #endregion
@@ -7,60 +8,65 @@ using DropBear.Codex.Blazor.Enums;
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents a specific snackbar to be displayed, including its content, duration, and actions.
+///     Represents a snackbar notification instance with all necessary display and behavior properties.
 /// </summary>
-public sealed class SnackbarInstance
+public sealed record SnackbarInstance
 {
     /// <summary>
-    ///     Initializes a new instance of the <see cref="SnackbarInstance" /> class
-    ///     with a generated unique identifier.
+    ///     Unique identifier for the snackbar instance.
     /// </summary>
-    public SnackbarInstance()
-    {
-        Id = $"snackbar-{Guid.NewGuid():N}";
-    }
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
 
     /// <summary>
-    ///     Gets the unique identifier for this snackbar instance (e.g. "snackbar-&lt;guid&gt;").
+    ///     Optional title text displayed prominently.
     /// </summary>
-    public string Id { get; }
+    public string? Title { get; init; }
 
     /// <summary>
-    ///     Gets or sets the title of the snackbar.
+    ///     Main message content (supports HTML markup).
     /// </summary>
-    public string Title { get; init; } = string.Empty;
-
-    /// <summary>
-    ///     Gets or sets the message/body text of the snackbar.
-    /// </summary>
+    [Required]
     public string Message { get; init; } = string.Empty;
 
     /// <summary>
-    ///     Gets or sets the visual type of the snackbar (e.g., Information, Success, Error).
+    ///     Visual type/severity of the notification.
     /// </summary>
     public SnackbarType Type { get; init; } = SnackbarType.Information;
 
     /// <summary>
-    ///     Gets or sets the display duration in milliseconds.
-    ///     Defaults to 5000 (5 seconds).
+    ///     Duration in milliseconds before auto-close (0 = no auto-close).
     /// </summary>
+    [Range(0, int.MaxValue)]
     public int Duration { get; init; } = 5000;
 
     /// <summary>
-    ///     Gets or sets a value indicating whether the snackbar must be closed manually,
-    ///     rather than automatically disappearing after <see cref="Duration" />.
+    ///     Delay in milliseconds before showing the snackbar.
+    /// </summary>
+    [Range(0, 10000)]
+    public int ShowDelay { get; init; } = 0;
+
+    /// <summary>
+    ///     Whether the snackbar requires manual dismissal (ignores Duration).
     /// </summary>
     public bool RequiresManualClose { get; init; }
 
     /// <summary>
-    ///     Gets or sets a list of actions (buttons) displayed on the snackbar.
+    ///     Collection of action buttons for the snackbar.
     /// </summary>
-    public List<SnackbarAction> Actions { get; init; } = [];
-
+    public IReadOnlyList<SnackbarAction>? Actions { get; init; }
 
     /// <summary>
-    ///     Gets or sets the time at which the snackbar was created.
-    ///     Used to calculate the time remaining before the snackbar is automatically dismissed.
+    ///     Timestamp when the snackbar was created.
     /// </summary>
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+
+    /// <summary>
+    ///     Additional CSS classes to apply to the snackbar.
+    /// </summary>
+    public string? CssClass { get; init; }
+
+    /// <summary>
+    ///     Custom data for extensibility.
+    /// </summary>
+    public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 }

@@ -1,119 +1,302 @@
-﻿.navigation-buttons {
-  --nav-btn-size: 3rem;
-  --nav-btn-icon-size: 1.25rem;
-  --nav-btn-bg: var(--clr-primary);
-  --nav-btn-hover-bg: var(--clr-button-primary-hover);
-  --nav-btn-shadow: 0 2px 4px rgb(0 0 0 / 0.1);
-  --nav-btn-hover-shadow: 0 4px 6px rgb(0 0 0 / 0.15);
+﻿/* Modern DropBear Navigation Buttons - Optimized for .NET 8 and Blazor Server */
 
+.dropbear-nav-buttons {
+  /* CSS Custom Properties */
+  --nav-btn-size: 3rem;
+  --nav-btn-bg: var(--clr-white, #ffffff);
+  --nav-btn-color: var(--clr-grey-700, #374151);
+  --nav-btn-border: var(--clr-grey-200, #e5e7eb);
+  --nav-btn-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --nav-btn-shadow-hover: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --nav-btn-backdrop: blur(12px);
+
+  /* Layout */
   position: fixed;
-  z-index: var(--z-index-popover, 110);
+  z-index: var(--z-index-popover, 1060);
+  display: flex;
+  gap: var(--button-gap, 0.75rem);
   pointer-events: none;
+
+  /* Animation */
+  --animation-duration: 200ms;
+  --animation-easing: cubic-bezier(0.2, 0, 0.2, 1);
 }
 
-.nav-button {
-  position: fixed;
+/* Position variants */
+.nav-buttons--top-left {
+  top: var(--edge-offset, 1.5rem);
+  left: var(--edge-offset, 1.5rem);
+  flex-direction: row;
+}
+
+.nav-buttons--top-right {
+  top: var(--edge-offset, 1.5rem);
+  right: var(--edge-offset, 1.5rem);
+  flex-direction: row;
+}
+
+.nav-buttons--top-center {
+  top: var(--edge-offset, 1.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: row;
+}
+
+.nav-buttons--bottom-left {
+  bottom: var(--edge-offset, 1.5rem);
+  left: var(--edge-offset, 1.5rem);
+  flex-direction: row;
+}
+
+.nav-buttons--bottom-right {
+  bottom: var(--edge-offset, 1.5rem);
+  right: var(--edge-offset, 1.5rem);
+  flex-direction: column-reverse;
+}
+
+.nav-buttons--bottom-center {
+  bottom: var(--edge-offset, 1.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  flex-direction: row;
+}
+
+/* Individual button styles */
+.dropbear-nav-btn {
+  /* Layout */
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: var(--nav-btn-size);
   height: var(--nav-btn-size);
 
   /* Visual */
   background-color: var(--nav-btn-bg);
-  color: var(--clr-white);
-  border: none;
+  color: var(--nav-btn-color);
+  border: 1px solid var(--nav-btn-border);
   border-radius: 50%;
   box-shadow: var(--nav-btn-shadow);
-
-  /* Layout */
-  display: flex;
-  align-items: center;
-  justify-content: center;
 
   /* Interaction */
   cursor: pointer;
   pointer-events: auto;
+  user-select: none;
+
+  /* Typography */
+  font-family: inherit;
+  font-size: 0;
 
   /* Animation */
-  transition: all 200ms cubic-bezier(0.4, 0, 0.2, 1);
-  will-change: transform, background-color, box-shadow;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing),
+    border-color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing);
+
+  /* Performance */
+  will-change: transform, box-shadow;
+  backface-visibility: hidden;
 }
 
-.nav-button i {
-  font-size: var(--nav-btn-icon-size);
-  line-height: 1;
+/* Backdrop blur effect */
+.dropbear-nav-buttons[data-use-backdrop-blur="true"] .dropbear-nav-btn {
+  backdrop-filter: var(--nav-btn-backdrop);
+  background-color: rgb(255 255 255 / 0.9);
+}
+
+/* Button icons */
+.dropbear-nav-btn__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  transition: transform var(--animation-duration) var(--animation-easing);
 }
 
 /* Button states */
-.nav-button:hover:not(:active) {
-  background-color: var(--nav-btn-hover-bg);
+.dropbear-nav-btn:hover:not(:active) {
+  background-color: var(--clr-grey-50, #f9fafb);
+  border-color: var(--clr-grey-300, #d1d5db);
+  box-shadow: var(--nav-btn-shadow-hover);
   transform: translateY(-2px);
-  box-shadow: var(--nav-btn-hover-shadow);
 }
 
-.nav-button:active {
+.dropbear-nav-btn:hover .dropbear-nav-btn__icon {
+  transform: scale(1.1);
+}
+
+.dropbear-nav-btn:active {
   transform: translateY(0);
   box-shadow: var(--nav-btn-shadow);
 }
 
-.nav-button:focus-visible {
+.dropbear-nav-btn:focus {
   outline: none;
-  box-shadow: 0 0 0 3px rgba(var(--nav-btn-bg), 0.4);
 }
 
-/* Scroll to top button */
-.scroll-top-button {
+.dropbear-nav-btn:focus-visible {
+  outline: 2px solid var(--clr-primary, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Scroll-to-top button specific styles */
+.dropbear-nav-btn--scroll-top {
   opacity: 0;
   visibility: hidden;
-  transform: translateY(1rem);
-  transition: opacity 0.3s ease,
-  visibility 0.3s ease,
-  transform 0.3s ease;
+  transform: translateY(1rem) scale(0.8);
+  transition:
+    opacity var(--animation-duration) var(--animation-easing),
+    visibility var(--animation-duration) var(--animation-easing),
+    transform var(--animation-duration) var(--animation-easing);
 }
 
-.scroll-top-button.visible {
+.dropbear-nav-btn--scroll-top.dropbear-nav-btn--visible {
   opacity: 1;
   visibility: visible;
-  transform: translateY(0);
+  transform: translateY(0) scale(1);
 }
 
-/* Mobile optimization */
+/* Button type specific colors */
+.dropbear-nav-btn--back {
+  --nav-btn-color: var(--clr-grey-600, #6b7280);
+}
+
+.dropbear-nav-btn--back:hover {
+  --nav-btn-color: var(--clr-grey-800, #1f2937);
+  background-color: var(--clr-blue-50, #eff6ff);
+  border-color: var(--clr-blue-200, #bfdbfe);
+}
+
+.dropbear-nav-btn--home {
+  --nav-btn-color: var(--clr-grey-600, #6b7280);
+}
+
+.dropbear-nav-btn--home:hover {
+  --nav-btn-color: var(--clr-grey-800, #1f2937);
+  background-color: var(--clr-green-50, #ecfdf5);
+  border-color: var(--clr-green-200, #bbf7d0);
+}
+
+.dropbear-nav-btn--scroll-top {
+  --nav-btn-color: var(--clr-grey-600, #6b7280);
+}
+
+.dropbear-nav-btn--scroll-top:hover {
+  --nav-btn-color: var(--clr-grey-800, #1f2937);
+  background-color: var(--clr-violet-50, #f5f3ff);
+  border-color: var(--clr-violet-200, #c4b5fd);
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .dropbear-nav-buttons {
+    --nav-btn-bg: var(--clr-grey-800, #1f2937);
+    --nav-btn-color: var(--clr-grey-200, #e5e7eb);
+    --nav-btn-border: var(--clr-grey-700, #374151);
+    --nav-btn-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  }
+
+  .dropbear-nav-buttons[data-use-backdrop-blur="true"] .dropbear-nav-btn {
+    background-color: rgb(31 41 55 / 0.9);
+  }
+
+  .dropbear-nav-btn:hover:not(:active) {
+    background-color: var(--clr-grey-700, #374151);
+    border-color: var(--clr-grey-600, #4b5563);
+  }
+
+  .dropbear-nav-btn--back:hover {
+    background-color: var(--clr-blue-900, #1e3a8a);
+    border-color: var(--clr-blue-700, #1d4ed8);
+  }
+
+  .dropbear-nav-btn--home:hover {
+    background-color: var(--clr-green-900, #14532d);
+    border-color: var(--clr-green-700, #15803d);
+  }
+
+  .dropbear-nav-btn--scroll-top:hover {
+    background-color: var(--clr-violet-900, #4c1d95);
+    border-color: var(--clr-violet-700, #6d28d9);
+  }
+}
+
+/* Mobile optimizations */
 @media (max-width: 768px) {
-  .navigation-buttons {
-    --nav-btn-size: 2.5rem;
-    --nav-btn-icon-size: 1rem;
+  .dropbear-nav-buttons {
+    --nav-btn-size: 2.75rem;
+    --edge-offset: 1rem;
+    --button-gap: 0.5rem;
   }
 
-  .back-button {
-    left: 1rem !important;
-  }
-
-  .home-button {
-    left: 4rem !important;
-  }
-
-  .scroll-top-button {
-    right: 1rem !important;
-    bottom: 1rem !important;
+  .dropbear-nav-btn__icon {
+    width: 1.125rem;
+    height: 1.125rem;
   }
 }
 
-/* Reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  .nav-button,
-  .scroll-top-button {
-    transition: none;
+/* Tablet optimizations */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .dropbear-nav-buttons {
+    --edge-offset: 1.25rem;
   }
 }
 
 /* High contrast mode */
-@media (forced-colors: active) {
-  .nav-button {
-    border: 2px solid ButtonText;
+@media (prefers-contrast: high) {
+  .dropbear-nav-btn {
+    border-width: 2px;
+    border-color: currentColor;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .dropbear-nav-btn,
+  .dropbear-nav-btn__icon,
+  .dropbear-nav-btn--scroll-top {
+    transition: none;
+  }
+
+  .dropbear-nav-btn:hover .dropbear-nav-btn__icon {
+    transform: none;
   }
 }
 
 /* Print styles */
 @media print {
-  .navigation-buttons {
-    display: none;
+  .dropbear-nav-buttons {
+    display: none !important;
+  }
+}
+
+/* Focus management for keyboard users */
+.dropbear-nav-btn:focus-visible {
+  z-index: 1;
+}
+
+/* Safe area insets for mobile devices */
+@supports (padding: max(0px)) {
+  .nav-buttons--top-left,
+  .nav-buttons--top-right,
+  .nav-buttons--top-center {
+    top: max(var(--edge-offset, 1.5rem), env(safe-area-inset-top));
+  }
+
+  .nav-buttons--bottom-left,
+  .nav-buttons--bottom-right,
+  .nav-buttons--bottom-center {
+    bottom: max(var(--edge-offset, 1.5rem), env(safe-area-inset-bottom));
+  }
+
+  .nav-buttons--top-left,
+  .nav-buttons--bottom-left {
+    left: max(var(--edge-offset, 1.5rem), env(safe-area-inset-left));
+  }
+
+  .nav-buttons--top-right,
+  .nav-buttons--bottom-right {
+    right: max(var(--edge-offset, 1.5rem), env(safe-area-inset-right));
   }
 }

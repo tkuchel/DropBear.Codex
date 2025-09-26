@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
@@ -12,322 +11,157 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     Represents a single step in the <see cref="DropBearProgressBar" /> component.
+///     Optimized step component for DropBearProgressBar with modern .NET 8+ features.
 /// </summary>
 public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 {
-    #region Transition Management
+    #region Constants
 
-    /// <summary>
-    ///     Starts the next pending progress transition if one is available.
-    /// </summary>
-    private async Task StartNextTransitionAsync()
-    {
-        await _transitionLock.WaitAsync();
-        try
-        {
-            if (_isTransitioning || _transitionQueue.IsEmpty)
-            {
-                return;
-            }
-
-            if (!_transitionQueue.TryDequeue(out var nextTransition))
-            {
-                return;
-            }
-
-            _currentTransition = nextTransition;
-            IsTransitioning = true;
-
-            var token = nextTransition.CancellationToken;
-            var startProgress = _displayProgress;
-            var targetProgress = _progress;
-            var duration = TimeSpan.FromMilliseconds(_config?.MinimumDisplayTimeMs ?? 500);
-
-            // Start the transition in a separate task.
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    // Generate a sequence of interpolated progress values.
-                    await foreach (var progress in ProgressInterpolation.GenerateProgressSequence(
-                                       startProgress, targetProgress, duration,
-                                       _config?.EasingFunction ?? EasingFunction.EaseInOutCubic,
-                                       cancellationToken: token))
-                    {
-                        if (IsDisposed)
-                        {
-                            break;
-                        }
-
-                        // Update the transition and display progress.
-                        nextTransition.UpdateProgress(progress);
-                        DisplayProgress = progress;
-                        await InvokeAsync(StateHasChanged);
-                    }
-
-                    nextTransition.Complete();
-                }
-                catch (OperationCanceledException)
-                {
-                    // Transition was canceled.
-                }
-                catch (Exception ex)
-                {
-                    Logger.Error(ex, "Error during progress transition in {ComponentName}",
-                        nameof(DropBearProgressBarStep));
-                    nextTransition.Complete(false);
-                }
-                finally
-                {
-                    // Ensure state updates are synchronized.
-                    await _transitionLock.WaitAsync(token);
-                    try
-                    {
-                        IsTransitioning = false;
-                        if (_currentTransition == nextTransition)
-                        {
-                            _currentTransition = null;
-                        }
-                    }
-                    finally
-                    {
-                        _transitionLock.Release();
-                    }
-
-                    // Recursively start the next transition if queued.
-                    await StartNextTransitionAsync();
-                }
-            }, token);
-        }
-        finally
-        {
-            _transitionLock.Release();
-        }
-    }
+    private static readonly TimeSpan DefaultAnimationDuration = TimeSpan.FromMilliseconds(250);
 
     #endregion
 
-    #region Disposal
+    #region Fields
 
-    /// <inheritdoc />
-    protected override async ValueTask DisposeAsyncCore()
-    {
-        // Cancel and dispose the active transition if any.
-        if (_currentTransition != null)
-        {
-            _currentTransition.Dispose();
-            _currentTransition = null;
-        }
+    private DateTime _statusChangedTime = DateTime.UtcNow;
+    private StepStatus _previousStatus = StepStatus.NotStarted;
+    private double _previousProgress;
 
-        // Dispose any queued transitions.
-        while (_transitionQueue.TryDequeue(out var transition))
-        {
-            transition.Dispose();
-        }
-
-        _transitionLock.Dispose();
-
-        await base.DisposeAsyncCore();
-    }
-
-    #endregion
-
-    #region Fields & Constants
-
-    // Lock used to synchronize transition animations.
-    private readonly SemaphoreSlim _transitionLock = new(1, 1);
-
-    // Queue to hold pending progress transitions.
-    private readonly ConcurrentQueue<ProgressTransition> _transitionQueue = new();
-
-    // The currently active transition (if any).
-    private ProgressTransition? _currentTransition;
-
-    // Tracking variables for step progress and status.
-    private bool _hasStarted;
-    private DateTimeOffset _startTime = DateTimeOffset.MinValue;
-    private StepStatus _status = StepStatus.NotStarted;
-
-    // Backing fields for parameters
-    private ProgressStepConfig? _config;
-    private double _progress;
-    private StepPosition _position;
-
-    // Internal state
-    private double _displayProgress;
-    private bool _isTransitioning;
-
-    // Flag to track if component should render
-    private bool _shouldRender = true;
-
-    // Cached class names
+    // Cached values for performance
+    private string? _cachedProgressStyle;
+    private double _cachedProgressValue = -1;
     private string? _cachedPositionClass;
-    private string? _cachedStatusClass;
+    private StepPosition _cachedPosition = (StepPosition)(-1);
+    private string? _cachedStatusAttribute;
+    private StepStatus _cachedStatus = (StepStatus)(-1);
 
     #endregion
 
-    #region Properties & Parameters
+    #region Parameters
 
     /// <summary>
-    ///     Required configuration defining step details (ID, Name, Tooltip, etc.).
+    ///     Gets or sets the step configuration.
+    /// </summary>
+    [Parameter, EditorRequired]
+    public required ProgressStepConfig Config { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the current progress (0-100).
     /// </summary>
     [Parameter]
-    [EditorRequired]
-    public required ProgressStepConfig Config
-    {
-        get => _config!;
-        set
-        {
-            if (_config != value)
-            {
-                _config = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public double Progress { get; set; }
 
     /// <summary>
-    ///     The raw progress value for this step (0-100).
+    ///     Gets or sets the current status of the step.
     /// </summary>
     [Parameter]
-    public double Progress
-    {
-        get => _progress;
-        set
-        {
-            if (Math.Abs(_progress - value) > 0.001)
-            {
-                _progress = value;
-                // Don't set _shouldRender here because we'll update through transitions
-            }
-        }
-    }
+    public StepStatus Status { get; set; } = StepStatus.NotStarted;
 
     /// <summary>
-    ///     The current status of the step (e.g., NotStarted, InProgress, Completed, Failed).
+    ///     Gets or sets the position of this step relative to the current step.
     /// </summary>
     [Parameter]
-    public StepStatus Status
-    {
-        get => _status;
-        set
-        {
-            if (_status == value)
-            {
-                return;
-            }
-
-            _status = value;
-            _cachedStatusClass = null; // Reset cached class
-            _shouldRender = true;
-
-            // Record start time when the step transitions into InProgress.
-            if (value == StepStatus.InProgress && !_hasStarted)
-            {
-                _hasStarted = true;
-                _startTime = DateTimeOffset.UtcNow;
-            }
-        }
-    }
+    public StepPosition Position { get; set; }
 
     /// <summary>
-    ///     The position of this step relative to others (Previous, Current, Next).
+    ///     Gets or sets the visual variant.
     /// </summary>
     [Parameter]
-    public StepPosition Position
-    {
-        get => _position;
-        set
-        {
-            if (_position != value)
-            {
-                _position = value;
-                _cachedPositionClass = null; // Reset cached class
-                _shouldRender = true;
-            }
-        }
-    }
+    public ProgressVariant Variant { get; set; } = ProgressVariant.Primary;
 
     /// <summary>
-    ///     Indicates whether a transition animation is currently in progress.
+    ///     Gets or sets whether to display in compact mode.
     /// </summary>
-    public bool IsTransitioning
-    {
-        get => _isTransitioning;
-        private set
-        {
-            if (_isTransitioning != value)
-            {
-                _isTransitioning = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    [Parameter]
+    public bool CompactMode { get; set; }
 
     /// <summary>
-    ///     The display value (possibly smoothed) used for the progress bar width.
+    ///     Gets or sets whether to show the progress bar within the step.
     /// </summary>
-    public double DisplayProgress
-    {
-        get => _displayProgress;
-        private set
-        {
-            if (Math.Abs(_displayProgress - value) > 0.001)
-            {
-                _displayProgress = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    [Parameter]
+    public bool ShowProgressBar { get; set; } = true;
 
     /// <summary>
-    ///     The duration this step has been in progress, if it has started.
+    ///     Gets or sets whether to show pulse animation for in-progress steps.
     /// </summary>
-    public TimeSpan RunningTime => _hasStarted ? DateTimeOffset.UtcNow - _startTime : TimeSpan.Zero;
+    [Parameter]
+    public bool ShowPulseAnimation { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets whether to show duration information.
+    /// </summary>
+    [Parameter]
+    public bool ShowDuration { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets the animation duration for transitions.
+    /// </summary>
+    [Parameter]
+    public TimeSpan AnimationDuration { get; set; } = DefaultAnimationDuration;
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    ///     Gets the time elapsed since the status last changed.
+    /// </summary>
+    public TimeSpan ElapsedTime => DateTime.UtcNow - _statusChangedTime;
+
+    /// <summary>
+    ///     Gets whether this step is currently active.
+    /// </summary>
+    public bool IsActive => Position == StepPosition.Current;
+
+    /// <summary>
+    ///     Gets whether this step has completed.
+    /// </summary>
+    public bool IsCompleted => Status == StepStatus.Completed;
+
+    /// <summary>
+    ///     Gets whether this step has failed.
+    /// </summary>
+    public bool HasFailed => Status == StepStatus.Failed;
 
     #endregion
 
     #region Lifecycle Methods
 
     /// <summary>
-    ///     Controls whether the component should render, optimizing for performance.
+    ///     Handles parameter changes with optimized caching.
     /// </summary>
-    /// <returns>True if the component should render, false otherwise.</returns>
-    protected override bool ShouldRender()
-    {
-        if (_shouldRender)
-        {
-            _shouldRender = false;
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <inheritdoc />
     protected override async Task OnParametersSetAsync()
     {
-        if (IsDisposed)
+        // Track status changes for timing
+        if (Status != _previousStatus)
         {
-            return;
+            _statusChangedTime = DateTime.UtcNow;
+            _previousStatus = Status;
+            _cachedStatusAttribute = null; // Clear cache
         }
 
-        try
+        // Clear cached styles when progress changes significantly
+        if (Math.Abs(Progress - _previousProgress) > 0.1)
         {
-            // If no transition is active and the displayed progress is not at the target,
-            // queue a new transition.
-            if (_transitionQueue.IsEmpty && !_isTransitioning && Math.Abs(_displayProgress - _progress) > 0.001)
-            {
-                var transition = new ProgressTransition();
-                _transitionQueue.Enqueue(transition);
-                await StartNextTransitionAsync();
-            }
+            _cachedProgressStyle = null;
+            _cachedProgressValue = -1;
+            _previousProgress = Progress;
         }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error in {ComponentName} OnParametersSetAsync", nameof(DropBearProgressBarStep));
-        }
+
+        await base.OnParametersSetAsync();
+    }
+
+    /// <summary>
+    ///     Optimized render control.
+    /// </summary>
+    protected override bool ShouldRender()
+    {
+        return !IsDisposed && (
+            Status != _previousStatus ||
+            Math.Abs(Progress - _previousProgress) > 0.1 ||
+            Position != _cachedPosition ||
+            _cachedProgressStyle == null
+        );
     }
 
     #endregion
@@ -335,21 +169,22 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     #region Helper Methods
 
     /// <summary>
-    ///     Returns the CSS class corresponding to the step's position.
+    ///     Gets the CSS class for the step position.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private string GetPositionClass()
     {
-        if (_cachedPositionClass != null)
+        if (Position == _cachedPosition && _cachedPositionClass != null)
         {
             return _cachedPositionClass;
         }
 
-        _cachedPositionClass = _position switch
+        _cachedPosition = Position;
+        _cachedPositionClass = Position switch
         {
-            StepPosition.Previous => "previous-step",
-            StepPosition.Current => "current-step",
-            StepPosition.Next => "next-step",
+            StepPosition.Previous => "step-previous",
+            StepPosition.Current => "step-current",
+            StepPosition.Next => "step-next",
             _ => string.Empty
         };
 
@@ -357,64 +192,133 @@ public sealed partial class DropBearProgressBarStep : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Returns the CSS class corresponding to the step's status.
+    ///     Gets the CSS class for compact mode.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private string GetStatusClass()
+    private string GetCompactClass()
     {
-        if (_cachedStatusClass != null)
-        {
-            return _cachedStatusClass;
-        }
-
-        _cachedStatusClass = _status switch
-        {
-            StepStatus.Completed => "success",
-            StepStatus.InProgress => "current",
-            StepStatus.Warning => "warning",
-            StepStatus.Failed => "error",
-            StepStatus.Skipped => "skipped",
-            _ => string.Empty
-        };
-
-        return _cachedStatusClass;
+        return CompactMode ? "step-compact" : string.Empty;
     }
 
     /// <summary>
-    ///     Returns a textual description of the step's position.
+    ///     Gets the data-status attribute value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private string GetStatusText()
+    private string GetStatusAttribute()
     {
-        return _position switch
+        if (Status == _cachedStatus && _cachedStatusAttribute != null)
         {
-            StepPosition.Previous => "Previous Step",
-            StepPosition.Current => "Current Step",
-            StepPosition.Next => "Next Step",
+            return _cachedStatusAttribute;
+        }
+
+        _cachedStatus = Status;
+        _cachedStatusAttribute = Status switch
+        {
+            StepStatus.NotStarted => "not-started",
+            StepStatus.InProgress => "in-progress",
+            StepStatus.Completed => "completed",
+            StepStatus.Warning => "warning",
+            StepStatus.Failed => "failed",
+            StepStatus.Skipped => "skipped",
+            _ => "unknown"
+        };
+
+        return _cachedStatusAttribute;
+    }
+
+    /// <summary>
+    ///     Gets the progress bar style with caching.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetProgressStyle()
+    {
+        var progress = Math.Clamp(Progress, 0, 100);
+
+        if (Math.Abs(progress - _cachedProgressValue) < 0.1 && _cachedProgressStyle != null)
+        {
+            return _cachedProgressStyle;
+        }
+
+        _cachedProgressValue = progress;
+        _cachedProgressStyle = $"width: {progress:F1}%; transition-duration: {AnimationDuration.TotalMilliseconds}ms;";
+
+        return _cachedProgressStyle;
+    }
+
+    /// <summary>
+    ///     Gets the appropriate status icon markup.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private MarkupString GetStatusIcon()
+    {
+        var iconSvg = Status switch
+        {
+            StepStatus.NotStarted => """<svg viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="3"/></svg>""",
+            StepStatus.InProgress => """<svg class="animate-spin" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-2a6 6 0 100-12 6 6 0 000 12z" clip-rule="evenodd" opacity="0.25"/><path d="M10 2a8 8 0 018 8h-2a6 6 0 00-6-6V2z"/></svg>""",
+            StepStatus.Completed => """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>""",
+            StepStatus.Warning => """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>""",
+            StepStatus.Failed => """<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>""",
+            StepStatus.Skipped => """<svg viewBox="0 0 20 20" fill="currentColor"><path d="M4.555 5.168A1 1 0 003 6v8a1 1 0 001.555.832L10 11.202V14a1 1 0 001.555.832l6-4a1 1 0 000-1.664l-6-4A1 1 0 0010 6v2.798l-5.445-3.63z"/></svg>""",
+            _ => """<svg viewBox="0 0 20 20" fill="currentColor"><circle cx="10" cy="10" r="2"/></svg>"""
+        };
+
+        return new MarkupString(iconSvg);
+    }
+
+    /// <summary>
+    ///     Gets the status message for the current step state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetStatusMessage()
+    {
+        return Status switch
+        {
+            StepStatus.NotStarted => "Waiting to start",
+            StepStatus.InProgress => "In progress...",
+            StepStatus.Completed => "Completed successfully",
+            StepStatus.Warning => "Completed with warnings",
+            StepStatus.Failed => "Failed",
+            StepStatus.Skipped => "Skipped",
             _ => string.Empty
         };
+    }
+
+    /// <summary>
+    ///     Formats the duration for display.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string FormatDuration()
+    {
+        var elapsed = ElapsedTime;
+
+        // Handle negative timespans
+        if (elapsed < TimeSpan.Zero)
+        {
+            return "0s";
+        }
+
+        // For durations >= 1 hour, show hours and minutes
+        if (elapsed.TotalHours >= 1)
+        {
+            // Use total hours (rounded down) for spans > 24 hours
+            var totalHours = (int)Math.Floor(elapsed.TotalHours);
+            return $"{totalHours}h {elapsed.Minutes:D2}m";
+        }
+
+        // For durations >= 1 minute, show minutes and seconds
+        if (elapsed.TotalMinutes >= 1)
+        {
+            return $"{elapsed.Minutes}m {elapsed.Seconds:D2}s";
+        }
+
+        // For durations < 1 minute, show seconds with proper rounding
+        var totalSeconds = elapsed.TotalSeconds;
+
+        // Use Math.Round with AwayFromZero to ensure 0.5 rounds up to 1
+        var roundedSeconds = (int)Math.Round(totalSeconds, MidpointRounding.AwayFromZero);
+
+        return $"{roundedSeconds}s";
     }
 
     #endregion
-}
-
-/// <summary>
-///     The position of a step relative to the entire progress sequence.
-/// </summary>
-public enum StepPosition
-{
-    /// <summary>
-    ///     Step is behind the current step.
-    /// </summary>
-    Previous,
-
-    /// <summary>
-    ///     Step is the current step in progress.
-    /// </summary>
-    Current,
-
-    /// <summary>
-    ///     Step is next (upcoming).
-    /// </summary>
-    Next
 }

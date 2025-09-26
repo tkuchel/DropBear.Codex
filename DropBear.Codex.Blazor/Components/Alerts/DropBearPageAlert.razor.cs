@@ -3,200 +3,274 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using Microsoft.AspNetCore.Components;
-using System.Timers;
-using Timer = System.Timers.Timer;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
 /// <summary>
-///     A page-level alert component for displaying success/error/warning/info messages.
+/// A modern, accessible page-level alert component optimized for .NET 8+ and Blazor Server.
 /// </summary>
 public partial class DropBearPageAlert : DropBearComponentBase
 {
-    private string _progressBarStyle = string.Empty;
-    private Timer? _closeTimer;
-    private Timer? _progressTimer;
-    private readonly int _progressUpdateInterval = 100; // ms
-    private int _elapsedTime = 0;
+    private readonly PeriodicTimer? _progressTimer;
+    private readonly CancellationTokenSource _alertCts = new();
+    private bool _isVisible;
+    private double _progressPercentage = 100.0;
+    private PageAlertType _type = PageAlertType.Info;
 
     /// <summary>
     /// The unique identifier for this alert instance.
     /// </summary>
-    [Parameter] public string AlertId { get; set; } = $"alert-{Guid.NewGuid():N}";
+    [Parameter]
+    public string AlertId { get; set; } = $"alert-{Guid.NewGuid():N}";
 
     /// <summary>
     /// The title to display in the alert header.
     /// </summary>
-    [Parameter] public string? Title { get; set; }
+    [Parameter]
+    public string? Title { get; set; }
 
     /// <summary>
     /// The message body of the alert, supports HTML.
     /// </summary>
-    [Parameter] public string? Message { get; set; }
+    [Parameter]
+    public string? Message { get; set; }
 
     /// <summary>
-    /// The type of alert to display (Success, Error, Warning, Info).
+    /// The type of alert to display.
     /// </summary>
-    [Parameter] public PageAlertType Type { get; set; } = PageAlertType.Info;
+    [Parameter]
+    public PageAlertType Type
+    {
+        get => _type;
+        set => _type = value;
+    }
 
     /// <summary>
     /// Whether the alert should remain visible until explicitly closed.
     /// </summary>
-    [Parameter] public bool IsPermanent { get; set; }
+    [Parameter]
+    public bool IsPermanent { get; set; }
 
     /// <summary>
     /// The duration in milliseconds to display the alert before auto-closing.
-    /// Only applies when IsPermanent is false.
     /// </summary>
-    [Parameter] public int? Duration { get; set; }
+    [Parameter]
+    public int? Duration { get; set; }
 
     /// <summary>
-    /// Event callback when the alert is closed either by timer or user action.
+    /// Event callback when the alert is closed.
     /// </summary>
-    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter]
+    public EventCallback OnClose { get; set; }
 
     /// <summary>
-    /// CSS class to apply based on alert type.
+    /// CSS class based on alert type.
     /// </summary>
     protected string AlertTypeCssClass => Type switch
     {
-        PageAlertType.Success => "success",
-        PageAlertType.Error => "error",
-        PageAlertType.Warning => "warning",
-        PageAlertType.Info => "info",
-        _ => "info"
+        PageAlertType.Success => "alert--success",
+        PageAlertType.Error => "alert--error",
+        PageAlertType.Warning => "alert--warning",
+        PageAlertType.Info => "alert--info",
+        _ => "alert--info"
     };
 
-    /// <summary>
-    /// Generates SVG path data for the alert icon based on type.
-    /// </summary>
-    protected string GetIconPath() => Type switch
+    protected override async Task OnInitializedAsync()
     {
-        PageAlertType.Success => "<path d=\"M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z\"></path>",
-        PageAlertType.Error => "<path d=\"M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z\"></path>",
-        PageAlertType.Warning => "<path d=\"M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z\"></path>",
-        PageAlertType.Info => "<path d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path>",
-        _ => "<path d=\"M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z\"></path>"
-    };
+        await base.OnInitializedAsync();
 
-    /// <summary>
-    /// Initiates alert setup after the component renders.
-    /// </summary>
-    protected override ValueTask InitializeComponentAsync()
+        // Show alert with a slight delay for smooth animation
+        await Task.Delay(50, ComponentToken);
+        _isVisible = true;
+        StateHasChanged();
+    }
+
+    protected override async ValueTask InitializeComponentAsync()
     {
         try
         {
-            if (!IsPermanent && Duration.HasValue && Duration.Value > 0)
+            if (!IsPermanent && Duration is > 0)
             {
-                InitializeTimers(Duration.Value);
+                _ = StartProgressTimerAsync();
             }
-
-            return base.InitializeComponentAsync();
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to initialize alert component");
-
-            // Close the alert immediately on error
-            _ = CloseAlertAsync();
-            return ValueTask.CompletedTask;
+            LogError("Failed to initialize alert component", ex);
+            await CloseAlertAsync();
         }
     }
 
     /// <summary>
-    /// Sets up the timer for alert auto-closing and progress visualization.
+    /// Starts the progress timer using modern PeriodicTimer.
     /// </summary>
-    /// <param name="duration">Duration in milliseconds</param>
-    private void InitializeTimers(int duration)
+    private async Task StartProgressTimerAsync()
     {
-        // Dispose any existing timers
-        _closeTimer?.Dispose();
-        _progressTimer?.Dispose();
+        if (Duration is null or <= 0) return;
 
-        // Main timer to close the alert
-        _closeTimer = new Timer(duration);
-        _closeTimer.AutoReset = false;
-        _closeTimer.Elapsed += async (sender, args) => await CloseAlertAsync();
+        var updateInterval = TimeSpan.FromMilliseconds(50); // Smooth 20fps updates
+        var totalDuration = TimeSpan.FromMilliseconds(Duration.Value);
+        var startTime = DateTime.UtcNow;
 
-        // Progress timer for visual feedback
-        _progressTimer = new Timer(_progressUpdateInterval);
-        _progressTimer.AutoReset = true;
-        _progressTimer.Elapsed += UpdateProgressBar;
+        using var timer = new PeriodicTimer(updateInterval);
 
-        // Start timers
-        _elapsedTime = 0;
-        _progressTimer.Start();
-        _closeTimer.Start();
-    }
-
-    /// <summary>
-    /// Updates the progress bar visualization.
-    /// </summary>
-    private void UpdateProgressBar(object? sender, ElapsedEventArgs e)
-    {
-        if (Duration is null || Duration.Value <= 0) return;
-
-        _elapsedTime += _progressUpdateInterval;
-        var percentage = Math.Min(100, (_elapsedTime * 100) / Duration.Value);
-        var scaleX = 1 - (percentage / 100.0);
-
-        // Only schedule UI updates if there's a meaningful change
-        if (percentage % 5 == 0 || percentage >= 100)
+        try
         {
-            _ = InvokeAsync(() =>
+            while (await timer.WaitForNextTickAsync(_alertCts.Token))
             {
-                _progressBarStyle = $"transform: scaleX({scaleX:F2});";
-                StateHasChanged();
-            });
+                var elapsed = DateTime.UtcNow - startTime;
+                var progress = Math.Min(1.0, elapsed.TotalMilliseconds / totalDuration.TotalMilliseconds);
+
+                _progressPercentage = (1.0 - progress) * 100.0;
+
+                if (progress >= 1.0)
+                {
+                    await CloseAlertAsync();
+                    break;
+                }
+
+                // Update UI every few ticks to balance smoothness and performance
+                if (elapsed.TotalMilliseconds % 200 < updateInterval.TotalMilliseconds)
+                {
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected when component is disposed
         }
     }
 
     /// <summary>
-    /// Handles user-initiated close request.
+    /// Handles the close button click.
     /// </summary>
-    protected async Task RequestClose()
+    private async Task HandleCloseClick()
     {
         await CloseAlertAsync();
     }
 
     /// <summary>
-    /// Performs alert closure operations.
+    /// Closes the alert with animation.
     /// </summary>
     private async Task CloseAlertAsync()
     {
-        // Avoid multiple closures
-        if (_closeTimer == null) return;
+        if (!_isVisible) return;
 
-        // Stop and dispose timers
-        _progressTimer?.Stop();
-        _closeTimer?.Stop();
-        _progressTimer?.Dispose();
-        _closeTimer?.Dispose();
-        _progressTimer = null;
-        _closeTimer = null;
-
-        // Invoke the close callback
         try
         {
-            await OnClose.InvokeAsync();
+            await _alertCts.CancelAsync();
+
+            _isVisible = false;
+            await InvokeAsync(StateHasChanged);
+
+            // Wait for animation to complete before invoking callback
+            await Task.Delay(300, ComponentToken);
+
+            if (OnClose.HasDelegate)
+            {
+                await OnClose.InvokeAsync();
+            }
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error in alert close callback");
+            LogError("Error closing alert", ex);
         }
     }
 
     /// <summary>
-    /// Ensures timers are properly disposed when the component is removed.
+    /// Handles animation end events.
     /// </summary>
-    protected override ValueTask DisposeAsyncCore()
+    private async Task OnAnimationEnd()
     {
-        _progressTimer?.Dispose();
-        _closeTimer?.Dispose();
-        _progressTimer = null;
-        _closeTimer = null;
-        return base.DisposeAsyncCore();
+        if (!_isVisible && OnClose.HasDelegate)
+        {
+            await OnClose.InvokeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Returns the appropriate icon for the alert type.
+    /// </summary>
+    private RenderFragment GetIcon() => Type switch
+    {
+        PageAlertType.Success => SuccessIcon,
+        PageAlertType.Error => ErrorIcon,
+        PageAlertType.Warning => WarningIcon,
+        PageAlertType.Info => InfoIcon,
+        _ => InfoIcon
+    };
+
+    private static readonly RenderFragment SuccessIcon = builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "viewBox", "0 0 24 24");
+        builder.AddAttribute(2, "fill", "none");
+        builder.AddAttribute(3, "stroke", "currentColor");
+        builder.AddAttribute(4, "stroke-width", "2");
+        builder.OpenElement(5, "path");
+        builder.AddAttribute(6, "d", "M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private static readonly RenderFragment ErrorIcon = builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "viewBox", "0 0 24 24");
+        builder.AddAttribute(2, "fill", "none");
+        builder.AddAttribute(3, "stroke", "currentColor");
+        builder.AddAttribute(4, "stroke-width", "2");
+        builder.OpenElement(5, "circle");
+        builder.AddAttribute(6, "cx", "12");
+        builder.AddAttribute(7, "cy", "12");
+        builder.AddAttribute(8, "r", "10");
+        builder.CloseElement();
+        builder.OpenElement(9, "path");
+        builder.AddAttribute(10, "d", "m15 9-6 6m0-6 6 6");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private static readonly RenderFragment WarningIcon = builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "viewBox", "0 0 24 24");
+        builder.AddAttribute(2, "fill", "none");
+        builder.AddAttribute(3, "stroke", "currentColor");
+        builder.AddAttribute(4, "stroke-width", "2");
+        builder.OpenElement(5, "path");
+        builder.AddAttribute(6, "d",
+            "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3ZM12 9v4M12 17h.01");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private static readonly RenderFragment InfoIcon = builder =>
+    {
+        builder.OpenElement(0, "svg");
+        builder.AddAttribute(1, "viewBox", "0 0 24 24");
+        builder.AddAttribute(2, "fill", "none");
+        builder.AddAttribute(3, "stroke", "currentColor");
+        builder.AddAttribute(4, "stroke-width", "2");
+        builder.OpenElement(5, "circle");
+        builder.AddAttribute(6, "cx", "12");
+        builder.AddAttribute(7, "cy", "12");
+        builder.AddAttribute(8, "r", "10");
+        builder.CloseElement();
+        builder.OpenElement(9, "path");
+        builder.AddAttribute(10, "d", "m9 12 2 2 4-4");
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+
+    protected override async ValueTask DisposeAsyncCore()
+    {
+        await _alertCts.CancelAsync();
+        _alertCts.Dispose();
+        await base.DisposeAsyncCore();
     }
 }

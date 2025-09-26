@@ -2,359 +2,337 @@
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
-using Microsoft.JSInterop;
+using Microsoft.AspNetCore.Components.Web;
 
 #endregion
 
 namespace DropBear.Codex.Blazor.Components.Validations;
 
 /// <summary>
-///     A Blazor component for displaying validation errors with a collapsible UI.
-///     Optimized for Blazor Server with proper thread safety and state management.
+///     Modern validation errors component optimized for .NET 8+ and Blazor Server.
+///     Features responsive design, smooth animations, and enhanced accessibility.
 /// </summary>
 public sealed partial class DropBearValidationErrorsComponent : DropBearComponentBase
 {
-    #region Constructor
+    #region Constants
 
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="DropBearValidationErrorsComponent" /> class.
-    /// </summary>
-    public DropBearValidationErrorsComponent()
-    {
-        // Create a unique component ID.
-        _componentId = $"validation-errors-{ComponentId}";
-    }
+    private static readonly TimeSpan AnimationDuration = TimeSpan.FromMilliseconds(300);
+    private static readonly TimeSpan _AutoCollapseDelay = TimeSpan.FromSeconds(5);
 
     #endregion
 
-    #region Cleanup
+    #region Fields
 
-    /// <summary>
-    ///     Cleans up JavaScript resources when the component is disposed.
-    /// </summary>
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        try
-        {
-            if (_jsModule != null)
-            {
-                await _stateSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
-                try
-                {
-                    // Create a temporary cancellation token with a 5-second timeout.
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                    await _jsModule.InvokeVoidAsync(
-                        $"{JsModuleName}API.dispose",
-                        cts.Token,
-                        _componentId);
-                    LogDebug("Validation container cleaned up: {Id}", _componentId);
-                }
-                finally
-                {
-                    _stateSemaphore.Release();
-                }
-            }
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException)
-        {
-            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to cleanup validation container", ex);
-        }
-        finally
-        {
-            try
-            {
-                _stateSemaphore.Dispose();
-            }
-            catch (ObjectDisposedException)
-            {
-                // Already disposed.
-            }
+    private readonly CancellationTokenSource _componentCts = new();
+    private readonly PeriodicTimer? _autoCollapseTimer;
 
-            _jsModule = null;
-            _isInitialized = false;
-        }
-    }
+    private ValidationResult? _previousValidationResult;
+    private bool _isCollapsed = true; // Start collapsed by default
+    private DateTime _lastErrorTime = DateTime.MinValue;
+    private int _previousErrorCount;
 
-    #endregion
-
-    #region Private Fields & Constants
-
-    private const string JsModuleName = JsModuleNames.ValidationErrors;
-
-    private readonly string _componentId;
-    private readonly SemaphoreSlim _stateSemaphore = new(1, 1);
-    private volatile bool _isInitialized;
-    private bool _isCollapsed;
-    private IJSObjectReference? _jsModule;
-
-    // Backing fields for parameters
-    private ValidationResult? _validationResult;
-    private bool _initialCollapsed;
-    private string? _cssClass;
-
-    // Flag to track if component should render
-    private bool _shouldRender = true;
+    // Cached computations for performance
+    private string? _cachedComponentId;
+    private bool _hasNewErrors;
 
     #endregion
 
     #region Parameters
 
     /// <summary>
-    ///     The validation result to display.
+    ///     Gets or sets the validation result to display.
     /// </summary>
     [Parameter]
-    public ValidationResult? ValidationResult
-    {
-        get => _validationResult;
-        set
-        {
-            if (_validationResult != value)
-            {
-                _validationResult = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public ValidationResult? ValidationResult { get; set; }
 
     /// <summary>
-    ///     Whether the component is initially collapsed.
+    ///     Gets or sets whether the component should start in a collapsed state.
     /// </summary>
     [Parameter]
-    public bool InitialCollapsed
-    {
-        get => _initialCollapsed;
-        set
-        {
-            if (_initialCollapsed != value)
-            {
-                _initialCollapsed = value;
-                if (!_isInitialized)
-                {
-                    _isCollapsed = value;
-                }
-
-                _shouldRender = true;
-            }
-        }
-    }
+    public bool InitiallyCollapsed { get; set; } = true;
 
     /// <summary>
-    ///     Optional additional CSS classes.
+    ///     Gets or sets whether to automatically collapse after a delay.
     /// </summary>
     [Parameter]
-    public string? CssClass
-    {
-        get => _cssClass;
-        set
-        {
-            if (_cssClass != value)
-            {
-                _cssClass = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public bool AutoCollapse { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets the delay before auto-collapsing.
+    /// </summary>
+    [Parameter]
+    public TimeSpan AutoCollapseDelay { get; set; } = _AutoCollapseDelay;
+
+    /// <summary>
+    ///     Gets or sets whether to show error count in the header.
+    /// </summary>
+    [Parameter]
+    public bool ShowErrorCount { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets whether to automatically expand when new errors are added.
+    /// </summary>
+    [Parameter]
+    public bool ExpandOnNewErrors { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets the maximum height for the error list (in pixels).
+    /// </summary>
+    [Parameter]
+    public int MaxHeight { get; set; } = 300;
+
+    /// <summary>
+    ///     Gets or sets additional CSS classes.
+    /// </summary>
+    [Parameter]
+    public string? CssClass { get; set; }
+
+    /// <summary>
+    ///     Event callback fired when the collapse state changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<bool> OnCollapseStateChanged { get; set; }
+
+    /// <summary>
+    ///     Event callback fired when an error is clicked.
+    /// </summary>
+    [Parameter]
+    public EventCallback<ValidationError> OnErrorClicked { get; set; }
 
     #endregion
 
-    #region Private Properties
+    #region Properties
 
     /// <summary>
-    ///     Determines if there are any validation errors.
+    ///     Gets whether there are validation errors to display.
     /// </summary>
-    private bool HasErrors => _validationResult?.HasErrors == true;
+    public bool HasErrors => ValidationResult?.HasErrors == true;
 
     /// <summary>
-    ///     Gets or sets the collapsed state and triggers ARIA attribute updates when changed.
+    ///     Gets the number of validation errors.
     /// </summary>
-    private bool IsCollapsed
-    {
-        get => _isCollapsed;
-        set
-        {
-            if (_isCollapsed == value)
-            {
-                return;
-            }
+    public int ErrorCount => ValidationResult?.Errors.Count ?? 0;
 
-            _isCollapsed = value;
-            _shouldRender = true;
+    /// <summary>
+    ///     Gets whether the component is currently collapsed.
+    /// </summary>
+    public bool IsCollapsed => _isCollapsed;
 
-            if (!IsDisposed)
-            {
-                // Fire off an update of ARIA attributes without awaiting.
-                _ = UpdateAriaAttributesAsync();
-            }
-        }
-    }
+    /// <summary>
+    ///     Gets whether there are new errors since last check.
+    /// </summary>
+    public bool HasNewErrors => _hasNewErrors;
+
+    /// <summary>
+    ///     Gets the unique component identifier.
+    /// </summary>
+    private string ComponentElementId => _cachedComponentId ??= $"validation-errors-{ComponentId}";
 
     #endregion
 
     #region Lifecycle Methods
 
     /// <summary>
-    ///     Controls whether the component should render, optimizing for performance.
+    ///     Component initialization.
     /// </summary>
-    /// <returns>True if the component should render, false otherwise.</returns>
-    protected override bool ShouldRender()
+    protected override async Task OnInitializedAsync()
     {
-        if (_shouldRender)
-        {
-            _shouldRender = false;
-            return true;
-        }
+        await base.OnInitializedAsync();
 
-        return false;
+        _isCollapsed = InitiallyCollapsed;
+        _previousValidationResult = ValidationResult;
+        _previousErrorCount = ErrorCount;
     }
 
     /// <summary>
-    ///     Initializes the component with the initial collapsed state.
+    ///     Handles parameter changes with optimized change detection.
     /// </summary>
-    protected override void OnInitialized()
+    protected override async Task OnParametersSetAsync()
     {
-        base.OnInitialized();
-        _isCollapsed = _initialCollapsed;
+        var hasResultChanged = !ReferenceEquals(ValidationResult, _previousValidationResult);
+        var hasErrorCountChanged = ErrorCount != _previousErrorCount;
 
-        if (HasErrors)
+        if (hasResultChanged || hasErrorCountChanged)
         {
-            LogDebug("Initialized with {Count} errors", _validationResult!.Errors.Count);
-        }
-    }
+            _hasNewErrors = HasErrors && ErrorCount > _previousErrorCount;
 
-    /// <summary>
-    ///     Initializes JavaScript resources when the component is first rendered.
-    /// </summary>
-    protected override async ValueTask InitializeComponentAsync()
-    {
-        if (_isInitialized || IsDisposed)
-        {
-            return;
-        }
-
-        try
-        {
-            await _stateSemaphore.WaitAsync(ComponentToken);
-
-            // Load the JavaScript module.
-            var jsModuleResult = await GetJsModuleAsync(JsModuleName);
-
-            if (jsModuleResult.IsFailure)
+            // Auto-expand on new errors if configured
+            if (_hasNewErrors && ExpandOnNewErrors && _isCollapsed)
             {
-                LogError("Failed to load JS module: {Module}", jsModuleResult.Exception);
-                return;
+                _isCollapsed = false;
+                _lastErrorTime = DateTime.UtcNow;
+                await OnCollapseStateChanged.InvokeAsync(false);
             }
 
-            _jsModule = jsModuleResult.Value;
-
-            // Create the validation container via JS interop.
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.createValidationContainer",
-                ComponentToken,
-                _componentId);
-
-            // Update ARIA attributes based on the initial collapsed state.
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.updateAriaAttributes",
-                ComponentToken,
-                _componentId,
-                _isCollapsed);
-
-            _isInitialized = true;
-            LogDebug("Validation container initialized: {Id}", _componentId);
+            _previousValidationResult = ValidationResult;
+            _previousErrorCount = ErrorCount;
         }
-        catch (Exception ex)
-        {
-            LogError("Failed to initialize validation container", ex);
-            throw;
-        }
-        finally
-        {
-            _stateSemaphore.Release();
-        }
+
+        await base.OnParametersSetAsync();
+    }
+
+    /// <summary>
+    ///     Optimized rendering control.
+    /// </summary>
+    protected override bool ShouldRender()
+    {
+        // Only render if we have meaningful changes
+        return !IsDisposed && (
+            !ReferenceEquals(ValidationResult, _previousValidationResult) ||
+            ErrorCount != _previousErrorCount ||
+            _hasNewErrors
+        );
+    }
+
+    /// <summary>
+    ///     Component disposal.
+    /// </summary>
+    protected override async ValueTask DisposeAsyncCore()
+    {
+        await _componentCts.CancelAsync();
+        _autoCollapseTimer?.Dispose();
+        _componentCts.Dispose();
+
+        await base.DisposeAsyncCore();
     }
 
     #endregion
 
-    #region UI Interaction Methods
+    #region Public API Methods
 
     /// <summary>
-    ///     Toggles the collapsed state of the validation errors UI.
+    ///     Programmatically toggles the collapsed state.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private async Task ToggleCollapseState()
+    /// <param name="collapsed">Optional specific state to set. If null, toggles current state.</param>
+    public async Task SetCollapsedStateAsync(bool? collapsed = null)
     {
-        if (!_isInitialized || IsDisposed)
-        {
-            return;
-        }
+        if (IsDisposed) return;
 
-        try
-        {
-            await _stateSemaphore.WaitAsync(ComponentToken);
+        var newState = collapsed ?? !_isCollapsed;
 
-            // Queue a state update that toggles the collapse state and updates ARIA attributes.
-            await QueueStateHasChangedAsync(async () =>
+        if (newState != _isCollapsed)
+        {
+            _isCollapsed = newState;
+
+            if (!_isCollapsed)
             {
-                IsCollapsed = !IsCollapsed;
-                await UpdateAriaAttributesAsync();
-            });
+                _lastErrorTime = DateTime.UtcNow;
+            }
 
-            LogDebug("Collapse state toggled: {State}", IsCollapsed);
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to toggle collapse state", ex);
-        }
-        finally
-        {
-            _stateSemaphore.Release();
+            await OnCollapseStateChanged.InvokeAsync(newState);
+            await InvokeAsync(StateHasChanged);
         }
     }
 
     /// <summary>
-    ///     Updates ARIA attributes via JS interop to reflect the current collapse state.
+    ///     Clears the new errors flag.
+    /// </summary>
+    public void ClearNewErrorsFlag()
+    {
+        _hasNewErrors = false;
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Handles the header click to toggle collapsed state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private async Task UpdateAriaAttributesAsync()
+    private async Task HandleHeaderClickAsync()
     {
-        if (!_isInitialized || IsDisposed)
-        {
-            return;
-        }
+        await SetCollapsedStateAsync();
+    }
 
-        try
+    /// <summary>
+    ///     Handles keyboard navigation for the header.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private async Task HandleHeaderKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key is "Enter" or " ")
         {
-            await _stateSemaphore.WaitAsync(ComponentToken);
-
-            // Ensure the JS module is available.
-            if (_jsModule == null)
-            {
-                await InitializeComponentAsync();
-            }
-
-            await _jsModule!.InvokeVoidAsync(
-                $"{JsModuleName}API.updateAriaAttributes",
-                ComponentToken,
-                _componentId,
-                _isCollapsed);
-
-            LogDebug("ARIA attributes updated: {Id}", _componentId);
+            await SetCollapsedStateAsync();
         }
-        catch (Exception ex)
+    }
+
+    /// <summary>
+    ///     Handles error item clicks.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private async Task HandleErrorClickAsync(ValidationError error)
+    {
+        if (OnErrorClicked.HasDelegate)
         {
-            LogError("Failed to update ARIA attributes", ex);
+            await OnErrorClicked.InvokeAsync(error);
         }
-        finally
-        {
-            _stateSemaphore.Release();
-        }
+    }
+
+    /// <summary>
+    ///     Gets the CSS classes for the main container.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetContainerClasses()
+    {
+        var classes = "validation-errors";
+
+        if (_isCollapsed) classes += " validation-errors--collapsed";
+        if (_hasNewErrors) classes += " validation-errors--new-errors";
+        if (!string.IsNullOrEmpty(CssClass)) classes += $" {CssClass}";
+
+        return classes;
+    }
+
+    /// <summary>
+    ///     Gets the style for the error list container.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetListStyle()
+    {
+        return $"max-height: {MaxHeight}px;";
+    }
+
+    /// <summary>
+    ///     Gets the error severity icon.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private MarkupString GetSeverityIcon(ValidationError error)
+    {
+        // You can extend this to support different severity levels
+        return new MarkupString("""
+                                    <svg viewBox="0 0 20 20" fill="currentColor" class="error-icon">
+                                        <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                    </svg>
+                                """);
+    }
+
+    /// <summary>
+    ///     Gets the expand/collapse chevron icon.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private MarkupString GetChevronIcon()
+    {
+        return new MarkupString("""
+                                    <svg viewBox="0 0 20 20" fill="currentColor" class="chevron-icon">
+                                        <path fill-rule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clip-rule="evenodd"/>
+                                    </svg>
+                                """);
+    }
+
+    /// <summary>
+    ///     Formats the parameter name for display.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static string FormatParameterName(string parameter)
+    {
+        if (string.IsNullOrEmpty(parameter)) return "Field";
+
+        // Convert camelCase to Title Case
+        return System.Text.RegularExpressions.Regex.Replace(parameter,
+            @"(\B[A-Z])", " $1");
     }
 
     #endregion
