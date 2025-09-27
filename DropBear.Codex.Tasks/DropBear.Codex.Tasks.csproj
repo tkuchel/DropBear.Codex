@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
 
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Version>2025.7.0</Version>
-    <PackageVersion>2025.7.0</PackageVersion>
+    <PackageVersion>2025.9.0</PackageVersion>
     <PackageId>DropBear.Codex.Tasks</PackageId>
     <Title>DropBear Codex Tasks</Title>
     <Description>Provides task management utilities for the DropBear.Codex ecosystem</Description>

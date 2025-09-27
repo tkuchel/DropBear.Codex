@@ -79,7 +79,6 @@ public sealed class ProgressStepState
     /// </summary>
     public bool HasFailed => _status == StepStatus.Failed;
 
-
     /// <summary>
     ///     Updates the progress and status of this step.
     /// </summary>

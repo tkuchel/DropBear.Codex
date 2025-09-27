@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 
 namespace DropBear.Codex.Blazor.Models;
 
-// <summary>
+/// <summary>
 ///     Represents a progress operation with automatic cleanup and state management.
 /// </summary>
 public sealed class ProgressOperation : IDisposable
@@ -119,7 +119,7 @@ public sealed class ProgressOperation : IDisposable
     /// <param name="message">Optional message.</param>
     public void UpdateProgress(double progress, string? message = null)
     {
-        ObjectDisposedException.ThrowIfDisposed(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         lock (_lock)
         {
@@ -138,7 +138,7 @@ public sealed class ProgressOperation : IDisposable
     /// <param name="status">Step status.</param>
     public void UpdateStepProgress(string stepId, double progress, StepStatus status)
     {
-        ObjectDisposedException.ThrowIfDisposed(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentException.ThrowIfNullOrEmpty(stepId);
 
         lock (_lock)
@@ -190,7 +190,7 @@ public sealed class ProgressOperation : IDisposable
     /// </summary>
     public void Complete()
     {
-        ObjectDisposedException.ThrowIfDisposed(_disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
 
         lock (_lock)
         {

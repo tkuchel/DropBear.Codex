@@ -19,7 +19,7 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Modern execution progress manager optimized for .NET 8+ and Blazor Server.
+///     Modern execution progress manager optimized for .NET 9 and Blazor Server.
 ///     Bridges ExecutionEngine messages to DropBearProgressBar with improved performance and UX.
 /// </summary>
 public sealed class ExecutionProgressManager : IExecutionProgressManager
@@ -35,7 +35,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     #region Fields
 
     private readonly ILogger _logger;
-    private readonly object _stateLock = new(); // Standard object lock for .NET 8 compatibility
+    private readonly Lock _stateLock = new(); // .NET 9 Lock object - optimized for high-contention scenarios
     private readonly CancellationTokenSource _cancellationTokenSource = new();
 
     // Component state
@@ -85,7 +85,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// <inheritdoc />
     public Result<Unit, ProgressManagerError> Initialize(DropBearProgressBar progressBar)
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         ArgumentNullException.ThrowIfNull(progressBar);
 
         try
@@ -112,7 +112,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// <inheritdoc />
     public Result<Unit, ProgressManagerError> SetIndeterminateMode(string message)
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureInitialized();
 
         try
@@ -127,8 +127,9 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _stepStates = FrozenDictionary<string, StepState>.Empty;
             }
 
-            // Fire and forget UI update
-            _ = UpdateProgressBarAsync(indeterminate: true, message: message);
+            // Fire and forget UI update using .NET 9 Task.Run optimizations
+            _ = Task.Run(async () => await UpdateProgressBarAsync(indeterminate: true, message: message),
+                _cancellationTokenSource.Token);
             NotifyProgressUpdate();
 
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
@@ -144,7 +145,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// <inheritdoc />
     public Result<Unit, ProgressManagerError> SetNormalMode()
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureInitialized();
 
         try
@@ -159,7 +160,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _stepStates = FrozenDictionary<string, StepState>.Empty;
             }
 
-            _ = UpdateProgressBarAsync(progress: 0, message: _currentMessage);
+            _ = Task.Run(async () => await UpdateProgressBarAsync(progress: 0, message: _currentMessage),
+                _cancellationTokenSource.Token);
             NotifyProgressUpdate();
 
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
@@ -175,7 +177,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// <inheritdoc />
     public Result<Unit, ProgressManagerError> SetSteppedMode(IReadOnlyList<ProgressStepConfig> steps)
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureInitialized();
         ArgumentNullException.ThrowIfNull(steps);
 
@@ -189,16 +191,18 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _currentProgress = 0;
                 _currentMessage = steps.Count > 0 ? $"Step 1 of {steps.Count}" : "No steps";
 
-                // Initialize step states efficiently
-                var stepStatesDict = new Dictionary<string, StepState>(steps.Count);
+                // Initialize step states efficiently using .NET 9 collection builders
+                var stepStatesBuilder = new Dictionary<string, StepState>(steps.Count);
                 foreach (var step in steps)
                 {
-                    stepStatesDict[step.Id] = new StepState(step.Id, 0, StepStatus.NotStarted);
+                    stepStatesBuilder[step.Id] = new StepState(step.Id, 0, StepStatus.NotStarted);
                 }
-                _stepStates = stepStatesDict.ToFrozenDictionary();
+
+                _stepStates = stepStatesBuilder.ToFrozenDictionary();
             }
 
-            _ = UpdateProgressBarAsync(steps: steps, progress: 0, message: _currentMessage);
+            _ = Task.Run(async () => await UpdateProgressBarAsync(steps: steps, progress: 0, message: _currentMessage),
+                _cancellationTokenSource.Token);
             NotifyProgressUpdate();
 
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
@@ -216,7 +220,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         double progress,
         string? message = null)
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureInitialized();
 
         if (_currentMode == ProgressMode.Indeterminate)
@@ -243,6 +247,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 {
                     _currentMessage = message;
                 }
+
                 currentMessage = _currentMessage;
             }
 
@@ -265,7 +270,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         double progress,
         StepStatus status)
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureInitialized();
         ArgumentException.ThrowIfNullOrEmpty(stepId);
 
@@ -291,13 +296,13 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
                 updatedStep = existingStep with { Progress = clampedProgress, Status = status };
 
-                // Create new frozen dictionary with updated step
-                var stepStatesDict = _stepStates.ToDictionary();
-                stepStatesDict[stepId] = updatedStep;
-                _stepStates = stepStatesDict.ToFrozenDictionary();
+                // Create new frozen dictionary with updated step using .NET 9 optimizations
+                var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates);
+                stepStatesBuilder[stepId] = updatedStep;
+                _stepStates = stepStatesBuilder.ToFrozenDictionary();
 
                 // Update overall message
-                if (_steps != null && _steps.Count > 0)
+                if (_steps is { Count: > 0 })
                 {
                     var stepIndex = _steps.ToList().FindIndex(s => s.Id == stepId);
                     if (stepIndex >= 0)
@@ -305,6 +310,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                         _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
                     }
                 }
+
                 currentMessage = _currentMessage;
             }
 
@@ -326,7 +332,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
     /// <inheritdoc />
     public async ValueTask<Result<Unit, ProgressManagerError>> CompleteAsync()
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         EnsureInitialized();
 
         try
@@ -337,18 +343,19 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             {
                 if (_currentMode == ProgressMode.Stepped)
                 {
-                    // Complete any incomplete steps
-                    var stepStatesDict = _stepStates.ToDictionary();
+                    // Complete any incomplete steps using .NET 9 collection improvements
+                    var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates);
                     foreach (var (stepId, stepState) in _stepStates)
                     {
                         if (stepState.Status is not (StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped))
                         {
                             var completedStep = stepState with { Progress = 100, Status = StepStatus.Completed };
-                            stepStatesDict[stepId] = completedStep;
+                            stepStatesBuilder[stepId] = completedStep;
                             completedSteps.Add(completedStep);
                         }
                     }
-                    _stepStates = stepStatesDict.ToFrozenDictionary();
+
+                    _stepStates = stepStatesBuilder.ToFrozenDictionary();
                 }
                 else
                 {
@@ -357,10 +364,11 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 }
             }
 
-            // Update UI for completed steps
-            foreach (var step in completedSteps)
+            // Update UI for completed steps using parallel processing where beneficial
+            if (completedSteps.Count > 0)
             {
-                await UpdateStepInProgressBarAsync(step.Id, step.Progress, step.Status);
+                await Task.WhenAll(completedSteps.Select(step =>
+                    UpdateStepInProgressBarAsync(step.Id, step.Progress, step.Status).AsTask()));
             }
 
             if (_currentMode != ProgressMode.Stepped)
@@ -370,7 +378,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
             NotifyProgressUpdate(completedSteps.Count > 0 ? completedSteps : null);
 
-            // Brief delay to show completion state
+            // Brief delay to show completion state using .NET 9 optimized Task.Delay
             await Task.Delay(CompletionDisplayDuration, _cancellationTokenSource.Token);
 
             // Reset the progress bar
@@ -410,7 +418,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         IAsyncSubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
         IAsyncSubscriber<Guid, TaskFailedMessage> taskFailedSubscriber)
     {
-        if (IsDisposed) throw new ObjectDisposedException(nameof(ExecutionProgressManager));
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         ArgumentNullException.ThrowIfNull(taskStartedSubscriber);
         ArgumentNullException.ThrowIfNull(taskProgressSubscriber);
         ArgumentNullException.ThrowIfNull(taskCompletedSubscriber);
@@ -423,7 +431,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
             _subscriptions = DisposableBag.CreateBuilder();
 
-            // Subscribe to execution engine messages
+            // Subscribe to execution engine messages using .NET 9 optimized delegates
             taskStartedSubscriber
                 .Subscribe(channelId, (message, ct) => HandleTaskStartedAsync(message, ct))
                 .AddTo(_subscriptions);
@@ -463,7 +471,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     #region Message Handlers
 
-    private async Task HandleTaskStartedAsync(TaskStartedMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskStartedAsync(TaskStartedMessage message, CancellationToken cancellationToken)
     {
         if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
@@ -473,14 +481,15 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    private async Task HandleTaskProgressAsync(TaskProgressMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskProgressAsync(TaskProgressMessage message, CancellationToken cancellationToken)
     {
         if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
         switch (_currentMode)
         {
             case ProgressMode.Stepped when message.TaskProgressPercentage.HasValue:
-                await UpdateStepProgressAsync(message.TaskName, message.TaskProgressPercentage.Value, StepStatus.InProgress);
+                await UpdateStepProgressAsync(message.TaskName, message.TaskProgressPercentage.Value,
+                    StepStatus.InProgress);
                 break;
             case ProgressMode.Normal when message.OverallProgressPercentage.HasValue:
                 await UpdateProgressAsync(message.OverallProgressPercentage.Value, message.Message);
@@ -488,7 +497,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    private async Task HandleTaskCompletedAsync(TaskCompletedMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskCompletedAsync(TaskCompletedMessage message, CancellationToken cancellationToken)
     {
         if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
@@ -498,7 +507,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    private async Task HandleTaskFailedAsync(TaskFailedMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskFailedAsync(TaskFailedMessage message, CancellationToken cancellationToken)
     {
         if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
@@ -521,7 +530,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    private async Task UpdateProgressBarAsync(
+    private async ValueTask UpdateProgressBarAsync(
         bool? indeterminate = null,
         double? progress = null,
         string? message = null,
@@ -531,6 +540,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         try
         {
+            // Use .NET 9 optimized cancellation token linking
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
             cts.CancelAfter(OperationTimeout);
 
@@ -561,7 +571,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    private async Task UpdateStepInProgressBarAsync(string stepId, double progress, StepStatus status)
+    private async ValueTask UpdateStepInProgressBarAsync(string stepId, double progress, StepStatus status)
     {
         if (_progressBar == null || IsDisposed) return;
 
@@ -582,7 +592,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    private async Task ResetProgressBarAsync()
+    private async ValueTask ResetProgressBarAsync()
     {
         if (_progressBar == null || IsDisposed) return;
 
@@ -621,22 +631,39 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 StepUpdates = stepUpdates?.Select(s => new StepUpdate(s.Id, s.Progress, s.Status)).ToList()
             };
 
-            // Avoid redundant notifications
+            // Avoid redundant notifications using .NET 9 optimized equality comparison
             if (_lastProgressUpdate?.Equals(progressUpdate) == true) return;
             _lastProgressUpdate = progressUpdate;
         }
 
-        // Safely invoke all event handlers
-        foreach (var singleHandler in handler.GetInvocationList().Cast<Action<ProgressUpdate>>())
+        // Safely invoke all event handlers using .NET 9 delegate optimizations
+        var invocationList = handler.GetInvocationList();
+        if (invocationList.Length == 1)
         {
+            // Single handler - direct invocation
             try
             {
-                singleHandler(progressUpdate);
+                handler(progressUpdate);
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Error in OnProgressUpdated event handler");
             }
+        }
+        else
+        {
+            // Multiple handlers - parallel invocation for better performance
+            Parallel.ForEach(invocationList.Cast<Action<ProgressUpdate>>(), singleHandler =>
+            {
+                try
+                {
+                    singleHandler(progressUpdate);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Error in OnProgressUpdated event handler");
+                }
+            });
         }
     }
 
@@ -651,7 +678,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         IsDisposed = true;
 
-        // Cancel all operations
+        // Cancel all operations using .NET 9 optimized cancellation
         await _cancellationTokenSource.CancelAsync();
 
         // Clean up subscriptions

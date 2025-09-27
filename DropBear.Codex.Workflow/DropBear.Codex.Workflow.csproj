@@ -6,6 +6,8 @@
         <Nullable>enable</Nullable>
         <AssemblyVersion>2025.7.0</AssemblyVersion>
         <FileVersion>2025.7.0</FileVersion>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Version>2025.9.0</Version>
     </PropertyGroup>
 
     <ItemGroup>

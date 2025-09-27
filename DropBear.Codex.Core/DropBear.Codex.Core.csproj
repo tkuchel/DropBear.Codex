@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <!-- Target Framework -->
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
 
     <!-- Language Features -->
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,7 +12,7 @@
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <Version>2025.7.0</Version>
-    <PackageVersion>2025.7.0</PackageVersion> <!-- Specifies the version of the package -->
+    <PackageVersion>2025.9.0</PackageVersion> <!-- Specifies the version of the package -->
     <PackageId>DropBear.Codex.Core</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex Core</Title>
     <Description>The core set of classes used throughout the DropBear.Codex.* libraries</Description>
