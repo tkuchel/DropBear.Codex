@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
@@ -15,7 +16,7 @@ namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
 ///     An abstract base class for all Result types, providing common functionality.
-///     Consolidates shared behavior for result types and provides a unified foundation.
+///     Optimized for .NET 9 with enhanced performance, reduced allocations, and improved diagnostics.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public abstract class ResultBase : IResult, IResultDiagnostics
@@ -24,20 +25,24 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     private protected static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ResultBase>();
     private protected static readonly IResultTelemetry Telemetry = new DefaultResultTelemetry();
 
-    // Set of valid result states for validation
-    private static readonly HashSet<ResultState> ValidStates = [..Enum.GetValues<ResultState>()];
+    // Frozen set for better performance in .NET 9
+    private static readonly FrozenSet<ResultState> ValidStates =
+        Enum.GetValues<ResultState>().ToFrozenSet();
 
     // Diagnostic info for this result
     private readonly DiagnosticInfo _diagnosticInfo;
 
-    // Exception collection for this result
-    private readonly IReadOnlyCollection<Exception> _exceptions;
+    // Exception storage - using array for better performance
+    private readonly Exception[] _exceptions;
 
-    // Gets the creation timestamp for this result
+    /// <summary>
+    ///     Gets the creation timestamp for this result.
+    /// </summary>
     public DateTime CreatedAt => _diagnosticInfo.CreatedAt;
 
     /// <summary>
     ///     Initializes a new instance of <see cref="ResultBase" />.
+    ///     Optimized constructor for .NET 9 with improved validation and reduced allocations.
     /// </summary>
     /// <param name="state">The <see cref="ResultState" /> (e.g., Success, Failure, etc.).</param>
     /// <param name="exception">An optional <see cref="Exception" /> if the result failed.</param>
@@ -47,7 +52,7 @@ public abstract class ResultBase : IResult, IResultDiagnostics
 
         State = state;
         Exception = exception;
-        _exceptions = CreateExceptionCollection(exception);
+        _exceptions = CreateExceptionArray(exception);
 
         // Initialize diagnostic data
         _diagnosticInfo = new DiagnosticInfo(
@@ -56,13 +61,16 @@ public abstract class ResultBase : IResult, IResultDiagnostics
             DateTime.UtcNow,
             Activity.Current?.Id);
 
-        // Track telemetry
-        Telemetry.TrackResultCreated(state, GetType());
-
-        if (exception != null)
+        // Track telemetry asynchronously to avoid blocking
+        _ = Task.Run(() =>
         {
-            Telemetry.TrackException(exception, state, GetType());
-        }
+            Telemetry.TrackResultCreated(state, GetType());
+
+            if (exception != null)
+            {
+                Telemetry.TrackException(exception, state, GetType());
+            }
+        });
     }
 
     #region IResult Properties
@@ -96,9 +104,14 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     public Exception? Exception { get; }
 
     /// <summary>
-    ///     Gets all exceptions associated with this result.
+    ///     Gets all exceptions associated with this result as a span.
     /// </summary>
-    public virtual IReadOnlyCollection<Exception> Exceptions => _exceptions;
+    public virtual ReadOnlySpan<Exception> Exceptions => _exceptions.AsSpan();
+
+    /// <summary>
+    ///     Gets all exceptions as a collection for compatibility.
+    /// </summary>
+    IReadOnlyCollection<Exception> IResult.Exceptions => _exceptions;
 
     #endregion
 
@@ -107,27 +120,23 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     /// <summary>
     ///     Gets diagnostic information about this result.
     /// </summary>
-    public DiagnosticInfo GetDiagnostics()
-    {
-        return _diagnosticInfo;
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public DiagnosticInfo GetDiagnostics() => _diagnosticInfo;
 
     /// <summary>
     ///     Gets the trace context for this result operation.
     /// </summary>
-    public ActivityContext GetTraceContext()
-    {
-        return Activity.Current?.Context ?? default;
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ActivityContext GetTraceContext() => Activity.Current?.Context ?? default;
 
     #endregion
 
-    #region Protected Methods
+    #region Protected Methods - Enhanced for .NET 9
 
     /// <summary>
     ///     Executes the specified action safely, catching and logging any exceptions.
     /// </summary>
-    /// <param name="action">The action to execute.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     protected static void SafeExecute(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -139,16 +148,34 @@ public abstract class ResultBase : IResult, IResultDiagnostics
         catch (Exception ex)
         {
             Logger.Error(ex, "Exception during synchronous execution");
-            Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase));
+            _ = Task.Run(() => Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase)));
         }
     }
 
     /// <summary>
-    ///     Executes an asynchronous action safely, catching and logging any exceptions.
+    ///     Executes an asynchronous action safely, optimized for ValueTask.
     /// </summary>
-    /// <param name="action">The asynchronous action to execute.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>A <see cref="ValueTask" /> representing the asynchronous operation.</returns>
+    protected static async ValueTask SafeExecuteAsync(
+        Func<CancellationToken, ValueTask> action,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+
+        try
+        {
+            await action(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.Error(ex, "Exception during asynchronous execution");
+            _ = Task.Run(() => Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase)),
+                cancellationToken);
+        }
+    }
+
+    /// <summary>
+    ///     Executes an asynchronous Task action safely (legacy support).
+    /// </summary>
     protected static async ValueTask SafeExecuteAsync(
         Func<CancellationToken, Task> action,
         CancellationToken cancellationToken = default)
@@ -162,27 +189,21 @@ public abstract class ResultBase : IResult, IResultDiagnostics
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.Error(ex, "Exception during asynchronous execution");
-            Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase));
+            _ = Task.Run(() => Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase)),
+                cancellationToken);
         }
     }
 
     /// <summary>
     ///     Executes an asynchronous action safely with a timeout.
     /// </summary>
-    /// <param name="action">The asynchronous action to execute.</param>
-    /// <param name="timeout">The timeout period.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>A <see cref="ValueTask" /> representing the asynchronous operation.</returns>
     protected static async ValueTask SafeExecuteWithTimeoutAsync(
-        Func<CancellationToken, Task> action,
+        Func<CancellationToken, ValueTask> action,
         TimeSpan timeout,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(action);
-        if (timeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be greater than zero.");
-        }
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(timeout);
@@ -194,7 +215,7 @@ public abstract class ResultBase : IResult, IResultDiagnostics
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Logger.Error(ex, "Exception during asynchronous execution with timeout");
-            Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase));
+            _ = Task.Run(() => Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase)), cts.Token);
         }
     }
 
@@ -205,8 +226,6 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     /// <summary>
     ///     Validates that the specified state is a valid <see cref="ResultState" />.
     /// </summary>
-    /// <param name="state">The state to validate.</param>
-    /// <exception cref="ResultValidationException">Thrown if the state is invalid.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ValidateState(ResultState state)
     {
@@ -217,52 +236,68 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     }
 
     /// <summary>
-    ///     Creates a collection of exceptions from a single exception.
+    ///     Creates an array of exceptions from a single exception.
     /// </summary>
-    /// <param name="exception">The exception to include in the collection, if any.</param>
-    /// <returns>A read-only collection of exceptions.</returns>
-    private static IReadOnlyCollection<Exception> CreateExceptionCollection(Exception? exception)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Exception[] CreateExceptionArray(Exception? exception)
     {
-        if (exception is null)
+        return exception switch
         {
-            return Array.Empty<Exception>();
-        }
+            null => [],
+            AggregateException aggregateException => aggregateException.InnerExceptions.ToArray(),
+            _ => [exception]
+        };
+    }
 
-        if (exception is AggregateException aggregateException)
-        {
-            return aggregateException.InnerExceptions;
-        }
+    #endregion
 
-        return new[] { exception };
+    #region Performance Metrics
+
+    /// <summary>
+    ///     Gets performance metrics for this result instance.
+    /// </summary>
+    public ResultPerformanceMetrics GetPerformanceMetrics()
+    {
+        var elapsed = DateTime.UtcNow - CreatedAt;
+        return new ResultPerformanceMetrics(
+            elapsed,
+            _exceptions.Length,
+            State,
+            GetType().Name);
     }
 
     #endregion
 
     #region Debugging Support
 
-    private string DebuggerDisplay => $"State = {State}, Success = {IsSuccess}";
+    private string DebuggerDisplay => $"State = {State}, Success = {IsSuccess}, Exceptions = {_exceptions.Length}";
 
     [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebugView
+    private Dictionary<string, object> DebugView
     {
         get
         {
-            var items = new Dictionary<string, object>
-                (StringComparer.Ordinal)
-                {
-                    { "State", State },
-                    { "IsSuccess", IsSuccess },
-                    { "IsCompleteSuccess", IsCompleteSuccess },
-                    { "HasException", Exception != null }
-                };
+            var items = new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                { "State", State },
+                { "IsSuccess", IsSuccess },
+                { "IsCompleteSuccess", IsCompleteSuccess },
+                { "ExceptionCount", _exceptions.Length },
+                { "CreatedAt", CreatedAt },
+                { "Age", DateTime.UtcNow - CreatedAt }
+            };
 
             if (Exception != null)
             {
-                items.Add("Exception", Exception.Message);
+                items.Add("PrimaryException", Exception.Message);
             }
 
-            return string.Join(Environment.NewLine,
-                items.Select(kvp => $"{kvp.Key} = {kvp.Value}"));
+            if (_exceptions.Length > 1)
+            {
+                items.Add("AllExceptions", _exceptions.Select(e => e.Message).ToArray());
+            }
+
+            return items;
         }
     }
 

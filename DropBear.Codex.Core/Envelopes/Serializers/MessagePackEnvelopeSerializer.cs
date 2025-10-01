@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Frozen;
 using System.Text.Json;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Extensions;
@@ -13,54 +14,48 @@ namespace DropBear.Codex.Core.Envelopes.Serializers;
 
 /// <summary>
 ///     Provides MessagePack-based serialization for high-performance binary envelope serialization.
+///     Optimized for .NET 9.
 /// </summary>
 public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
 {
     private readonly IResultTelemetry _telemetry;
+    private readonly MessagePackSerializerOptions _options;
 
     /// <summary>
-    ///     Initializes an instance of <see cref="MessagePackEnvelopeSerializer" /> with optional telemetry.
+    ///     Initializes a new instance with optional custom options.
     /// </summary>
-    /// <param name="telemetry">Optional telemetry interface for recording serialization diagnostics.</param>
-    public MessagePackEnvelopeSerializer(IResultTelemetry? telemetry = null)
+    public MessagePackEnvelopeSerializer(
+        MessagePackSerializerOptions? options = null,
+        IResultTelemetry? telemetry = null)
     {
         _telemetry = telemetry ?? new DefaultResultTelemetry();
+        _options = options ?? MessagePackConfig.GetOptions();
     }
 
+    #region IEnvelopeSerializer Implementation
 
     /// <inheritdoc />
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="envelope" /> is null.</exception>
-    /// <remarks>
-    ///     For the <see cref="string" /> output, we simply serialize the DTO to JSON for convenience/human-readability.
-    /// </remarks>
     public string Serialize<T>(Envelope<T> envelope)
     {
-        if (envelope == null)
-        {
-            throw new ArgumentNullException(nameof(envelope), "Envelope cannot be null.");
-        }
+        ArgumentNullException.ThrowIfNull(envelope);
 
         try
         {
+            // For string output, use JSON as MessagePack is binary
             var dto = envelope.GetDto();
             return JsonSerializer.Serialize(dto);
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T));
-            throw new InvalidOperationException("Failed to serialize envelope to JSON fallback.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackSerialize");
+            throw new InvalidOperationException("Failed to serialize envelope.", ex);
         }
     }
 
     /// <inheritdoc />
-    /// <exception cref="ArgumentException">Thrown if <paramref name="data" /> is null or whitespace.</exception>
-    /// <exception cref="MessagePackSerializationException">Thrown if the data cannot be deserialized.</exception>
     public Envelope<T> Deserialize<T>(string data)
     {
-        if (string.IsNullOrWhiteSpace(data))
-        {
-            throw new ArgumentException("Serialized data cannot be null or whitespace.", nameof(data));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(data);
 
         try
         {
@@ -70,69 +65,90 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
                 throw new MessagePackSerializationException("Deserialization returned null DTO.");
             }
 
-            return new Envelope<T>(dto, _telemetry);
+            return CreateEnvelopeFromDto(dto);
         }
         catch (MessagePackSerializationException)
         {
-            // Already a specialized exception; just rethrow
             throw;
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T));
-            throw new MessagePackSerializationException("Failed to deserialize envelope from JSON fallback.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackDeserialize");
+            throw new MessagePackSerializationException("Failed to deserialize envelope.", ex);
         }
     }
 
     /// <inheritdoc />
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="envelope" /> is null.</exception>
     public byte[] SerializeToBinary<T>(Envelope<T> envelope)
     {
-        if (envelope == null)
-        {
-            throw new ArgumentNullException(nameof(envelope), "Envelope cannot be null.");
-        }
+        ArgumentNullException.ThrowIfNull(envelope);
 
         try
         {
             var dto = envelope.GetDto();
-            var options = MessagePackConfig.GetOptions(); // Optional: use custom options
-
-            return MessagePackSerializer.Serialize(dto, options);
+            return MessagePackSerializer.Serialize(dto, _options);
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T));
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackSerializeToBinary");
             throw new MessagePackSerializationException("Failed to serialize envelope to MessagePack.", ex);
         }
     }
 
     /// <inheritdoc />
-    /// <exception cref="ArgumentException">Thrown if <paramref name="data" /> is null or empty.</exception>
-    /// <exception cref="MessagePackSerializationException">Thrown if the data cannot be deserialized.</exception>
     public Envelope<T> DeserializeFromBinary<T>(byte[] data)
     {
-        if (data == null || data.Length == 0)
+        ArgumentNullException.ThrowIfNull(data);
+
+        if (data.Length == 0)
         {
-            throw new ArgumentException("Binary data cannot be null or empty.", nameof(data));
+            throw new ArgumentException("Binary data cannot be empty.", nameof(data));
         }
 
         try
         {
-            var options = MessagePackConfig.GetOptions(); // Optional: use custom options
-
-            var dto = MessagePackSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, options);
-            return new Envelope<T>(dto, _telemetry);
+            var dto = MessagePackSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
+            return CreateEnvelopeFromDto(dto);
         }
         catch (MessagePackSerializationException)
         {
-            // Rethrow for the caller to handle if needed
             throw;
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T));
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackDeserializeFromBinary");
             throw new MessagePackSerializationException("Failed to deserialize envelope from MessagePack.", ex);
         }
     }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates an envelope from a deserialized DTO.
+    /// </summary>
+    private Envelope<T> CreateEnvelopeFromDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    {
+        var headers = dto.Headers?.ToFrozenDictionary(StringComparer.Ordinal)
+                      ?? System.Collections.Frozen.FrozenDictionary<string, object>.Empty;
+
+        byte[]? encryptedPayload = null;
+        if (!string.IsNullOrEmpty(dto.EncryptedPayload))
+        {
+            encryptedPayload = Convert.FromBase64String(dto.EncryptedPayload);
+        }
+
+        return new Envelope<T>(
+            dto.Payload,
+            headers,
+            dto.IsSealed,
+            dto.CreatedDate,
+            dto.SealedDate,
+            dto.Signature,
+            encryptedPayload,
+            _telemetry);
+    }
+
+    #endregion
 }

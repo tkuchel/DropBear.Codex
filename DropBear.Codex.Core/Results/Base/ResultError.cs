@@ -1,9 +1,10 @@
 ﻿#region
 
-using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
+using DropBear.Codex.Core.Enums;
 
 #endregion
 
@@ -11,27 +12,37 @@ namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
 ///     An abstract record representing an error in a result-based operation.
-///     This forms the base type for all domain-specific errors in the Result pattern.
+///     Optimized for .NET 9+ with zero-allocation patterns and modern performance characteristics.
 /// </summary>
 [DebuggerDisplay("{ToString(),nq}")]
 public abstract record ResultError : ISpanFormattable
 {
     private const string DefaultErrorMessage = "An unknown error occurred";
 
-    // Cache frequently-used error messages to reduce string allocations
-    private static readonly ConcurrentDictionary<string, string> MessageCache = new(StringComparer.Ordinal);
+    // Pre-defined common messages for zero-allocation scenarios
+    private static readonly FrozenDictionary<string, string> CommonMessages =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["timeout"] = "The operation timed out",
+            ["cancelled"] = "The operation was cancelled",
+            ["unauthorized"] = "Access denied",
+            ["notfound"] = "Resource not found",
+            ["invalid"] = "Invalid input provided",
+            ["network"] = "Network connection error",
+            ["server"] = "Internal server error",
+            ["validation"] = "Validation failed"
+        }.ToFrozenDictionary(StringComparer.Ordinal);
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ResultError" /> record.
     /// </summary>
     /// <param name="message">The error message describing the failure condition.</param>
     /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    /// <exception cref="ArgumentException">Thrown if <paramref name="message" /> is null or whitespace.</exception>
     protected ResultError(string message, DateTime? timestamp = null)
     {
-        Message = ValidateAndFormatMessage(message);
+        Message = string.IsNullOrWhiteSpace(message) ? DefaultErrorMessage : message.Trim();
         Timestamp = timestamp ?? DateTime.UtcNow;
-        ErrorId = Activity.Current?.Id ?? string.Empty;
+        ErrorId = GenerateErrorId();
     }
 
     /// <summary>
@@ -45,35 +56,34 @@ public abstract record ResultError : ISpanFormattable
     public DateTime Timestamp { get; init; }
 
     /// <summary>
-    ///     Gets the unique identifier for this error instance, correlating with telemetry.
+    ///     Gets the unique identifier for this error instance.
     /// </summary>
     public string ErrorId { get; init; }
 
     /// <summary>
     ///     Additional context or metadata associated with this error.
+    ///     Uses FrozenDictionary for better read performance.
     /// </summary>
     [JsonExtensionData]
-    public Dictionary<string, object>? Metadata { get; protected internal init; }
+    public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 
     /// <summary>
-    ///     Indicates whether this error is a default/unknown error (i.e., no message provided).
-    /// </summary>
-    [JsonIgnore]
-    public bool IsDefaultError => Message.Equals(DefaultErrorMessage, StringComparison.Ordinal);
-
-    /// <summary>
-    ///     Gets how long ago (relative to now) this error occurred.
+    ///     Gets how long ago this error occurred relative to UTC now.
     /// </summary>
     [JsonIgnore]
     public TimeSpan Age => DateTime.UtcNow - Timestamp;
 
+    /// <summary>
+    ///     Gets the severity level of this error based on its age and type.
+    /// </summary>
+    [JsonIgnore]
+    public ErrorSeverity Severity => DetermineSeverity();
+
     #region String Formatting
 
     /// <inheritdoc />
-    public string ToString(string? format, IFormatProvider? formatProvider)
-    {
-        return ToString();
-    }
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public string ToString(string? format, IFormatProvider? formatProvider) => ToString();
 
     /// <inheritdoc />
     public bool TryFormat(
@@ -95,11 +105,29 @@ public abstract record ResultError : ISpanFormattable
     }
 
     /// <summary>
-    ///     Creates a string representation of this error, including how long ago it occurred.
+    ///     Creates an optimized string representation of this error.
     /// </summary>
     public override string ToString()
     {
-        return $"{GetType().Name}: {Message} (occurred {FormatAge(Age)} ago)";
+        var typeName = GetType().Name;
+        var ageText = FormatAge(Age);
+        return $"{typeName}: {Message} (occurred {ageText} ago)";
+    }
+
+    /// <summary>
+    ///     Creates a detailed string representation including metadata.
+    /// </summary>
+    public string ToDetailedString()
+    {
+        if (Metadata is null || Metadata.Count == 0)
+        {
+            return ToString();
+        }
+
+        var metadataString = string.Join(", ",
+            Metadata.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+
+        return $"{ToString()} [Metadata: {metadataString}]";
     }
 
     #endregion
@@ -107,46 +135,77 @@ public abstract record ResultError : ISpanFormattable
     #region Error Modification Methods
 
     /// <summary>
-    ///     Creates a new error object with an updated message.
+    ///     Creates a new error with additional metadata.
     /// </summary>
-    /// <param name="newMessage">The new error message.</param>
-    /// <returns>A new <see cref="ResultError" /> instance with the updated message.</returns>
-    protected ResultError WithUpdatedMessage(string newMessage)
+    public virtual ResultError WithMetadata(string key, object value)
     {
-        return this with { Message = ValidateAndFormatMessage(newMessage) };
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
+
+        var newMetadata = Metadata switch
+        {
+            null => new Dictionary<string, object>(StringComparer.Ordinal) { [key] = value }
+                .ToFrozenDictionary(StringComparer.Ordinal),
+            _ => Metadata.ToDictionary(StringComparer.Ordinal)
+                .Append(new KeyValuePair<string, object>(key, value))
+                .ToFrozenDictionary(StringComparer.Ordinal)
+        };
+
+        return this with { Metadata = newMetadata };
     }
 
+    /// <summary>
+    ///     Creates a new error with multiple metadata entries.
+    /// </summary>
+    public virtual ResultError WithMetadata(IReadOnlyDictionary<string, object> metadata)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        if (metadata.Count == 0) return this;
+
+        var combined = Metadata switch
+        {
+            null => metadata.ToFrozenDictionary(StringComparer.Ordinal),
+            _ => Metadata.ToDictionary(StringComparer.Ordinal)
+                .Concat(metadata)
+                .ToFrozenDictionary(StringComparer.Ordinal)
+        };
+
+        return this with { Metadata = combined };
+    }
+
+    /// <summary>
+    ///     Creates a new error with updated timestamp.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError WithTimestamp(DateTime newTimestamp)
+    {
+        return this with { Timestamp = newTimestamp };
+    }
 
     #endregion
 
     #region Helper Methods
 
     /// <summary>
-    ///     Validates and formats an error message, using a cached version if available.
+    ///     Generates an optimized error ID for correlation.
     /// </summary>
-    /// <param name="message">The message to validate and format.</param>
-    /// <returns>The formatted message.</returns>
-    private static string ValidateAndFormatMessage(string? message)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static string GenerateErrorId()
     {
-        if (string.IsNullOrWhiteSpace(message))
+        // Use Activity ID if available for better correlation
+        if (Activity.Current?.Id is { } activityId)
         {
-            return DefaultErrorMessage;
+            return activityId;
         }
 
-        // Use our cache to avoid repeated string allocations for same messages
-        return MessageCache.GetOrAdd(message, key =>
-        {
-            // Replace CRLF with \n
-            var normalized = key.Replace("\r\n", "\n").Replace('\r', '\n');
-            return normalized.Trim();
-        });
+        // Fast unique ID generation without GUID overhead
+        return $"{Environment.TickCount64:X}-{Random.Shared.Next():X}";
     }
 
     /// <summary>
     ///     Formats a TimeSpan age value into a human-readable string.
     /// </summary>
-    /// <param name="age">The age to format.</param>
-    /// <returns>A formatted string representing the age.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static string FormatAge(TimeSpan age)
     {
@@ -158,6 +217,63 @@ public abstract record ResultError : ISpanFormattable
             { TotalHours: < 24 } => $"{age.TotalHours:F1}h",
             _ => $"{age.TotalDays:F1}d"
         };
+    }
+
+    /// <summary>
+    ///     Determines the severity of this error based on various factors.
+    /// </summary>
+    private ErrorSeverity DetermineSeverity()
+    {
+        var ageMinutes = Age.TotalMinutes;
+        var messageLower = Message.ToLowerInvariant();
+
+        return (ageMinutes, messageLower) switch
+        {
+            (< 1, _) when messageLower.Contains("critical") || messageLower.Contains("fatal")
+                => ErrorSeverity.Critical,
+            (< 5, _) when messageLower.Contains("error") || messageLower.Contains("failed")
+                => ErrorSeverity.High,
+            (< 15, _) => ErrorSeverity.Medium,
+            (< 60, _) => ErrorSeverity.Low,
+            _ => ErrorSeverity.Info
+        };
+    }
+
+    #endregion
+
+    #region Static Factory Methods
+
+    /// <summary>
+    ///     Creates a timeout error with standard messaging.
+    /// </summary>
+    public static TError CreateTimeout<TError>(TimeSpan timeoutDuration)
+        where TError : ResultError
+    {
+        var message = $"Operation timed out after {FormatAge(timeoutDuration)}";
+        return (TError)Activator.CreateInstance(typeof(TError), message)!;
+    }
+
+    /// <summary>
+    ///     Creates a cancellation error with standard messaging.
+    /// </summary>
+    public static TError CreateCancellation<TError>()
+        where TError : ResultError
+    {
+        return (TError)Activator.CreateInstance(typeof(TError), CommonMessages["cancelled"])!;
+    }
+
+    /// <summary>
+    ///     Creates a validation error with field-specific messaging.
+    /// </summary>
+    public static TError CreateValidation<TError>(string fieldName, string reason)
+        where TError : ResultError
+    {
+        var message = $"Validation failed for field '{fieldName}': {reason}";
+        var error = (TError)Activator.CreateInstance(typeof(TError), message)!;
+
+        return (TError)error
+            .WithMetadata("FieldName", fieldName)
+            .WithMetadata("ValidationReason", reason);
     }
 
     #endregion

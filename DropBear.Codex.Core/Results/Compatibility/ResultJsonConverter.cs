@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
@@ -12,10 +11,15 @@ namespace DropBear.Codex.Core.Results.Compatibility;
 
 /// <summary>
 ///     JSON converter for Result{TError}.
+///     Optimized for .NET 9 with enhanced error handling.
 /// </summary>
-public class ResultJsonConverter<TError> : JsonConverter<Base.Result<TError>>
+public sealed class ResultJsonConverter<TError> : JsonConverter<Base.Result<TError>>
     where TError : ResultError
 {
+    private static readonly JsonEncodedText StatePropertyName = JsonEncodedText.Encode("state");
+    private static readonly JsonEncodedText ErrorPropertyName = JsonEncodedText.Encode("error");
+    private static readonly JsonEncodedText ExceptionPropertyName = JsonEncodedText.Encode("exception");
+
     public override Base.Result<TError> Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
@@ -23,11 +27,12 @@ public class ResultJsonConverter<TError> : JsonConverter<Base.Result<TError>>
     {
         if (reader.TokenType != JsonTokenType.StartObject)
         {
-            throw new JsonException();
+            throw new JsonException("Expected StartObject token");
         }
 
-        var state = ResultState.Success;
+        ResultState state = ResultState.Success;
         TError? error = null;
+        string? exceptionMessage = null;
 
         while (reader.Read())
         {
@@ -38,41 +43,98 @@ public class ResultJsonConverter<TError> : JsonConverter<Base.Result<TError>>
 
             if (reader.TokenType != JsonTokenType.PropertyName)
             {
-                throw new JsonException();
+                throw new JsonException("Expected PropertyName token");
             }
 
             var propertyName = reader.GetString();
             reader.Read();
 
-            switch (propertyName?.ToLower(CultureInfo.InvariantCulture))
+            switch (propertyName?.ToLowerInvariant())
             {
                 case "state":
-                    state = JsonSerializer.Deserialize<ResultState>(ref reader, options);
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        var stateString = reader.GetString();
+                        if (!Enum.TryParse<ResultState>(stateString, ignoreCase: true, out state))
+                        {
+                            throw new JsonException($"Invalid ResultState value: {stateString}");
+                        }
+                    }
+                    else if (reader.TokenType == JsonTokenType.Number)
+                    {
+                        state = (ResultState)reader.GetInt32();
+                    }
                     break;
+
                 case "error":
-                    error = JsonSerializer.Deserialize<TError>(ref reader, options);
+                    if (reader.TokenType != JsonTokenType.Null)
+                    {
+                        error = JsonSerializer.Deserialize<TError>(ref reader, options);
+                    }
+                    break;
+
+                case "exception":
+                    if (reader.TokenType == JsonTokenType.String)
+                    {
+                        exceptionMessage = reader.GetString();
+                    }
+                    else if (reader.TokenType == JsonTokenType.StartObject)
+                    {
+                        // Skip exception object if present (we only store message)
+                        reader.Skip();
+                    }
+                    break;
+
+                default:
+                    // Skip unknown properties
+                    reader.Skip();
                     break;
             }
         }
 
+        // Reconstruct exception if message was present
+        Exception? exception = null;
+        if (!string.IsNullOrEmpty(exceptionMessage))
+        {
+            exception = new InvalidOperationException(exceptionMessage);
+        }
+
         return state == ResultState.Success
             ? Base.Result<TError>.Success()
-            : Base.Result<TError>.Failure(error!);
+            : Base.Result<TError>.Failure(error ?? CreateDefaultError(), exception);
     }
 
     public override void Write(
-        Utf8JsonWriter writer, Base.Result<TError> value,
+        Utf8JsonWriter writer,
+        Base.Result<TError> value,
         JsonSerializerOptions options)
     {
-        writer.WriteStartObject();
-        writer.WriteString("state", value.State.ToString());
+        ArgumentNullException.ThrowIfNull(writer);
+        ArgumentNullException.ThrowIfNull(value);
 
+        writer.WriteStartObject();
+
+        // Write state
+        writer.WriteString(StatePropertyName, value.State.ToString());
+
+        // Write error if present
         if (value.Error != null)
         {
-            writer.WritePropertyName("error");
+            writer.WritePropertyName(ErrorPropertyName);
             JsonSerializer.Serialize(writer, value.Error, options);
         }
 
+        // Write exception message if present
+        if (value.Exception != null)
+        {
+            writer.WriteString(ExceptionPropertyName, value.Exception.Message);
+        }
+
         writer.WriteEndObject();
+    }
+
+    private static TError CreateDefaultError()
+    {
+        return (TError)Activator.CreateInstance(typeof(TError), "Deserialization error: no error information provided")!;
     }
 }

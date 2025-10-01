@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Diagnostics;
 using DropBear.Codex.Core.Enums;
 
 #endregion
@@ -7,15 +8,15 @@ using DropBear.Codex.Core.Enums;
 namespace DropBear.Codex.Core.Results.Diagnostics;
 
 /// <summary>
-///     Contains diagnostic information about a result.
+///     Contains diagnostic information about a result operation.
+///     Immutable record struct optimized for .NET 9 with minimal allocations.
 /// </summary>
-public readonly struct DiagnosticInfo
+[DebuggerDisplay("State = {State}, Type = {ResultType.Name}, Age = {Age.TotalMilliseconds}ms")]
+public readonly record struct DiagnosticInfo
 {
-    public ResultState State { get; init; }
-    public Type ResultType { get; init; }
-    public DateTime CreatedAt { get; init; }
-    public string? TraceId { get; init; }
-
+    /// <summary>
+    ///     Initializes a new instance of DiagnosticInfo.
+    /// </summary>
     public DiagnosticInfo(
         ResultState state,
         Type resultType,
@@ -26,5 +27,85 @@ public readonly struct DiagnosticInfo
         ResultType = resultType;
         CreatedAt = createdAt;
         TraceId = traceId;
+        ActivityId = Activity.Current?.Id;
+        ParentActivityId = Activity.Current?.ParentId;
+    }
+
+    /// <summary>
+    ///     Gets the result state at the time of creation.
+    /// </summary>
+    public ResultState State { get; init; }
+
+    /// <summary>
+    ///     Gets the type of the result.
+    /// </summary>
+    public Type ResultType { get; init; }
+
+    /// <summary>
+    ///     Gets the UTC timestamp when the result was created.
+    /// </summary>
+    public DateTime CreatedAt { get; init; }
+
+    /// <summary>
+    ///     Gets the trace ID for correlation (if available).
+    /// </summary>
+    public string? TraceId { get; init; }
+
+    /// <summary>
+    ///     Gets the Activity ID for distributed tracing.
+    /// </summary>
+    public string? ActivityId { get; init; }
+
+    /// <summary>
+    ///     Gets the parent Activity ID for distributed tracing.
+    /// </summary>
+    public string? ParentActivityId { get; init; }
+
+    /// <summary>
+    ///     Gets the age of this diagnostic info (time since creation).
+    /// </summary>
+    public TimeSpan Age => DateTime.UtcNow - CreatedAt;
+
+    /// <summary>
+    ///     Gets a value indicating whether this diagnostic has tracing information.
+    /// </summary>
+    public bool HasTracing => !string.IsNullOrEmpty(TraceId) || !string.IsNullOrEmpty(ActivityId);
+
+    /// <summary>
+    ///     Creates diagnostic info with the current activity context.
+    /// </summary>
+    public static DiagnosticInfo Create(ResultState state, Type resultType)
+    {
+        return new DiagnosticInfo(
+            state,
+            resultType,
+            DateTime.UtcNow,
+            Activity.Current?.Id);
+    }
+
+    /// <summary>
+    ///     Gets a formatted string representation for logging.
+    /// </summary>
+    public string ToLogString()
+    {
+        return $"[{State}] {ResultType.Name} (Age: {Age.TotalMilliseconds:F2}ms, TraceId: {TraceId ?? "None"})";
+    }
+
+    /// <summary>
+    ///     Creates a dictionary of diagnostic properties for structured logging.
+    /// </summary>
+    public Dictionary<string, object?> ToDictionary()
+    {
+        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["State"] = State.ToString(),
+            ["ResultType"] = ResultType.Name,
+            ["CreatedAt"] = CreatedAt,
+            ["Age"] = Age,
+            ["TraceId"] = TraceId,
+            ["ActivityId"] = ActivityId,
+            ["ParentActivityId"] = ParentActivityId,
+            ["HasTracing"] = HasTracing
+        };
     }
 }

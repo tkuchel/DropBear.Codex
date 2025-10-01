@@ -12,16 +12,14 @@ namespace DropBear.Codex.Core.Results.Validations;
 
 /// <summary>
 ///     Represents the result of a validation operation.
-///     Provides a specialized implementation of Result for validation scenarios.
+///     Optimized for .NET 9 with simplified implementation.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ValidationResultJsonConverter))]
 public sealed class ValidationResult : Base.Result<ValidationError>
 {
-    // Default error to use when a specific error isn't provided
-    private static readonly ValidationError DefaultError = new("Validation failed");
-
-    // Shared success instance for efficiency
+    // Singleton success instance for efficiency
+    private static readonly ValidationResult SuccessInstance = new(ResultState.Success);
 
     private ValidationResult(ResultState state, ValidationError? error = null, Exception? exception = null)
         : base(state, error, exception)
@@ -43,7 +41,7 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     /// <summary>
     ///     Gets a successful validation result.
     /// </summary>
-    public new static ValidationResult Success { get; } = new(ResultState.Success);
+    public new static ValidationResult Success => SuccessInstance;
 
     private string DebuggerDisplay => $"IsValid = {IsValid}, Message = {ErrorMessage}";
 
@@ -54,26 +52,37 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     /// </summary>
     public static ValidationResult Failed(string message)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
         return new ValidationResult(ResultState.Failure, new ValidationError(message));
     }
 
     /// <summary>
     ///     Creates a failed validation result for a specific property.
     /// </summary>
-    public static ValidationResult PropertyFailed(string propertyName, string message, object? attemptedValue = null)
+    public static ValidationResult PropertyFailed(
+        string propertyName,
+        string message,
+        object? attemptedValue = null)
     {
-        var error = new ValidationError(message) { PropertyName = propertyName, AttemptedValue = attemptedValue };
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
+        var error = ValidationError.ForProperty(propertyName, message, attemptedValue);
         return new ValidationResult(ResultState.Failure, error);
     }
 
     /// <summary>
     ///     Creates a failed validation result for a specific validation rule.
     /// </summary>
-    public static ValidationResult RuleFailed(string rule, string message, object? attemptedValue = null)
+    public static ValidationResult RuleFailed(
+        string rule,
+        string message,
+        object? attemptedValue = null)
     {
-        var error = new ValidationError(message) { ValidationRule = rule, AttemptedValue = attemptedValue };
+        ArgumentException.ThrowIfNullOrWhiteSpace(rule);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
+        var error = ValidationError.ForRule(rule, message, attemptedValue);
         return new ValidationResult(ResultState.Failure, error);
     }
 
@@ -82,7 +91,15 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     /// </summary>
     public static ValidationResult Combine(IEnumerable<ValidationResult> results)
     {
-        var errors = results
+        ArgumentNullException.ThrowIfNull(results);
+
+        var resultsList = results.ToList();
+        if (resultsList.Count == 0)
+        {
+            return Success;
+        }
+
+        var errors = resultsList
             .Where(r => !r.IsValid)
             .Select(r => r.Error)
             .Where(e => e != null)
@@ -93,14 +110,48 @@ public sealed class ValidationResult : Base.Result<ValidationError>
             return Success;
         }
 
-        var combinedMessage = string.Join(
-            Environment.NewLine,
-            errors.Select(e => e!.Message));
+        if (errors.Count == 1)
+        {
+            return new ValidationResult(ResultState.Failure, errors[0]);
+        }
 
+        var combinedMessage = string.Join(Environment.NewLine, errors.Select(e => e!.Message));
         return Failed(combinedMessage);
     }
 
+    /// <summary>
+    ///     Combines validation results with a custom separator.
+    /// </summary>
+    public static ValidationResult Combine(IEnumerable<ValidationResult> results, string separator)
+    {
+        ArgumentNullException.ThrowIfNull(results);
+        ArgumentNullException.ThrowIfNull(separator);
 
+        var resultsList = results.ToList();
+        if (resultsList.Count == 0)
+        {
+            return Success;
+        }
+
+        var errors = resultsList
+            .Where(r => !r.IsValid)
+            .Select(r => r.Error)
+            .Where(e => e != null)
+            .ToList();
+
+        if (errors.Count == 0)
+        {
+            return Success;
+        }
+
+        if (errors.Count == 1)
+        {
+            return new ValidationResult(ResultState.Failure, errors[0]);
+        }
+
+        var combinedMessage = string.Join(separator, errors.Select(e => e!.Message));
+        return Failed(combinedMessage);
+    }
 
     #endregion
 
@@ -117,29 +168,66 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     /// <summary>
     ///     Ensures a condition is met for a specific property.
     /// </summary>
-    public static ValidationResult EnsureProperty(bool condition, string propertyName, string message,
+    public static ValidationResult EnsureProperty(
+        bool condition,
+        string propertyName,
+        string message,
         object? value = null)
     {
         return condition ? Success : PropertyFailed(propertyName, message, value);
     }
 
     /// <summary>
+    ///     Ensures a condition is met for a specific rule.
+    /// </summary>
+    public static ValidationResult EnsureRule(
+        bool condition,
+        string rule,
+        string message,
+        object? value = null)
+    {
+        return condition ? Success : RuleFailed(rule, message, value);
+    }
+
+    /// <summary>
     ///     Validates using a predicate function.
+    /// </summary>
+    public static ValidationResult Validate(
+        Func<bool> validator,
+        string failureMessage)
+    {
+        ArgumentNullException.ThrowIfNull(validator);
+        ArgumentException.ThrowIfNullOrWhiteSpace(failureMessage);
+
+        try
+        {
+            return validator() ? Success : Failed(failureMessage);
+        }
+        catch (Exception ex)
+        {
+            return new ValidationResult(ResultState.Failure, new ValidationError(ex.Message), ex);
+        }
+    }
+
+    /// <summary>
+    ///     Validates using an async predicate function.
     /// </summary>
     public static async ValueTask<ValidationResult> ValidateAsync(
         Func<CancellationToken, ValueTask<bool>> validator,
         string failureMessage,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(validator);
+        ArgumentException.ThrowIfNullOrWhiteSpace(failureMessage);
+
         try
         {
-            return await validator(cancellationToken).ConfigureAwait(false)
-                ? Success
-                : Failed(failureMessage);
+            var isValid = await validator(cancellationToken).ConfigureAwait(false);
+            return isValid ? Success : Failed(failureMessage);
         }
         catch (Exception ex)
         {
-            return new ValidationResult(ResultState.Failure, DefaultError, ex);
+            return new ValidationResult(ResultState.Failure, new ValidationError(ex.Message), ex);
         }
     }
 
@@ -165,6 +253,36 @@ public sealed class ValidationResult : Base.Result<ValidationError>
         return IsValid
             ? Result<T, ValidationError>.Success(default!)
             : Result<T, ValidationError>.Failure(Error!);
+    }
+
+    /// <summary>
+    ///     Converts to a Unit result.
+    /// </summary>
+    public Result<Unit, ValidationError> ToUnitResult()
+    {
+        return IsValid
+            ? Result<Unit, ValidationError>.Success(Unit.Value)
+            : Result<Unit, ValidationError>.Failure(Error!);
+    }
+
+    #endregion
+
+    #region Operators
+
+    /// <summary>
+    ///     Implicitly converts a bool to a ValidationResult.
+    /// </summary>
+    public static implicit operator bool(ValidationResult result)
+    {
+        return result.IsValid;
+    }
+
+    /// <summary>
+    ///     Combines two validation results using the AND operator.
+    /// </summary>
+    public static ValidationResult operator &(ValidationResult left, ValidationResult right)
+    {
+        return Combine([left, right]);
     }
 
     #endregion

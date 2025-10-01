@@ -1,561 +1,374 @@
 ﻿#region
 
-using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Envelopes.Serializers;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Diagnostics;
 using DropBear.Codex.Core.Results.Validations;
-using MessagePack;
 
 #endregion
 
 namespace DropBear.Codex.Core.Envelopes;
 
 /// <summary>
-///     Represents an envelope that encapsulates a payload with metadata, validations, and state management.
-///     Integrates with Result types for comprehensive error handling and diagnostics.
+///     Represents an immutable envelope that encapsulates a payload with metadata.
+///     Thread-safe by design through immutability.
+///     Optimized for .NET 9 with modern patterns.
 /// </summary>
 /// <typeparam name="T">The type of payload contained in the envelope.</typeparam>
-public partial class Envelope<T> : IResultDiagnostics
+[DebuggerDisplay("Sealed = {IsSealed}, HasPayload = {_payload != null}")]
+public sealed class Envelope<T>
 {
-    private readonly DiagnosticInfo _diagnosticInfo;
-
-    // Validators and headers
-    private readonly ConcurrentDictionary<string, object> _headers;
-    private readonly List<Func<string, object, ValidationResult>> _headerValidators;
-
-    private readonly List<Func<T, ValidationResult>> _payloadValidators;
-
-    // Core state management
-    private readonly ReaderWriterLockSlim _rwLock = new(LockRecursionPolicy.SupportsRecursion);
+    private readonly T _payload;
+    private readonly FrozenDictionary<string, object> _headers;
+    private readonly bool _isSealed;
+    private readonly DateTime _createdAt;
+    private readonly DateTime? _sealedAt;
+    private readonly string? _signature;
+    private readonly byte[]? _encryptedPayload;
     private readonly IResultTelemetry _telemetry;
 
-    // Encryption and security
-    private byte[]? _encryptedPayload;
-
-    // Payload and state tracking
-    private T _payload;
-    private string? _signature;
-    private EnvelopeState _state;
+    #region Constructors
 
     /// <summary>
-    ///     Initializes a new instance of the Envelope with the specified payload.
+    ///     Internal constructor used by builder.
     /// </summary>
-    /// <param name="payload">The payload to encapsulate.</param>
-    /// <param name="telemetry">Optional telemetry tracking.</param>
-    public Envelope(
+    internal Envelope(
         T payload,
-        IResultTelemetry? telemetry = null)
+        FrozenDictionary<string, object> headers,
+        bool isSealed,
+        DateTime createdAt,
+        DateTime? sealedAt,
+        string? signature,
+        byte[]? encryptedPayload,
+        IResultTelemetry telemetry)
     {
         _payload = payload;
-        _telemetry = telemetry ?? new DefaultResultTelemetry();
-        _headers = new ConcurrentDictionary<string, object>(StringComparer.Ordinal);
-        _payloadValidators = new List<Func<T, ValidationResult>>();
-        _headerValidators = new List<Func<string, object, ValidationResult>>();
+        _headers = headers;
+        _isSealed = isSealed;
+        _createdAt = createdAt;
+        _sealedAt = sealedAt;
+        _signature = signature;
+        _encryptedPayload = encryptedPayload;
+        _telemetry = telemetry;
 
-        // Initialize state
-        _state = new EnvelopeState { CreatedAt = DateTime.UtcNow, CurrentState = ResultState.Success };
-
-        // Create diagnostic info
-        _diagnosticInfo = new DiagnosticInfo(
-            ResultState.Success,
-            typeof(Envelope<T>),
-            _state.CreatedAt,
-            Activity.Current?.Id
-        );
-
-        // Track envelope creation
-        _telemetry.TrackResultCreated(ResultState.Success, typeof(Envelope<T>));
-    }
-
-    // New constructor for DTO-based creation
-    internal Envelope(
-        EnvelopeDto<T> dto,
-        IResultTelemetry? telemetry = null)
-    {
-        _telemetry = telemetry ?? new DefaultResultTelemetry();
-
-        // Initialize state from DTO
-        _state = new EnvelopeState { CreatedAt = dto.CreatedDate, IsSealed = dto.IsSealed, SealedAt = dto.SealedDate };
-
-        // Initialize headers
-        _headers = dto.Headers != null
-            ? new ConcurrentDictionary<string, object>(dto.Headers, StringComparer.Ordinal)
-            : new ConcurrentDictionary<string, object>(StringComparer.Ordinal);
-
-        // Handle payload
-        if (!string.IsNullOrEmpty(dto.EncryptedPayload))
-        {
-            _encryptedPayload = Convert.FromBase64String(dto.EncryptedPayload);
-        }
-        else
-        {
-            _payload = dto.Payload;
-        }
-
-        // Set signature
-        _signature = dto.Signature;
-
-        // Create diagnostic info
-        _diagnosticInfo = new DiagnosticInfo(
-            _state.IsSealed ? ResultState.Success : ResultState.Failure,
-            typeof(Envelope<T>),
-            _state.CreatedAt,
-            Activity.Current?.Id
-        );
-
-        // Initialize validators
-        _payloadValidators = new List<Func<T, ValidationResult>>();
-        _headerValidators = new List<Func<string, object, ValidationResult>>();
-
-        // Track envelope creation
         _telemetry.TrackResultCreated(
-            _state.IsSealed ? ResultState.Success : ResultState.Failure,
-            typeof(Envelope<T>)
-        );
+            isSealed ? ResultState.Success : ResultState.Pending,
+            typeof(Envelope<T>));
     }
 
+    /// <summary>
+    ///     Creates a new envelope with the specified payload.
+    ///     Use EnvelopeBuilder for more control.
+    /// </summary>
+    public Envelope(T payload, IResultTelemetry? telemetry = null)
+        : this(
+            payload,
+            FrozenDictionary<string, object>.Empty,
+            isSealed: false,
+            createdAt: DateTime.UtcNow,
+            sealedAt: null,
+            signature: null,
+            encryptedPayload: null,
+            telemetry ?? new DefaultResultTelemetry())
+    {
+    }
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    ///     Gets the payload. Throws if envelope is not sealed or is encrypted.
+    /// </summary>
     public T Payload
     {
         get
         {
-            _rwLock.EnterReadLock();
-            try
+            if (!_isSealed)
             {
-                // Check if the envelope is sealed but not encrypted
-                if (_state.IsSealed && _encryptedPayload == null)
-                {
-                    return _payload;
-                }
-
-                // Check if payload is encrypted
-                if (_encryptedPayload != null)
-                {
-                    throw new InvalidOperationException("Payload is currently encrypted. Decrypt first.");
-                }
-
-                // Check if envelope is not sealed and requires validation
-                var validationResult = ValidatePayload();
-                if (!validationResult.IsValid)
-                {
-                    throw new InvalidOperationException($"Payload validation failed: {validationResult.ErrorMessage}");
-                }
-
-                return _payload;
+                throw new InvalidOperationException("Envelope must be sealed before accessing payload");
             }
-            finally
+
+            if (_encryptedPayload != null)
             {
-                _rwLock.ExitReadLock();
+                throw new InvalidOperationException("Payload is encrypted. Decrypt first.");
             }
-        }
-    }
 
-    // Diagnostic information implementation
-    public DiagnosticInfo GetDiagnostics()
-    {
-        return _diagnosticInfo;
-    }
-
-    public ActivityContext GetTraceContext()
-    {
-        return Activity.Current?.Context ?? default;
-    }
-
-    // State tracking struct for improved memory efficiency
-    [StructLayout(LayoutKind.Auto)]
-    private struct EnvelopeState
-    {
-        public bool IsSealed;
-        public DateTime CreatedAt;
-        public DateTime? SealedAt;
-        public ResultState CurrentState;
-    }
-}
-
-public partial class Envelope<T>
-{
-    /// <summary>
-    ///     Validates the current payload using registered validators.
-    /// </summary>
-    /// <returns>A ValidationResult indicating the outcome of payload validation.</returns>
-    public ValidationResult ValidatePayload()
-    {
-        _rwLock.EnterReadLock();
-        try
-        {
-            var validationResults = _payloadValidators
-                .Select(validator => validator(_payload))
-                .ToList();
-
-            return ValidationResult.Combine(validationResults);
-        }
-        finally
-        {
-            _rwLock.ExitReadLock();
+            return _payload;
         }
     }
 
     /// <summary>
-    ///     Attempts to modify the payload with validation.
+    ///     Gets the headers as a read-only collection.
     /// </summary>
-    /// <param name="newPayload">The new payload to set.</param>
-    /// <returns>A Result indicating the success or failure of payload modification.</returns>
-    public Result<T, ValidationError> TryModifyPayload(T newPayload)
+    public IReadOnlyDictionary<string, object> Headers => _headers;
+
+    /// <summary>
+    ///     Gets a value indicating whether the envelope is sealed.
+    /// </summary>
+    public bool IsSealed => _isSealed;
+
+    /// <summary>
+    ///     Gets a value indicating whether the payload is encrypted.
+    /// </summary>
+    public bool IsEncrypted => _encryptedPayload != null;
+
+    /// <summary>
+    ///     Gets the creation timestamp.
+    /// </summary>
+    public DateTime CreatedAt => _createdAt;
+
+    /// <summary>
+    ///     Gets the sealed timestamp if the envelope is sealed.
+    /// </summary>
+    public DateTime? SealedAt => _sealedAt;
+
+    /// <summary>
+    ///     Gets the cryptographic signature if present.
+    /// </summary>
+    public string? Signature => _signature;
+
+    #endregion
+
+    #region Modification Methods (Return New Instances)
+
+    /// <summary>
+    ///     Creates a new envelope with an additional header.
+    /// </summary>
+    public Result<Envelope<T>, ValidationError> WithHeader(string key, object value)
     {
-        _rwLock.EnterWriteLock();
-        try
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
+
+        if (_isSealed)
         {
-            // Check if envelope is sealed
-            if (_state.IsSealed)
-            {
-                return Result<T, ValidationError>.Failure(
-                    new ValidationError("Cannot modify payload of a sealed envelope")
-                );
-            }
-
-            // Validate new payload
-            var validationResult = _payloadValidators
-                .Select(validator => validator(newPayload))
-                .ToList();
-
-            var combinedValidation = ValidationResult.Combine(validationResult);
-
-            if (!combinedValidation.IsValid)
-            {
-                return Result<T, ValidationError>.Failure(
-                    new ValidationError(combinedValidation.ErrorMessage)
-                );
-            }
-
-            // Store previous payload for potential rollback
-            var previousPayload = _payload;
-            _payload = newPayload;
-
-            // Track payload modification
-            _telemetry.TrackResultTransformed(
-                _state.CurrentState,
-                ResultState.Success,
-                typeof(Envelope<T>)
-            );
-
-            // Raise modification event
-            OnPayloadModified();
-
-            return Result<T, ValidationError>.Success(newPayload);
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Cannot modify sealed envelope"));
         }
-        catch (Exception ex)
-        {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<T, ValidationError>.Failure(
-                new ValidationError($"Payload modification failed: {ex.Message}")
-            );
-        }
-        finally
-        {
-            _rwLock.ExitWriteLock();
-        }
+
+        var newHeaders = _headers.ToDictionary(StringComparer.Ordinal);
+        newHeaders[key] = value;
+
+        var newEnvelope = new Envelope<T>(
+            _payload,
+            newHeaders.ToFrozenDictionary(StringComparer.Ordinal),
+            _isSealed,
+            _createdAt,
+            _sealedAt,
+            _signature,
+            _encryptedPayload,
+            _telemetry);
+
+        return Result<Envelope<T>, ValidationError>.Success(newEnvelope);
     }
 
     /// <summary>
-    ///     Adds a header to the envelope with validation.
+    ///     Creates a new envelope with multiple headers.
     /// </summary>
-    /// <param name="key">The header key.</param>
-    /// <param name="value">The header value.</param>
-    /// <returns>A Result indicating the success or failure of header addition.</returns>
-    public Result<Unit, ValidationError> AddHeader(string key, object value)
+    public Result<Envelope<T>, ValidationError> WithHeaders(IReadOnlyDictionary<string, object> headers)
     {
-        _rwLock.EnterWriteLock();
-        try
+        ArgumentNullException.ThrowIfNull(headers);
+
+        if (_isSealed)
         {
-            // Check if envelope is sealed
-            if (_state.IsSealed)
-            {
-                return Result<Unit, ValidationError>.Failure(
-                    new ValidationError("Cannot modify headers of a sealed envelope")
-                );
-            }
-
-            // Validate header
-            var validationResults = _headerValidators
-                .Select(validator => validator(key, value))
-                .ToList();
-
-            var combinedValidation = ValidationResult.Combine(validationResults);
-
-            if (!combinedValidation.IsValid)
-            {
-                return Result<Unit, ValidationError>.Failure(
-                    new ValidationError(combinedValidation.ErrorMessage)
-                );
-            }
-
-            // Add header
-            _headers[key] = value;
-
-            // Track header modification
-            _telemetry.TrackResultTransformed(
-                _state.CurrentState,
-                ResultState.Success,
-                typeof(Envelope<T>)
-            );
-
-            return Result<Unit, ValidationError>.Success(Unit.Value);
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Cannot modify sealed envelope"));
         }
-        catch (Exception ex)
+
+        var newHeaders = _headers.ToDictionary(StringComparer.Ordinal);
+        foreach (var (key, value) in headers)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError($"Header addition failed: {ex.Message}")
-            );
+            newHeaders[key] = value;
         }
-        finally
-        {
-            _rwLock.ExitWriteLock();
-        }
+
+        var newEnvelope = new Envelope<T>(
+            _payload,
+            newHeaders.ToFrozenDictionary(StringComparer.Ordinal),
+            _isSealed,
+            _createdAt,
+            _sealedAt,
+            _signature,
+            _encryptedPayload,
+            _telemetry);
+
+        return Result<Envelope<T>, ValidationError>.Success(newEnvelope);
     }
 
     /// <summary>
-    ///     Registers a payload validator.
+    ///     Creates a new envelope with a modified payload.
     /// </summary>
-    /// <param name="validator">The validator function.</param>
-    public void RegisterPayloadValidator(Func<T, ValidationResult> validator)
+    public Result<Envelope<T>, ValidationError> WithPayload(T newPayload)
     {
-        _rwLock.EnterWriteLock();
-        try
+        ArgumentNullException.ThrowIfNull(newPayload);
+
+        if (_isSealed)
         {
-            _payloadValidators.Add(validator);
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Cannot modify sealed envelope"));
         }
-        finally
+
+        var newEnvelope = new Envelope<T>(
+            newPayload,
+            _headers,
+            _isSealed,
+            _createdAt,
+            _sealedAt,
+            _signature,
+            _encryptedPayload,
+            _telemetry);
+
+        _telemetry.TrackResultTransformed(
+            ResultState.Pending,
+            ResultState.Pending,
+            typeof(Envelope<T>));
+
+        return Result<Envelope<T>, ValidationError>.Success(newEnvelope);
+    }
+
+    #endregion
+
+    #region Sealing and Encryption
+
+    /// <summary>
+    ///     Creates a new sealed envelope with optional cryptographic signature.
+    /// </summary>
+    public Result<Envelope<T>, ValidationError> Seal(byte[]? cryptographicKey = null)
+    {
+        if (_isSealed)
         {
-            _rwLock.ExitWriteLock();
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Envelope is already sealed"));
         }
+
+        var signature = cryptographicKey != null ? ComputeSignature(cryptographicKey) : null;
+
+        var sealedEnvelope = new Envelope<T>(
+            _payload,
+            _headers,
+            isSealed: true,
+            _createdAt,
+            sealedAt: DateTime.UtcNow,
+            signature,
+            _encryptedPayload,
+            _telemetry);
+
+        _telemetry.TrackResultTransformed(
+            ResultState.Pending,
+            ResultState.Success,
+            typeof(Envelope<T>));
+
+        return Result<Envelope<T>, ValidationError>.Success(sealedEnvelope);
     }
 
     /// <summary>
-    ///     Registers a header validator.
+    ///     Creates a new unsealed envelope (removes seal).
     /// </summary>
-    /// <param name="validator">The validator function.</param>
-    public void RegisterHeaderValidator(Func<string, object, ValidationResult> validator)
+    public Result<Envelope<T>, ValidationError> Unseal()
     {
-        _rwLock.EnterWriteLock();
-        try
+        if (!_isSealed)
         {
-            _headerValidators.Add(validator);
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Envelope is not sealed"));
         }
-        finally
-        {
-            _rwLock.ExitWriteLock();
-        }
-    }
-}
 
-public partial class Envelope<T>
-{
-    /// <summary>
-    ///     Seals the envelope, preventing further modifications.
-    /// </summary>
-    /// <param name="cryptographicKey">Optional key for computing a cryptographic signature.</param>
-    /// <returns>A Result indicating the success of sealing the envelope.</returns>
-    public Result<Unit, ValidationError> Seal(byte[]? cryptographicKey = null)
-    {
-        _rwLock.EnterWriteLock();
-        try
-        {
-            // Check if already sealed
-            if (_state.IsSealed)
-            {
-                return Result<Unit, ValidationError>.Failure(
-                    new ValidationError("Envelope is already sealed")
-                );
-            }
+        var unsealedEnvelope = new Envelope<T>(
+            _payload,
+            _headers,
+            isSealed: false,
+            _createdAt,
+            sealedAt: null,
+            signature: null,
+            _encryptedPayload,
+            _telemetry);
 
-            // Validate payload before sealing
-            var validationResult = ValidatePayload();
-            if (!validationResult.IsValid)
-            {
-                return Result<Unit, ValidationError>.Failure(
-                    new ValidationError($"Cannot seal envelope: {validationResult.ErrorMessage}")
-                );
-            }
-
-            // Update state
-            _state.IsSealed = true;
-            _state.SealedAt = DateTime.UtcNow;
-            _state.CurrentState = ResultState.Success;
-
-            // Compute signature if key provided
-            if (cryptographicKey != null)
-            {
-                _signature = ComputeSignature(cryptographicKey);
-            }
-
-            // Track sealing operation
-            _telemetry.TrackResultTransformed(
-                ResultState.Success,
-                ResultState.Success,
-                typeof(Envelope<T>)
-            );
-
-            // Raise sealed event
-            OnSealed();
-
-            return Result<Unit, ValidationError>.Success(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError($"Sealing failed: {ex.Message}")
-            );
-        }
-        finally
-        {
-            _rwLock.ExitWriteLock();
-        }
+        return Result<Envelope<T>, ValidationError>.Success(unsealedEnvelope);
     }
 
     /// <summary>
-    ///     Unseals the envelope, allowing modifications.
+    ///     Creates a new envelope with encrypted payload.
     /// </summary>
-    /// <returns>A Result indicating the success of unsealing the envelope.</returns>
-    public Result<Unit, ValidationError> Unseal()
+    public Result<Envelope<T>, ValidationError> Encrypt(byte[] encryptionKey)
     {
-        _rwLock.EnterWriteLock();
+        ArgumentNullException.ThrowIfNull(encryptionKey);
+
+        if (!_isSealed)
+        {
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Payload must be sealed before encryption"));
+        }
+
+        if (_encryptedPayload != null)
+        {
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Payload is already encrypted"));
+        }
+
         try
         {
-            // Check if already unsealed
-            if (!_state.IsSealed)
-            {
-                return Result<Unit, ValidationError>.Failure(
-                    new ValidationError("Envelope is not sealed")
-                );
-            }
-
-            // Reset sealing state
-            _state.IsSealed = false;
-            _state.SealedAt = null;
-            _signature = null;
-
-            // Track unsealing operation
-            _telemetry.TrackResultTransformed(
-                ResultState.Success,
-                ResultState.Success,
-                typeof(Envelope<T>)
-            );
-
-            // Raise unsealed event
-            OnUnsealed();
-
-            return Result<Unit, ValidationError>.Success(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError($"Unsealing failed: {ex.Message}")
-            );
-        }
-        finally
-        {
-            _rwLock.ExitWriteLock();
-        }
-    }
-
-    /// <summary>
-    ///     Encrypts the payload using the provided encryption key.
-    /// </summary>
-    /// <param name="encryptionKey">Symmetric encryption key.</param>
-    /// <returns>A Result indicating the success of payload encryption.</returns>
-    public Result<Unit, ValidationError> EncryptPayload(byte[] encryptionKey)
-    {
-        _rwLock.EnterWriteLock();
-        try
-        {
-            // Ensure envelope is sealed before encryption
-            if (!_state.IsSealed)
-            {
-                return Result<Unit, ValidationError>.Failure(
-                    new ValidationError("Payload must be sealed before encryption")
-                );
-            }
-
-            // Use AES encryption
             using var aes = Aes.Create();
             aes.Key = encryptionKey;
             aes.GenerateIV();
 
             using var encryptor = aes.CreateEncryptor();
 
-            // Serialize payload
             var plainText = JsonSerializer.Serialize(_payload);
             var plainBytes = Encoding.UTF8.GetBytes(plainText);
+            var encrypted = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
 
-            // Encrypt payload
-            _encryptedPayload = encryptor.TransformFinalBlock(plainBytes, 0, plainBytes.Length);
+            // Add IV to headers
+            var newHeaders = _headers.ToDictionary(StringComparer.Ordinal);
+            newHeaders["PayloadIV"] = Convert.ToBase64String(aes.IV);
 
-            // Store IV in headers
-            _headers["PayloadIV"] = Convert.ToBase64String(aes.IV);
+            var encryptedEnvelope = new Envelope<T>(
+                _payload,
+                newHeaders.ToFrozenDictionary(StringComparer.Ordinal),
+                _isSealed,
+                _createdAt,
+                _sealedAt,
+                _signature,
+                encrypted,
+                _telemetry);
 
-            // Track encryption operation
-            _telemetry.TrackResultTransformed(
-                _state.CurrentState,
-                ResultState.Success,
-                typeof(Envelope<T>)
-            );
-
-            return Result<Unit, ValidationError>.Success(Unit.Value);
+            return Result<Envelope<T>, ValidationError>.Success(encryptedEnvelope);
         }
         catch (Exception ex)
         {
             _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError($"Payload encryption failed: {ex.Message}")
-            );
-        }
-        finally
-        {
-            _rwLock.ExitWriteLock();
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError($"Encryption failed: {ex.Message}"));
         }
     }
 
     /// <summary>
-    ///     Decrypts the payload using the provided encryption key.
+    ///     Creates a new envelope with decrypted payload.
     /// </summary>
-    /// <param name="decryptionKey">Symmetric decryption key.</param>
-    /// <returns>A Result containing the decrypted payload.</returns>
-    public Result<T, ValidationError> DecryptPayload(byte[] decryptionKey)
+    public Result<Envelope<T>, ValidationError> Decrypt(byte[] decryptionKey)
     {
-        _rwLock.EnterWriteLock();
+        ArgumentNullException.ThrowIfNull(decryptionKey);
+
+        if (_encryptedPayload == null)
+        {
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Payload is not encrypted"));
+        }
+
+        if (!_headers.TryGetValue("PayloadIV", out var ivObj) || ivObj is not string ivString)
+        {
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError("Missing encryption IV"));
+        }
+
         try
         {
-            // Ensure encrypted payload exists
-            if (_encryptedPayload == null)
-            {
-                return Result<T, ValidationError>.Failure(
-                    new ValidationError("No encrypted payload found")
-                );
-            }
-
-            // Retrieve IV from headers
-            if (!_headers.TryGetValue("PayloadIV", out var ivObj) ||
-                ivObj is not string ivString)
-            {
-                return Result<T, ValidationError>.Failure(
-                    new ValidationError("Missing encryption IV")
-                );
-            }
-
             var iv = Convert.FromBase64String(ivString);
 
-            // Decrypt payload
             using var aes = Aes.Create();
             aes.Key = decryptionKey;
             aes.IV = iv;
@@ -564,110 +377,183 @@ public partial class Envelope<T>
             var plainBytes = decryptor.TransformFinalBlock(_encryptedPayload, 0, _encryptedPayload.Length);
             var plainText = Encoding.UTF8.GetString(plainBytes);
 
-            // Deserialize payload
             var decryptedPayload = JsonSerializer.Deserialize<T>(plainText);
-
             if (decryptedPayload == null)
             {
-                return Result<T, ValidationError>.Failure(
-                    new ValidationError("Failed to deserialize decrypted payload")
-                );
+                return Result<Envelope<T>, ValidationError>.Failure(
+                    new ValidationError("Failed to deserialize decrypted payload"));
             }
 
-            // Clear encrypted payload
-            _encryptedPayload = null;
+            var decryptedEnvelope = new Envelope<T>(
+                decryptedPayload,
+                _headers,
+                _isSealed,
+                _createdAt,
+                _sealedAt,
+                _signature,
+                encryptedPayload: null,
+                _telemetry);
 
-            // Track decryption operation
-            _telemetry.TrackResultTransformed(
-                _state.CurrentState,
-                ResultState.Success,
-                typeof(Envelope<T>)
-            );
-
-            return Result<T, ValidationError>.Success(decryptedPayload);
+            return Result<Envelope<T>, ValidationError>.Success(decryptedEnvelope);
         }
         catch (Exception ex)
         {
             _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<T, ValidationError>.Failure(
-                new ValidationError($"Payload decryption failed: {ex.Message}")
-            );
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError($"Decryption failed: {ex.Message}"));
         }
-        finally
+    }
+
+    /// <summary>
+    ///     Verifies the envelope signature.
+    /// </summary>
+    public Result<bool, ValidationError> VerifySignature(byte[] cryptographicKey)
+    {
+        ArgumentNullException.ThrowIfNull(cryptographicKey);
+
+        if (string.IsNullOrEmpty(_signature))
         {
-            _rwLock.ExitWriteLock();
+            return Result<bool, ValidationError>.Failure(
+                new ValidationError("Envelope has no signature"));
+        }
+
+        try
+        {
+            var computedSignature = ComputeSignature(cryptographicKey);
+            var isValid = _signature == computedSignature;
+            return Result<bool, ValidationError>.Success(isValid);
+        }
+        catch (Exception ex)
+        {
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
+            return Result<bool, ValidationError>.Failure(
+                new ValidationError($"Signature verification failed: {ex.Message}"));
         }
     }
-}
 
-public partial class Envelope<T>
-{
-    // Event handlers
-    public event EventHandler? Sealed;
-    public event EventHandler? Unsealed;
-    public event EventHandler? PayloadModified;
+    #endregion
 
-    // Protected event raising methods
-    protected virtual void OnSealed()
+    #region Validation
+
+    /// <summary>
+    ///     Validates the envelope using the provided validator.
+    /// </summary>
+    public ValidationResult Validate(Func<T, ValidationResult> validator)
     {
-        Sealed?.Invoke(this, EventArgs.Empty);
+        ArgumentNullException.ThrowIfNull(validator);
+
+        try
+        {
+            return validator(_payload);
+        }
+        catch (Exception ex)
+        {
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
+            return ValidationResult.Failed($"Validation failed: {ex.Message}");
+        }
     }
 
-    protected virtual void OnUnsealed()
+    /// <summary>
+    ///     Validates the envelope asynchronously.
+    /// </summary>
+    public async ValueTask<ValidationResult> ValidateAsync(
+        Func<T, CancellationToken, ValueTask<ValidationResult>> validator,
+        CancellationToken cancellationToken = default)
     {
-        Unsealed?.Invoke(this, EventArgs.Empty);
+        ArgumentNullException.ThrowIfNull(validator);
+
+        try
+        {
+            return await validator(_payload, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
+            return ValidationResult.Failed($"Validation failed: {ex.Message}");
+        }
     }
 
-    protected virtual void OnPayloadModified()
+    #endregion
+
+    #region Serialization
+
+    /// <summary>
+    ///     Serializes the envelope using the specified serializer.
+    /// </summary>
+    public Result<string, ValidationError> Serialize(IEnvelopeSerializer? serializer = null)
     {
-        PayloadModified?.Invoke(this, EventArgs.Empty);
+        try
+        {
+            serializer ??= new JsonEnvelopeSerializer();
+            var serialized = serializer.Serialize(this);
+            return Result<string, ValidationError>.Success(serialized);
+        }
+        catch (Exception ex)
+        {
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
+            return Result<string, ValidationError>.Failure(
+                new ValidationError($"Serialization failed: {ex.Message}"));
+        }
     }
+
+    /// <summary>
+    ///     Deserializes an envelope from a string.
+    /// </summary>
+    public static Result<Envelope<T>, ValidationError> Deserialize(
+        string serializedData,
+        IEnvelopeSerializer? serializer = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(serializedData);
+
+        try
+        {
+            serializer ??= new JsonEnvelopeSerializer();
+            var envelope = serializer.Deserialize<T>(serializedData);
+            return Result<Envelope<T>, ValidationError>.Success(envelope);
+        }
+        catch (Exception ex)
+        {
+            var telemetry = new DefaultResultTelemetry();
+            telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
+            return Result<Envelope<T>, ValidationError>.Failure(
+                new ValidationError($"Deserialization failed: {ex.Message}"));
+        }
+    }
+
+    #endregion
+
+    #region Cloning
 
     /// <summary>
     ///     Creates a deep clone of the envelope.
     /// </summary>
-    /// <returns>A Result containing the cloned envelope.</returns>
     public Result<Envelope<T>, ValidationError> Clone()
     {
-        _rwLock.EnterReadLock();
         try
         {
-            // Deep clone headers
-            var clonedHeaders = new Dictionary<string, object>(_headers, StringComparer.Ordinal);
-
-            // Deep clone payload if possible
             T clonedPayload;
-            if (_payload is ICloneable cloneablePayload)
+
+            if (_payload is ICloneable cloneable)
             {
-                clonedPayload = (T)cloneablePayload.Clone();
+                clonedPayload = (T)cloneable.Clone();
             }
             else
             {
                 // Fallback to serialization-based cloning
-                var serializedPayload = JsonSerializer.Serialize(_payload);
-                clonedPayload = JsonSerializer.Deserialize<T>(serializedPayload)
-                                ?? throw new InvalidOperationException("Failed to clone payload");
+                var serialized = JsonSerializer.Serialize(_payload);
+                clonedPayload = JsonSerializer.Deserialize<T>(serialized)
+                    ?? throw new InvalidOperationException("Failed to clone payload");
             }
 
-            // Create new envelope with cloned data
-            var clonedEnvelope = new Envelope<T>(clonedPayload, _telemetry);
-
-            // Copy validators
-            foreach (var validator in _payloadValidators)
-            {
-                clonedEnvelope.RegisterPayloadValidator(validator);
-            }
-
-            foreach (var validator in _headerValidators)
-            {
-                clonedEnvelope.RegisterHeaderValidator(validator);
-            }
-
-            // Copy headers
-            foreach (var header in clonedHeaders)
-            {
-                clonedEnvelope.AddHeader(header.Key, header.Value);
-            }
+            var clonedEnvelope = new Envelope<T>(
+                clonedPayload,
+                _headers, // FrozenDictionary is immutable, safe to share
+                _isSealed,
+                _createdAt,
+                _sealedAt,
+                _signature,
+                _encryptedPayload?.ToArray(), // Create new array if encrypted
+                _telemetry);
 
             return Result<Envelope<T>, ValidationError>.Success(clonedEnvelope);
         }
@@ -675,187 +561,71 @@ public partial class Envelope<T>
         {
             _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
             return Result<Envelope<T>, ValidationError>.Failure(
-                new ValidationError($"Envelope cloning failed: {ex.Message}")
-            );
+                new ValidationError($"Cloning failed: {ex.Message}"));
         }
-        finally
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Computes a cryptographic signature for the envelope.
+    /// </summary>
+    private string ComputeSignature(byte[] key)
+    {
+        var dataForSigning = new
         {
-            _rwLock.ExitReadLock();
-        }
+            Payload = _payload,
+            Headers = _headers,
+            CreatedAt = _createdAt
+        };
+
+        var jsonData = JsonSerializer.Serialize(dataForSigning);
+        var dataBytes = Encoding.UTF8.GetBytes(jsonData);
+
+        using var hmac = new HMACSHA256(key);
+        var hash = hmac.ComputeHash(dataBytes);
+
+        return Convert.ToBase64String(hash);
     }
 
     /// <summary>
-    ///     Serializes the envelope using the specified serializer.
+    ///     Gets the internal DTO for serialization.
     /// </summary>
-    /// <param name="serializer">Optional serializer (defaults to JSON).</param>
-    /// <returns>A Result containing the serialized envelope.</returns>
-    public Result<string, ValidationError> Serialize(IEnvelopeSerializer? serializer = null)
-    {
-        _rwLock.EnterReadLock();
-        try
-        {
-            serializer ??= new JsonEnvelopeSerializer();
-
-            var serializedEnvelope = serializer.Serialize(this);
-
-            return Result<string, ValidationError>.Success(serializedEnvelope);
-        }
-        catch (Exception ex)
-        {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-            return Result<string, ValidationError>.Failure(
-                new ValidationError($"Envelope serialization failed: {ex.Message}")
-            );
-        }
-        finally
-        {
-            _rwLock.ExitReadLock();
-        }
-    }
-
-    /// <summary>
-    ///     Deserializes an envelope from a string.
-    /// </summary>
-    /// <param name="serializedData">The serialized envelope data.</param>
-    /// <param name="serializer">Optional serializer (defaults to JSON).</param>
-    /// <returns>A Result containing the deserialized envelope.</returns>
-    public static Result<Envelope<T>, ValidationError> Deserialize(
-        string serializedData,
-        IEnvelopeSerializer? serializer = null)
-    {
-        try
-        {
-            serializer ??= new JsonEnvelopeSerializer();
-
-            var deserializedEnvelope = serializer.Deserialize<T>(serializedData);
-
-            return Result<Envelope<T>, ValidationError>.Success(deserializedEnvelope);
-        }
-        catch (Exception ex)
-        {
-            // Use static telemetry method or default telemetry
-            var telemetry = new DefaultResultTelemetry();
-            telemetry.TrackException(ex, ResultState.Failure, typeof(Envelope<T>));
-
-            return Result<Envelope<T>, ValidationError>.Failure(
-                new ValidationError($"Envelope deserialization failed: {ex.Message}")
-            );
-        }
-    }
-
-    // Signature computation method
-    private string? ComputeSignature(byte[]? key)
-    {
-        if (key == null)
-        {
-            return null;
-        }
-
-        try
-        {
-            // Prepare signing data
-            var dataForSigning = new { Payload = _payload, Headers = _headers, _state.CreatedAt };
-
-            var jsonData = JsonSerializer.Serialize(dataForSigning);
-            var dataBytes = Encoding.UTF8.GetBytes(jsonData);
-
-            using var hmac = new HMACSHA256(key);
-            var hash = hmac.ComputeHash(dataBytes);
-
-            return Convert.ToBase64String(hash);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-}
-
-public partial class Envelope<T>
-{
-    /// <summary>
-    ///     Creates a Data Transfer Object (DTO) representing the envelope's current state.
-    ///     This is used for cloning and serialization.
-    /// </summary>
-    /// <returns>An instance of <see cref="EnvelopeDto{T}" />.</returns>
     internal EnvelopeDto<T> GetDto()
     {
-        _rwLock.EnterReadLock();
-        try
+        return new EnvelopeDto<T>
         {
-            return new EnvelopeDto<T>
-            {
-                Payload = _payload,
-                Headers = new Dictionary<string, object>(_headers, StringComparer.Ordinal),
-                IsSealed = _state.IsSealed,
-                CreatedDate = _state.CreatedAt,
-                SealedDate = _state.SealedAt,
-                Signature = _signature,
-                EncryptedPayload = _encryptedPayload != null
-                    ? Convert.ToBase64String(_encryptedPayload)
-                    : null
-            };
-        }
-        finally
-        {
-            _rwLock.ExitReadLock();
-        }
+            Payload = _payload,
+            Headers = _headers.ToDictionary(StringComparer.Ordinal),
+            IsSealed = _isSealed,
+            CreatedDate = _createdAt,
+            SealedDate = _sealedAt,
+            Signature = _signature,
+            EncryptedPayload = _encryptedPayload != null
+                ? Convert.ToBase64String(_encryptedPayload)
+                : null
+        };
     }
+
+    #endregion
+
+    #region DTO
 
     /// <summary>
-    ///     Data Transfer Object for envelope serialization and cloning.
-    ///     Supports both System.Text.Json and MessagePack serialization.
+    ///     Data Transfer Object for envelope serialization.
     /// </summary>
-    [MessagePackObject(true)]
     internal sealed class EnvelopeDto<TDto>
     {
-        /// <summary>
-        ///     The payload of the envelope.
-        /// </summary>
-        [Key(0)]
-        [JsonPropertyName("Payload")]
         public TDto Payload { get; init; } = default!;
-
-        /// <summary>
-        ///     Optional headers associated with the envelope.
-        /// </summary>
-        [Key(1)]
-        [JsonPropertyName("Headers")]
         public Dictionary<string, object>? Headers { get; init; }
-
-        /// <summary>
-        ///     Indicates whether the envelope is sealed.
-        /// </summary>
-        [Key(2)]
-        [JsonPropertyName("IsSealed")]
-        public bool IsSealed { get; set; }
-
-        /// <summary>
-        ///     The timestamp when the envelope was created.
-        /// </summary>
-        [Key(3)]
-        [JsonPropertyName("CreatedDate")]
+        public bool IsSealed { get; init; }
         public DateTime CreatedDate { get; init; }
-
-        /// <summary>
-        ///     The timestamp when the envelope was sealed (if applicable).
-        /// </summary>
-        [Key(4)]
-        [JsonPropertyName("SealedDate")]
-        public DateTime? SealedDate { get; set; }
-
-        /// <summary>
-        ///     Cryptographic signature of the envelope (if computed).
-        /// </summary>
-        [Key(5)]
-        [JsonPropertyName("Signature")]
-        public string? Signature { get; set; }
-
-        /// <summary>
-        ///     Encrypted payload, if the envelope's payload is encrypted.
-        /// </summary>
-        [Key(6)]
-        [JsonPropertyName("EncryptedPayload")]
-        public string? EncryptedPayload { get; set; }
+        public DateTime? SealedDate { get; init; }
+        public string? Signature { get; init; }
+        public string? EncryptedPayload { get; init; }
     }
+
+    #endregion
 }

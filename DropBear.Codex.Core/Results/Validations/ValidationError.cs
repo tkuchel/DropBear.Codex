@@ -4,7 +4,7 @@ namespace DropBear.Codex.Core.Results.Validations;
 
 /// <summary>
 ///     Represents a validation error with details about the validation failure.
-///     Provides additional context specific to the validation domain.
+///     Optimized for .NET 9 with better property handling.
 /// </summary>
 public sealed record ValidationError : ResultError
 {
@@ -12,7 +12,6 @@ public sealed record ValidationError : ResultError
     ///     Initializes a new instance of the <see cref="ValidationError"/> class
     ///     with a specific error message.
     /// </summary>
-    /// <param name="message">The error message describing the validation failure.</param>
     public ValidationError(string message) : base(message)
     {
     }
@@ -33,34 +32,82 @@ public sealed record ValidationError : ResultError
     public object? AttemptedValue { get; init; }
 
     /// <summary>
+    ///     Gets a value indicating whether this is a property validation error.
+    /// </summary>
+    public bool IsPropertyError => !string.IsNullOrWhiteSpace(PropertyName);
+
+    /// <summary>
+    ///     Gets a value indicating whether this is a rule validation error.
+    /// </summary>
+    public bool IsRuleError => !string.IsNullOrWhiteSpace(ValidationRule);
+
+    /// <summary>
     ///     Creates a new validation error for a specific property.
     /// </summary>
-    /// <param name="propertyName">The name of the property that failed validation.</param>
-    /// <param name="message">The validation error message.</param>
-    /// <param name="attemptedValue">The value that failed validation.</param>
-    /// <returns>A new ValidationError configured for property validation.</returns>
-    public static ValidationError ForProperty(string propertyName, string message, object? attemptedValue = null)
+    public static ValidationError ForProperty(
+        string propertyName,
+        string message,
+        object? attemptedValue = null)
     {
-        return new ValidationError(message)
-        {
-            PropertyName = propertyName,
-            AttemptedValue = attemptedValue
-        };
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        return new ValidationError(message) { PropertyName = propertyName, AttemptedValue = attemptedValue };
     }
 
     /// <summary>
     ///     Creates a new validation error for a specific validation rule.
     /// </summary>
-    /// <param name="rule">The name of the validation rule that failed.</param>
-    /// <param name="message">The validation error message.</param>
-    /// <param name="attemptedValue">The value that failed validation.</param>
-    /// <returns>A new ValidationError configured for rule validation.</returns>
-    public static ValidationError ForRule(string rule, string message, object? attemptedValue = null)
+    public static ValidationError ForRule(
+        string rule,
+        string message,
+        object? attemptedValue = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(rule);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        return new ValidationError(message) { ValidationRule = rule, AttemptedValue = attemptedValue };
+    }
+
+    /// <summary>
+    ///     Creates a validation error with both property and rule information.
+    /// </summary>
+    public static ValidationError ForPropertyAndRule(
+        string propertyName,
+        string rule,
+        string message,
+        object? attemptedValue = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(rule);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
         return new ValidationError(message)
         {
-            ValidationRule = rule,
-            AttemptedValue = attemptedValue
+            PropertyName = propertyName, ValidationRule = rule, AttemptedValue = attemptedValue
         };
+    }
+
+    /// <summary>
+    ///     Gets a formatted string representation of the validation error.
+    /// </summary>
+    public override string ToString()
+    {
+        if (IsPropertyError && IsRuleError)
+        {
+            return $"Validation failed for property '{PropertyName}' (Rule: {ValidationRule}): {Message}";
+        }
+
+        if (IsPropertyError)
+        {
+            return $"Validation failed for property '{PropertyName}': {Message}";
+        }
+
+        if (IsRuleError)
+        {
+            return $"Validation rule '{ValidationRule}' failed: {Message}";
+        }
+
+        return $"Validation failed: {Message}";
     }
 }

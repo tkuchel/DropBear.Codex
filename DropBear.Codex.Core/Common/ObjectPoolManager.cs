@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
@@ -11,9 +12,7 @@ namespace DropBear.Codex.Core.Common;
 
 /// <summary>
 ///     Provides a unified object pooling infrastructure for DropBear.Codex.
-///     By default, if a type <typeparamref name="T" /> has a public parameterless constructor,
-///     this class will instantiate via reflection. If it does not, an exception is thrown
-///     unless the caller supplies a delegate factory.
+///     Enhanced for .NET 9 with diagnostics and monitoring capabilities.
 /// </summary>
 public static class ObjectPoolManager
 {
@@ -28,19 +27,24 @@ public static class ObjectPoolManager
     private const int DefaultObjectCapacity = 32;
 
     /// <summary>
-    ///     The global <see cref="DefaultObjectPoolProvider" /> used to create individual pools.
+    ///     The global DefaultObjectPoolProvider used to create individual pools.
     /// </summary>
-    private static readonly DefaultObjectPoolProvider Provider = new()
-    {
-        // Up to this many objects can be retained in each pool
-        MaximumRetained = DefaultPoolSize
-    };
+    private static readonly DefaultObjectPoolProvider Provider = new() { MaximumRetained = DefaultPoolSize };
 
     /// <summary>
-    ///     A cache of <see cref="ObjectPool{T}" /> instances keyed by type name, ensuring each
-    ///     type is associated with only one shared pool.
+    ///     A cache of ObjectPool instances keyed by type name.
     /// </summary>
     private static readonly ConcurrentDictionary<string, object> TypedPools = new(StringComparer.Ordinal);
+
+    /// <summary>
+    ///     Pool statistics tracking (optional, can be disabled).
+    /// </summary>
+    private static readonly ConcurrentDictionary<string, PoolStatistics> PoolStats = new(StringComparer.Ordinal);
+
+    /// <summary>
+    ///     Whether to collect pool statistics. Disabled by default for performance.
+    /// </summary>
+    public static bool CollectStatistics { get; set; } = false;
 
     #region IResettable Interface
 
@@ -61,86 +65,100 @@ public static class ObjectPoolManager
     #region Public Pool Accessors
 
     /// <summary>
-    ///     Creates or retrieves a shared <see cref="ObjectPool{T}" /> for the specified type <typeparamref name="T" />.
+    ///     Creates or retrieves a shared ObjectPool for the specified type.
     /// </summary>
     /// <typeparam name="T">The type of objects to pool.</typeparam>
     /// <param name="factory">
-    ///     An optional delegate used to create new instances of <typeparamref name="T" />. If omitted,
-    ///     this method will attempt to instantiate <typeparamref name="T" /> via reflection on a public
-    ///     parameterless constructor. If none is found, an exception is thrown.
+    ///     An optional delegate used to create new instances of T.
     /// </param>
-    /// <returns>An <see cref="ObjectPool{T}" /> instance associated with type <typeparamref name="T" />.</returns>
-    /// <exception cref="InvalidOperationException">
-    ///     Thrown if no factory is provided and <typeparamref name="T" /> lacks a public parameterless constructor.
-    /// </exception>
+    /// <returns>An ObjectPool instance associated with type T.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ObjectPool<T> GetPool<T>(Func<T>? factory = null)
         where T : class
     {
-        // Attempt to reuse a previously created pool, if any.
         var typeName = typeof(T).FullName ?? typeof(T).Name;
+
         if (TypedPools.TryGetValue(typeName, out var existingPool) &&
             existingPool is ObjectPool<T> typedPool)
         {
             return typedPool;
         }
 
-        // No cached pool, so we must create a new one.
         ObjectPool<T> newPool;
 
         if (factory == null)
         {
-            // If no factory was provided, check whether T has a public parameterless constructor.
             if (HasParameterlessConstructor(typeof(T)))
             {
-                // We can instantiate T using reflection inside our default policy.
                 var policy = new DefaultObjectPoolPolicy<T>();
                 newPool = Provider.Create(policy);
             }
             else
             {
-                // T does not have a parameterless constructor, and no custom factory was supplied.
                 throw new InvalidOperationException(
                     $"Cannot create an object pool for type {typeof(T).Name} " +
-                    "because it lacks a public parameterless constructor. Provide a factory delegate instead."
-                );
+                    "because it lacks a public parameterless constructor. Provide a factory delegate instead.");
             }
         }
         else
         {
-            // A custom factory was supplied, so we use the delegate-based policy.
             var policy = new DelegateObjectPoolPolicy<T>(factory);
             newPool = Provider.Create(policy);
         }
 
-        // Cache the new pool for future requests.
+        // Wrap with statistics tracking if enabled
+        if (CollectStatistics)
+        {
+            newPool = new StatisticsTrackingPool<T>(newPool, typeName);
+            PoolStats.TryAdd(typeName, new PoolStatistics(typeName));
+        }
+
         TypedPools.TryAdd(typeName, newPool);
         return newPool;
     }
 
     /// <summary>
-    ///     Retrieves one object of type <typeparamref name="T" /> from the pool (or instantiates if the pool is empty).
+    ///     Retrieves one object of type T from the pool.
     /// </summary>
-    /// <typeparam name="T">The type of object to fetch.</typeparam>
-    /// <returns>An instance of <typeparamref name="T" /> from the associated pool.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T Get<T>()
         where T : class
     {
-        return GetPool<T>().Get();
+        var pool = GetPool<T>();
+        var item = pool.Get();
+
+        if (CollectStatistics)
+        {
+            var typeName = typeof(T).FullName ?? typeof(T).Name;
+            if (PoolStats.TryGetValue(typeName, out var stats))
+            {
+                stats.IncrementGets();
+            }
+        }
+
+        return item;
     }
 
     /// <summary>
-    ///     Returns an instance of <typeparamref name="T" /> to its pool, allowing reuse later.
+    ///     Returns an instance of T to its pool.
     /// </summary>
-    /// <typeparam name="T">The type of the returned object.</typeparam>
-    /// <param name="obj">The instance to return to the pool (ignored if null).</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Return<T>(T? obj)
         where T : class
     {
         if (obj != null)
         {
-            GetPool<T>().Return(obj);
+            var pool = GetPool<T>();
+            pool.Return(obj);
+
+            if (CollectStatistics)
+            {
+                var typeName = typeof(T).FullName ?? typeof(T).Name;
+                if (PoolStats.TryGetValue(typeName, out var stats))
+                {
+                    stats.IncrementReturns();
+                }
+            }
         }
     }
 
@@ -149,25 +167,18 @@ public static class ObjectPoolManager
     #region Collection Creators
 
     /// <summary>
-    ///     Creates a new <see cref="List{T}" /> using the specified initial capacity.
+    ///     Creates a new List with the specified initial capacity.
     /// </summary>
-    /// <typeparam name="T">The type of items in the list.</typeparam>
-    /// <param name="capacity">An optional initial capacity (default is 32).</param>
-    /// <returns>A new <see cref="List{T}" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static List<T> CreateList<T>(int capacity = DefaultObjectCapacity)
     {
         return new List<T>(capacity);
     }
 
     /// <summary>
-    ///     Creates a new <see cref="Dictionary{TKey,TValue}" /> using the specified initial capacity
-    ///     and optionally a custom key comparer.
+    ///     Creates a new Dictionary with the specified initial capacity.
     /// </summary>
-    /// <typeparam name="TKey">The type of keys in the dictionary.</typeparam>
-    /// <typeparam name="TValue">The type of values in the dictionary.</typeparam>
-    /// <param name="capacity">An optional initial capacity (default is 32).</param>
-    /// <param name="comparer">An optional key comparer.</param>
-    /// <returns>A new <see cref="Dictionary{TKey,TValue}" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Dictionary<TKey, TValue> CreateDictionary<TKey, TValue>(
         int capacity = DefaultObjectCapacity,
         IEqualityComparer<TKey>? comparer = null)
@@ -179,13 +190,9 @@ public static class ObjectPoolManager
     }
 
     /// <summary>
-    ///     Creates a new <see cref="HashSet{T}" /> using the specified initial capacity
-    ///     and optionally a custom element comparer.
+    ///     Creates a new HashSet with the specified initial capacity.
     /// </summary>
-    /// <typeparam name="T">The type of elements in the hash set.</typeparam>
-    /// <param name="capacity">An optional initial capacity (default is 32).</param>
-    /// <param name="comparer">An optional element comparer.</param>
-    /// <returns>A new <see cref="HashSet{T}" /> instance.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static HashSet<T> CreateHashSet<T>(
         int capacity = DefaultObjectCapacity,
         IEqualityComparer<T>? comparer = null)
@@ -197,37 +204,111 @@ public static class ObjectPoolManager
 
     #endregion
 
+    #region Statistics and Monitoring
+
+    /// <summary>
+    ///     Gets statistics for all pools.
+    /// </summary>
+    public static IReadOnlyDictionary<string, PoolStatistics> GetAllStatistics()
+    {
+        return PoolStats;
+    }
+
+    /// <summary>
+    ///     Gets statistics for a specific pool type.
+    /// </summary>
+    public static PoolStatistics? GetStatistics<T>()
+        where T : class
+    {
+        var typeName = typeof(T).FullName ?? typeof(T).Name;
+        return PoolStats.TryGetValue(typeName, out var stats) ? stats : null;
+    }
+
+    /// <summary>
+    ///     Clears all pool statistics.
+    /// </summary>
+    public static void ClearStatistics()
+    {
+        foreach (var stats in PoolStats.Values)
+        {
+            stats.Reset();
+        }
+    }
+
+    /// <summary>
+    ///     Clears all pools and statistics. Use with caution.
+    /// </summary>
+    public static void ClearAllPools()
+    {
+        TypedPools.Clear();
+        PoolStats.Clear();
+    }
+
+    /// <summary>
+    ///     Gets a summary of pool health and efficiency.
+    /// </summary>
+    public static PoolHealthReport GetHealthReport()
+    {
+        var totalGets = 0L;
+        var totalReturns = 0L;
+        var inefficientPools = new List<string>();
+
+        foreach (var (typeName, stats) in PoolStats)
+        {
+            totalGets += stats.TotalGets;
+            totalReturns += stats.TotalReturns;
+
+            // Flag pools with poor return rates
+            if (stats.ReturnRate < 0.8 && stats.TotalGets > 100)
+            {
+                inefficientPools.Add($"{typeName} ({stats.ReturnRate:P0})");
+            }
+        }
+
+        return new PoolHealthReport(
+            PoolCount: PoolStats.Count,
+            TotalGets: totalGets,
+            TotalReturns: totalReturns,
+            OverallReturnRate: totalGets > 0 ? (double)totalReturns / totalGets : 1.0,
+            InefficientPools: inefficientPools.AsReadOnly());
+    }
+
+    #endregion
+
     #region Policies & Helpers
 
     /// <summary>
-    ///     An <see cref="IPooledObjectPolicy{T}" /> that uses a user-supplied delegate to create new objects.
+    ///     An IPooledObjectPolicy that uses a user-supplied delegate to create new objects.
     /// </summary>
     private sealed class DelegateObjectPoolPolicy<T> : IPooledObjectPolicy<T>
         where T : class
     {
         private readonly Func<T> _factory;
 
-        /// <summary>
-        ///     Constructs a policy that creates objects by invoking the given <paramref name="factory" />.
-        /// </summary>
-        /// <param name="factory">A delegate for creating <typeparamref name="T" /> instances.</param>
         public DelegateObjectPoolPolicy(Func<T> factory)
         {
             _factory = factory;
         }
 
-        /// <inheritdoc />
         public T Create()
         {
             return _factory();
         }
 
-        /// <inheritdoc />
         public bool Return(T obj)
         {
             if (obj is IResettable resettable)
             {
-                resettable.Reset();
+                try
+                {
+                    resettable.Reset();
+                }
+                catch (Exception ex)
+                {
+                    // Log but don't throw - just don't return to pool
+                    Debug.WriteLine($"Error resetting pooled object: {ex.Message}");
+                    return false;
+                }
             }
 
             return true;
@@ -235,44 +316,42 @@ public static class ObjectPoolManager
     }
 
     /// <summary>
-    ///     A default policy that attempts to create objects via reflection on a public, parameterless constructor.
+    ///     A default policy that creates objects via reflection.
     /// </summary>
     private sealed class DefaultObjectPoolPolicy<T> : PooledObjectPolicy<T>
         where T : class
     {
         private readonly ConstructorInfo? _ctor;
 
-        /// <summary>
-        ///     Initializes a new instance of the <see cref="DefaultObjectPoolPolicy{T}" />.
-        ///     If <typeparamref name="T" /> doesn't have a public parameterless constructor,
-        ///     this policy will throw at <see cref="Create" />.
-        /// </summary>
         public DefaultObjectPoolPolicy()
         {
             _ctor = typeof(T).GetConstructor(Type.EmptyTypes);
         }
 
-        /// <inheritdoc />
         public override T Create()
         {
             if (_ctor == null)
             {
                 throw new InvalidOperationException(
-                    $"Type {typeof(T).Name} does not have a public parameterless constructor. " +
-                    "Provide a custom factory or use a specialized policy."
-                );
+                    $"Type {typeof(T).Name} does not have a public parameterless constructor.");
             }
 
-            // We assume the constructor is valid.
             return (T)_ctor.Invoke(null)!;
         }
 
-        /// <inheritdoc />
         public override bool Return(T obj)
         {
             if (obj is IResettable resettable)
             {
-                resettable.Reset();
+                try
+                {
+                    resettable.Reset();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error resetting pooled object: {ex.Message}");
+                    return false;
+                }
             }
 
             return true;
@@ -280,10 +359,35 @@ public static class ObjectPoolManager
     }
 
     /// <summary>
-    ///     Checks whether the given <paramref name="type" /> has a public parameterless constructor.
+    ///     Wrapper pool that tracks statistics.
     /// </summary>
-    /// <param name="type">The type to inspect for a parameterless constructor.</param>
-    /// <returns><c>true</c> if <paramref name="type" /> has a public parameterless constructor; otherwise <c>false</c>.</returns>
+    private sealed class StatisticsTrackingPool<T> : ObjectPool<T>
+        where T : class
+    {
+        private readonly ObjectPool<T> _innerPool;
+        private readonly string _typeName;
+
+        public StatisticsTrackingPool(ObjectPool<T> innerPool, string typeName)
+        {
+            _innerPool = innerPool;
+            _typeName = typeName;
+        }
+
+        public override T Get()
+        {
+            return _innerPool.Get();
+        }
+
+        public override void Return(T obj)
+        {
+            _innerPool.Return(obj);
+        }
+    }
+
+    /// <summary>
+    ///     Checks whether the given type has a public parameterless constructor.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasParameterlessConstructor(Type type)
     {
         return type.GetConstructor(Type.EmptyTypes) != null;
@@ -291,3 +395,60 @@ public static class ObjectPoolManager
 
     #endregion
 }
+
+#region Supporting Types
+
+/// <summary>
+///     Tracks statistics for an object pool.
+/// </summary>
+[DebuggerDisplay("Gets = {TotalGets}, Returns = {TotalReturns}, Rate = {ReturnRate:P0}")]
+public sealed class PoolStatistics
+{
+    private long _totalGets;
+    private long _totalReturns;
+
+    public PoolStatistics(string typeName)
+    {
+        TypeName = typeName;
+    }
+
+    public string TypeName { get; }
+    public long TotalGets => Interlocked.Read(ref _totalGets);
+    public long TotalReturns => Interlocked.Read(ref _totalReturns);
+    public double ReturnRate => TotalGets > 0 ? (double)TotalReturns / TotalGets : 1.0;
+    public long OutstandingObjects => TotalGets - TotalReturns;
+
+    internal void IncrementGets() => Interlocked.Increment(ref _totalGets);
+    internal void IncrementReturns() => Interlocked.Increment(ref _totalReturns);
+
+    internal void Reset()
+    {
+        Interlocked.Exchange(ref _totalGets, 0);
+        Interlocked.Exchange(ref _totalReturns, 0);
+    }
+
+    public override string ToString()
+    {
+        return $"{TypeName}: Gets={TotalGets}, Returns={TotalReturns}, " +
+               $"Rate={ReturnRate:P0}, Outstanding={OutstandingObjects}";
+    }
+}
+
+/// <summary>
+///     Represents a health report for all object pools.
+/// </summary>
+public sealed record PoolHealthReport(
+    int PoolCount,
+    long TotalGets,
+    long TotalReturns,
+    double OverallReturnRate,
+    IReadOnlyList<string> InefficientPools)
+{
+    public bool IsHealthy => OverallReturnRate >= 0.9 && InefficientPools.Count == 0;
+
+    public string Summary => IsHealthy
+        ? $"✓ All {PoolCount} pools healthy ({OverallReturnRate:P0} return rate)"
+        : $"⚠ {InefficientPools.Count}/{PoolCount} pools need attention ({OverallReturnRate:P0} return rate)";
+}
+
+#endregion
