@@ -64,7 +64,8 @@ public abstract record ResultError : ISpanFormattable
     ///     Additional context or metadata associated with this error.
     ///     Uses FrozenDictionary for better read performance.
     /// </summary>
-    [JsonExtensionData]
+    [JsonInclude]
+    [JsonPropertyName("metadata")]
     public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 
     /// <summary>
@@ -78,6 +79,12 @@ public abstract record ResultError : ISpanFormattable
     /// </summary>
     [JsonIgnore]
     public ErrorSeverity Severity => DetermineSeverity();
+
+    /// <summary>
+    ///     Indicates whether this error is a default/unknown error.
+    /// </summary>
+    [JsonIgnore]
+    public bool IsDefaultError => string.Equals(Message, DefaultErrorMessage, StringComparison.OrdinalIgnoreCase);
 
     #region String Formatting
 
@@ -260,6 +267,28 @@ public abstract record ResultError : ISpanFormattable
         where TError : ResultError
     {
         return (TError)Activator.CreateInstance(typeof(TError), CommonMessages["cancelled"])!;
+    }
+
+    /// <summary>
+    ///     Creates a cancellation error with standard messaging using a constructor with message parameter.
+    /// </summary>
+    /// <typeparam name="TError">The specific error type.</typeparam>
+    /// <returns>A new cancellation error instance.</returns>
+    public static TError CreateCancellationWithMessage<TError>()
+        where TError : ResultError
+    {
+        const string message = "Operation was cancelled";
+
+        try
+        {
+            return (TError)Activator.CreateInstance(typeof(TError), message)!;
+        }
+        catch
+        {
+            // Fallback to parameterless constructor if message constructor doesn't exist
+            var error = (TError)Activator.CreateInstance(typeof(TError))!;
+            return (TError)error.WithMetadata("Cancelled", true);
+        }
     }
 
     /// <summary>

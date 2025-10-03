@@ -316,6 +316,47 @@ public class Result<TError> : ResultBase, IResult<TError>
         return (TError)Activator.CreateInstance(typeof(TError), "Operation failed with unhandled exception")!;
     }
 
+    /// <summary>
+    ///     Initializes the result instance for pooling with optimized field setting.
+    ///     Internal method for use by legacy compatibility layer.
+    /// </summary>
+    internal void InitializeInternal(ResultState state, TError? error = null, Exception? exception = null)
+    {
+        // Use reflection to set base class fields safely
+        var baseType = typeof(ResultBase);
+        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+        try
+        {
+            // Set the State field on the base class
+            var stateField = baseType.GetField("<State>k__BackingField", flags);
+            if (stateField != null)
+            {
+                stateField.SetValue(this, state);
+            }
+
+            // Set the Exception field on the base class
+            var exceptionField = baseType.GetField("<Exception>k__BackingField", flags);
+            if (exceptionField != null)
+            {
+                exceptionField.SetValue(this, exception);
+            }
+
+            // Set our Error field
+            var errorField = GetType().GetField("<Error>k__BackingField", flags);
+            if (errorField != null)
+            {
+                errorField.SetValue(this, error);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Fallback: Log the error
+            Debug.WriteLine($"Failed to initialize pooled result instance via reflection: {ex.Message}");
+            throw new InvalidOperationException("Cannot initialize pooled result instance", ex);
+        }
+    }
+
     #endregion
 
     #region Factory Methods

@@ -17,7 +17,9 @@ namespace DropBear.Codex.Core.Results.Compatibility;
 ///     A backwards-compatible, untyped Result class.
 ///     Use Result&lt;TError&gt; with custom error types instead.
 /// </summary>
-[Obsolete("Use Result<TError> with custom error types instead of string-based errors. This type will be removed in a future version.", DiagnosticId = "DROPBEAR002")]
+[Obsolete(
+    "Use Result<TError> with custom error types instead of string-based errors. This type will be removed in a future version.",
+    DiagnosticId = "DROPBEAR002")]
 [ExcludeFromCodeCoverage] // Legacy code
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 public class Result : Base.Result<LegacyError>
@@ -263,7 +265,11 @@ public class Result : Base.Result<LegacyError>
     private static Result FromPool(ResultState state, string? error, Exception? exception = null)
     {
         var result = Pool.Get();
-        result.Initialize(state, error is null ? null : new LegacyError(error), exception);
+
+        // Call the base class Initialize method with the correct signature
+        // The base Result<TError> has: Initialize(ResultState state, TError? error, Exception? exception)
+        result.InitializeInternal(state, error is null ? null : new LegacyError(error), exception);
+
         return result;
     }
 

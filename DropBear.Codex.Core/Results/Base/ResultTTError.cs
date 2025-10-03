@@ -346,6 +346,68 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         return (TError)Activator.CreateInstance(typeof(TError), "Operation failed with unhandled exception")!;
     }
 
+    /// <summary>
+    ///     Initializes the result instance with a value for pooling.
+    ///     Internal method for use by legacy compatibility layer.
+    /// </summary>
+    internal void InitializeFromValue(T value, ResultState state, TError? error = null, Exception? exception = null)
+    {
+        // Use reflection to set base class fields safely
+        var baseType = typeof(ResultBase);
+        var flags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+
+        try
+        {
+            // Set the State field on ResultBase
+            var stateField = baseType.GetField("<State>k__BackingField", flags);
+            if (stateField != null)
+            {
+                stateField.SetValue(this, state);
+            }
+
+            // Set the Exception field on ResultBase
+            var exceptionField = baseType.GetField("<Exception>k__BackingField", flags);
+            if (exceptionField != null)
+            {
+                exceptionField.SetValue(this, exception);
+            }
+
+            // Set the Error field on Result<TError>
+            var errorField = typeof(Base.Result<TError>).GetField("<Error>k__BackingField", flags);
+            if (errorField != null)
+            {
+                errorField.SetValue(this, error);
+            }
+
+            // Set the value container using reflection
+            var valueContainerField = typeof(Result<T, TError>).GetField("_valueContainer", flags);
+            if (valueContainerField != null)
+            {
+                // Create a new ValueContainer with the value
+                var containerType = valueContainerField.FieldType;
+                var constructor = containerType.GetConstructor(
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public |
+                    System.Reflection.BindingFlags.NonPublic,
+                    null,
+                    new[] { typeof(T) },
+                    null);
+
+                if (constructor != null)
+                {
+                    var container = constructor.Invoke(new object?[] { value });
+                    valueContainerField.SetValue(this, container);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // Fallback: Log the error
+            System.Diagnostics.Debug.WriteLine(
+                $"Failed to initialize pooled result instance with value via reflection: {ex.Message}");
+            throw new InvalidOperationException("Cannot initialize pooled result instance with value", ex);
+        }
+    }
+
     #endregion
 
     #region Factory Methods
