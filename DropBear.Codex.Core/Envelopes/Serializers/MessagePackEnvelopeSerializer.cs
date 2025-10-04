@@ -47,7 +47,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackSerialize");
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(Serialize));
             throw new InvalidOperationException("Failed to serialize envelope.", ex);
         }
     }
@@ -60,7 +60,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         try
         {
             var dto = JsonSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data);
-            if (dto == null)
+            if (dto is null)
             {
                 throw new MessagePackSerializationException("Deserialization returned null DTO.");
             }
@@ -73,8 +73,8 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackDeserialize");
-            throw new MessagePackSerializationException("Failed to deserialize envelope.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(Deserialize));
+            throw new InvalidOperationException("Failed to deserialize envelope.", ex);
         }
     }
 
@@ -90,8 +90,8 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackSerializeToBinary");
-            throw new MessagePackSerializationException("Failed to serialize envelope to MessagePack.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(SerializeToBinary));
+            throw new MessagePackSerializationException("Failed to serialize envelope to binary.", ex);
         }
     }
 
@@ -108,6 +108,11 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         try
         {
             var dto = MessagePackSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
+            if (dto is null)
+            {
+                throw new MessagePackSerializationException("Deserialization returned null DTO.");
+            }
+
             return CreateEnvelopeFromDto(dto);
         }
         catch (MessagePackSerializationException)
@@ -116,8 +121,8 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "MessagePackDeserializeFromBinary");
-            throw new MessagePackSerializationException("Failed to deserialize envelope from MessagePack.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(DeserializeFromBinary));
+            throw new MessagePackSerializationException("Failed to deserialize envelope from binary.", ex);
         }
     }
 
@@ -126,28 +131,43 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
     #region Helper Methods
 
     /// <summary>
-    ///     Creates an envelope from a deserialized DTO.
+    ///     Creates an envelope from a DTO with validation.
     /// </summary>
     private Envelope<T> CreateEnvelopeFromDto<T>(Envelope<T>.EnvelopeDto<T> dto)
     {
-        var headers = dto.Headers?.ToFrozenDictionary(StringComparer.Ordinal)
-                      ?? System.Collections.Frozen.FrozenDictionary<string, object>.Empty;
+        ArgumentNullException.ThrowIfNull(dto);
 
-        byte[]? encryptedPayload = null;
-        if (!string.IsNullOrEmpty(dto.EncryptedPayload))
+        // Validate DTO
+        ValidateDto(dto);
+
+        // Create envelope using FromDto method
+        return Envelope<T>.FromDto(dto, _telemetry);
+    }
+
+    /// <summary>
+    ///     Validates an envelope DTO before deserialization.
+    /// </summary>
+    private static void ValidateDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    {
+        ArgumentNullException.ThrowIfNull(dto);
+
+        // Validate sealed envelopes have signatures
+        if (dto.IsSealed && string.IsNullOrWhiteSpace(dto.Signature))
         {
-            encryptedPayload = Convert.FromBase64String(dto.EncryptedPayload);
+            throw new MessagePackSerializationException("Sealed envelope must have a signature.");
         }
 
-        return new Envelope<T>(
-            dto.Payload,
-            headers,
-            dto.IsSealed,
-            dto.CreatedDate,
-            dto.SealedDate,
-            dto.Signature,
-            encryptedPayload,
-            _telemetry);
+        // Validate sealed envelopes have sealed date
+        if (dto.IsSealed && dto.SealedAt is null)
+        {
+            throw new MessagePackSerializationException("Sealed envelope must have a sealed date.");
+        }
+
+        // Validate created date exists
+        if (dto.CreatedAt == default)
+        {
+            throw new MessagePackSerializationException("Envelope must have a creation date.");
+        }
     }
 
     #endregion

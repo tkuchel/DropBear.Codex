@@ -1,9 +1,11 @@
 ﻿#region
 
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
 
@@ -13,12 +15,12 @@ namespace DropBear.Codex.Core.Results.Diagnostics;
 
 /// <summary>
 ///     Default implementation of result telemetry with enhanced metrics and OpenTelemetry-ready design.
-///     Optimized for .NET 9 with minimal overhead.
+///     Optimized for .NET 9 with configurable modes and minimal overhead.
 /// </summary>
 public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
 {
-    private static readonly ActivitySource ActivitySource = new("DropBear.Codex.Core.Results", "1.0.0");
-    private static readonly Meter Meter = new("DropBear.Codex.Core.Results", "1.0.0");
+    private static readonly ActivitySource ActivitySource = new("DropBear.Codex.Core.Results", "2.0.0");
+    private static readonly Meter Meter = new("DropBear.Codex.Core.Results", "2.0.0");
 
     // Metrics
     private readonly Counter<long> _resultCreatedCounter;
@@ -26,20 +28,28 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     private readonly Counter<long> _exceptionCounter;
     private readonly Histogram<double> _operationDuration;
 
-    // Statistics (optional, can be disabled for performance)
-    private readonly ConcurrentDictionary<string, long> _operationCounts;
-    private readonly ConcurrentDictionary<string, long> _errorCounts;
-    private readonly bool _collectStatistics;
+    // Configuration
+    private readonly TelemetryOptions _options;
+    private readonly TelemetryMode _mode;
+
+    // Channel-based processing (for BackgroundChannel mode)
+    private readonly Channel<TelemetryEvent>? _channel;
+    private readonly Task? _processorTask;
+    private readonly CancellationTokenSource? _cts;
+
+    // Statistics (optional)
+    private readonly ConcurrentDictionary<string, PoolStatistics>? _statistics;
+
+    private bool _disposed;
 
     /// <summary>
     ///     Initializes a new instance of DefaultResultTelemetry.
     /// </summary>
-    /// <param name="collectStatistics">
-    ///     Whether to collect in-memory statistics. Disable for high-performance scenarios.
-    /// </param>
-    public DefaultResultTelemetry(bool collectStatistics = false)
+    /// <param name="options">The telemetry options. If null, uses default FireAndForget mode.</param>
+    public DefaultResultTelemetry(TelemetryOptions? options = null)
     {
-        _collectStatistics = collectStatistics;
+        _options = options ?? new TelemetryOptions();
+        _mode = _options.Mode;
 
         // Initialize metrics
         _resultCreatedCounter = Meter.CreateCounter<long>(
@@ -60,15 +70,30 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
             description: "Duration of result operations");
 
         // Initialize statistics if enabled
-        if (_collectStatistics)
+        if (_options.CollectStatistics)
         {
-            _operationCounts = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);
-            _errorCounts = new ConcurrentDictionary<string, long>(StringComparer.Ordinal);
+            _statistics = new ConcurrentDictionary<string, PoolStatistics>(StringComparer.Ordinal);
         }
-        else
+
+        // Initialize channel-based processing if needed
+        if (_mode == TelemetryMode.BackgroundChannel)
         {
-            _operationCounts = null!;
-            _errorCounts = null!;
+            var channelOptions = new BoundedChannelOptions(_options.ChannelCapacity)
+            {
+                FullMode = _options.FullMode switch
+                {
+                    ChannelFullMode.Wait => BoundedChannelFullMode.Wait,
+                    ChannelFullMode.DropOldest => BoundedChannelFullMode.DropOldest,
+                    ChannelFullMode.DropNewest => BoundedChannelFullMode.DropWrite,
+                    _ => BoundedChannelFullMode.DropOldest
+                },
+                SingleReader = true,
+                SingleWriter = false
+            };
+
+            _channel = Channel.CreateBounded<TelemetryEvent>(channelOptions);
+            _cts = _options.CancellationTokenSource ?? new CancellationTokenSource();
+            _processorTask = Task.Run(() => ProcessTelemetryEventsAsync(_cts.Token), _cts.Token);
         }
     }
 
@@ -78,27 +103,19 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackResultCreated(ResultState state, Type resultType, string? caller = null)
     {
-        // Record metric
-        _resultCreatedCounter.Add(1,
-            new KeyValuePair<string, object?>("state", state.ToString()),
-            new KeyValuePair<string, object?>("type", resultType.Name),
-            new KeyValuePair<string, object?>("caller", caller ?? "Unknown"));
+        if (_mode == TelemetryMode.Disabled)
+            return;
 
-        // Update statistics if enabled
-        if (_collectStatistics)
+        var eventData = new TelemetryEvent
         {
-            var key = $"{resultType.Name}:{state}";
-            _operationCounts.AddOrUpdate(key, 1, (_, count) => count + 1);
-        }
+            Type = TelemetryEventType.ResultCreated,
+            State = state,
+            ResultType = resultType,
+            Caller = caller,
+            Timestamp = DateTimeOffset.UtcNow
+        };
 
-        // Create activity for tracing (if active listener exists)
-        if (ActivitySource.HasListeners())
-        {
-            using var activity = ActivitySource.StartActivity("ResultCreated", ActivityKind.Internal);
-            activity?.SetTag("result.state", state.ToString());
-            activity?.SetTag("result.type", resultType.Name);
-            activity?.SetTag("caller", caller);
-        }
+        ProcessEvent(eventData);
     }
 
     /// <inheritdoc />
@@ -109,29 +126,20 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         Type resultType,
         string? caller = null)
     {
-        // Record metric
-        _resultTransformedCounter.Add(1,
-            new KeyValuePair<string, object?>("original_state", originalState.ToString()),
-            new KeyValuePair<string, object?>("new_state", newState.ToString()),
-            new KeyValuePair<string, object?>("type", resultType.Name),
-            new KeyValuePair<string, object?>("caller", caller ?? "Unknown"));
+        if (_mode == TelemetryMode.Disabled)
+            return;
 
-        // Update statistics if enabled
-        if (_collectStatistics)
+        var eventData = new TelemetryEvent
         {
-            var key = $"{resultType.Name}:Transform:{originalState}->{newState}";
-            _operationCounts.AddOrUpdate(key, 1, (_, count) => count + 1);
-        }
+            Type = TelemetryEventType.ResultTransformed,
+            State = newState,
+            OriginalState = originalState,
+            ResultType = resultType,
+            Caller = caller,
+            Timestamp = DateTimeOffset.UtcNow
+        };
 
-        // Create activity for tracing
-        if (ActivitySource.HasListeners())
-        {
-            using var activity = ActivitySource.StartActivity("ResultTransformed", ActivityKind.Internal);
-            activity?.SetTag("result.original_state", originalState.ToString());
-            activity?.SetTag("result.new_state", newState.ToString());
-            activity?.SetTag("result.type", resultType.Name);
-            activity?.SetTag("caller", caller);
-        }
+        ProcessEvent(eventData);
     }
 
     /// <inheritdoc />
@@ -142,90 +150,211 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         Type resultType,
         string? caller = null)
     {
+        if (_mode == TelemetryMode.Disabled)
+            return;
+
         ArgumentNullException.ThrowIfNull(exception);
+
+        var eventData = new TelemetryEvent
+        {
+            Type = TelemetryEventType.Exception,
+            State = state,
+            ResultType = resultType,
+            Exception = exception,
+            Caller = caller,
+            Timestamp = DateTimeOffset.UtcNow
+        };
+
+        ProcessEvent(eventData);
+    }
+
+    #endregion
+
+    #region Event Processing
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ProcessEvent(TelemetryEvent eventData)
+    {
+        switch (_mode)
+        {
+            case TelemetryMode.Disabled:
+                return;
+
+            case TelemetryMode.Synchronous:
+                ProcessEventCore(eventData);
+                break;
+
+            case TelemetryMode.FireAndForget:
+                _ = Task.Run(() => ProcessEventCore(eventData));
+                break;
+
+            case TelemetryMode.BackgroundChannel:
+                // Try to write to channel, drop if full based on FullMode
+                _channel?.Writer.TryWrite(eventData);
+                break;
+
+            default:
+                throw new ArgumentOutOfRangeException(nameof(_mode), _mode, "Invalid telemetry mode");
+        }
+    }
+
+    private void ProcessEventCore(TelemetryEvent eventData)
+    {
+        try
+        {
+            switch (eventData.Type)
+            {
+                case TelemetryEventType.ResultCreated:
+                    ProcessResultCreated(eventData);
+                    break;
+
+                case TelemetryEventType.ResultTransformed:
+                    ProcessResultTransformed(eventData);
+                    break;
+
+                case TelemetryEventType.Exception:
+                    ProcessException(eventData);
+                    break;
+
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(eventData.Type), eventData.Type,
+                        "Unknown telemetry event type");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Don't let telemetry errors crash the application
+            Debug.WriteLine($"Error processing telemetry event: {ex.Message}");
+        }
+    }
+
+    private void ProcessResultCreated(TelemetryEvent eventData)
+    {
+        // Record metric
+        _resultCreatedCounter.Add(1,
+            new KeyValuePair<string, object?>("state", eventData.State.ToString()),
+            new KeyValuePair<string, object?>("type", eventData.ResultType.Name),
+            new KeyValuePair<string, object?>("caller", eventData.Caller ?? "Unknown"));
+
+        // Update statistics if enabled
+        if (_statistics != null)
+        {
+            var key = $"{eventData.ResultType.Name}:{eventData.State}";
+            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            stats.IncrementGets();
+        }
+
+        // Create activity for tracing (if active listener exists)
+        if (ActivitySource.HasListeners())
+        {
+            using var activity = ActivitySource.StartActivity("ResultCreated", ActivityKind.Internal);
+            activity?.SetTag("result.state", eventData.State.ToString());
+            activity?.SetTag("result.type", eventData.ResultType.Name);
+            activity?.SetTag("caller", eventData.Caller);
+        }
+    }
+
+    private void ProcessResultTransformed(TelemetryEvent eventData)
+    {
+        // Record metric
+        _resultTransformedCounter.Add(1,
+            new KeyValuePair<string, object?>("original_state", eventData.OriginalState?.ToString() ?? "Unknown"),
+            new KeyValuePair<string, object?>("new_state", eventData.State.ToString()),
+            new KeyValuePair<string, object?>("type", eventData.ResultType.Name),
+            new KeyValuePair<string, object?>("caller", eventData.Caller ?? "Unknown"));
+
+        // Update statistics if enabled
+        if (_statistics != null)
+        {
+            var key = $"{eventData.ResultType.Name}:Transform:{eventData.OriginalState}->{eventData.State}";
+            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            stats.IncrementGets();
+        }
+
+        // Create activity for tracing
+        if (ActivitySource.HasListeners())
+        {
+            using var activity = ActivitySource.StartActivity("ResultTransformed", ActivityKind.Internal);
+            activity?.SetTag("result.original_state", eventData.OriginalState?.ToString());
+            activity?.SetTag("result.new_state", eventData.State.ToString());
+            activity?.SetTag("result.type", eventData.ResultType.Name);
+            activity?.SetTag("caller", eventData.Caller);
+        }
+    }
+
+    private void ProcessException(TelemetryEvent eventData)
+    {
+        ArgumentNullException.ThrowIfNull(eventData.Exception);
 
         // Record metric
         _exceptionCounter.Add(1,
-            new KeyValuePair<string, object?>("exception_type", exception.GetType().Name),
-            new KeyValuePair<string, object?>("state", state.ToString()),
-            new KeyValuePair<string, object?>("result_type", resultType.Name),
-            new KeyValuePair<string, object?>("caller", caller ?? "Unknown"));
+            new KeyValuePair<string, object?>("exception_type", eventData.Exception.GetType().Name),
+            new KeyValuePair<string, object?>("state", eventData.State.ToString()),
+            new KeyValuePair<string, object?>("type", eventData.ResultType.Name),
+            new KeyValuePair<string, object?>("caller", eventData.Caller ?? "Unknown"));
 
         // Update statistics if enabled
-        if (_collectStatistics)
+        if (_statistics != null)
         {
-            var key = $"{exception.GetType().Name}:{resultType.Name}";
-            _errorCounts.AddOrUpdate(key, 1, (_, count) => count + 1);
+            var key = $"{eventData.ResultType.Name}:Exception:{eventData.Exception.GetType().Name}";
+            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            stats.IncrementGets();
         }
 
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
             using var activity = ActivitySource.StartActivity("ResultException", ActivityKind.Internal);
-            activity?.SetTag("exception.type", exception.GetType().Name);
-            activity?.SetTag("exception.message", exception.Message);
-            activity?.SetTag("result.state", state.ToString());
-            activity?.SetTag("result.type", resultType.Name);
-            activity?.SetTag("caller", caller);
-            activity?.SetStatus(ActivityStatusCode.Error, exception.Message);
+            activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
+            activity?.SetTag("exception.message", eventData.Exception.Message);
+            activity?.SetTag("result.state", eventData.State.ToString());
+            activity?.SetTag("result.type", eventData.ResultType.Name);
+            activity?.SetTag("caller", eventData.Caller);
 
-            // Record exception event
-            activity?.AddEvent(new ActivityEvent("exception",
-                tags: new ActivityTagsCollection
-                {
-                    { "exception.type", exception.GetType().FullName },
-                    { "exception.message", exception.Message },
-                    { "exception.stacktrace", exception.StackTrace }
-                }));
+            // Add stack trace if configured
+            if (_options.CaptureStackTraces)
+            {
+                activity?.SetTag("exception.stacktrace", eventData.Exception.StackTrace);
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Background processor for telemetry events (BackgroundChannel mode only).
+    /// </summary>
+    private async Task ProcessTelemetryEventsAsync(CancellationToken cancellationToken)
+    {
+        if (_channel == null)
+            return;
+
+        try
+        {
+            await foreach (var eventData in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            {
+                ProcessEventCore(eventData);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error in telemetry background processor: {ex.Message}");
         }
     }
 
     #endregion
 
-    #region Additional Tracking Methods
+    #region Statistics
 
     /// <summary>
-    ///     Tracks the duration of an operation.
+    ///     Gets all collected statistics.
+    ///     Returns null if statistics collection is disabled.
     /// </summary>
-    public void TrackOperationDuration(
-        TimeSpan duration,
-        Type resultType,
-        ResultState state,
-        string? operationName = null)
+    public IReadOnlyDictionary<string, PoolStatistics>? GetStatistics()
     {
-        _operationDuration.Record(
-            duration.TotalMilliseconds,
-            new KeyValuePair<string, object?>("type", resultType.Name),
-            new KeyValuePair<string, object?>("state", state.ToString()),
-            new KeyValuePair<string, object?>("operation", operationName ?? "Unknown"));
-    }
-
-    /// <summary>
-    ///     Creates a traced operation scope for measuring duration.
-    /// </summary>
-    public IDisposable TraceOperation(string operationName, Type resultType)
-    {
-        return new OperationScope(this, operationName, resultType);
-    }
-
-    #endregion
-
-    #region Statistics (if enabled)
-
-    /// <summary>
-    ///     Gets operation statistics if collection is enabled.
-    /// </summary>
-    public IReadOnlyDictionary<string, long>? GetOperationStatistics()
-    {
-        return _collectStatistics ? _operationCounts : null;
-    }
-
-    /// <summary>
-    ///     Gets error statistics if collection is enabled.
-    /// </summary>
-    public IReadOnlyDictionary<string, long>? GetErrorStatistics()
-    {
-        return _collectStatistics ? _errorCounts : null;
+        return _statistics;
     }
 
     /// <summary>
@@ -233,67 +362,297 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     /// </summary>
     public void ClearStatistics()
     {
-        if (_collectStatistics)
+        if (_statistics != null)
         {
-            _operationCounts.Clear();
-            _errorCounts.Clear();
+            foreach (var stats in _statistics.Values)
+            {
+                stats.Reset();
+            }
         }
     }
 
     #endregion
 
-    #region Disposal
+    #region IDisposable
 
     /// <summary>
-    ///     Disposes telemetry resources.
+    ///     Disposes the telemetry instance and stops background processing if active.
     /// </summary>
     public void Dispose()
     {
-        // Meter and ActivitySource are static, don't dispose them
-        // Just clear statistics if enabled
-        if (_collectStatistics)
+        if (_disposed)
+            return;
+
+        _disposed = true;
+
+        // Signal cancellation for background processor
+        _cts?.Cancel();
+
+        // Complete the channel to signal no more writes
+        _channel?.Writer.Complete();
+
+        // Wait for processor to finish (with timeout)
+        if (_processorTask != null)
         {
-            _operationCounts?.Clear();
-            _errorCounts?.Clear();
+            try
+            {
+                _processorTask.Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException)
+            {
+                // Ignore - already cancelled
+            }
         }
+
+        // Dispose resources
+        _cts?.Dispose();
+        ActivitySource.Dispose();
+        Meter.Dispose();
     }
 
     #endregion
 
-    #region Nested Types
+    #region Performance-Optimized Event Pooling
+
+// Use ArrayPool instead of ObjectPool for better performance
+    private const int MaxBatchSize = 100;
 
     /// <summary>
-    ///     Represents a scoped operation for duration tracking.
+    ///     Processes events in batches using pooled collections.
+    ///     Reduces allocation pressure in high-throughput scenarios.
     /// </summary>
-    private sealed class OperationScope : IDisposable
+    private async Task ProcessTelemetryEventsBatchedAsync(CancellationToken cancellationToken)
     {
-        private readonly DefaultResultTelemetry _telemetry;
-        private readonly string _operationName;
-        private readonly Type _resultType;
-        private readonly Stopwatch _stopwatch;
-        private readonly Activity? _activity;
+        if (_channel is null)
+            return;
 
-        public OperationScope(DefaultResultTelemetry telemetry, string operationName, Type resultType)
+        try
         {
-            _telemetry = telemetry;
-            _operationName = operationName;
-            _resultType = resultType;
-            _stopwatch = Stopwatch.StartNew();
-            _activity = ActivitySource.StartActivity(operationName, ActivityKind.Internal);
-            _activity?.SetTag("result.type", resultType.Name);
+            // Use array from pool for batching
+            var batch = ArrayPool<TelemetryEvent>.Shared.Rent(MaxBatchSize);
+            var batchCount = 0;
+
+            try
+            {
+                await foreach (var eventData in _channel.Reader.ReadAllAsync(cancellationToken)
+                                   .ConfigureAwait(false))
+                {
+                    batch[batchCount++] = eventData;
+
+                    // Process in batches of 100 for better performance
+                    if (batchCount >= MaxBatchSize)
+                    {
+                        ProcessEventBatch(batch.AsSpan(0, batchCount));
+                        batchCount = 0;
+                    }
+                }
+
+                // Process remaining events
+                if (batchCount > 0)
+                {
+                    ProcessEventBatch(batch.AsSpan(0, batchCount));
+                }
+            }
+            finally
+            {
+                ArrayPool<TelemetryEvent>.Shared.Return(batch, clearArray: true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Error in telemetry background processor: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    ///     Processes a batch of events using span-based operations.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void ProcessEventBatch(ReadOnlySpan<TelemetryEvent> events)
+    {
+        for (var i = 0; i < events.Length; i++)
+        {
+            ProcessEventCore(in events[i]);
+        }
+    }
+
+    /// <summary>
+    ///     Processes a single event using ref readonly for large struct optimization.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ProcessEventCore(ref readonly TelemetryEvent eventData)
+    {
+        switch (eventData.Type)
+        {
+            case TelemetryEventType.ResultCreated:
+                ProcessResultCreatedCore(in eventData);
+                break;
+            case TelemetryEventType.ResultTransformed:
+                ProcessResultTransformedCore(in eventData);
+                break;
+            case TelemetryEventType.Exception:
+                ProcessExceptionCore(in eventData);
+                break;
+        }
+    }
+
+// Rename the existing methods or create new ones that accept ref readonly
+    private void ProcessResultCreatedCore(ref readonly TelemetryEvent eventData)
+    {
+        // Increment counter
+        _resultCreatedCounter.Add(1,
+            new KeyValuePair<string, object?>("state", eventData.State.ToString()),
+            new KeyValuePair<string, object?>("type", eventData.ResultType.Name));
+
+        // Update statistics if enabled
+        if (_statistics is not null)
+        {
+            var key = $"{eventData.ResultType.Name}:{eventData.State}";
+            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            stats.IncrementGets();
         }
 
-        public void Dispose()
+        // Create activity for tracing if listeners exist
+        if (ActivitySource.HasListeners())
         {
-            _stopwatch.Stop();
-            _telemetry.TrackOperationDuration(
-                _stopwatch.Elapsed,
-                _resultType,
-                ResultState.Success,
-                _operationName);
-            _activity?.Dispose();
+            using var activity = ActivitySource.StartActivity("ResultCreated", ActivityKind.Internal);
+            activity?.SetTag("result.state", eventData.State.ToString());
+            activity?.SetTag("result.type", eventData.ResultType.Name);
+            activity?.SetTag("caller", eventData.Caller ?? "Unknown");
+        }
+    }
+
+    private void ProcessResultTransformedCore(ref readonly TelemetryEvent eventData)
+    {
+        // Increment counter
+        _resultTransformedCounter.Add(1,
+            new KeyValuePair<string, object?>("original_state", eventData.OriginalState?.ToString() ?? "Unknown"),
+            new KeyValuePair<string, object?>("new_state", eventData.State.ToString()),
+            new KeyValuePair<string, object?>("type", eventData.ResultType.Name));
+
+        // Update statistics if enabled
+        if (_statistics is not null)
+        {
+            var key = $"{eventData.ResultType.Name}:Transform:{eventData.OriginalState}->{eventData.State}";
+            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            stats.IncrementGets();
+        }
+
+        // Create activity for tracing
+        if (ActivitySource.HasListeners())
+        {
+            using var activity = ActivitySource.StartActivity("ResultTransformed", ActivityKind.Internal);
+            activity?.SetTag("result.original_state", eventData.OriginalState?.ToString() ?? "Unknown");
+            activity?.SetTag("result.new_state", eventData.State.ToString());
+            activity?.SetTag("result.type", eventData.ResultType.Name);
+            activity?.SetTag("caller", eventData.Caller ?? "Unknown");
+        }
+    }
+
+    private void ProcessExceptionCore(ref readonly TelemetryEvent eventData)
+    {
+        if (eventData.Exception is null)
+            return;
+
+        // Increment counter
+        _exceptionCounter.Add(1,
+            new KeyValuePair<string, object?>("exception_type", eventData.Exception.GetType().Name),
+            new KeyValuePair<string, object?>("result_state", eventData.State.ToString()),
+            new KeyValuePair<string, object?>("result_type", eventData.ResultType.Name));
+
+        // Update statistics if enabled
+        if (_statistics is not null)
+        {
+            var key = $"{eventData.ResultType.Name}:Exception:{eventData.Exception.GetType().Name}";
+            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            stats.IncrementGets();
+        }
+
+        // Create activity for tracing
+        if (ActivitySource.HasListeners())
+        {
+            using var activity = ActivitySource.StartActivity("ResultException", ActivityKind.Internal);
+            activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
+            activity?.SetTag("exception.message", eventData.Exception.Message);
+            activity?.SetTag("result.state", eventData.State.ToString());
+            activity?.SetTag("result.type", eventData.ResultType.Name);
+            activity?.SetTag("caller", eventData.Caller ?? "Unknown");
+
+            // Add stack trace if configured
+            if (_options.CaptureStackTraces)
+            {
+                activity?.SetTag("exception.stacktrace", eventData.Exception.StackTrace);
+            }
         }
     }
 
     #endregion
 }
+
+#region Supporting Types
+
+/// <summary>
+///     Represents a telemetry event to be processed.
+/// </summary>
+internal readonly record struct TelemetryEvent
+{
+    public required TelemetryEventType Type { get; init; }
+    public required ResultState State { get; init; }
+    public ResultState? OriginalState { get; init; }
+    public required Type ResultType { get; init; }
+    public Exception? Exception { get; init; }
+    public string? Caller { get; init; }
+    public DateTimeOffset Timestamp { get; init; }
+}
+
+/// <summary>
+///     Defines the type of telemetry event.
+/// </summary>
+internal enum TelemetryEventType
+{
+    ResultCreated,
+    ResultTransformed,
+    Exception
+}
+
+/// <summary>
+///     Tracks statistics for telemetry operations.
+///     Reused from ObjectPoolManager for consistency.
+/// </summary>
+public sealed class PoolStatistics
+{
+    private long _totalGets;
+    private long _totalReturns;
+
+    public PoolStatistics(string typeName)
+    {
+        TypeName = typeName;
+    }
+
+    public string TypeName { get; }
+    public long TotalGets => Interlocked.Read(ref _totalGets);
+    public long TotalReturns => Interlocked.Read(ref _totalReturns);
+    public double ReturnRate => TotalGets > 0 ? (double)TotalReturns / TotalGets : 1.0;
+    public long OutstandingObjects => TotalGets - TotalReturns;
+
+    internal void IncrementGets() => Interlocked.Increment(ref _totalGets);
+    internal void IncrementReturns() => Interlocked.Increment(ref _totalReturns);
+
+    internal void Reset()
+    {
+        Interlocked.Exchange(ref _totalGets, 0);
+        Interlocked.Exchange(ref _totalReturns, 0);
+    }
+
+    public override string ToString()
+    {
+        return $"{TypeName}: Gets={TotalGets}, Returns={TotalReturns}, " +
+               $"Rate={ReturnRate:P0}, Outstanding={OutstandingObjects}";
+    }
+}
+
+#endregion

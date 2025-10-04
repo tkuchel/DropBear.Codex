@@ -82,189 +82,111 @@ public readonly record struct Unit : ISpanFormattable
     }
 
     /// <summary>
+    ///     Converts a void-returning Action with two parameters to a Unit-returning Function.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Func<T1, T2, Unit> FromAction<T1, T2>(Action<T1, T2> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        return (param1, param2) =>
+        {
+            action(param1, param2);
+            return Value;
+        };
+    }
+
+    /// <summary>
     ///     Converts a void-returning asynchronous function to a Unit-returning one.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> FromAsync(Func<ValueTask> asyncAction)
+    public static Func<ValueTask<Unit>> FromActionAsync(Func<ValueTask> actionAsync)
     {
-        ArgumentNullException.ThrowIfNull(asyncAction);
-        await asyncAction().ConfigureAwait(false);
-        return Value;
+        ArgumentNullException.ThrowIfNull(actionAsync);
+        return async () =>
+        {
+            await actionAsync().ConfigureAwait(false);
+            return Value;
+        };
     }
 
     /// <summary>
-    ///     Converts a void-returning Task function to a Unit-returning ValueTask.
+    ///     Converts a void-returning asynchronous function with parameter to a Unit-returning one.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> FromAsync(Func<Task> asyncAction)
+    public static Func<T, ValueTask<Unit>> FromActionAsync<T>(Func<T, ValueTask> actionAsync)
     {
-        ArgumentNullException.ThrowIfNull(asyncAction);
-        await asyncAction().ConfigureAwait(false);
-        return Value;
-    }
-
-    /// <summary>
-    ///     Converts a void-returning async function with parameter to a Unit-returning ValueTask.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Func<T, ValueTask<Unit>> FromAsync<T>(Func<T, ValueTask> asyncAction)
-    {
-        ArgumentNullException.ThrowIfNull(asyncAction);
+        ArgumentNullException.ThrowIfNull(actionAsync);
         return async parameter =>
         {
-            await asyncAction(parameter).ConfigureAwait(false);
+            await actionAsync(parameter).ConfigureAwait(false);
             return Value;
         };
     }
 
     #endregion
 
-    #region Task Continuations
+    #region ISpanFormattable Implementation
 
     /// <summary>
-    ///     Executes the specified action after the ValueTask completes and returns Unit.
+    ///     Formats the value of the current instance using the specified format.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ContinueWith(ValueTask task, Action continuation)
+    public string ToString(string? format, IFormatProvider? formatProvider)
     {
-        ArgumentNullException.ThrowIfNull(continuation);
-        await task.ConfigureAwait(false);
-        continuation();
-        return Value;
+        return "()";
     }
 
     /// <summary>
-    ///     Executes the specified action after the Task completes and returns Unit.
+    ///     Tries to format the value of the current instance into the provided span of characters.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ContinueWith(Task task, Action continuation)
-    {
-        ArgumentNullException.ThrowIfNull(task);
-        ArgumentNullException.ThrowIfNull(continuation);
-        await task.ConfigureAwait(false);
-        continuation();
-        return Value;
-    }
-
-    /// <summary>
-    ///     Executes the specified action with the ValueTask result after the task completes and returns Unit.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ContinueWith<T>(ValueTask<T> task, Action<T> continuation)
-    {
-        ArgumentNullException.ThrowIfNull(continuation);
-        var result = await task.ConfigureAwait(false);
-        continuation(result);
-        return Value;
-    }
-
-    /// <summary>
-    ///     Executes the specified action with the Task result after the task completes and returns Unit.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ContinueWith<T>(Task<T> task, Action<T> continuation)
-    {
-        ArgumentNullException.ThrowIfNull(task);
-        ArgumentNullException.ThrowIfNull(continuation);
-        var result = await task.ConfigureAwait(false);
-        continuation(result);
-        return Value;
-    }
-
-    /// <summary>
-    ///     Executes the specified async action after the ValueTask completes and returns Unit.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ContinueWithAsync(ValueTask task, Func<ValueTask> continuation)
-    {
-        ArgumentNullException.ThrowIfNull(continuation);
-        await task.ConfigureAwait(false);
-        await continuation().ConfigureAwait(false);
-        return Value;
-    }
-
-    /// <summary>
-    ///     Executes the specified async action with the ValueTask result after the task completes and returns Unit.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ContinueWithAsync<T>(ValueTask<T> task, Func<T, ValueTask> continuation)
-    {
-        ArgumentNullException.ThrowIfNull(continuation);
-        var result = await task.ConfigureAwait(false);
-        await continuation(result).ConfigureAwait(false);
-        return Value;
-    }
-
-    #endregion
-
-    #region Formatting
-
-    private const string UnitString = "()";
-    private static ReadOnlySpan<char> UnitSpan => "()";
-
-    /// <summary>
-    ///     Returns a string representation of the Unit value.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public override string ToString() => UnitString;
-
-    /// <summary>
-    ///     Returns a string representation of the Unit value.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public string ToString(string? format, IFormatProvider? formatProvider) => UnitString;
-
-    /// <summary>
-    ///     Attempts to format the Unit value into the provided character span.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryFormat(
         Span<char> destination,
         out int charsWritten,
         ReadOnlySpan<char> format,
         IFormatProvider? provider)
     {
-        if (destination.Length < UnitSpan.Length)
+        if (destination.Length >= 2)
         {
-            charsWritten = 0;
-            return false;
+            destination[0] = '(';
+            destination[1] = ')';
+            charsWritten = 2;
+            return true;
         }
 
-        UnitSpan.CopyTo(destination);
-        charsWritten = UnitSpan.Length;
-        return true;
+        charsWritten = 0;
+        return false;
     }
 
     #endregion
 
-    #region Implicit Conversions
+    #region Equality and Comparison
 
     /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to a completed <see cref="ValueTask" />.
+    ///     All Unit values are equal.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator ValueTask(Unit _) => ValueTask.CompletedTask;
+    public override string ToString() => "()";
 
     /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to a completed <see cref="Task" />.
+    ///     Gets the hash code (always the same for Unit).
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator Task(Unit _) => Task.CompletedTask;
-
-    /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to a completed <see cref="ValueTask{Unit}" />.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static implicit operator ValueTask<Unit>(Unit _) => CompletedTask;
+    public override int GetHashCode() => 0;
 
     #endregion
 
-    #region Factory Methods
+    #region Helper Methods
+
     /// <summary>
-    ///     Creates a Unit result after executing a synchronous action.
+    ///     Discards a value and returns Unit.
+    ///     Use this to explicitly ignore a value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Unit Execute(Action action)
+    public static Unit Discard<T>(T _) => Value;
+
+    /// <summary>
+    ///     Executes an action and returns Unit.
+    ///     Useful for converting void-returning methods to expressions.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Unit Do(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
         action();
@@ -272,24 +194,13 @@ public readonly record struct Unit : ISpanFormattable
     }
 
     /// <summary>
-    ///     Creates a Unit result after executing an asynchronous action.
+    ///     Executes an action with a parameter and returns Unit.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ExecuteAsync(Func<ValueTask> asyncAction)
+    public static Unit Do<T>(T value, Action<T> action)
     {
-        ArgumentNullException.ThrowIfNull(asyncAction);
-        await asyncAction().ConfigureAwait(false);
-        return Value;
-    }
-
-    /// <summary>
-    ///     Creates a Unit result after executing an asynchronous Task-based action.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static async ValueTask<Unit> ExecuteAsync(Func<Task> asyncAction)
-    {
-        ArgumentNullException.ThrowIfNull(asyncAction);
-        await asyncAction().ConfigureAwait(false);
+        ArgumentNullException.ThrowIfNull(action);
+        action(value);
         return Value;
     }
 

@@ -1,29 +1,24 @@
 ﻿#region
 
-using System.Diagnostics;
-using System.Runtime.Serialization;
-using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Results.Validations;
 
 #endregion
 
 namespace DropBear.Codex.Core.Results.Errors;
 
 /// <summary>
-///     Exception thrown during result validation operations.
-///     Provides specific context about validation failures.
+///     Exception thrown when validation fails in a Result context.
+///     Optimized for .NET 9 with modern exception patterns.
 /// </summary>
-[DebuggerDisplay("ResultValidationException: {Message}")]
-[Serializable]
-public sealed class ResultValidationException : ResultException
+public class ResultValidationException : Exception
 {
     /// <summary>
     ///     Initializes a new instance of ResultValidationException.
     /// </summary>
     public ResultValidationException()
-        : base("Result validation failed")
+        : base("Validation failed")
     {
-        ResultState = ResultState.Failure;
-        Severity = ErrorSeverity.Medium;
+        ValidationResult = ValidationResult.Success;
     }
 
     /// <summary>
@@ -32,107 +27,169 @@ public sealed class ResultValidationException : ResultException
     public ResultValidationException(string message)
         : base(message)
     {
-        ResultState = ResultState.Failure;
-        Severity = ErrorSeverity.Medium;
+        ValidationResult = ValidationResult.Success;
     }
 
     /// <summary>
     ///     Initializes a new instance with a message and inner exception.
     /// </summary>
-    public ResultValidationException(string message, Exception inner)
-        : base(message, inner)
+    public ResultValidationException(string message, Exception innerException)
+        : base(message, innerException)
     {
-        ResultState = ResultState.Failure;
-        Severity = ErrorSeverity.Medium;
-    }
-
-#if NET8_0_OR_GREATER
-    [Obsolete("This API supports obsolete formatter-based serialization.", DiagnosticId = "SYSLIB0051")]
-#endif
-    private ResultValidationException(SerializationInfo info, StreamingContext context)
-        : base(info, context)
-    {
-        ValidationRule = info.GetString(nameof(ValidationRule));
-        PropertyName = info.GetString(nameof(PropertyName));
-        AttemptedValue = info.GetValue(nameof(AttemptedValue), typeof(object));
+        ValidationResult = ValidationResult.Success;
     }
 
     /// <summary>
-    ///     Gets the validation rule that failed.
+    ///     Initializes a new instance with a validation result.
     /// </summary>
-    public string? ValidationRule { get; init; }
+    public ResultValidationException(ValidationResult validationResult)
+        : base(CreateMessageFromValidationResult(validationResult))
+    {
+        ValidationResult = validationResult ?? ValidationResult.Success;
+    }
 
     /// <summary>
-    ///     Gets the property name that failed validation.
+    ///     Initializes a new instance with a validation result and custom message.
     /// </summary>
-    public string? PropertyName { get; init; }
+    public ResultValidationException(string message, ValidationResult validationResult)
+        : base(message)
+    {
+        ValidationResult = validationResult ?? ValidationResult.Success;
+    }
 
     /// <summary>
-    ///     Gets the value that failed validation.
+    ///     Initializes a new instance with a validation result, message, and inner exception.
     /// </summary>
-    public object? AttemptedValue { get; init; }
-
-    /// <summary>
-    ///     Creates a validation exception for a specific rule.
-    /// </summary>
-    public static ResultValidationException ForRule(
-        string ruleName,
+    public ResultValidationException(
         string message,
-        object? attemptedValue = null)
+        ValidationResult validationResult,
+        Exception innerException)
+        : base(message, innerException)
     {
-        return new ResultValidationException(message)
-        {
-            ValidationRule = ruleName,
-            AttemptedValue = attemptedValue,
-            OperationName = $"ValidateRule:{ruleName}"
-        };
+        ValidationResult = validationResult ?? ValidationResult.Success;
     }
 
     /// <summary>
-    ///     Creates a validation exception for a specific property.
+    ///     Gets the validation result associated with this exception.
     /// </summary>
-    public static ResultValidationException ForProperty(
-        string propertyName,
-        string message,
-        object? attemptedValue = null)
+    public ValidationResult ValidationResult { get; }
+
+    /// <summary>
+    ///     Gets the validation errors from the validation result.
+    /// </summary>
+    public IReadOnlyCollection<ValidationError> ValidationErrors => ValidationResult.Errors;
+
+    /// <summary>
+    ///     Gets a value indicating whether there are any validation errors.
+    /// </summary>
+    public bool HasValidationErrors => !ValidationResult.IsValid;
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates a message from a validation result.
+    /// </summary>
+    private static string CreateMessageFromValidationResult(ValidationResult? validationResult)
     {
-        return new ResultValidationException(message)
+        if (validationResult is null || validationResult.IsValid)
         {
-            PropertyName = propertyName,
-            AttemptedValue = attemptedValue,
-            OperationName = $"ValidateProperty:{propertyName}"
-        };
+            return "Validation failed";
+        }
+
+        var errors = validationResult.Errors.ToList();
+        var errorCount = errors.Count;
+
+        if (errorCount == 1)
+        {
+            return $"Validation failed: {errors[0].Message}";
+        }
+
+        return $"Validation failed with {errorCount} error(s): " +
+               string.Join("; ", errors.Select(e => e.Message));
+    }
+
+    #endregion
+
+    #region Factory Methods
+
+    /// <summary>
+    ///     Creates a ResultValidationException from a validation result.
+    /// </summary>
+    public static ResultValidationException FromValidationResult(ValidationResult validationResult)
+    {
+        ArgumentNullException.ThrowIfNull(validationResult);
+        return new ResultValidationException(validationResult);
     }
 
     /// <summary>
-    ///     Creates a validation exception for state validation.
+    ///     Creates a ResultValidationException from a single validation error.
     /// </summary>
-    public static ResultValidationException ForState(
-        ResultState expectedState,
-        ResultState actualState)
+    public static ResultValidationException FromError(ValidationError error)
     {
-        return new ResultValidationException(
-            $"Invalid state transition: expected {expectedState}, but was {actualState}")
+        ArgumentNullException.ThrowIfNull(error);
+        return new ResultValidationException(ValidationResult.Failed(error));
+    }
+
+    /// <summary>
+    ///     Creates a ResultValidationException from multiple validation errors.
+    /// </summary>
+    public static ResultValidationException FromErrors(IEnumerable<ValidationError> errors)
+    {
+        ArgumentNullException.ThrowIfNull(errors);
+        var errorList = errors.ToList();
+
+        if (errorList.Count == 0)
         {
-            ValidationRule = "StateValidation",
-            Context = new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                ["ExpectedState"] = expectedState,
-                ["ActualState"] = actualState
-            }
-        };
+            throw new ArgumentException("At least one validation error is required", nameof(errors));
+        }
+
+        return new ResultValidationException(ValidationResult.Failed(errorList));
     }
 
-#if NET8_0_OR_GREATER
-    [Obsolete("This API supports obsolete formatter-based serialization.", DiagnosticId = "SYSLIB0051")]
-#endif
-    public override void GetObjectData(SerializationInfo info, StreamingContext context)
+    /// <summary>
+    ///     Creates a ResultValidationException from multiple validation errors.
+    /// </summary>
+    public static ResultValidationException FromErrors(params ValidationError[] errors)
     {
-        ArgumentNullException.ThrowIfNull(info);
-
-        base.GetObjectData(info, context);
-        info.AddValue(nameof(ValidationRule), ValidationRule);
-        info.AddValue(nameof(PropertyName), PropertyName);
-        info.AddValue(nameof(AttemptedValue), AttemptedValue);
+        ArgumentNullException.ThrowIfNull(errors);
+        return FromErrors((IEnumerable<ValidationError>)errors);
     }
+
+    #endregion
+
+    #region Utility Methods
+
+    /// <summary>
+    ///     Gets a formatted summary of all validation errors.
+    /// </summary>
+    public string GetErrorSummary()
+    {
+        if (ValidationResult.IsValid)
+        {
+            return "No validation errors";
+        }
+
+        return string.Join(Environment.NewLine,
+            ValidationResult.Errors.Select((e, i) => $"{i + 1}. {e.Message}"));
+    }
+
+    /// <summary>
+    ///     Gets validation errors grouped by property name.
+    /// </summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<ValidationError>> GetErrorsByProperty()
+    {
+        if (ValidationResult.IsValid)
+        {
+            return new Dictionary<string, IReadOnlyList<ValidationError>>();
+        }
+
+        return ValidationResult.Errors
+            .GroupBy(e => e.PropertyName ?? string.Empty)
+            .ToDictionary(
+                g => g.Key,
+                g => (IReadOnlyList<ValidationError>)g.ToList(),
+                StringComparer.Ordinal);
+    }
+
+    #endregion
 }

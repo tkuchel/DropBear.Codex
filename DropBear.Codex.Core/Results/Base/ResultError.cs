@@ -11,38 +11,22 @@ using DropBear.Codex.Core.Enums;
 namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
-///     An abstract record representing an error in a result-based operation.
-///     Optimized for .NET 9+ with zero-allocation patterns and modern performance characteristics.
+///     Base class for all result errors, providing common functionality.
+///     Optimized for .NET 9 with modern C# features and frozen collections.
 /// </summary>
-[DebuggerDisplay("{ToString(),nq}")]
-public abstract record ResultError : ISpanFormattable
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
+public abstract record ResultError
 {
-    private const string DefaultErrorMessage = "An unknown error occurred";
-
-    // Pre-defined common messages for zero-allocation scenarios
-    private static readonly FrozenDictionary<string, string> CommonMessages =
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["timeout"] = "The operation timed out",
-            ["cancelled"] = "The operation was cancelled",
-            ["unauthorized"] = "Access denied",
-            ["notfound"] = "Resource not found",
-            ["invalid"] = "Invalid input provided",
-            ["network"] = "Network connection error",
-            ["server"] = "Internal server error",
-            ["validation"] = "Validation failed"
-        }.ToFrozenDictionary(StringComparer.Ordinal);
+    private FrozenDictionary<string, object>? _metadata;
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ResultError" /> record.
+    ///     Initializes a new instance of ResultError with a required message.
     /// </summary>
-    /// <param name="message">The error message describing the failure condition.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    protected ResultError(string message, DateTime? timestamp = null)
+    /// <param name="message">The error message.</param>
+    protected ResultError(string message)
     {
-        Message = string.IsNullOrWhiteSpace(message) ? DefaultErrorMessage : message.Trim();
-        Timestamp = timestamp ?? DateTime.UtcNow;
-        ErrorId = GenerateErrorId();
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+        Message = message;
     }
 
     /// <summary>
@@ -51,258 +35,260 @@ public abstract record ResultError : ISpanFormattable
     public string Message { get; init; }
 
     /// <summary>
-    ///     Gets the UTC timestamp when this error was created.
+    ///     Gets or sets the severity of this error.
+    ///     Default: Medium priority.
     /// </summary>
-    public DateTime Timestamp { get; init; }
+    public ErrorSeverity Severity { get; init; } = ErrorSeverity.Medium;
 
     /// <summary>
-    ///     Gets the unique identifier for this error instance.
+    ///     Gets the error code, if any.
+    ///     Useful for categorizing errors.
     /// </summary>
-    public string ErrorId { get; init; }
+    public string? Code { get; init; }
 
     /// <summary>
-    ///     Additional context or metadata associated with this error.
-    ///     Uses FrozenDictionary for better read performance.
+    ///     Gets the timestamp when this error was created.
     /// </summary>
-    [JsonInclude]
-    [JsonPropertyName("metadata")]
-    public IReadOnlyDictionary<string, object>? Metadata { get; init; }
+    public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
 
     /// <summary>
-    ///     Gets how long ago this error occurred relative to UTC now.
+    ///     Gets the metadata associated with this error.
+    ///     Uses FrozenDictionary for optimal read performance.
     /// </summary>
     [JsonIgnore]
-    public TimeSpan Age => DateTime.UtcNow - Timestamp;
+    public IReadOnlyDictionary<string, object> Metadata =>
+        _metadata ?? FrozenDictionary<string, object>.Empty;
 
     /// <summary>
-    ///     Gets the severity level of this error based on its age and type.
+    ///     Gets whether this error has metadata.
     /// </summary>
     [JsonIgnore]
-    public ErrorSeverity Severity => DetermineSeverity();
+    public bool HasMetadata => _metadata?.Count > 0;
+
+    #region Metadata Management
 
     /// <summary>
-    ///     Indicates whether this error is a default/unknown error.
+    ///     Adds a single metadata entry to this error.
+    ///     Uses modern 'with' expression for immutability.
     /// </summary>
-    [JsonIgnore]
-    public bool IsDefaultError => string.Equals(Message, DefaultErrorMessage, StringComparison.OrdinalIgnoreCase);
-
-    #region String Formatting
-
-    /// <inheritdoc />
+    /// <param name="key">The metadata key.</param>
+    /// <param name="value">The metadata value.</param>
+    /// <returns>A new error instance with the metadata added.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public string ToString(string? format, IFormatProvider? formatProvider) => ToString();
-
-    /// <inheritdoc />
-    public bool TryFormat(
-        Span<char> destination,
-        out int charsWritten,
-        ReadOnlySpan<char> format,
-        IFormatProvider? provider)
-    {
-        var message = ToString();
-        if (destination.Length < message.Length)
-        {
-            charsWritten = 0;
-            return false;
-        }
-
-        message.AsSpan().CopyTo(destination);
-        charsWritten = message.Length;
-        return true;
-    }
-
-    /// <summary>
-    ///     Creates an optimized string representation of this error.
-    /// </summary>
-    public override string ToString()
-    {
-        var typeName = GetType().Name;
-        var ageText = FormatAge(Age);
-        return $"{typeName}: {Message} (occurred {ageText} ago)";
-    }
-
-    /// <summary>
-    ///     Creates a detailed string representation including metadata.
-    /// </summary>
-    public string ToDetailedString()
-    {
-        if (Metadata is null || Metadata.Count == 0)
-        {
-            return ToString();
-        }
-
-        var metadataString = string.Join(", ",
-            Metadata.Select(kvp => $"{kvp.Key}={kvp.Value}"));
-
-        return $"{ToString()} [Metadata: {metadataString}]";
-    }
-
-    #endregion
-
-    #region Error Modification Methods
-
-    /// <summary>
-    ///     Creates a new error with additional metadata.
-    /// </summary>
-    public virtual ResultError WithMetadata(string key, object value)
+    public ResultError WithMetadata(string key, object value)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         ArgumentNullException.ThrowIfNull(value);
 
-        var newMetadata = Metadata switch
-        {
-            null => new Dictionary<string, object>(StringComparer.Ordinal) { [key] = value }
-                .ToFrozenDictionary(StringComparer.Ordinal),
-            _ => Metadata.ToDictionary(StringComparer.Ordinal)
-                .Append(new KeyValuePair<string, object>(key, value))
-                .ToFrozenDictionary(StringComparer.Ordinal)
-        };
+        var builder = _metadata?.ToDictionary(StringComparer.Ordinal)
+                      ?? new Dictionary<string, object>(StringComparer.Ordinal);
 
-        return this with { Metadata = newMetadata };
+        builder[key] = value;
+
+        return this with { _metadata = builder.ToFrozenDictionary(StringComparer.Ordinal) };
     }
 
     /// <summary>
-    ///     Creates a new error with multiple metadata entries.
+    ///     Adds multiple metadata entries to this error.
+    ///     Uses collection expressions for modern syntax.
     /// </summary>
-    public virtual ResultError WithMetadata(IReadOnlyDictionary<string, object> metadata)
+    /// <param name="items">The metadata items to add.</param>
+    /// <returns>A new error instance with the metadata added.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError WithMetadata(IReadOnlyDictionary<string, object> items)
     {
-        ArgumentNullException.ThrowIfNull(metadata);
+        ArgumentNullException.ThrowIfNull(items);
 
-        if (metadata.Count == 0) return this;
-
-        var combined = Metadata switch
+        if (items.Count == 0)
         {
-            null => metadata.ToFrozenDictionary(StringComparer.Ordinal),
-            _ => Metadata.ToDictionary(StringComparer.Ordinal)
-                .Concat(metadata)
-                .ToFrozenDictionary(StringComparer.Ordinal)
-        };
+            return this;
+        }
 
-        return this with { Metadata = combined };
+        var builder = _metadata?.ToDictionary(StringComparer.Ordinal)
+                      ?? new Dictionary<string, object>(items.Count, StringComparer.Ordinal);
+
+        foreach (var (key, value) in items)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
+            ArgumentNullException.ThrowIfNull(value);
+            builder[key] = value;
+        }
+
+        return this with { _metadata = builder.ToFrozenDictionary(StringComparer.Ordinal) };
     }
 
     /// <summary>
-    ///     Creates a new error with updated timestamp.
+    ///     Gets a metadata value by key.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError WithTimestamp(DateTime newTimestamp)
+    public T? GetMetadata<T>(string key)
     {
-        return this with { Timestamp = newTimestamp };
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        if (_metadata?.TryGetValue(key, out var value) == true && value is T typed)
+        {
+            return typed;
+        }
+
+        return default;
+    }
+
+    /// <summary>
+    ///     Tries to get a metadata value by key.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetMetadata<T>(string key, out T? value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        if (_metadata?.TryGetValue(key, out var obj) == true && obj is T typed)
+        {
+            value = typed;
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
     #endregion
 
-    #region Helper Methods
+    #region Severity Helpers
 
     /// <summary>
-    ///     Generates an optimized error ID for correlation.
+    ///     Creates a new error with the specified severity.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static string GenerateErrorId()
+    public ResultError WithSeverity(ErrorSeverity severity)
     {
-        // Use Activity ID if available for better correlation
-        if (Activity.Current?.Id is { } activityId)
-        {
-            return activityId;
-        }
-
-        // Fast unique ID generation without GUID overhead
-        return $"{Environment.TickCount64:X}-{Random.Shared.Next():X}";
+        return this with { Severity = severity };
     }
 
     /// <summary>
-    ///     Formats a TimeSpan age value into a human-readable string.
+    ///     Creates a new error with Info severity.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static string FormatAge(TimeSpan age)
-    {
-        return age switch
-        {
-            { TotalMilliseconds: < 1000 } => $"{age.TotalMilliseconds:F0}ms",
-            { TotalSeconds: < 60 } => $"{age.TotalSeconds:F1}s",
-            { TotalMinutes: < 60 } => $"{age.TotalMinutes:F1}m",
-            { TotalHours: < 24 } => $"{age.TotalHours:F1}h",
-            _ => $"{age.TotalDays:F1}d"
-        };
-    }
+    public ResultError AsInfo() => this with { Severity = ErrorSeverity.Info };
 
     /// <summary>
-    ///     Determines the severity of this error based on various factors.
+    ///     Creates a new error with Low severity.
     /// </summary>
-    private ErrorSeverity DetermineSeverity()
-    {
-        var ageMinutes = Age.TotalMinutes;
-        var messageLower = Message.ToLowerInvariant();
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError AsLow() => this with { Severity = ErrorSeverity.Low };
 
-        return (ageMinutes, messageLower) switch
-        {
-            (< 1, _) when messageLower.Contains("critical") || messageLower.Contains("fatal")
-                => ErrorSeverity.Critical,
-            (< 5, _) when messageLower.Contains("error") || messageLower.Contains("failed")
-                => ErrorSeverity.High,
-            (< 15, _) => ErrorSeverity.Medium,
-            (< 60, _) => ErrorSeverity.Low,
-            _ => ErrorSeverity.Info
-        };
+    /// <summary>
+    ///     Creates a new error with Medium severity.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError AsMedium() => this with { Severity = ErrorSeverity.Medium };
+
+    /// <summary>
+    ///     Creates a new error with High severity.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError AsHigh() => this with { Severity = ErrorSeverity.High };
+
+    /// <summary>
+    ///     Creates a new error with Critical severity.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError AsCritical() => this with { Severity = ErrorSeverity.Critical };
+
+    #endregion
+
+    #region Code Helpers
+
+    /// <summary>
+    ///     Creates a new error with the specified error code.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError WithCode(string code)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        return this with { Code = code };
     }
 
     #endregion
 
-    #region Static Factory Methods
+    #region Display
+
+    private string DebuggerDisplay => $"[{Severity}] {Code ?? "NO_CODE"}: {Message}";
 
     /// <summary>
-    ///     Creates a timeout error with standard messaging.
+    ///     Returns a string representation of this error.
     /// </summary>
-    public static TError CreateTimeout<TError>(TimeSpan timeoutDuration)
-        where TError : ResultError
+    public override string ToString()
     {
-        var message = $"Operation timed out after {FormatAge(timeoutDuration)}";
-        return (TError)Activator.CreateInstance(typeof(TError), message)!;
+        return Code is not null
+            ? $"[{Code}] {Message}"
+            : Message;
     }
 
-    /// <summary>
-    ///     Creates a cancellation error with standard messaging.
-    /// </summary>
-    public static TError CreateCancellation<TError>()
-        where TError : ResultError
-    {
-        return (TError)Activator.CreateInstance(typeof(TError), CommonMessages["cancelled"])!;
-    }
+    #endregion
+
+    #region Performance-Optimized Metadata
+
+// Add static cached empty dictionary for better performance
+    private static readonly FrozenDictionary<string, object> EmptyMetadata =
+        FrozenDictionary<string, object>.Empty;
 
     /// <summary>
-    ///     Creates a cancellation error with standard messaging using a constructor with message parameter.
+    ///     Optimized metadata initialization using frozen dictionary builder.
+    ///     Reduces allocations for metadata-heavy scenarios.
+    ///     NOTE: This is a helper method - concrete error types should use their own factory methods.
     /// </summary>
-    /// <typeparam name="TError">The specific error type.</typeparam>
-    /// <returns>A new cancellation error instance.</returns>
-    public static TError CreateCancellationWithMessage<TError>()
+    /// <typeparam name="TError">The concrete error type to create.</typeparam>
+    public static TError CreateWithMetadata<TError>(
+        string message,
+        ReadOnlySpan<KeyValuePair<string, object>> metadata)
         where TError : ResultError
     {
-        const string message = "Operation was cancelled";
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        try
-        {
-            return (TError)Activator.CreateInstance(typeof(TError), message)!;
-        }
-        catch
-        {
-            // Fallback to parameterless constructor if message constructor doesn't exist
-            var error = (TError)Activator.CreateInstance(typeof(TError))!;
-            return (TError)error.WithMetadata("Cancelled", true);
-        }
-    }
-
-    /// <summary>
-    ///     Creates a validation error with field-specific messaging.
-    /// </summary>
-    public static TError CreateValidation<TError>(string fieldName, string reason)
-        where TError : ResultError
-    {
-        var message = $"Validation failed for field '{fieldName}': {reason}";
+        // Create the concrete error instance
         var error = (TError)Activator.CreateInstance(typeof(TError), message)!;
 
-        return (TError)error
-            .WithMetadata("FieldName", fieldName)
-            .WithMetadata("ValidationReason", reason);
+        if (metadata.IsEmpty)
+        {
+            return error;
+        }
+
+        // Use frozen dictionary builder for optimal performance
+        var builder = metadata.Length <= 4
+            ? new Dictionary<string, object>(metadata.Length, StringComparer.Ordinal)
+            : new Dictionary<string, object>(StringComparer.Ordinal);
+
+        for (var i = 0; i < metadata.Length; i++)
+        {
+            ref readonly var kvp = ref metadata[i];
+            builder[kvp.Key] = kvp.Value;
+        }
+
+        return error with { _metadata = builder.ToFrozenDictionary(StringComparer.Ordinal) };
+    }
+
+    /// <summary>
+    ///     Fast metadata lookup using TryGetValue with aggressive inlining.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetMetadataFast<T>(ReadOnlySpan<char> key, out T? value)
+    {
+        // Convert span to string only if metadata exists
+        if (_metadata is null || _metadata.Count == 0)
+        {
+            value = default;
+            return false;
+        }
+
+        var keyStr = key.ToString();
+        if (_metadata.TryGetValue(keyStr, out var obj) && obj is T typed)
+        {
+            value = typed;
+            return true;
+        }
+
+        value = default;
+        return false;
     }
 
     #endregion

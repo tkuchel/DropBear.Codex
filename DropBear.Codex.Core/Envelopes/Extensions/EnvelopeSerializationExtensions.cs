@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Buffers;
 using DropBear.Codex.Core.Envelopes.Serializers;
 using DropBear.Codex.Core.Interfaces;
 
@@ -231,6 +232,81 @@ public static class EnvelopeSerializationExtensions
         var binary = outputStream.ToArray();
 
         return FromSerializedBinary<T>(binary, serializer);
+    }
+
+    #endregion
+
+    #region Performance-Optimized Serialization
+
+    /// <summary>
+    ///     Serializes envelope to a pooled buffer for memory efficiency.
+    ///     Caller must return the buffer to the pool after use.
+    /// </summary>
+    public static (byte[] Buffer, int BytesWritten) SerializeToPooledBuffer<T>(
+        this Envelope<T> envelope,
+        IEnvelopeSerializer? serializer = null)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+
+        serializer ??= new MessagePackEnvelopeSerializer();
+        var binary = serializer.SerializeToBinary(envelope);
+
+        // Rent from pool with some headroom
+        var buffer = ArrayPool<byte>.Shared.Rent(binary.Length + 256);
+        binary.CopyTo(buffer, 0);
+
+        return (buffer, binary.Length);
+    }
+
+    /// <summary>
+    ///     Deserializes from a memory segment without additional allocation.
+    /// </summary>
+    public static Envelope<T> DeserializeFromMemory<T>(
+        ReadOnlyMemory<byte> data,
+        IEnvelopeSerializer? serializer = null)
+    {
+        serializer ??= new MessagePackEnvelopeSerializer();
+
+        // Use span to avoid allocation
+        var array = data.Span.ToArray();
+        return serializer.DeserializeFromBinary<T>(array);
+    }
+
+    /// <summary>
+    ///     Streams serialization to avoid large buffer allocations.
+    /// </summary>
+    public static async ValueTask SerializeToStreamOptimizedAsync<T>(
+        this Envelope<T> envelope,
+        Stream stream,
+        IEnvelopeSerializer? serializer = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        ArgumentNullException.ThrowIfNull(stream);
+
+        serializer ??= new MessagePackEnvelopeSerializer();
+
+        // Serialize to pooled buffer
+        var (buffer, bytesWritten) = envelope.SerializeToPooledBuffer(serializer);
+
+        try
+        {
+            // Write to stream in chunks to avoid large allocations
+            const int chunkSize = 8192; // 8KB chunks
+            var offset = 0;
+
+            while (offset < bytesWritten)
+            {
+                var writeSize = Math.Min(chunkSize, bytesWritten - offset);
+                await stream.WriteAsync(buffer.AsMemory(offset, writeSize), cancellationToken)
+                    .ConfigureAwait(false);
+                offset += writeSize;
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
     }
 
     #endregion

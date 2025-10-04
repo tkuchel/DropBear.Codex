@@ -25,6 +25,7 @@ public static class AsyncExtensions
         CancellationToken cancellationToken = default)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(mapperAsync);
 
         if (!result.IsSuccess)
@@ -37,7 +38,11 @@ public static class AsyncExtensions
             var mappedValue = await mapperAsync(result.Value!, cancellationToken).ConfigureAwait(false);
             return Result<TResult, TError>.Success(mappedValue);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            throw; // Re-throw cancellation
+        }
+        catch (Exception ex)
         {
             return Result<TResult, TError>.Failure(result.Error!, ex);
         }
@@ -52,6 +57,7 @@ public static class AsyncExtensions
         CancellationToken cancellationToken = default)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(binderAsync);
 
         if (!result.IsSuccess)
@@ -63,7 +69,11 @@ public static class AsyncExtensions
         {
             return await binderAsync(result.Value!, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (OperationCanceledException)
+        {
+            throw; // Re-throw cancellation
+        }
+        catch (Exception ex)
         {
             return Result<TResult, TError>.Failure(result.Error!, ex);
         }
@@ -153,6 +163,7 @@ public static class AsyncExtensions
         Func<T, bool> predicate)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(predicate);
 
         if (!result.IsSuccess)
@@ -182,6 +193,7 @@ public static class AsyncExtensions
         Func<T, ValueTask<bool>> predicateAsync)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(predicateAsync);
 
         if (!result.IsSuccess)
@@ -211,6 +223,7 @@ public static class AsyncExtensions
         Func<T, TResult> selector)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(selector);
 
         if (!result.IsSuccess)
@@ -238,6 +251,7 @@ public static class AsyncExtensions
         Func<T, ValueTask<TResult>> selector)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(selector);
 
         if (!result.IsSuccess)
@@ -265,6 +279,7 @@ public static class AsyncExtensions
         Func<T, IAsyncEnumerable<TResult>> selector)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(selector);
 
         if (!result.IsSuccess)
@@ -277,9 +292,10 @@ public static class AsyncExtensions
         {
             await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                await foreach (var subItem in selector(item).WithCancellation(cancellationToken).ConfigureAwait(false))
+                await foreach (var nestedItem in selector(item).WithCancellation(cancellationToken)
+                                   .ConfigureAwait(false))
                 {
-                    yield return subItem;
+                    yield return nestedItem;
                 }
             }
         }
@@ -288,114 +304,28 @@ public static class AsyncExtensions
     }
 
     /// <summary>
-    ///     Converts an AsyncEnumerableResult to a List within a Result.
-    /// </summary>
-    public static async ValueTask<Result<List<T>, TError>> ToListAsync<T, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        if (!result.IsSuccess)
-        {
-            return Result<List<T>, TError>.Failure(result.Error!);
-        }
-
-        var list = new List<T>();
-        await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            list.Add(item);
-        }
-
-        return Result<List<T>, TError>.Success(list);
-    }
-
-    /// <summary>
-    ///     Converts an AsyncEnumerableResult to an Array within a Result.
-    /// </summary>
-    public static async ValueTask<Result<T[], TError>> ToArrayAsync<T, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        if (!result.IsSuccess)
-        {
-            return Result<T[], TError>.Failure(result.Error!);
-        }
-
-        var list = new List<T>();
-        await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            list.Add(item);
-        }
-
-        return Result<T[], TError>.Success(list.ToArray());
-    }
-
-    /// <summary>
-    ///     Batches items in an AsyncEnumerableResult.
-    /// </summary>
-    public static AsyncEnumerableResult<IReadOnlyList<T>, TError> Batch<T, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        int batchSize)
-        where TError : ResultError
-    {
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(batchSize, 0);
-
-        if (!result.IsSuccess)
-        {
-            return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Failure(result.Error!);
-        }
-
-        async IAsyncEnumerable<IReadOnlyList<T>> BatchAsync(
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            var batch = new List<T>(batchSize);
-
-            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                batch.Add(item);
-
-                if (batch.Count == batchSize)
-                {
-                    yield return batch.ToArray();
-                    batch.Clear();
-                }
-            }
-
-            if (batch.Count > 0)
-            {
-                yield return batch.ToArray();
-            }
-        }
-
-        return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Success(BatchAsync());
-    }
-
-    /// <summary>
-    ///     Takes a specified number of items from an AsyncEnumerableResult.
+    ///     Takes the first N items from an AsyncEnumerableResult.
     /// </summary>
     public static AsyncEnumerableResult<T, TError> Take<T, TError>(
         this AsyncEnumerableResult<T, TError> result,
         int count)
         where TError : ResultError
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Count must be non-negative");
+        }
 
         if (!result.IsSuccess)
         {
             return result;
         }
 
-        if (count == 0)
-        {
-            return AsyncEnumerableResult<T, TError>.Success(EmptyAsync<T>());
-        }
-
-        async IAsyncEnumerable<T> TakeAsync(
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        async IAsyncEnumerable<T> TakeAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var taken = 0;
-
             await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
                 if (taken >= count)
@@ -412,30 +342,28 @@ public static class AsyncExtensions
     }
 
     /// <summary>
-    ///     Skips a specified number of items in an AsyncEnumerableResult.
+    ///     Skips the first N items from an AsyncEnumerableResult.
     /// </summary>
     public static AsyncEnumerableResult<T, TError> Skip<T, TError>(
         this AsyncEnumerableResult<T, TError> result,
         int count)
         where TError : ResultError
     {
-        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Count must be non-negative");
+        }
 
         if (!result.IsSuccess)
         {
             return result;
         }
 
-        if (count == 0)
-        {
-            return result;
-        }
-
-        async IAsyncEnumerable<T> SkipAsync(
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        async IAsyncEnumerable<T> SkipAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var skipped = 0;
-
             await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
                 if (skipped < count)
@@ -452,123 +380,235 @@ public static class AsyncExtensions
     }
 
     /// <summary>
-    ///     Aggregates items in an AsyncEnumerableResult using an accumulator function.
+    ///     Materializes an AsyncEnumerableResult to a list.
+    ///     Uses modern collection expressions for the result.
     /// </summary>
-    public static async ValueTask<Result<TAccumulate, TError>> AggregateAsync<T, TAccumulate, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        TAccumulate seed,
-        Func<TAccumulate, T, TAccumulate> accumulator,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(accumulator);
-
-        if (!result.IsSuccess)
-        {
-            return Result<TAccumulate, TError>.Failure(result.Error!);
-        }
-
-        var current = seed;
-
-        await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            current = accumulator(current, item);
-        }
-
-        return Result<TAccumulate, TError>.Success(current);
-    }
-
-    /// <summary>
-    ///     Counts the items in an AsyncEnumerableResult.
-    /// </summary>
-    public static async ValueTask<Result<int, TError>> CountAsync<T, TError>(
+    public static async ValueTask<Result<IReadOnlyList<T>, TError>> ToListAsync<T, TError>(
         this AsyncEnumerableResult<T, TError> result,
         CancellationToken cancellationToken = default)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
+
         if (!result.IsSuccess)
         {
-            return Result<int, TError>.Failure(result.Error!);
+            return Result<IReadOnlyList<T>, TError>.Failure(result.Error!);
         }
 
-        var count = 0;
-
-        await foreach (var _ in result.WithCancellation(cancellationToken).ConfigureAwait(false))
+        try
         {
-            count++;
-        }
+            var list = new List<T>();
 
-        return Result<int, TError>.Success(count);
-    }
-
-    /// <summary>
-    ///     Checks if any items in the AsyncEnumerableResult match a predicate.
-    /// </summary>
-    public static async ValueTask<Result<bool, TError>> AnyAsync<T, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        Func<T, bool>? predicate = null,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        if (!result.IsSuccess)
-        {
-            return Result<bool, TError>.Failure(result.Error!);
-        }
-
-        await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-        {
-            if (predicate == null || predicate(item))
+            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                return Result<bool, TError>.Success(true);
+                list.Add(item);
             }
-        }
 
-        return Result<bool, TError>.Success(false);
+            return Result<IReadOnlyList<T>, TError>.Success(list.AsReadOnly());
+        }
+        catch (OperationCanceledException)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), "Operation was cancelled")!;
+            return Result<IReadOnlyList<T>, TError>.Cancelled(errorInstance);
+        }
+        catch (Exception ex)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), $"Failed to materialize async enumerable: {ex.Message}")!;
+            return Result<IReadOnlyList<T>, TError>.Failure(errorInstance, ex);
+        }
     }
 
     /// <summary>
-    ///     Checks if all items in the AsyncEnumerableResult match a predicate.
+    ///     Materializes an AsyncEnumerableResult to an array.
+    ///     More memory efficient than ToListAsync for known-size collections.
     /// </summary>
-    public static async ValueTask<Result<bool, TError>> AllAsync<T, TError>(
+    public static async ValueTask<Result<T[], TError>> ToArrayAsync<T, TError>(
         this AsyncEnumerableResult<T, TError> result,
-        Func<T, bool> predicate,
         CancellationToken cancellationToken = default)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(predicate);
+        ArgumentNullException.ThrowIfNull(result);
 
         if (!result.IsSuccess)
         {
-            return Result<bool, TError>.Failure(result.Error!);
+            return Result<T[], TError>.Failure(result.Error!);
         }
 
-        await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
+        try
         {
-            if (!predicate(item))
+            var list = new List<T>();
+
+            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
             {
-                return Result<bool, TError>.Success(false);
+                list.Add(item);
             }
+
+            return Result<T[], TError>.Success(list.ToArray());
+        }
+        catch (OperationCanceledException)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), "Operation was cancelled")!;
+            return Result<T[], TError>.Cancelled(errorInstance);
+        }
+        catch (Exception ex)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), $"Failed to materialize async enumerable: {ex.Message}")!;
+            return Result<T[], TError>.Failure(errorInstance, ex);
+        }
+    }
+
+    /// <summary>
+    ///     Executes an action for each item in an AsyncEnumerableResult.
+    /// </summary>
+    public static async ValueTask<Result<Unit, TError>> ForEachAsync<T, TError>(
+        this AsyncEnumerableResult<T, TError> result,
+        Func<T, ValueTask> action,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (!result.IsSuccess)
+        {
+            return Result<Unit, TError>.Failure(result.Error!);
         }
 
-        return Result<bool, TError>.Success(true);
+        try
+        {
+            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                await action(item).ConfigureAwait(false);
+            }
+
+            return Result<Unit, TError>.Success(Unit.Value);
+        }
+        catch (OperationCanceledException)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), "Operation was cancelled")!;
+            return Result<Unit, TError>.Cancelled(errorInstance);
+        }
+        catch (Exception ex)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), $"ForEach operation failed: {ex.Message}")!;
+            return Result<Unit, TError>.Failure(errorInstance, ex);
+        }
     }
 
     #endregion
 
-    #region Helper Methods
+    #region Parallel Async Processing
 
     /// <summary>
-    ///     Creates an empty async enumerable.
+    ///     Processes items from an async enumerable in parallel with controlled concurrency.
+    ///     Uses modern .NET 9 patterns for optimal performance.
     /// </summary>
-    private static async IAsyncEnumerable<T> EmptyAsync<T>(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> ParallelSelectAsync<T, TResult, TError>(
+        this IAsyncEnumerable<T> source,
+        Func<T, CancellationToken, ValueTask<TResult>> selector,
+        int maxDegreeOfParallelism = -1,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
     {
-        if (cancellationToken.IsCancellationRequested)
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(selector);
+
+        try
         {
-            yield break;
+            // Materialize to array first
+            var items = new List<T>();
+            await foreach (var item in source.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                items.Add(item);
+            }
+
+            if (items.Count == 0)
+            {
+                return Result<IReadOnlyList<TResult>, TError>.Success(Array.Empty<TResult>());
+            }
+
+            var results = new TResult[items.Count];
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForAsync(0, items.Count, options, async (i, ct) =>
+            {
+                results[i] = await selector(items[i], ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+
+            return Result<IReadOnlyList<TResult>, TError>.Success(results);
+        }
+        catch (OperationCanceledException)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), "Operation was cancelled")!;
+            return Result<IReadOnlyList<TResult>, TError>.Cancelled(errorInstance);
+        }
+        catch (Exception ex)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), $"Parallel operation failed: {ex.Message}")!;
+            return Result<IReadOnlyList<TResult>, TError>.Failure(errorInstance, ex);
+        }
+    }
+
+    #endregion
+
+    #region Buffering and Batching
+
+    /// <summary>
+    ///     Buffers items from an async enumerable into batches.
+    ///     Uses modern Chunk() method for efficient batching.
+    /// </summary>
+    public static AsyncEnumerableResult<IReadOnlyList<T>, TError> Buffer<T, TError>(
+        this AsyncEnumerableResult<T, TError> result,
+        int bufferSize)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (bufferSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be positive");
         }
 
-        await ValueTask.CompletedTask.ConfigureAwait(false);
+        if (!result.IsSuccess)
+        {
+            return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Failure(result.Error!);
+        }
+
+        async IAsyncEnumerable<IReadOnlyList<T>> BufferAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var buffer = new List<T>(bufferSize);
+
+            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                buffer.Add(item);
+
+                if (buffer.Count >= bufferSize)
+                {
+                    yield return buffer.AsReadOnly();
+                    buffer = new List<T>(bufferSize);
+                }
+            }
+
+            // Yield remaining items if any
+            if (buffer.Count > 0)
+            {
+                yield return buffer.AsReadOnly();
+            }
+        }
+
+        return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Success(BufferAsync());
     }
 
     #endregion

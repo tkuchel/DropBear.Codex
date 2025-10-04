@@ -150,32 +150,6 @@ public static class LinqExtensions
     }
 
     /// <summary>
-    ///     Orders elements in a Result containing a collection.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<IEnumerable<T>, TError> OrderBy<T, TKey, TError>(
-        this Result<IEnumerable<T>, TError> result,
-        Func<T, TKey> keySelector)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(keySelector);
-        return result.Map<IEnumerable<T>>(items => items.OrderBy(keySelector));
-    }
-
-    /// <summary>
-    ///     Orders elements in a Result containing a collection in descending order.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<IEnumerable<T>, TError> OrderByDescending<T, TKey, TError>(
-        this Result<IEnumerable<T>, TError> result,
-        Func<T, TKey> keySelector)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(keySelector);
-        return result.Map<IEnumerable<T>>(items => items.OrderByDescending(keySelector));
-    }
-
-    /// <summary>
     ///     Groups elements in a Result containing a collection.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -236,6 +210,160 @@ public static class LinqExtensions
     {
         ArgumentNullException.ThrowIfNull(comparer);
         return result.Map(items => items.Distinct(comparer));
+    }
+
+    #endregion
+
+    #region Ordering
+
+    /// <summary>
+    ///     Orders successful results by a key selector.
+    ///     Failures are preserved at the end of the collection.
+    /// </summary>
+    public static IEnumerable<Result<T, TError>> OrderBy<T, TError, TKey>(
+        this IEnumerable<Result<T, TError>> source,
+        Func<T, TKey> keySelector)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        var materialized = source.ToList();
+        var successes = new List<(Result<T, TError> Result, TKey Key)>();
+        var failures = new List<Result<T, TError>>();
+
+        foreach (var result in materialized)
+        {
+            if (result.IsSuccess && result.Value is not null)
+            {
+                successes.Add((result, keySelector(result.Value)));
+            }
+            else
+            {
+                failures.Add(result);
+            }
+        }
+
+        // Order successes by key
+        var orderedSuccesses = successes
+            .OrderBy(x => x.Key)
+            .Select(x => x.Result);
+
+        // Return ordered successes followed by failures
+        return orderedSuccesses.Concat(failures);
+    }
+
+    /// <summary>
+    ///     Orders successful results by a key selector with a custom comparer.
+    /// </summary>
+    public static IEnumerable<Result<T, TError>> OrderBy<T, TError, TKey>(
+        this IEnumerable<Result<T, TError>> source,
+        Func<T, TKey> keySelector,
+        IComparer<TKey> comparer)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(keySelector);
+        ArgumentNullException.ThrowIfNull(comparer);
+
+        var materialized = source.ToList();
+        var successes = new List<(Result<T, TError> Result, TKey Key)>();
+        var failures = new List<Result<T, TError>>();
+
+        foreach (var result in materialized)
+        {
+            if (result.IsSuccess && result.Value is not null)
+            {
+                successes.Add((result, keySelector(result.Value)));
+            }
+            else
+            {
+                failures.Add(result);
+            }
+        }
+
+        // Order successes by key with comparer
+        var orderedSuccesses = successes
+            .OrderBy(x => x.Key, comparer)
+            .Select(x => x.Result);
+
+        // Return ordered successes followed by failures
+        return orderedSuccesses.Concat(failures);
+    }
+
+    /// <summary>
+    ///     Orders successful results in descending order by a key selector.
+    ///     Failures are preserved at the end of the collection.
+    /// </summary>
+    public static IEnumerable<Result<T, TError>> OrderByDescending<T, TError, TKey>(
+        this IEnumerable<Result<T, TError>> source,
+        Func<T, TKey> keySelector)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(keySelector);
+
+        var materialized = source.ToList();
+        var successes = new List<(Result<T, TError> Result, TKey Key)>();
+        var failures = new List<Result<T, TError>>();
+
+        foreach (var result in materialized)
+        {
+            if (result.IsSuccess && result.Value is not null)
+            {
+                successes.Add((result, keySelector(result.Value)));
+            }
+            else
+            {
+                failures.Add(result);
+            }
+        }
+
+        // Order successes by key descending
+        var orderedSuccesses = successes
+            .OrderByDescending(x => x.Key)
+            .Select(x => x.Result);
+
+        // Return ordered successes followed by failures
+        return orderedSuccesses.Concat(failures);
+    }
+
+    /// <summary>
+    ///     Orders successful results in descending order by a key selector with a custom comparer.
+    /// </summary>
+    public static IEnumerable<Result<T, TError>> OrderByDescending<T, TError, TKey>(
+        this IEnumerable<Result<T, TError>> source,
+        Func<T, TKey> keySelector,
+        IComparer<TKey> comparer)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(keySelector);
+        ArgumentNullException.ThrowIfNull(comparer);
+
+        var materialized = source.ToList();
+        var successes = new List<(Result<T, TError> Result, TKey Key)>();
+        var failures = new List<Result<T, TError>>();
+
+        foreach (var result in materialized)
+        {
+            if (result.IsSuccess && result.Value is not null)
+            {
+                successes.Add((result, keySelector(result.Value)));
+            }
+            else
+            {
+                failures.Add(result);
+            }
+        }
+
+        // Order successes by key descending with comparer
+        var orderedSuccesses = successes
+            .OrderByDescending(x => x.Key, comparer)
+            .Select(x => x.Result);
+
+        // Return ordered successes followed by failures
+        return orderedSuccesses.Concat(failures);
     }
 
     #endregion

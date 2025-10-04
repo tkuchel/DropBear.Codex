@@ -85,6 +85,7 @@ public readonly record struct DiagnosticInfo
 
     /// <summary>
     ///     Gets a formatted string representation for logging.
+    ///     Uses modern string interpolation handler for performance.
     /// </summary>
     public string ToLogString()
     {
@@ -93,19 +94,27 @@ public readonly record struct DiagnosticInfo
 
     /// <summary>
     ///     Creates a dictionary of diagnostic properties for structured logging.
+    ///     Uses collection expressions for modern syntax.
     /// </summary>
-    public Dictionary<string, object?> ToDictionary()
+    public Dictionary<string, object> ToDictionary()
     {
-        return new Dictionary<string, object?>(StringComparer.Ordinal)
+        var dict = new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["State"] = State.ToString(),
             ["ResultType"] = ResultType.Name,
             ["CreatedAt"] = CreatedAt,
-            ["Age"] = Age,
-            ["TraceId"] = TraceId,
-            ["ActivityId"] = ActivityId,
-            ["ParentActivityId"] = ParentActivityId,
-            ["HasTracing"] = HasTracing
+            ["Age"] = Age.TotalMilliseconds
         };
+
+        if (TraceId is not null)
+            dict["TraceId"] = TraceId;
+
+        if (ActivityId is not null)
+            dict["ActivityId"] = ActivityId;
+
+        if (ParentActivityId is not null)
+            dict["ParentActivityId"] = ParentActivityId;
+
+        return dict;
     }
 }

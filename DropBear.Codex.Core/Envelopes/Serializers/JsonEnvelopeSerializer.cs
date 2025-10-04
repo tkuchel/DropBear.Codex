@@ -1,10 +1,9 @@
 ﻿#region
 
-using System.Collections.Frozen;
-using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
+using DropBear.Codex.Core.Envelopes;
 using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Extensions;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Diagnostics;
 
@@ -13,8 +12,8 @@ using DropBear.Codex.Core.Results.Diagnostics;
 namespace DropBear.Codex.Core.Envelopes.Serializers;
 
 /// <summary>
-///     Provides JSON-based serialization for envelopes using System.Text.Json.
-///     Optimized for .NET 9 with source generators.
+///     Provides JSON-based serialization for envelopes.
+///     Optimized for .NET 9 with modern JSON serialization.
 /// </summary>
 public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 {
@@ -33,17 +32,16 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
     }
 
     /// <summary>
-    ///     Creates default JSON serialization options optimized for performance.
+    ///     Creates default JSON serializer options optimized for envelopes.
     /// </summary>
     private static JsonSerializerOptions CreateDefaultOptions()
     {
         return new JsonSerializerOptions
         {
-            WriteIndented = false, // Better performance
-            PropertyNameCaseInsensitive = false, // Better performance
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) }
+            WriteIndented = false,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            PropertyNameCaseInsensitive = true
         };
     }
 
@@ -61,8 +59,8 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "JsonSerialize");
-            throw new InvalidOperationException("Failed to serialize envelope to JSON.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(Serialize));
+            throw new InvalidOperationException("Failed to serialize envelope.", ex);
         }
     }
 
@@ -74,22 +72,22 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
         try
         {
             var dto = JsonSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
-            if (dto == null)
+
+            if (dto is null)
             {
-                throw new JsonException("JSON deserialization returned null.");
+                throw new JsonException("Deserialization returned null DTO.");
             }
 
-            return CreateEnvelopeFromDto(dto);
+            return Envelope<T>.FromDto(dto, _telemetry);
         }
-        catch (Exception ex) when (ex is JsonException or ArgumentException)
+        catch (JsonException)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "JsonDeserialize");
             throw;
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "JsonDeserialize");
-            throw new JsonException("Failed to deserialize the envelope from JSON.", ex);
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(Deserialize));
+            throw new InvalidOperationException("Failed to deserialize envelope.", ex);
         }
     }
 
@@ -100,13 +98,14 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var serializedString = Serialize(envelope);
-            return Encoding.UTF8.GetBytes(serializedString);
+            // Use UTF8 JSON for binary serialization
+            var dto = envelope.GetDto();
+            return JsonSerializer.SerializeToUtf8Bytes(dto, _options);
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "JsonSerializeToBinary");
-            throw;
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(SerializeToBinary));
+            throw new InvalidOperationException("Failed to serialize envelope to binary.", ex);
         }
     }
 
@@ -122,13 +121,23 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var serializedString = Encoding.UTF8.GetString(data);
-            return Deserialize<T>(serializedString);
+            var dto = JsonSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
+
+            if (dto is null)
+            {
+                throw new JsonException("Deserialization returned null DTO.");
+            }
+
+            return Envelope<T>.FromDto(dto, _telemetry);
+        }
+        catch (JsonException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), "JsonDeserializeFromBinary");
-            throw;
+            _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(DeserializeFromBinary));
+            throw new InvalidOperationException("Failed to deserialize envelope from binary.", ex);
         }
     }
 
@@ -137,42 +146,30 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
     #region Helper Methods
 
     /// <summary>
-    ///     Creates an envelope from a deserialized DTO.
+    ///     Validates an envelope DTO before deserialization.
     /// </summary>
-    private Envelope<T> CreateEnvelopeFromDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    private static void ValidateDto<T>(Envelope<T>.EnvelopeDto<T> dto)
     {
-        var headers = dto.Headers?.ToFrozenDictionary(StringComparer.Ordinal)
-                      ?? System.Collections.Frozen.FrozenDictionary<string, object>.Empty;
+        ArgumentNullException.ThrowIfNull(dto);
 
-        byte[]? encryptedPayload = null;
-        if (!string.IsNullOrEmpty(dto.EncryptedPayload))
+        // Validate sealed envelopes have signatures
+        if (dto.IsSealed && string.IsNullOrWhiteSpace(dto.Signature))
         {
-            encryptedPayload = Convert.FromBase64String(dto.EncryptedPayload);
+            throw new JsonException("Sealed envelope must have a signature.");
         }
 
-        return new Envelope<T>(
-            dto.Payload,
-            headers,
-            dto.IsSealed,
-            dto.CreatedDate,
-            dto.SealedDate,
-            dto.Signature,
-            encryptedPayload,
-            _telemetry);
+        // Validate sealed envelopes have sealed date
+        if (dto.IsSealed && dto.SealedAt is null)
+        {
+            throw new JsonException("Sealed envelope must have a sealed date.");
+        }
+
+        // Validate created date exists
+        if (dto.CreatedAt == default)
+        {
+            throw new JsonException("Envelope must have a creation date.");
+        }
     }
 
     #endregion
-}
-
-/// <summary>
-///     Source-generated JSON context for better performance.
-///     This will be used when source generators are enabled.
-/// </summary>
-[JsonSourceGenerationOptions(
-    WriteIndented = false,
-    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
-    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
-[JsonSerializable(typeof(Envelope<>.EnvelopeDto<>))]
-internal partial class EnvelopeJsonContext : JsonSerializerContext
-{
 }

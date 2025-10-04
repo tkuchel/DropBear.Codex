@@ -2,493 +2,78 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Diagnostics;
 
 #endregion
 
 namespace DropBear.Codex.Core.Results.Extensions;
 
 /// <summary>
-///     Provides utility extension methods for Result types, including
-///     diagnostics, error handling, and helper operations.
-///     Optimized for .NET 9.
+///     Utility extensions for Result types providing additional helper functionality.
+///     Optimized for .NET 9 with modern patterns.
 /// </summary>
 public static class UtilityExtensions
 {
-    #region Error Extensions
+    #region Timing and Performance
 
     /// <summary>
-    ///     Combines multiple errors into a single error message.
+    ///     Executes a function and captures its execution time.
     /// </summary>
-    public static TError Combine<TError>(
-        this IEnumerable<TError> errors,
-        string separator = "; ")
+    public static Result<(T Value, TimeSpan Duration), TError> WithTiming<T, TError>(
+        this Func<Result<T, TError>> operation)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(errors);
-        ArgumentNullException.ThrowIfNull(separator);
+        ArgumentNullException.ThrowIfNull(operation);
 
-        var errorList = errors.ToList();
-        if (errorList.Count == 0)
-        {
-            throw new ArgumentException("Cannot combine empty error collection", nameof(errors));
-        }
+        var stopwatch = Stopwatch.StartNew();
+        var result = operation();
+        stopwatch.Stop();
 
-        if (errorList.Count == 1)
-        {
-            return errorList[0];
-        }
-
-        var messages = errorList.Select(e => e.Message);
-        var combinedMessage = string.Join(separator, messages);
-        return (TError)Activator.CreateInstance(typeof(TError), combinedMessage)!;
+        return result.IsSuccess
+            ? Result<(T, TimeSpan), TError>.Success((result.Value!, stopwatch.Elapsed))
+            : Result<(T, TimeSpan), TError>.Failure(result.Error!);
     }
 
     /// <summary>
-    ///     Creates a new error with additional context information.
+    ///     Executes an async function and captures its execution time.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TError WithContext<TError>(
-        this TError error,
-        string context)
+    public static async ValueTask<Result<(T Value, TimeSpan Duration), TError>> WithTimingAsync<T, TError>(
+        this Func<ValueTask<Result<T, TError>>> operationAsync)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(error);
-        ArgumentException.ThrowIfNullOrWhiteSpace(context);
+        ArgumentNullException.ThrowIfNull(operationAsync);
 
-        return (TError)error.WithMetadata("Context", context);
+        var stopwatch = Stopwatch.StartNew();
+        var result = await operationAsync().ConfigureAwait(false);
+        stopwatch.Stop();
+
+        return result.IsSuccess
+            ? Result<(T, TimeSpan), TError>.Success((result.Value!, stopwatch.Elapsed))
+            : Result<(T, TimeSpan), TError>.Failure(result.Error!);
     }
 
     /// <summary>
-    ///     Creates a new error with an associated exception in metadata.
+    ///     Adds execution metadata to a result.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TError WithException<TError>(
-        this TError error,
-        Exception exception)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(error);
-        ArgumentNullException.ThrowIfNull(exception);
-
-        return (TError)error.WithMetadata("Exception", exception.ToString());
-    }
-
-    /// <summary>
-    ///     Creates a new error with a correlation ID for tracking.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TError WithCorrelationId<TError>(
-        this TError error,
-        string correlationId)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(error);
-        ArgumentException.ThrowIfNullOrWhiteSpace(correlationId);
-
-        return (TError)error.WithMetadata("CorrelationId", correlationId);
-    }
-
-    /// <summary>
-    ///     Creates a new error with source information.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TError WithSource<TError>(
-        this TError error,
-        string source)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(error);
-        ArgumentException.ThrowIfNullOrWhiteSpace(source);
-
-        return (TError)error.WithMetadata("Source", source);
-    }
-
-    #endregion
-
-    #region Diagnostic Extensions
-
-    /// <summary>
-    ///     Applies a diagnostic handler to the result, allowing inspection
-    ///     of diagnostic information without modifying the result.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> WithDiagnostics<T, TError>(
+    public static Result<T, TError> WithMetadata<T, TError>(
         this Result<T, TError> result,
-        Action<DiagnosticInfo> diagnosticHandler)
+        string key,
+        object value)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(diagnosticHandler);
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
 
-        if (result is IResultDiagnostics diagnostics)
+        if (result.Error is not null)
         {
-            var info = diagnostics.GetDiagnostics();
-            diagnosticHandler(info);
+            var updatedError = result.Error.WithMetadata(key, value);
+            return result.IsSuccess
+                ? Result<T, TError>.Success(result.Value!)
+                : Result<T, TError>.Failure((TError)updatedError);
         }
 
         return result;
-    }
-
-    /// <summary>
-    ///     Applies a timing handler to the result.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> WithTiming<T, TError>(
-        this Result<T, TError> result,
-        Action<OperationTiming> timingHandler)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(timingHandler);
-
-        if (result is ResultBase baseResult)
-        {
-            var timing = new OperationTiming(baseResult.CreatedAt, DateTime.UtcNow);
-            timingHandler(timing);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     Gets performance metrics for a result.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ResultPerformanceMetrics? GetPerformanceMetrics<T, TError>(
-        this Result<T, TError> result)
-        where TError : ResultError
-    {
-        return result is ResultBase baseResult ? baseResult.GetPerformanceMetrics() : null;
-    }
-
-    /// <summary>
-    ///     Gets the trace context for a result.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ActivityContext? GetTraceContext<T, TError>(
-        this Result<T, TError> result)
-        where TError : ResultError
-    {
-        return result is IResultDiagnostics diagnostics ? diagnostics.GetTraceContext() : null;
-    }
-
-    #endregion
-
-    #region Conditional Operations
-
-    /// <summary>
-    ///     Executes an action if the result is successful.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> OnSuccess<T, TError>(
-        this Result<T, TError> result,
-        Action<T> action)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (result.IsSuccess)
-        {
-            try
-            {
-                action(result.Value!);
-            }
-            catch (Exception ex)
-            {
-                // Log but don't change result
-                Debug.WriteLine($"Exception in OnSuccess: {ex.Message}");
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     Executes an action if the result is a failure.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> OnFailure<T, TError>(
-        this Result<T, TError> result,
-        Action<TError> action)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (!result.IsSuccess && result.Error != null)
-        {
-            try
-            {
-                action(result.Error);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Exception in OnFailure: {ex.Message}");
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     Executes an async action if the result is successful.
-    /// </summary>
-    public static async ValueTask<Result<T, TError>> OnSuccessAsync<T, TError>(
-        this Result<T, TError> result,
-        Func<T, ValueTask> action)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (result.IsSuccess)
-        {
-            try
-            {
-                await action(result.Value!).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Exception in OnSuccessAsync: {ex.Message}");
-            }
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     Executes an async action if the result is a failure.
-    /// </summary>
-    public static async ValueTask<Result<T, TError>> OnFailureAsync<T, TError>(
-        this Result<T, TError> result,
-        Func<TError, ValueTask> action)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (!result.IsSuccess && result.Error != null)
-        {
-            try
-            {
-                await action(result.Error).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Exception in OnFailureAsync: {ex.Message}");
-            }
-        }
-
-        return result;
-    }
-
-    #endregion
-
-    #region Logging Extensions
-
-    /// <summary>
-    ///     Logs the result state using the provided logger action.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> Log<T, TError>(
-        this Result<T, TError> result,
-        Action<string> logger)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(logger);
-
-        var message = result.IsSuccess
-            ? $"Result succeeded with value: {result.Value}"
-            : $"Result failed with error: {result.Error?.Message}";
-
-        logger(message);
-        return result;
-    }
-
-    /// <summary>
-    ///     Logs only failures using the provided logger action.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> LogFailure<T, TError>(
-        this Result<T, TError> result,
-        Action<TError> logger)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(logger);
-
-        if (!result.IsSuccess && result.Error != null)
-        {
-            logger(result.Error);
-        }
-
-        return result;
-    }
-
-    /// <summary>
-    ///     Logs the result with detailed diagnostic information.
-    /// </summary>
-    public static Result<T, TError> LogDetailed<T, TError>(
-        this Result<T, TError> result,
-        Action<string> logger)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(logger);
-
-        var metrics = result.GetPerformanceMetrics();
-        var message = result.IsSuccess
-            ? $"Result succeeded: Value={result.Value}, Elapsed={metrics.ExecutionTime.TotalMilliseconds:F2}ms"
-            : $"Result failed: Error={result.Error?.Message}, Elapsed={metrics.ExecutionTime.TotalMilliseconds:F2}ms";
-
-        logger(message);
-        return result;
-    }
-
-    #endregion
-
-    #region Assertion Extensions
-
-    /// <summary>
-    ///     Asserts that the result is successful, throwing if not.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T AssertSuccess<T, TError>(
-        this Result<T, TError> result,
-        string? message = null)
-        where TError : ResultError
-    {
-        if (result.IsSuccess)
-        {
-            return result.Value!;
-        }
-
-        var errorMessage = message ?? $"Expected success but got failure: {result.Error?.Message}";
-        throw new InvalidOperationException(errorMessage);
-    }
-
-    /// <summary>
-    ///     Asserts that the result is a failure, throwing if not.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TError AssertFailure<T, TError>(
-        this Result<T, TError> result,
-        string? message = null)
-        where TError : ResultError
-    {
-        if (!result.IsSuccess && result.Error != null)
-        {
-            return result.Error;
-        }
-
-        var errorMessage = message ?? "Expected failure but got success";
-        throw new InvalidOperationException(errorMessage);
-    }
-
-    #endregion
-
-    #region Conversion Helpers
-
-    /// <summary>
-    ///     Converts a result to an Option/Maybe pattern (null on failure).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T? ToNullable<T, TError>(
-        this Result<T, TError> result)
-        where TError : ResultError
-        where T : struct
-    {
-        return result.IsSuccess ? result.Value : null;
-    }
-
-    /// <summary>
-    ///     Converts a result to a tuple of (success, value, error).
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static (bool Success, T? Value, TError? Error) ToTuple<T, TError>(
-        this Result<T, TError> result)
-        where TError : ResultError
-    {
-        return (result.IsSuccess, result.Value, result.Error);
-    }
-
-    /// <summary>
-    ///     Deconstructs a result into its components.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Deconstruct<T, TError>(
-        this Result<T, TError> result,
-        out bool success,
-        out T? value,
-        out TError? error)
-        where TError : ResultError
-    {
-        success = result.IsSuccess;
-        value = result.Value;
-        error = result.Error;
-    }
-
-    #endregion
-
-    #region Collection Helpers
-
-    /// <summary>
-    ///     Filters out failed results from a collection, returning only successful values.
-    /// </summary>
-    public static IEnumerable<T> SuccessValues<T, TError>(
-        this IEnumerable<Result<T, TError>> results)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(results);
-
-        foreach (var result in results)
-        {
-            if (result.IsSuccess)
-            {
-                yield return result.Value!;
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Filters out successful results from a collection, returning only errors.
-    /// </summary>
-    public static IEnumerable<TError> Errors<T, TError>(
-        this IEnumerable<Result<T, TError>> results)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(results);
-
-        foreach (var result in results)
-        {
-            if (!result.IsSuccess && result.Error != null)
-            {
-                yield return result.Error;
-            }
-        }
-    }
-
-    /// <summary>
-    ///     Partitions results into successful values and errors.
-    /// </summary>
-    public static (List<T> Successes, List<TError> Errors) Partition<T, TError>(
-        this IEnumerable<Result<T, TError>> results)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(results);
-
-        var successes = new List<T>();
-        var errors = new List<TError>();
-
-        foreach (var result in results)
-        {
-            if (result.IsSuccess)
-            {
-                successes.Add(result.Value!);
-            }
-            else if (result.Error != null)
-            {
-                errors.Add(result.Error);
-            }
-        }
-
-        return (successes, errors);
     }
 
     #endregion
@@ -496,27 +81,352 @@ public static class UtilityExtensions
     #region Timeout Extensions
 
     /// <summary>
-    ///     Executes an operation with a timeout, returning a cancelled result if timeout occurs.
+    ///     Executes an async operation with a timeout.
     /// </summary>
-    public static async ValueTask<Result<T, TError>> WithTimeoutAsync<T, TError>(
-        this Func<CancellationToken, ValueTask<Result<T, TError>>> operation,
+    public static async ValueTask<Result<T, TError>> WithTimeout<T, TError>(
+        this Func<CancellationToken, ValueTask<Result<T, TError>>> operationAsync,
         TimeSpan timeout)
         where TError : ResultError
     {
-        ArgumentNullException.ThrowIfNull(operation);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(timeout, TimeSpan.Zero);
+        ArgumentNullException.ThrowIfNull(operationAsync);
+
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive");
+        }
 
         using var cts = new CancellationTokenSource(timeout);
 
         try
         {
-            return await operation(cts.Token).ConfigureAwait(false);
+            return await operationAsync(cts.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
         {
-            var error = ResultError.CreateTimeout<TError>(timeout);
-            return Result<T, TError>.Cancelled(error);
+            var error = (TError)Activator.CreateInstance(
+                typeof(TError),
+                $"Operation timed out after {timeout.TotalSeconds:F2} seconds")!;
+            return Result<T, TError>.Failure(error);
         }
+    }
+
+    /// <summary>
+    ///     Executes an async operation with a timeout and default value on timeout.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> WithTimeoutOrDefault<T, TError>(
+        this Func<CancellationToken, ValueTask<Result<T, TError>>> operationAsync,
+        TimeSpan timeout,
+        T defaultValue)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(operationAsync);
+
+        if (timeout <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive");
+        }
+
+        using var cts = new CancellationTokenSource(timeout);
+
+        try
+        {
+            return await operationAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+        {
+            // Return default value on timeout
+            return Result<T, TError>.Success(defaultValue);
+        }
+    }
+
+    #endregion
+
+    #region Conditional Execution
+
+    /// <summary>
+    ///     Executes an action only if the result is successful.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> OnSuccess<T, TError>(
+        this Result<T, TError> result,
+        Action<T> action)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (result.IsSuccess && result.Value is not null)
+        {
+            action(result.Value);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    ///     Executes an async action only if the result is successful.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> OnSuccessAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<T, ValueTask> actionAsync)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(actionAsync);
+
+        if (result.IsSuccess && result.Value is not null)
+        {
+            await actionAsync(result.Value).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    ///     Executes an action only if the result is a failure.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> OnFailure<T, TError>(
+        this Result<T, TError> result,
+        Action<TError> action)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (!result.IsSuccess && result.Error is not null)
+        {
+            action(result.Error);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    ///     Executes an async action only if the result is a failure.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> OnFailureAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<TError, ValueTask> actionAsync)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(actionAsync);
+
+        if (!result.IsSuccess && result.Error is not null)
+        {
+            await actionAsync(result.Error).ConfigureAwait(false);
+        }
+
+        return result;
+    }
+
+    #endregion
+
+    #region Exception Handling
+
+    /// <summary>
+    ///     Executes an action if the result contains an exception.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> OnException<T, TError>(
+        this Result<T, TError> result,
+        Action<Exception> action)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (result.Exception is not null)
+        {
+            action(result.Exception);
+        }
+
+        return result;
+    }
+
+    #endregion
+
+    #region Debugging and Diagnostics
+
+    /// <summary>
+    ///     Taps into the result for debugging without modifying it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> Tap<T, TError>(
+        this Result<T, TError> result,
+        Action<Result<T, TError>> action)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(action);
+
+        action(result);
+        return result;
+    }
+
+    /// <summary>
+    ///     Taps into the result asynchronously for debugging.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> TapAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<Result<T, TError>, ValueTask> actionAsync)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(actionAsync);
+
+        await actionAsync(result).ConfigureAwait(false);
+        return result;
+    }
+
+    /// <summary>
+    ///     Logs the result to console (useful for debugging).
+    /// </summary>
+    public static Result<T, TError> Log<T, TError>(
+        this Result<T, TError> result,
+        string? prefix = null)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        var message = prefix is not null ? $"{prefix}: " : string.Empty;
+
+        if (result.IsSuccess)
+        {
+            Console.WriteLine($"{message}Success - Value: {result.Value}");
+        }
+        else
+        {
+            Console.WriteLine($"{message}Failure - Error: {result.Error?.Message ?? "Unknown"}");
+            if (result.Exception is not null)
+            {
+                Console.WriteLine($"{message}Exception: {result.Exception.Message}");
+            }
+        }
+
+        return result;
+    }
+
+    #endregion
+
+    #region Value Extraction
+
+    /// <summary>
+    ///     Gets the value or executes a fallback function.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T ValueOr<T, TError>(
+        this Result<T, TError> result,
+        Func<TError, T> fallback)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(fallback);
+
+        return result.IsSuccess && result.Value is not null
+            ? result.Value
+            : fallback(result.Error!);
+    }
+
+    /// <summary>
+    ///     Gets the value or executes an async fallback function.
+    /// </summary>
+    public static async ValueTask<T> ValueOrAsync<T, TError>(
+        this Result<T, TError> result,
+        Func<TError, ValueTask<T>> fallbackAsync)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(fallbackAsync);
+
+        return result.IsSuccess && result.Value is not null
+            ? result.Value
+            : await fallbackAsync(result.Error!).ConfigureAwait(false);
+    }
+
+    #endregion
+
+    #region Type Conversion
+
+    /// <summary>
+    ///     Converts a Result to a nullable value.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static T? ToNullable<T, TError>(this Result<T, TError> result)
+        where TError : ResultError
+        where T : struct
+    {
+        return result.IsSuccess ? result.Value : null;
+    }
+
+    /// <summary>
+    ///     Converts a nullable value to a Result.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> ToResult<T, TError>(
+        this T? nullable,
+        TError error)
+        where TError : ResultError
+        where T : struct
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        return nullable.HasValue
+            ? Result<T, TError>.Success(nullable.Value)
+            : Result<T, TError>.Failure(error);
+    }
+
+    /// <summary>
+    ///     Converts a nullable reference type to a Result.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> ToResult<T, TError>(
+        this T? value,
+        TError error)
+        where TError : ResultError
+        where T : class
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        return value is not null
+            ? Result<T, TError>.Success(value)
+            : Result<T, TError>.Failure(error);
+    }
+
+    #endregion
+
+    #region Result Chaining
+
+    /// <summary>
+    ///     Chains multiple operations, stopping at the first failure.
+    /// </summary>
+    public static Result<T, TError> Chain<T, TError>(
+        this Result<T, TError> result,
+        params Func<T, Result<T, TError>>[] operations)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(operations);
+
+        if (!result.IsSuccess)
+        {
+            return result;
+        }
+
+        var current = result;
+
+        foreach (var operation in operations)
+        {
+            if (!current.IsSuccess)
+            {
+                return current;
+            }
+
+            current = operation(current.Value!);
+        }
+
+        return current;
     }
 
     #endregion

@@ -6,6 +6,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Common;
 using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Base;
 using Microsoft.Extensions.ObjectPool;
 
@@ -18,12 +19,14 @@ namespace DropBear.Codex.Core.Results.Compatibility;
 ///     Use Result&lt;TError&gt; with custom error types instead.
 /// </summary>
 [Obsolete(
-    "Use Result<TError> with custom error types instead of string-based errors. This type will be removed in a future version.",
+    "Use Result<TError> with custom error types instead of string-based errors. " +
+    "This type will be removed in a future version.",
     DiagnosticId = "DROPBEAR002")]
 [ExcludeFromCodeCoverage] // Legacy code
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
-public class Result : Base.Result<LegacyError>
+public class Result : Base.Result<LegacyError>, IPooledResult
 {
+    // FIXED: Changed ObjectPool<r> to ObjectPool<Result>
     private static readonly ObjectPool<Result> Pool =
         ObjectPoolManager.GetPool(() => new Result(ResultState.Success, null, null));
 
@@ -57,22 +60,27 @@ public class Result : Base.Result<LegacyError>
     #region Factory Methods
 
     /// <summary>
-    ///     Creates a successful result.
+    ///     Creates a successful result using object pooling.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public new static Result Success()
     {
-        return FromPool(ResultState.Success, null);
+        var result = Pool.Get();
+        result.Initialize(ResultState.Success, null, null);
+        return result;
     }
 
     /// <summary>
-    ///     Creates a failed result.
+    ///     Creates a failed result using object pooling.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result Failure(string error, Exception? exception = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return FromPool(ResultState.Failure, error, exception);
+
+        var result = Pool.Get();
+        result.Initialize(ResultState.Failure, error, exception);
+        return result;
     }
 
     /// <summary>
@@ -88,189 +96,110 @@ public class Result : Base.Result<LegacyError>
             throw new ArgumentException("Exception collection cannot be empty", nameof(exceptions));
         }
 
-        var primaryException = exceptionList.FirstOrDefault();
-        var combinedErrorMessage = primaryException?.Message ?? "Multiple errors occurred";
+        var primaryException = exceptionList.Count == 1
+            ? exceptionList[0]
+            : new AggregateException(exceptionList);
 
-        return FromPool(ResultState.Failure, combinedErrorMessage, primaryException);
+        var combinedErrorMessage = primaryException.Message;
+        return Failure(combinedErrorMessage, primaryException);
     }
 
     /// <summary>
-    ///     Creates a warning result.
+    ///     Creates a warning result using object pooling.
     /// </summary>
-    public static Result Warning(string error)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result Warning(string warning)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return FromPool(ResultState.Warning, error);
-    }
+        ArgumentException.ThrowIfNullOrWhiteSpace(warning);
 
-    /// <summary>
-    ///     Creates a partial success result.
-    /// </summary>
-    public static Result PartialSuccess(string error)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return FromPool(ResultState.PartialSuccess, error);
-    }
-
-    /// <summary>
-    ///     Creates a cancelled result.
-    /// </summary>
-    public static Result Cancelled(string error)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return FromPool(ResultState.Cancelled, error);
-    }
-
-    /// <summary>
-    ///     Creates a pending result.
-    /// </summary>
-    public static Result Pending(string error)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return FromPool(ResultState.Pending, error);
-    }
-
-    /// <summary>
-    ///     Creates a no-op result.
-    /// </summary>
-    public static Result NoOp(string error)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(error);
-        return FromPool(ResultState.NoOp, error);
-    }
-
-    #endregion
-
-    #region Migration Helpers
-
-    /// <summary>
-    ///     Converts this legacy Result to a modern Result&lt;TError&gt;.
-    /// </summary>
-    /// <typeparam name="TError">The custom error type to convert to.</typeparam>
-    /// <returns>A new Result&lt;TError&gt; with the same state and error information.</returns>
-    public Base.Result<TError> ToModern<TError>()
-        where TError : ResultError
-    {
-        if (IsSuccess)
-        {
-            return Base.Result<TError>.Success();
-        }
-
-        var error = (TError)Activator.CreateInstance(typeof(TError), ErrorMessage)!;
-
-        return State switch
-        {
-            ResultState.Failure => Base.Result<TError>.Failure(error, Exception),
-            ResultState.Warning => Base.Result<TError>.Warning(error),
-            ResultState.PartialSuccess => Base.Result<TError>.PartialSuccess(error),
-            ResultState.Cancelled => Base.Result<TError>.Cancelled(error),
-            ResultState.Pending => Base.Result<TError>.Pending(error),
-            ResultState.NoOp => Base.Result<TError>.NoOp(error),
-            _ => Base.Result<TError>.Failure(error, Exception)
-        };
-    }
-
-    /// <summary>
-    ///     Creates a legacy Result from a modern Result&lt;TError&gt;.
-    /// </summary>
-    /// <typeparam name="TError">The custom error type.</typeparam>
-    /// <param name="modernResult">The modern result to convert from.</param>
-    /// <returns>A legacy Result with the same state and error information.</returns>
-    public static Result FromModern<TError>(Base.Result<TError> modernResult)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(modernResult);
-
-        if (modernResult.IsSuccess)
-        {
-            return Success();
-        }
-
-        var errorMessage = modernResult.Error?.Message ?? "Unknown error";
-
-        return modernResult.State switch
-        {
-            ResultState.Failure => Failure(errorMessage, modernResult.Exception),
-            ResultState.Warning => Warning(errorMessage),
-            ResultState.PartialSuccess => PartialSuccess(errorMessage),
-            ResultState.Cancelled => Cancelled(errorMessage),
-            ResultState.Pending => Pending(errorMessage),
-            ResultState.NoOp => NoOp(errorMessage),
-            _ => Failure(errorMessage, modernResult.Exception)
-        };
-    }
-
-    #endregion
-
-    #region Chained Operations
-
-    /// <summary>
-    ///     Executes the given action if the result is in a Failure state.
-    /// </summary>
-    public Result OnFailure(Action<string, Exception?> action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (State == ResultState.Failure)
-        {
-            SafeExecute(() => action(ErrorMessage, Exception));
-        }
-
-        return this;
-    }
-
-    /// <summary>
-    ///     Executes the given action if the result is in a Success state.
-    /// </summary>
-    public void OnSuccess(Action action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (IsSuccess)
-        {
-            SafeExecute(action);
-        }
-    }
-
-    /// <summary>
-    ///     Pattern matches the result state.
-    /// </summary>
-    public T Match<T>(
-        Func<T> onSuccess,
-        Func<string, Exception?, T> onFailure,
-        Func<string, T>? onWarning = null,
-        Func<string, T>? onPartialSuccess = null,
-        Func<string, T>? onCancelled = null,
-        Func<string, T>? onPending = null,
-        Func<string, T>? onNoOp = null)
-    {
-        ArgumentNullException.ThrowIfNull(onSuccess);
-        ArgumentNullException.ThrowIfNull(onFailure);
-
-        return base.Match(
-            onSuccess,
-            (err, ex) => onFailure(err.Message, ex),
-            err => onWarning.Invoke(err.Message) ?? onFailure(err.Message, null),
-            err => onPartialSuccess.Invoke(err.Message) ?? onFailure(err.Message, null),
-            err => onCancelled.Invoke(err.Message) ?? onFailure(err.Message, null),
-            err => onPending.Invoke(err.Message) ?? onFailure(err.Message, null),
-            err => onNoOp.Invoke(err.Message) ?? onFailure(err.Message, null)
-        );
-    }
-
-    #endregion
-
-    #region Internal Helpers
-
-    private static Result FromPool(ResultState state, string? error, Exception? exception = null)
-    {
         var result = Pool.Get();
-
-        // Call the base class Initialize method with the correct signature
-        // The base Result<TError> has: Initialize(ResultState state, TError? error, Exception? exception)
-        result.InitializeInternal(state, error is null ? null : new LegacyError(error), exception);
-
+        result.Initialize(ResultState.Warning, warning, null);
         return result;
+    }
+
+    /// <summary>
+    ///     Creates a cancelled result using object pooling.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result Cancelled(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        var result = Pool.Get();
+        result.Initialize(ResultState.Cancelled, message, null);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a pending result using object pooling.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result Pending(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        var result = Pool.Get();
+        result.Initialize(ResultState.Pending, message, null);
+        return result;
+    }
+
+    /// <summary>
+    ///     Creates a no-op result using object pooling.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result NoOp(string message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message);
+
+        var result = Pool.Get();
+        result.Initialize(ResultState.NoOp, message, null);
+        return result;
+    }
+
+    #endregion
+
+    #region Pooling Support
+
+    /// <summary>
+    ///     Initializes the pooled result instance with new state.
+    ///     Internal method for use by the object pool.
+    /// </summary>
+    private void Initialize(ResultState state, string? error, Exception? exception)
+    {
+        // Call the base class initialization method
+        InitializeInternal(state, error is null ? null : new LegacyError(error), exception);
+    }
+
+    /// <summary>
+    ///     Resets this result to its default state before returning to the pool.
+    ///     Implements IPooledResult.
+    /// </summary>
+    void IPooledResult.Reset()
+    {
+        // The base result doesn't hold mutable state that needs explicit cleanup
+        // This is a no-op for now, but can be extended if needed
+    }
+
+    /// <summary>
+    ///     Returns this result instance to the object pool for reuse.
+    ///     Call this when you're done with a pooled result to improve performance.
+    /// </summary>
+    public void ReturnToPool()
+    {
+        Pool.Return(this);
+    }
+
+    #endregion
+
+    #region Operators
+
+    /// <summary>
+    ///     Implicit conversion from exception to failed result.
+    /// </summary>
+    public static implicit operator Result(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return Failure(exception.Message, exception);
     }
 
     #endregion
