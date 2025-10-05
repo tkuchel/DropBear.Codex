@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
-using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Core.Results.Diagnostics;
 using DropBear.Codex.Core.Results.Errors;
 

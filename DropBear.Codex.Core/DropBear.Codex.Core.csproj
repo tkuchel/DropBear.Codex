@@ -63,5 +63,8 @@
       <Version>3.7.115</Version>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Common\" />
+  </ItemGroup>
 
 </Project>
