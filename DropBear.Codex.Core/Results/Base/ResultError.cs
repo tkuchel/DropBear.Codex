@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Results.Errors;
 
 #endregion
 
@@ -15,6 +16,7 @@ namespace DropBear.Codex.Core.Results.Base;
 ///     Optimized for .NET 9 with modern C# features and frozen collections.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
+[DebuggerTypeProxy(typeof(ResultErrorDebugView))]
 public abstract record ResultError
 {
     private FrozenDictionary<string, object>? _metadata;
@@ -41,6 +43,12 @@ public abstract record ResultError
     public ErrorSeverity Severity { get; init; } = ErrorSeverity.Medium;
 
     /// <summary>
+    ///     Gets or sets the category of this error.
+    ///     Default: General.
+    /// </summary>
+    public ErrorCategory Category { get; init; } = ErrorCategory.General;
+
+    /// <summary>
     ///     Gets the error code, if any.
     ///     Useful for categorizing errors.
     /// </summary>
@@ -50,6 +58,16 @@ public abstract record ResultError
     ///     Gets the timestamp when this error was created.
     /// </summary>
     public DateTimeOffset Timestamp { get; init; } = DateTimeOffset.UtcNow;
+
+    /// <summary>
+    ///     Gets a unique identifier for this error instance.
+    /// </summary>
+    public string ErrorId { get; init; } = Guid.NewGuid().ToString("N");
+
+    /// <summary>
+    ///     Gets the age of this error (time since creation).
+    /// </summary>
+    public TimeSpan Age => DateTimeOffset.UtcNow - Timestamp;
 
     /// <summary>
     ///     Gets the metadata associated with this error.
@@ -227,10 +245,6 @@ public abstract record ResultError
     #endregion
 
     #region Performance-Optimized Metadata
-
-// Add static cached empty dictionary for better performance
-    private static readonly FrozenDictionary<string, object> EmptyMetadata =
-        FrozenDictionary<string, object>.Empty;
 
     /// <summary>
     ///     Optimized metadata initialization using frozen dictionary builder.

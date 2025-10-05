@@ -376,7 +376,8 @@ public enum ErrorCategory
     InvalidOperation,
     IO,
     Network,
-    Critical
+    Critical,
+    General
 }
 
 /// <summary>

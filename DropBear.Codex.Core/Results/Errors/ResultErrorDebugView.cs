@@ -21,6 +21,10 @@ internal sealed class ResultErrorDebugView
         _error = error ?? throw new ArgumentNullException(nameof(error));
     }
 
+    public string ErrorId => _error.ErrorId;
+    public TimeSpan Age => _error.Age;
+    public string AgeFormatted => $"{Age.TotalSeconds:F2}s";
+
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
     public DebugProperty[] Items
     {
@@ -32,13 +36,14 @@ internal sealed class ResultErrorDebugView
                 new("Message", _error.Message),
                 new("Timestamp", _error.Timestamp.ToString("O")),
                 new("Age", FormatAge(_error.Age)),
-                new("ErrorId", _error.ErrorId ?? "None"),
+                new("ErrorId", _error.ErrorId),
                 new("Severity", _error.Severity.ToString()),
-                new("IsDefaultError", _error.IsDefaultError)
+                new("Category", _error.Category.ToString()),
+                new("Code", _error.Code ?? "None")
             };
 
             // Add metadata if present
-            if (_error.Metadata != null && _error.Metadata.Count > 0)
+            if (_error.HasMetadata)
             {
                 items.Add(new DebugProperty("MetadataCount", _error.Metadata.Count));
 
