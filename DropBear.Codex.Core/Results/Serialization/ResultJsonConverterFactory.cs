@@ -23,10 +23,8 @@ public sealed class ResultJsonConverterFactory : JsonConverterFactory
 
         var genericType = typeToConvert.GetGenericTypeDefinition();
 
-        // Check if it's Result<T, TError> or Result<TError>
-        return genericType == typeof(Result<,>) ||
-               (genericType.BaseType?.IsGenericType == true &&
-                genericType.BaseType.GetGenericTypeDefinition() == typeof(Result<>));
+        // Check if it's Result<T, TError> (2 params) or Result<TError> (1 param)
+        return genericType == typeof(Result<,>) || genericType == typeof(Result<>);
     }
 
     public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
