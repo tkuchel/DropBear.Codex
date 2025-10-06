@@ -31,3 +31,23 @@ This document captures issues observed while reviewing the DropBear.Codex.Core p
 5. Refactor logger caching so `ResultBase` respects runtime logger updates.
 6. Make telemetry instrumentation singletons that survive configuration changes and ensure background processors are the only resources being disposed.
 
+
+## Additional Findings (Second Pass)
+
+### 7. Default telemetry instances are recreated per envelope
+`Envelope` and `CompositeEnvelope` default to `new DefaultResultTelemetry()` whenever callers do not supply telemetry. Builders do the same in `Build()`/`BuildAndSeal()`. Because `DefaultResultTelemetry` builds OpenTelemetry instruments inside its constructor, instantiating it repeatedly with the same static `Meter` triggers `InvalidOperationException` after the first instance and allocates unnecessary counters for every envelope. Replace those `new DefaultResultTelemetry()` calls with `TelemetryProvider.Current` (or an injected singleton) so telemetry instruments are created once and shared across envelopes.
+
+### 8. Background-channel telemetry ignores the configured full-mode semantics
+When `TelemetryMode.BackgroundChannel` is enabled, `ProcessEvent` uses `_channel?.Writer.TryWrite(eventData)`. This bypasses `ChannelFullMode.Wait`, so events are silently dropped even though the options requested waiting, and `DropNewest` also devolves into a hard drop because `TryWrite` never waits. Switch to `WriteAsync`/`WaitToWriteAsync` so the chosen `BoundedChannelFullMode` is honored and callers that expect backpressure actually get it.
+
+### 9. Cancellation tokens are ignored in `ConcurrentDictionaryExtensions.AddOrUpdateAsync`
+`AddOrUpdateAsync` accepts a `CancellationToken` yet never checks it inside the retry loop. If the operation is cancelled while another writer keeps racing, the loop will spin forever and the awaited factories will continue running. Add `cancellationToken.ThrowIfCancellationRequested()` at the top of the loop (and after awaiting factories) to make the method cancel promptly.
+
+### 10. Dead code in telemetry batching helpers
+`DefaultResultTelemetry` still contains an alternate `ProcessTelemetryEventsBatchedAsync` pipeline that is never invoked, along with `ProcessEventBatch` and the `ref readonly` overloads. These stale paths add maintenance burden and risk diverging behavior (e.g., missing caller tags) if ever hooked up. Consider removing them or wiring them through the options so there is a single tested code path.
+
+## Suggested Remediations
+1. Prefer `TelemetryProvider.Current` (or inject a singleton) instead of creating new `DefaultResultTelemetry` instances in envelope builders/constructors.
+2. Respect `TelemetryOptions.FullMode` by awaiting `ChannelWriter.WriteAsync` (or `WaitToWriteAsync` + `TryWrite`) when background processing is configured.
+3. Observe the cancellation token within `ConcurrentDictionaryExtensions.AddOrUpdateAsync` before each retry and after asynchronous factory invocations.
+4. Delete or integrate the unused telemetry batching helpers so only one processing pipeline remains and metric tagging stays consistent.
