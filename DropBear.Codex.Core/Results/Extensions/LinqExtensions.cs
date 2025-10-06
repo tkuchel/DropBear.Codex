@@ -737,6 +737,18 @@ public static class LinqExtensions
             }
         }
     }
+    
+    /// <summary>
+    ///     Extracts all successful values from results.
+    ///     Alias for Values() for clarity.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IEnumerable<T> SuccessValues<T, TError>(
+        this IEnumerable<Result<T, TError>> results)
+        where TError : ResultError
+    {
+        return results.Values();
+    }
 
     /// <summary>
     ///     Extracts all errors from results.
