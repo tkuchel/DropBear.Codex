@@ -1,0 +1,32 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Components.Icons
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="notification-pagination">
+    <button class="pagination-btn"
+            @onclick="() => OnPageChangeInternal(CurrentPage - 1)"
+            disabled="@(CurrentPage <= 1)">
+        <PreviousIcon />
+    </button>
+
+    @foreach (var pageNum in GetVisiblePages())
+    {
+        if (pageNum == -1)
+        {
+            <span class="pagination-ellipsis">...</span>
+        }
+        else
+        {
+            <button class="pagination-btn @(pageNum == CurrentPage ? "active" : "")"
+                    @onclick="() => OnPageChangeInternal(pageNum)">
+                @pageNum
+            </button>
+        }
+    }
+
+    <button class="pagination-btn"
+            @onclick="() => OnPageChangeInternal(CurrentPage + 1)"
+            disabled="@(CurrentPage >= TotalPages)">
+        <NextIcon />
+    </button>
+</div>

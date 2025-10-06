@@ -1,433 +1,309 @@
-﻿#region
-
-using System.Collections.Concurrent;
-using DropBear.Codex.Blazor.Components.Bases;
+﻿using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Blazor.Models;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 
-#endregion
-
 namespace DropBear.Codex.Blazor.Components.Badges;
 
 /// <summary>
-///     A Blazor component for displaying badges with optional tooltips.
-///     Optimized for Blazor Server with efficient state management and UI updates.
+/// A modern, accessible badge component optimized for Blazor Server applications.
 /// </summary>
 public partial class DropBearBadge : DropBearComponentBase
 {
-    private const int TOOLTIP_MARGIN = 10;
-    private const int TOOLTIP_MAX_WIDTH = 200;
-    private const int TOOLTIP_HEIGHT = 50;
-    private const string JsModuleName = JsModuleNames.Utils;
-
-    // Increased cache duration for better performance in server scenarios
-    private static readonly TimeSpan DimensionsCacheDuration = TimeSpan.FromSeconds(5);
-
-    // Use thread-safe dictionary to cache dimensions across instances with same screen size
-    private static readonly ConcurrentDictionary<string, CachedDimensions> GlobalDimensionsCache = new();
-
-    private readonly CancellationTokenSource _tooltipCts = new();
-    private readonly SemaphoreSlim _tooltipSemaphore = new(1, 1);
-    private readonly string _uniqueId = Guid.NewGuid().ToString("N");
-
-    private WindowDimensions? _cachedDimensions;
-
+    private readonly string _elementId = $"badge-{Guid.NewGuid():N}";
+    private bool showTooltip;
+    private string tooltipStyle = string.Empty;
     private IJSObjectReference? _jsModule;
-    private DateTime _lastDimensionsCheck = DateTime.MinValue;
-    private string _previousTooltip = string.Empty;
-    private volatile bool _showTooltip;
-    private string _tooltipStyle = string.Empty;
-
-    /// <summary>
-    ///     A class to hold cached window dimensions with timestamp
-    /// </summary>
-    private sealed class CachedDimensions
-    {
-        public WindowDimensions Dimensions { get; set; } = new(0, 0);
-        public DateTime Timestamp { get; set; }
-    }
 
     #region Parameters
 
     /// <summary>
-    ///     Specifies the badge color (e.g., Default, Primary, Success, etc.).
+    /// The color variant of the badge.
     /// </summary>
-    [Parameter]
-    public BadgeColor Color { get; set; } = BadgeColor.Default;
+    [Parameter] public BadgeColor Color { get; set; } = BadgeColor.Default;
 
     /// <summary>
-    ///     Specifies the shape of the badge (e.g., Normal, Pill).
+    /// The shape variant of the badge.
     /// </summary>
-    [Parameter]
-    public BadgeShape Shape { get; set; } = BadgeShape.Normal;
+    [Parameter] public BadgeShape Shape { get; set; } = BadgeShape.Normal;
 
     /// <summary>
-    ///     Optional icon class name (e.g., Font Awesome) to display in the badge.
+    /// The size of the badge.
     /// </summary>
-    [Parameter]
-    public string Icon { get; set; } = string.Empty;
+    [Parameter] public BadgeSize Size { get; set; } = BadgeSize.Medium;
 
     /// <summary>
-    ///     Text to display inside the badge.
+    /// The variant style of the badge.
     /// </summary>
-    [Parameter]
-    public string Text { get; set; } = string.Empty;
+    [Parameter] public BadgeVariant Variant { get; set; } = BadgeVariant.Solid;
 
     /// <summary>
-    ///     Tooltip text displayed when hovering over the badge.
+    /// Icon class name (e.g., Font Awesome classes).
     /// </summary>
-    [Parameter]
-    public string Tooltip { get; set; } = string.Empty;
+    [Parameter] public string? Icon { get; set; }
 
     /// <summary>
-    ///     CSS class(es) to be added to the component
+    /// Text content to display in the badge.
     /// </summary>
-    [Parameter]
-    public string Class { get; set; } = string.Empty;
+    [Parameter] public string? Text { get; set; }
 
     /// <summary>
-    ///     Optional ID for the badge, if not provided a unique ID will be generated
+    /// Tooltip text displayed when hovering over the badge.
     /// </summary>
-    [Parameter]
-    public string? Id { get; set; }
+    [Parameter] public string? Tooltip { get; set; }
+
+    /// <summary>
+    /// Whether to use native browser tooltips instead of custom ones.
+    /// Native tooltips are more accessible and performant.
+    /// </summary>
+    [Parameter] public bool UseNativeTooltip { get; set; } = true;
+
+    /// <summary>
+    /// Additional CSS classes to apply to the badge.
+    /// </summary>
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Optional ID for the badge element.
+    /// </summary>
+    [Parameter] public string? Id { get; set; }
+
+    /// <summary>
+    /// Child content to render inside the badge (alternative to Text).
+    /// </summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>
+    /// Accessibility label for screen readers.
+    /// </summary>
+    [Parameter] public string? AccessibilityLabel { get; set; }
+
+    /// <summary>
+    /// Whether the badge should be dismissible.
+    /// </summary>
+    [Parameter] public bool Dismissible { get; set; }
+
+    /// <summary>
+    /// Callback fired when the badge is dismissed.
+    /// </summary>
+    [Parameter] public EventCallback OnDismiss { get; set; }
 
     #endregion
 
-    #region Protected Properties
+    #region Computed Properties
 
     /// <summary>
-    ///     Indicates whether the tooltip is currently visible.
+    /// Gets the element ID to use for the badge.
     /// </summary>
-    protected bool ShowTooltip
-    {
-        get => _showTooltip;
-        private set
-        {
-            if (_showTooltip == value)
-            {
-                return;
-            }
-
-            _showTooltip = value;
-
-            // Use StateHasChanged queue to avoid too many renders
-            if (!IsDisposed)
-            {
-                InvokeAsync(StateHasChanged);
-            }
-        }
-    }
+    protected string ElementId => Id ?? _elementId;
 
     /// <summary>
-    ///     Inline style to position the tooltip.
+    /// Indicates whether the badge has a tooltip.
     /// </summary>
-    protected string TooltipStyle
-    {
-        get => _tooltipStyle;
-        private set
-        {
-            if (_tooltipStyle == value)
-            {
-                return;
-            }
-
-            _tooltipStyle = value;
-
-            // Only queue StateHasChanged if tooltip is shown
-            if (_showTooltip && !IsDisposed)
-            {
-                InvokeAsync(StateHasChanged);
-            }
-        }
-    }
+    protected bool HasTooltip => !string.IsNullOrWhiteSpace(Tooltip);
 
     /// <summary>
-    ///     Dynamic CSS class based on badge properties.
+    /// Gets the computed CSS classes for the badge.
     /// </summary>
-    protected string CssClass { get; private set; } = string.Empty;
+    protected string CssClasses => string.Join(" ", GetCssClasses().Where(c => !string.IsNullOrWhiteSpace(c)));
 
     /// <summary>
-    ///     Gets the element ID to use for the badge
+    /// Gets the appropriate ARIA label for accessibility.
     /// </summary>
-    protected string ElementId => Id ?? $"badge-{_uniqueId}";
+    protected string? AriaLabel => !string.IsNullOrWhiteSpace(AccessibilityLabel)
+        ? AccessibilityLabel
+        : !string.IsNullOrWhiteSpace(Text)
+            ? $"Badge: {Text}"
+            : "Badge";
 
     #endregion
 
     #region Lifecycle Methods
 
-    /// <summary>
-    ///     Initialize cached values when parameters are set
-    /// </summary>
-    protected override void OnParametersSet()
-    {
-        base.OnParametersSet();
-
-        // Only rebuild the CSS class if relevant parameters changed
-        if (CssClass == string.Empty ||
-            _previousTooltip != Tooltip)
-        {
-            CssClass = BuildCssClass();
-            _previousTooltip = Tooltip;
-        }
-    }
-
-    /// <inheritdoc />
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await base.OnAfterRenderAsync(firstRender);
 
-        if (!firstRender || IsDisposed)
+        if (firstRender && HasTooltip && !UseNativeTooltip)
         {
-            return;
-        }
-
-        try
-        {
-            await InitializeJsModuleAsync();
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to initialize DropBearBadge", ex);
-        }
-    }
-
-    private async Task InitializeJsModuleAsync()
-    {
-        try
-        {
-            await _tooltipSemaphore.WaitAsync();
-            _jsModule = await GetJsModuleAsync(JsModuleName);
-            LogDebug("DropBearBadge JS module loaded successfully");
-        }
-        finally
-        {
-            _tooltipSemaphore.Release();
-        }
-    }
-
-    /// <inheritdoc />
-    protected override async Task CleanupJavaScriptResourcesAsync()
-    {
-        try
-        {
-            await _tooltipCts.CancelAsync();
-            ShowTooltip = false;
-            TooltipStyle = string.Empty;
-            _cachedDimensions = null;
-
-            await base.CleanupJavaScriptResourcesAsync();
-            LogDebug("DropBearBadge resources cleaned up");
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
-        {
-            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
-        }
-        catch (Exception ex)
-        {
-            LogError("Error during cleanup", ex);
-        }
-    }
-
-    /// <inheritdoc />
-    public override async ValueTask DisposeAsync()
-    {
-        try
-        {
-            await _tooltipCts.CancelAsync();
-            _tooltipCts.Dispose();
-            _tooltipSemaphore.Dispose();
-        }
-        finally
-        {
-            await base.DisposeAsync();
+            await InitializeCustomTooltipAsync();
         }
     }
 
     #endregion
 
-    #region Tooltip Handlers
+    #region Private Methods
 
     /// <summary>
-    ///     Shows the tooltip with optimized positioning and state management.
+    /// Generates the CSS classes for the badge.
     /// </summary>
-    protected async Task OnTooltipShow(MouseEventArgs args)
+    private IEnumerable<string> GetCssClasses()
     {
-        if (string.IsNullOrEmpty(Tooltip) || IsDisposed || _tooltipCts.Token.IsCancellationRequested)
+        yield return "badge";
+        yield return $"badge--{Color.ToString().ToLowerInvariant()}";
+        yield return $"badge--{Shape.ToString().ToLowerInvariant()}";
+        yield return $"badge--{Size.ToString().ToLowerInvariant()}";
+        yield return $"badge--{Variant.ToString().ToLowerInvariant()}";
+
+        if (IsIconOnly)
+            yield return "badge--icon-only";
+
+        if (Dismissible)
+            yield return "badge--dismissible";
+
+        if (!string.IsNullOrWhiteSpace(Class))
+            yield return Class;
+    }
+
+    /// <summary>
+    /// Determines if this is an icon-only badge.
+    /// </summary>
+    private bool IsIconOnly => !string.IsNullOrWhiteSpace(Icon) &&
+                               string.IsNullOrWhiteSpace(Text) &&
+                               ChildContent is null;
+
+    /// <summary>
+    /// Initializes custom tooltip functionality.
+    /// </summary>
+    private async Task InitializeCustomTooltipAsync()
+    {
+        try
         {
-            return;
+            var jsModuleResult = await GetJsModuleAsync(JsModuleNames.Utils);
+            if (jsModuleResult.IsSuccess)
+            {
+                _jsModule = jsModuleResult.Value;
+            }
         }
+        catch (Exception ex)
+        {
+            LogError("Failed to initialize custom tooltip", ex);
+            // Fallback to native tooltip
+            UseNativeTooltip = true;
+        }
+    }
+
+    /// <summary>
+    /// Shows the custom tooltip on focus (for keyboard accessibility).
+    /// </summary>
+    private async Task OnTooltipFocus(FocusEventArgs args)
+    {
+        if (!HasTooltip || UseNativeTooltip || IsDisposed)
+            return;
 
         try
         {
-            // Use non-blocking check first to avoid unnecessary semaphore wait
-            if (!await _tooltipSemaphore.WaitAsync(100, _tooltipCts.Token))
+            // For focus events, we'll position the tooltip at a default location
+            // since we don't have mouse coordinates
+            if (_jsModule is not null)
             {
-                return;
+                var dimensions = await _jsModule.InvokeAsync<dynamic>("DropBearUtilsAPI.getWindowDimensions");
+                CalculateTooltipPositionForFocus(dimensions);
             }
 
-            // Use cached dimensions when available
-            var dimensions = await GetWindowDimensionsAsync();
-            if (dimensions == null)
-            {
-                return;
-            }
+            showTooltip = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            LogError("Error showing custom tooltip on focus", ex);
+        }
+    }
 
-            await QueueStateHasChangedAsync(() =>
+    /// <summary>
+    /// Shows the custom tooltip.
+    /// </summary>
+    private async Task OnTooltipShow(MouseEventArgs args)
+    {
+        if (!HasTooltip || UseNativeTooltip || IsDisposed)
+            return;
+
+        try
+        {
+            if (_jsModule is not null)
             {
+                var dimensions = await _jsModule.InvokeAsync<dynamic>("DropBearUtilsAPI.getWindowDimensions");
                 CalculateTooltipPosition(args, dimensions);
-                ShowTooltip = true;
-            });
-        }
-        catch (OperationCanceledException)
-        {
-            // Ignore cancellation - it's expected during disposal
+            }
+
+            showTooltip = true;
+            StateHasChanged();
         }
         catch (Exception ex)
         {
-            LogError("Error showing tooltip", ex);
-            await QueueStateHasChangedAsync(() =>
-            {
-                ShowTooltip = false;
-                TooltipStyle = string.Empty;
-            });
-        }
-        finally
-        {
-            if (!_tooltipCts.Token.IsCancellationRequested)
-            {
-                _tooltipSemaphore.Release();
-            }
+            LogError("Error showing custom tooltip", ex);
         }
     }
 
     /// <summary>
-    ///     Hides the tooltip with proper thread synchronization.
+    /// Hides the custom tooltip.
     /// </summary>
-    protected async Task OnTooltipHide()
+    private async Task OnTooltipHide()
     {
-        if (!ShowTooltip || IsDisposed)
-        {
+        if (!showTooltip || IsDisposed)
             return;
-        }
 
-        try
+        await QueueStateHasChangedAsync(() =>
         {
-            await QueueStateHasChangedAsync(() =>
-            {
-                ShowTooltip = false;
-                TooltipStyle = string.Empty;
-            });
-        }
-        catch (Exception ex)
+            showTooltip = false;
+            tooltipStyle = string.Empty;
+        });
+    }
+
+    /// <summary>
+    /// Calculates optimal tooltip position.
+    /// </summary>
+    private void CalculateTooltipPosition(MouseEventArgs args, dynamic dimensions)
+    {
+        const int tooltipOffset = 8;
+        const int tooltipMaxWidth = 200;
+
+        var mouseX = Math.Max(0, Math.Min(args.ClientX, (double)dimensions.width));
+        var mouseY = Math.Max(0, Math.Min(args.ClientY, (double)dimensions.height));
+
+        // Simple positioning logic
+        var left = mouseX + tooltipMaxWidth > dimensions.width
+            ? mouseX - tooltipMaxWidth - tooltipOffset
+            : mouseX + tooltipOffset;
+
+        var top = mouseY - 40; // Position above the cursor
+
+        tooltipStyle = $"left: {left}px; top: {top}px;";
+    }
+
+    /// <summary>
+    /// Calculates tooltip position for focus events (keyboard navigation).
+    /// </summary>
+    private void CalculateTooltipPositionForFocus(dynamic dimensions)
+    {
+        // Position tooltip at a reasonable default location for keyboard focus
+        // You might want to enhance this to get the actual element position
+        var left = Math.Min(100, (double)dimensions.width - 220); // 20px margin from right edge
+        var top = 100; // Default top position
+
+        tooltipStyle = $"left: {left}px; top: {top}px;";
+    }
+
+    /// <summary>
+    /// Handles badge dismissal.
+    /// </summary>
+    private async Task HandleDismiss()
+    {
+        if (Dismissible && OnDismiss.HasDelegate)
         {
-            LogError("Error hiding tooltip", ex);
+            await OnDismiss.InvokeAsync();
         }
     }
 
     #endregion
 
-    #region Private Helper Methods
+    #region IAsyncDisposable
 
-    private async Task<WindowDimensions?> GetWindowDimensionsAsync()
+    protected override async ValueTask DisposeAsyncCore()
     {
-        // Check if module is initialized
-        if (_jsModule == null)
-        {
-            try
-            {
-                await InitializeJsModuleAsync();
-                if (_jsModule == null)
-                {
-                    return null;
-                }
-            }
-            catch (Exception ex)
-            {
-                LogError("Failed to initialize JS module", ex);
-                return null;
-            }
-        }
-
-        // Use cached dimensions if recent enough
-        if (_cachedDimensions != null && DateTime.UtcNow - _lastDimensionsCheck < DimensionsCacheDuration)
-        {
-            return _cachedDimensions;
-        }
-
-        // Check shared cache based on component ID
-        var cacheKey = $"{JsRuntime.GetHashCode()}";
-        if (GlobalDimensionsCache.TryGetValue(cacheKey, out var cachedEntry) &&
-            DateTime.UtcNow - cachedEntry.Timestamp < DimensionsCacheDuration)
-        {
-            _cachedDimensions = cachedEntry.Dimensions;
-            _lastDimensionsCheck = DateTime.UtcNow;
-            return _cachedDimensions;
-        }
-
-        try
-        {
-            // Get dimensions with a timeout
-            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_tooltipCts.Token);
-            cts.CancelAfter(2000); // 2 second timeout for JS operation
-
-            var dimensions = await _jsModule.InvokeAsync<WindowDimensions>(
-                $"{JsModuleName}API.getWindowDimensions",
-                cts.Token
-            );
-
-            // Update caches
-            _cachedDimensions = dimensions;
-            _lastDimensionsCheck = DateTime.UtcNow;
-
-            // Add to global cache
-            GlobalDimensionsCache[cacheKey] = new CachedDimensions
-            {
-                Dimensions = dimensions, Timestamp = DateTime.UtcNow
-            };
-
-            return dimensions;
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            LogError("Error getting window dimensions", ex);
-            return null;
-        }
-    }
-
-    private void CalculateTooltipPosition(MouseEventArgs args, WindowDimensions dimensions)
-    {
-        // Tooltip positioning optimization
-        var mouseX = Math.Min(Math.Max(0, args.ClientX), dimensions.Width);
-        var mouseY = Math.Min(Math.Max(0, args.ClientY), dimensions.Height);
-
-        // Determine if tooltip should appear on left or right
-        var offsetX = mouseX + TOOLTIP_MAX_WIDTH > dimensions.Width
-            ? -TOOLTIP_MAX_WIDTH
-            : TOOLTIP_MARGIN;
-
-        // Determine if tooltip should appear above or below
-        var offsetY = mouseY + TOOLTIP_HEIGHT > dimensions.Height
-            ? -TOOLTIP_HEIGHT
-            : TOOLTIP_MARGIN;
-
-        TooltipStyle = $"left: {mouseX + offsetX}px; top: {mouseY + offsetY}px;";
-    }
-
-    private string BuildCssClass()
-    {
-        return string.Join(" ",
-            new[]
-            {
-                "dropbear-badge", $"dropbear-badge-{Color.ToString().ToLowerInvariant()}",
-                $"dropbear-badge-{Shape.ToString().ToLowerInvariant()}",
-                string.IsNullOrEmpty(Text) && !string.IsNullOrEmpty(Icon)
-                    ? "dropbear-badge-icon-only"
-                    : string.Empty,
-                Class // Add user-provided classes
-            }.Where(c => !string.IsNullOrEmpty(c)));
+        showTooltip = false;
+        await base.DisposeAsyncCore();
     }
 
     #endregion

@@ -1,0 +1,71 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Components.Icons
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="notification-center">
+    <div class="notification-header">
+        <h2>Notifications</h2>
+
+        <div class="notification-actions">
+            <button class="btn refresh-btn" @onclick="RefreshNotifications" title="Refresh">
+                <RefreshIcon/>
+            </button>
+
+            <div class="filter-dropdown">
+                <button class="btn filter-btn" @onclick="ToggleFilterPanel" title="Filter">
+                    <FilterIcon/>
+                </button>
+
+                @if (_showFilterPanel)
+                {
+                    <NotificationFilter
+                        CurrentFilter="_filter"
+                        OnFilterChange="HandleFilterChanged"/>
+                }
+            </div>
+
+            <button class="btn mark-read-btn" @onclick="HandleMarkAllAsRead" title="Mark all as read">
+                <MarkReadIcon/>
+            </button>
+        </div>
+    </div>
+
+    @if (_loading)
+    {
+        <div class="notification-loading">
+            <LoadingSpinner/>
+            <span>Loading notifications...</span>
+        </div>
+    }
+    else if (_notifications.Count == 0)
+    {
+        <div class="notification-empty-state">
+            <EmptyStateIcon/>
+            <h3>No notifications</h3>
+            <p>You don't have any notifications at the moment.</p>
+        </div>
+    }
+    else
+    {
+        <div class="notification-list">
+            @foreach (var notification in _notifications)
+            {
+                <NotificationItem
+                    Notification="notification"
+                    OnMarkAsRead="HandleMarkAsRead"
+                    OnDismiss="HandleDismiss"/>
+            }
+        </div>
+
+        @if (_totalCount > _filter.PageSize)
+        {
+            <div class="notification-pagination">
+                <NotificationPagination
+                    CurrentPage="_filter.PageNumber"
+                    PageSize="_filter.PageSize"
+                    TotalItems="_totalCount"
+                    OnPageChange="HandlePageChange"/>
+            </div>
+        }
+    }
+</div>

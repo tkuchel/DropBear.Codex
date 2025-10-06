@@ -1,56 +1,115 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@namespace DropBear.Codex.Blazor.Components.Validations
 
-<div id="@_componentId"
-     class="validation-errors @(IsCollapsed ? "validation-errors--collapsed" : "") @CssClass"
-     style="display: @(HasErrors ? "block" : "none")"
-     role="alert"
-     aria-live="polite"
-     aria-atomic="true"
-     aria-relevant="all">
+@if (HasErrors)
+{
+    <div id="@ComponentElementId"
+         class="@GetContainerClasses()"
+         role="alert"
+         aria-live="polite"
+         aria-atomic="false"
+         aria-relevant="additions removals">
 
-    <div class="validation-errors__header"
-         @onclick="ToggleCollapseState"
-         role="button"
-         tabindex="0"
-         aria-expanded="@(!IsCollapsed)"
-         aria-controls="@($"{_componentId}-list")"
-         @onkeydown="@(async e =>
-                     {
-                         if (e.Key == "Enter") await ToggleCollapseState();
-                     })">
-        <h3 class="validation-errors__title">
-            <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
-            <span>Validation Errors</span>
-            <span class="sr-only">(@(ValidationResult?.Errors.Count ?? 0) errors found)</span>
-        </h3>
-        <i class="fas fa-chevron-up validation-errors__icon"
-           style="transform: rotate(@(IsCollapsed ? "180deg" : "0deg"))"
-           aria-hidden="true"></i>
-    </div>
+        <!-- Header Section -->
+        <header class="validation-errors__header"
+                @onclick="HandleHeaderClickAsync"
+                @onkeydown="HandleHeaderKeyDownAsync"
+                role="button"
+                tabindex="0"
+                aria-expanded="@(!IsCollapsed)"
+                aria-controls="@($"{ComponentElementId}-list")"
+                title="@(IsCollapsed ? "Click to expand errors" : "Click to collapse errors")">
 
-    @if (HasErrors)
-    {
-        <ul id="@($"{_componentId}-list")"
-            class="validation-errors__list @(IsCollapsed ? "hidden" : "visible")"
-            role="list"
-            aria-label="Validation errors">
-            @foreach (var error in ValidationResult!.Errors)
-            {
-                <li class="validation-errors__item" role="listitem">
-                    <div class="validation-errors__item-icon-wrapper">
-                        <div class="validation-errors__item-icon-glow"></div>
-                        <i class="fas fa-exclamation-circle validation-errors__item-icon"
-                           aria-hidden="true"></i>
-                    </div>
-                    <div class="validation-errors__item-content">
-                        <div class="validation-errors__item-parameter">@error.Parameter</div>
-                        <div class="validation-errors__item-message"
-                             id="@($"{_componentId}-error-{error.Parameter.Replace(" ", "-").ToLowerInvariant()}")">
-                            @error.ErrorMessage
+            <div class="validation-errors__header-content">
+                <div class="validation-errors__icon-wrapper">
+                    <svg viewBox="0 0 20 20" class="validation-errors__main-icon">
+                        <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
+                    </svg>
+                    @if (HasNewErrors)
+                    {
+                        <div class="validation-errors__pulse-indicator" aria-hidden="true"></div>
+                    }
+                </div>
+
+                <div class="validation-errors__title-section">
+                    <h3 class="validation-errors__title">
+                        Validation Issues Found
+                        @if (ShowErrorCount)
+                        {
+                            <span class="validation-errors__count" aria-label="@($"{ErrorCount} errors")">
+                                (@ErrorCount)
+                            </span>
+                        }
+                    </h3>
+
+                    @if (HasNewErrors)
+                    {
+                        <p class="validation-errors__subtitle">
+                            New issues require your attention
+                        </p>
+                    }
+                </div>
+            </div>
+
+            <div class="validation-errors__chevron-wrapper">
+                @GetChevronIcon()
+            </div>
+        </header>
+
+        <!-- Error List -->
+        <div id="@($"{ComponentElementId}-list")"
+             class="validation-errors__list-container"
+             style="@GetListStyle()"
+             role="region"
+             aria-labelledby="@($"{ComponentElementId}-title")">
+
+            <ul class="validation-errors__list" role="list">
+                @{
+                    var errorsList = ValidationResult!.Errors.Select((e, i) => new { Error = e, Index = i }).ToList();
+                }
+                @foreach (var item in errorsList)
+                {
+                    <li class="validation-errors__item"
+                        role="listitem"
+                        @onclick="@(() => HandleErrorClickAsync(item.Error))"
+                        tabindex="@(OnErrorClicked.HasDelegate ? "0" : "-1")"
+                        @key="@($"{item.Error.Parameter}-{item.Error.ErrorMessage.GetHashCode()}")"
+                        style="animation-delay: @(item.Index * 50)ms;">
+
+                        <div class="validation-errors__item-icon">
+                            @GetSeverityIcon(item.Error)
                         </div>
-                    </div>
-                </li>
+
+                        <div class="validation-errors__item-content">
+                            <div class="validation-errors__item-field">
+                                @FormatParameterName(item.Error.Parameter)
+                            </div>
+                            <div class="validation-errors__item-message"
+                                 id="@($"{ComponentElementId}-error-{item.Index}")">
+                                @item.Error.ErrorMessage
+                            </div>
+                        </div>
+
+                        @if (OnErrorClicked.HasDelegate)
+                        {
+                            <div class="validation-errors__item-action" aria-hidden="true">
+                                <svg viewBox="0 0 20 20" class="action-icon">
+                                    <path fill-rule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clip-rule="evenodd"></path>
+                                </svg>
+                            </div>
+                        }
+                    </li>
+                }
+            </ul>
+
+            @if (ErrorCount > 5)
+            {
+                <div class="validation-errors__footer">
+                    <small class="validation-errors__summary">
+                        Please review all @ErrorCount validation issues above
+                    </small>
+                </div>
             }
-        </ul>
-    }
-</div>
+        </div>
+    </div>
+}

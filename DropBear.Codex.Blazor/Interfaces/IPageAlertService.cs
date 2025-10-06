@@ -32,9 +32,10 @@ public interface IPageAlertService : IAsyncDisposable
     /// <param name="type">The alert type (Success, Error, Warning, Info).</param>
     /// <param name="duration">Optional duration in milliseconds before auto-dismiss.</param>
     /// <param name="isPermanent">Whether the alert requires manual dismissal.</param>
+    /// <param name="cancellationToken"> A token that can be used to request cancellation of the asynchronous operation.</param>
     /// <returns>A result indicating success or failure of the operation.</returns>
     Task<Result<Unit, AlertError>> ShowAlertAsync(string title, string message, PageAlertType type = PageAlertType.Info,
-        int? duration = null, bool isPermanent = false);
+        int? duration = null, bool isPermanent = false, CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Shows a success alert.
@@ -42,8 +43,10 @@ public interface IPageAlertService : IAsyncDisposable
     /// <param name="title">The alert title.</param>
     /// <param name="message">The alert message content.</param>
     /// <param name="duration">Optional duration in milliseconds before auto-dismiss.</param>
+    /// <param name="cancellationToken"> A token that can be used to request cancellation of the asynchronous operation.</param>
     /// <returns>A result indicating success or failure of the operation.</returns>
-    Task<Result<Unit, AlertError>> ShowSuccessAsync(string title, string message, int? duration = 5000);
+    Task<Result<Unit, AlertError>> ShowSuccessAsync(string title, string message, int? duration = 5000,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Shows an error alert.
@@ -51,8 +54,10 @@ public interface IPageAlertService : IAsyncDisposable
     /// <param name="title">The alert title.</param>
     /// <param name="message">The alert message content.</param>
     /// <param name="duration">Optional duration in milliseconds before auto-dismiss.</param>
+    /// <param name="cancellationToken"> A token that can be used to request cancellation of the asynchronous operation.</param>
     /// <returns>A result indicating success or failure of the operation.</returns>
-    Task<Result<Unit, AlertError>> ShowErrorAsync(string title, string message, int? duration = 8000);
+    Task<Result<Unit, AlertError>> ShowErrorAsync(string title, string message, int? duration = 8000,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Shows a warning alert.
@@ -60,8 +65,10 @@ public interface IPageAlertService : IAsyncDisposable
     /// <param name="title">The alert title.</param>
     /// <param name="message">The alert message content.</param>
     /// <param name="isPermanent">Whether the alert requires manual dismissal.</param>
+    /// <param name="cancellationToken"> A token that can be used to request cancellation of the asynchronous operation.</param>
     /// <returns>A result indicating success or failure of the operation.</returns>
-    Task<Result<Unit, AlertError>> ShowWarningAsync(string title, string message, bool isPermanent = false);
+    Task<Result<Unit, AlertError>> ShowWarningAsync(string title, string message, bool isPermanent = false,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Shows an info alert.
@@ -69,14 +76,17 @@ public interface IPageAlertService : IAsyncDisposable
     /// <param name="title">The alert title.</param>
     /// <param name="message">The alert message content.</param>
     /// <param name="isPermanent">Whether the alert requires manual dismissal.</param>
+    /// <param name="cancellationToken"> A token that can be used to request cancellation of the asynchronous operation.</param>
     /// <returns>A result indicating success or failure of the operation.</returns>
-    Task<Result<Unit, AlertError>> ShowInfoAsync(string title, string message, bool isPermanent = false);
+    Task<Result<Unit, AlertError>> ShowInfoAsync(string title, string message, bool isPermanent = false,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Clears all displayed alerts.
     /// </summary>
+    /// <param name="cancellationToken"> A token that can be used to request cancellation of the asynchronous operation.</param>
     /// <returns>A result indicating success or failure of the operation.</returns>
-    Task<Result<Unit, AlertError>> ClearAsync();
+    Task<Result<Unit, AlertError>> ClearAsync(CancellationToken cancellationToken = default);
 
     #region Backwards Compatibility Methods
 

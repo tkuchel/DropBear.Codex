@@ -1,0 +1,40 @@
+﻿.spinner-container {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-sm);
+}
+
+.spinner-icon {
+  animation: spin 1.5s linear infinite;
+}
+
+.spinner-text {
+  font-size: var(--fs-sm);
+  color: var(--clr-text-secondary);
+}
+
+@keyframes spin {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.spinner-path {
+  stroke-dasharray: 60;
+  stroke-dashoffset: 20;
+  animation: dash 1.5s ease-in-out infinite;
+}
+
+@keyframes dash {
+  0% {
+    stroke-dashoffset: 60;
+  }
+  50% {
+    stroke-dashoffset: 20;
+  }
+  100% {
+    stroke-dashoffset: 60;
+  }
+}

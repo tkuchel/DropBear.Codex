@@ -144,7 +144,16 @@ public partial class DropBearSectionContainer : DropBearComponentBase
                 _cacheKey = $"dims_{JsRuntime.GetHashCode()}";
 
                 // Initialize JS module
-                _module = await GetJsModuleAsync(JsModuleName);
+                var moduleResult = await GetJsModuleAsync(JsModuleName);
+
+                if (moduleResult.IsFailure)
+                {
+                    LogError("Failed to initialize section container: {Error}", moduleResult.Exception);
+                    return;
+                }
+
+                _module = moduleResult.Value;
+
                 await _module.InvokeVoidAsync($"{JsModuleName}API.initialize", _containerCts.Token);
 
                 // Create .NET reference
@@ -193,7 +202,11 @@ public partial class DropBearSectionContainer : DropBearComponentBase
             Interlocked.Increment(ref _debouncePending);
 
             // Debounce resize events
-            await _resizeDebouncer?.CancelAsync();
+            if (_resizeDebouncer != null)
+            {
+                await _resizeDebouncer.CancelAsync();
+            }
+
             _resizeDebouncer = new CancellationTokenSource();
             var token = _resizeDebouncer.Token;
 
@@ -290,7 +303,18 @@ public partial class DropBearSectionContainer : DropBearComponentBase
         try
         {
             // Ensure module is initialized
-            _module ??= await GetJsModuleAsync(JsModuleName);
+            if (_module == null)
+            {
+                var moduleResult = await GetJsModuleAsync(JsModuleName);
+
+                if (moduleResult.IsFailure)
+                {
+                    LogError("Failed to initialize section container: {Error}", moduleResult.Exception);
+                    return _cachedDimensions;
+                }
+
+                _module = moduleResult.Value;
+            }
 
             // Get dimensions from JS with timeout
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);

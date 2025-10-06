@@ -5,36 +5,54 @@
 @using MessagePipe
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div id="page-alert-container" class="page-alert-container @(_activeAlerts.Any() ? "has-alerts" : "")"
+<div id="page-alert-container"
+     class="alert-container @(_activeAlerts.Count > 0 ? "alert-container--has-alerts" : "")"
+     role="region"
+     aria-label="Notifications"
      aria-live="polite">
+
     <CascadingValue Value="this" IsFixed="true">
         <ErrorBoundary @ref="_errorBoundary" Context="error">
             <ChildContent>
-                @if (_activeAlerts.Any())
+                @if (_activeAlerts.Count > 0)
                 {
-                    @foreach (var alert in GetPrioritizedAlerts())
-                    {
-                        <DropBearPageAlert @key="alert.Id"
-                                           @ref="alert.Reference"
-                                           AlertId="@alert.Id"
-                                           Title="@alert.Title"
-                                           Message="@alert.Message"
-                                           Type="@alert.Type"
-                                           IsPermanent="@alert.IsPermanent"
-                                           Duration="@alert.Duration"
-                                           OnClose="@(() => RemoveAlertAsync(alert.Id))"/>
-                    }
+                    <div class="alert-container__list">
+                        @foreach (var alert in GetPrioritizedAlerts())
+                        {
+                            <DropBearPageAlert @key="alert.Id"
+                                               @ref="alert.Reference"
+                                               AlertId="@alert.Id"
+                                               Title="@alert.Title"
+                                               Message="@alert.Message"
+                                               Type="@alert.Type"
+                                               IsPermanent="@alert.IsPermanent"
+                                               Duration="@alert.Duration"
+                                               OnClose="@(() => RemoveAlertAsync(alert.Id))"/>
+                        }
+                    </div>
                 }
             </ChildContent>
             <ErrorContent>
                 @{
-                    Logger.Error(error, "Error in alert container");
+                    LogError("Error in alert container", error);
                 }
-                <div class="alert alert-danger" role="alert">
-                    An error occurred displaying alerts. Please try refreshing the page.
+                <div class="alert alert--error" role="alert" aria-live="assertive">
+                    <div class="alert__content">
+                        <div class="alert__header">
+                            <div class="alert__icon" aria-hidden="true">
+                                <svg viewBox="0 0 24 24"  stroke="currentColor" stroke-width="2">
+                                    <circle cx="12" cy="12" r="10"/>
+                                    <path d="m15 9-6 6m0-6 6 6"/>
+                                </svg>
+                            </div>
+                            <h3 class="alert__title">System Error</h3>
+                        </div>
+                        <div class="alert__message">
+                            An error occurred while displaying notifications. Please refresh the page if issues persist.
+                        </div>
+                    </div>
                 </div>
             </ErrorContent>
         </ErrorBoundary>
     </CascadingValue>
 </div>
-

@@ -1,27 +1,27 @@
 ﻿namespace DropBear.Codex.Blazor.Enums;
 
 /// <summary>
-///     Specifies possible positions for displaying a snackbar notification on screen.
+///     Defines the positioning of the snackbar container on screen.
 /// </summary>
 public enum SnackbarPosition
 {
     /// <summary>
-    ///     Display at the top-left corner.
+    ///     Top-left corner of the screen.
     /// </summary>
-    TopLeft,
+    TopLeft = 0,
 
     /// <summary>
-    ///     Display at the top-right corner.
+    ///     Top-right corner of the screen.
     /// </summary>
-    TopRight,
+    TopRight = 1,
 
     /// <summary>
-    ///     Display at the bottom-left corner.
+    ///     Bottom-left corner of the screen.
     /// </summary>
-    BottomLeft,
+    BottomLeft = 2,
 
     /// <summary>
-    ///     Display at the bottom-right corner.
+    ///     Bottom-right corner of the screen (default).
     /// </summary>
-    BottomRight
+    BottomRight = 3
 }

@@ -7,39 +7,47 @@ using DropBear.Codex.Blazor.Enums;
 namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Configuration for a single progress step in a multistep progress bar.
+///     Configuration for a progress step with modern .NET features.
 /// </summary>
-public sealed class ProgressStepConfig
+public sealed record ProgressStepConfig
 {
     /// <summary>
-    ///     Gets or sets the unique identifier for this step.
+    ///     Gets the unique identifier for this step.
     /// </summary>
-    public required string Id { get; set; }
+    public required string Id { get; init; }
 
     /// <summary>
-    ///     Gets or sets the display name of the step.
+    ///     Gets the display name for this step.
     /// </summary>
-    public required string Name { get; set; }
+    public required string Name { get; init; }
 
     /// <summary>
-    ///     Gets or sets the tooltip text for this step, shown on hover (if supported).
+    ///     Gets the optional description for this step.
     /// </summary>
-    public string? Tooltip { get; set; }
+    public string? Description { get; init; }
 
     /// <summary>
-    ///     Gets or sets the minimum time (in milliseconds) that this step should be displayed
-    ///     before moving on to the next step. Default is 500ms.
+    ///     Gets the optional tooltip text for this step.
     /// </summary>
-    public int MinimumDisplayTimeMs { get; set; } = 500;
+    public string? Tooltip { get; init; }
 
     /// <summary>
-    ///     Gets or sets a value indicating whether this step's progress
-    ///     should animate smoothly or update immediately.
+    ///     Gets the optional icon identifier for this step.
     /// </summary>
-    public bool UseSmoothProgress { get; set; } = true;
+    public string? Icon { get; init; }
 
     /// <summary>
-    ///     Gets or sets the easing function used when <see cref="UseSmoothProgress" /> is true.
+    ///     Gets whether this step is required.
     /// </summary>
-    public EasingFunction EasingFunction { get; set; } = EasingFunction.EaseInOutCubic;
+    public bool IsRequired { get; init; } = true;
+
+    /// <summary>
+    ///     Gets the estimated duration for this step.
+    /// </summary>
+    public TimeSpan? EstimatedDuration { get; init; }
+
+    /// <summary>
+    ///     Gets any custom properties for this step.
+    /// </summary>
+    public IReadOnlyDictionary<string, object>? CustomProperties { get; init; }
 }

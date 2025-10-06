@@ -3,10 +3,15 @@
 using System.Reflection;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Diagnostics;
+using DropBear.Codex.Notifications.Data;
+using DropBear.Codex.Notifications.Infrastructure;
 using DropBear.Codex.Notifications.Interfaces;
 using DropBear.Codex.Notifications.Models;
+using DropBear.Codex.Notifications.Repositories;
 using DropBear.Codex.Notifications.Services;
 using MessagePipe;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
@@ -51,7 +56,6 @@ public static class ServiceCollectionExtensions
 
         // Register telemetry if not already registered
         services.TryAddSingleton<IResultTelemetry, DefaultResultTelemetry>();
-        services.TryAddSingleton<IResultDiagnostics, DefaultResultDiagnostics>();
 
         // Register time provider for testability (added in .NET 8)
         services.TryAddSingleton(TimeProvider.System);
@@ -80,6 +84,32 @@ public static class ServiceCollectionExtensions
 
             // Apply external configuration if provided
             configure?.Invoke(options);
+        });
+
+        return services;
+    }
+
+    public static IServiceCollection AddNotificationCenter(
+        this IServiceCollection services,
+        IConfiguration configuration)
+    {
+        // Register core notification services (which you already have)
+        services.AddNotificationServices();
+
+        // Register the notification center services
+        services.AddScoped<INotificationRepository, NotificationRepository>();
+        services.AddScoped<INotificationCenterService, NotificationCenterService>();
+
+        // Register the notification bridge as a singleton
+        // It will listen for notifications and persist them
+        services.AddSingleton<NotificationBridge>();
+
+        // Register DB Context if using Entity Framework
+        services.AddDbContext<NotificationDbContext>(options =>
+        {
+            options.UseSqlServer(
+                configuration.GetConnectionString("DefaultConnection"),
+                b => b.MigrationsAssembly("DropBear.Codex.Notifications"));
         });
 
         return services;

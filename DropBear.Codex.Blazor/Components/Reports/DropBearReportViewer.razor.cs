@@ -33,6 +33,12 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     {
         Logger.Debug("Exporting data to Excel.");
 
+        if (_downloadModule == null)
+        {
+            Logger.Error("Download module not initialized");
+            return;
+        }
+
         var dataToExport = FilteredData.ToList();
         var exportStreamResult = await _excelExporter.ExportToExcelStreamAsync(dataToExport);
 
@@ -55,11 +61,38 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         // Use a DotNetStreamReference for JavaScript-based file download.
         using var streamRef = new DotNetStreamReference(ms);
-        await JsRuntime.InvokeVoidAsync(
-            "downloadFileFromStream",
-            "ExportedData.xlsx",
-            streamRef,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+        try
+        {
+            // Try with the DropBearFileDownloaderAPI namespace
+            await _downloadModule.InvokeVoidAsync(
+                "DropBearFileDownloaderAPI.downloadFileFromStream",
+                "ExportedData.xlsx",
+                streamRef,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+            Logger.Debug("File download initiated successfully");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Failed to invoke download function with API namespace, trying direct function");
+
+            // Fall back to direct function if first approach fails
+            try
+            {
+                await _downloadModule.InvokeVoidAsync(
+                    "downloadFileFromStream",
+                    "ExportedData.xlsx",
+                    streamRef,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+
+                Logger.Debug("File download initiated successfully with direct function");
+            }
+            catch (Exception innerEx)
+            {
+                Logger.Error(innerEx, "All download function attempts failed");
+            }
+        }
     }
 
     #endregion
@@ -85,6 +118,8 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
     // Semaphore for thread safety
     private readonly SemaphoreSlim _dataSemaphore = new(1, 1);
+    private IJSObjectReference? _downloadModule;
+    private bool _isModuleInitialized;
 
     #endregion
 
@@ -174,10 +209,43 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     /// <summary>
     ///     Initializes the component by generating columns if needed.
     /// </summary>
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        InitializeColumns();
-        base.OnInitialized();
+        try
+        {
+            // Load the module first
+            var downloadModuleResult = await GetJsModuleAsync("DropBearFileDownloader");
+
+            if (downloadModuleResult.IsFailure)
+            {
+                LogError("Failed to load JS module: {Module}", downloadModuleResult.Exception);
+                return;
+            }
+
+            _downloadModule = downloadModuleResult.Value;
+
+            // Give the module a moment to register in the global scope
+            await Task.Delay(50);
+
+            InitializeColumns();
+
+            // Debug the module structure
+            // await DebugModuleStructure(_downloadModule, "DropBearFileDownloader",
+            //     new[] {
+            //         "DropBearFileDownloaderAPI.downloadFileFromStream",
+            //         "DropBearFileDownloaderAPI.initialize",
+            //         "DropBearFileDownloaderAPI.isInitialized",
+            //         "DropBearFileDownloaderAPI.dispose"
+            //     });
+
+
+            await base.OnInitializedAsync();
+            LogDebug("File downloader initialized with JS module");
+        }
+        catch (Exception ex)
+        {
+            LogError("Failed to initialize file downloader JS module", ex);
+        }
     }
 
     /// <summary>

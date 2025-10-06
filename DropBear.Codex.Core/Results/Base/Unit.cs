@@ -3,7 +3,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Serialization;
 
 #endregion
 
@@ -12,89 +12,192 @@ namespace DropBear.Codex.Core.Results.Base;
 /// <summary>
 ///     Represents a type that has a single possible value, commonly used in functional programming
 ///     to indicate "no meaningful return value" without using <see langword="void" />.
+///     Optimized for .NET 9 with improved performance and reduced allocations.
 /// </summary>
 [DebuggerDisplay("Unit")]
 [JsonConverter(typeof(UnitJsonConverter))]
-public readonly struct Unit : IEquatable<Unit>, ISpanFormattable
+public readonly record struct Unit : ISpanFormattable
 {
     /// <summary>
     ///     Gets the single <see cref="Unit" /> value.
     /// </summary>
     public static Unit Value { get; } = default;
 
-    /// <inheritdoc />
+    #region Task and ValueTask Conversions
+
+    /// <summary>
+    ///     Gets a completed ValueTask of Unit for immediate return.
+    /// </summary>
+    public static ValueTask<Unit> CompletedTask => ValueTask.FromResult(Value);
+
+    /// <summary>
+    ///     Creates a canceled ValueTask of Unit with the specified cancellation token.
+    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool Equals(Unit other)
+    public static ValueTask<Unit> FromCanceled(CancellationToken cancellationToken) =>
+        ValueTask.FromCanceled<Unit>(cancellationToken);
+
+    /// <summary>
+    ///     Creates a ValueTask of Unit that has completed with the specified exception.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static ValueTask<Unit> FromException(Exception exception)
     {
-        return true;
+        ArgumentNullException.ThrowIfNull(exception);
+        return ValueTask.FromException<Unit>(exception);
     }
 
-    /// <inheritdoc />
-    public override bool Equals(object? obj)
+    #endregion
+
+    #region Value Conversions
+
+    /// <summary>
+    ///     Converts a void-returning Action to a Unit-returning Function.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Func<Unit> FromAction(Action action)
     {
-        return obj is Unit;
+        ArgumentNullException.ThrowIfNull(action);
+        return () =>
+        {
+            action();
+            return Value;
+        };
     }
 
-    /// <inheritdoc />
-    public override int GetHashCode()
+    /// <summary>
+    ///     Converts a void-returning Action with parameter to a Unit-returning Function.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Func<T, Unit> FromAction<T>(Action<T> action)
     {
-        return 0;
+        ArgumentNullException.ThrowIfNull(action);
+        return parameter =>
+        {
+            action(parameter);
+            return Value;
+        };
     }
 
-    /// <inheritdoc />
-    public override string ToString()
+    /// <summary>
+    ///     Converts a void-returning Action with two parameters to a Unit-returning Function.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Func<T1, T2, Unit> FromAction<T1, T2>(Action<T1, T2> action)
     {
-        return "()";
+        ArgumentNullException.ThrowIfNull(action);
+        return (param1, param2) =>
+        {
+            action(param1, param2);
+            return Value;
+        };
     }
 
-    /// <inheritdoc />
-    public string ToString(string? format, IFormatProvider? formatProvider)
+    /// <summary>
+    ///     Converts a void-returning asynchronous function to a Unit-returning one.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Func<ValueTask<Unit>> FromActionAsync(Func<ValueTask> actionAsync)
     {
-        return "()";
+        ArgumentNullException.ThrowIfNull(actionAsync);
+        return async () =>
+        {
+            await actionAsync().ConfigureAwait(false);
+            return Value;
+        };
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Converts a void-returning asynchronous function with parameter to a Unit-returning one.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Func<T, ValueTask<Unit>> FromActionAsync<T>(Func<T, ValueTask> actionAsync)
+    {
+        ArgumentNullException.ThrowIfNull(actionAsync);
+        return async parameter =>
+        {
+            await actionAsync(parameter).ConfigureAwait(false);
+            return Value;
+        };
+    }
+
+    #endregion
+
+    #region ISpanFormattable Implementation
+
+    /// <summary>
+    ///     Formats the value of the current instance using the specified format.
+    /// </summary>
+    public string ToString(string? format, IFormatProvider? formatProvider) => "()";
+
+    /// <summary>
+    ///     Tries to format the value of the current instance into the provided span of characters.
+    /// </summary>
     public bool TryFormat(
         Span<char> destination,
         out int charsWritten,
         ReadOnlySpan<char> format,
         IFormatProvider? provider)
     {
-        if (destination.Length < 2)
+        if (destination.Length >= 2)
         {
-            charsWritten = 0;
-            return false;
+            destination[0] = '(';
+            destination[1] = ')';
+            charsWritten = 2;
+            return true;
         }
 
-        destination[0] = '(';
-        destination[1] = ')';
-        charsWritten = 2;
-        return true;
-    }
-
-    public static bool operator ==(Unit left, Unit right)
-    {
-        return true;
-    }
-
-    public static bool operator !=(Unit left, Unit right)
-    {
+        charsWritten = 0;
         return false;
     }
 
+    #endregion
+
+    #region Equality and Comparison
+
     /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to <see cref="ValueTask" />.
+    ///     All Unit values are equal.
     /// </summary>
-    public static implicit operator ValueTask(Unit _)
+    public override string ToString() => "()";
+
+    /// <summary>
+    ///     Gets the hash code (always the same for Unit).
+    /// </summary>
+    public override int GetHashCode() => 0;
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Discards a value and returns Unit.
+    ///     Use this to explicitly ignore a value.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Unit Discard<T>(T _) => Value;
+
+    /// <summary>
+    ///     Executes an action and returns Unit.
+    ///     Useful for converting void-returning methods to expressions.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Unit Do(Action action)
     {
-        return default;
+        ArgumentNullException.ThrowIfNull(action);
+        action();
+        return Value;
     }
 
     /// <summary>
-    ///     Implicitly converts from <see cref="Unit" /> to <see cref="Task" />.
+    ///     Executes an action with a parameter and returns Unit.
     /// </summary>
-    public static implicit operator Task(Unit _)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Unit Do<T>(T value, Action<T> action)
     {
-        return Task.CompletedTask;
+        ArgumentNullException.ThrowIfNull(action);
+        action(value);
+        return Value;
     }
+
+    #endregion
 }

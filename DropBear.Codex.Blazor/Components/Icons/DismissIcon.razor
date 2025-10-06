@@ -1,0 +1,25 @@
+﻿@using DropBear.Codex.Blazor.Helpers
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<IconBase Title="@Title"
+          Size="@Size"
+          Color="@Color"
+          CssClass="@CssClass"
+          Clickable="@Clickable"
+          OnClick="@OnClick"
+          @attributes="AdditionalAttributes">
+    @((MarkupString)SvgIcons.Dismiss)
+</IconBase>
+
+@code {
+    [Parameter] public string? Title { get; set; } = "Dismiss";
+    [Parameter] public int Size { get; set; } = 20;
+    [Parameter] public string Color { get; set; } = "currentColor";
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+    [Parameter] public bool Clickable { get; set; } = true;
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+}

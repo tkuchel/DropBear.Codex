@@ -1,41 +1,136 @@
 ﻿@typeparam T
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="drop-bear-list @(IsCollapsed ? "drop-bear-list--collapsed" : "")"
-     style="--clr-surface-primary: @HeaderColor">
-    <div class="drop-bear-list-header" @onclick="ToggleCollapse">
+<div
+    class="drop-bear-list @(IsCollapsed ? "drop-bear-list--collapsed" : "") @(IsLoading ? "drop-bear-list--loading" : "")"
+    style="@GetDynamicStyles()">
+
+    <div class="drop-bear-list-header"
+         @onclick="ToggleCollapse"
+         tabindex="0"
+         @onkeydown="HandleKeyDown"
+         role="button"
+         aria-expanded="@(!IsCollapsed)"
+         aria-controls="@($"list-content-{ComponentId}")">
         <h3 class="drop-bear-list-title">
             @if (!string.IsNullOrEmpty(HeaderIcon))
             {
-                <i class="@HeaderIcon"></i>
+                <i class="@HeaderIcon" aria-hidden="true"></i>
             }
             @Title
+            @if (ShowItemCount && Items?.Count > 0)
+            {
+                <span class="drop-bear-list-count" aria-label="@($"{Items.Count} items")">
+                    (@Items.Count)
+                </span>
+            }
         </h3>
-        <i class="fas fa-chevron-up drop-bear-list-icon @(IsCollapsed ? "collapsed" : "")"></i>
+        <i class="fas fa-chevron-up drop-bear-list-icon @(IsCollapsed ? "collapsed" : "")"
+           aria-hidden="true"></i>
     </div>
 
-    <ul class="drop-bear-list-list">
-        @if (Items is null || Items.Count == 0)
+    <ul class="drop-bear-list-list"
+        id="@($"list-content-{ComponentId}")"
+        role="list"
+        aria-label="@Title">
+        @if (IsLoading)
         {
-            <li class="drop-bear-list-item">
-                <span class="drop-bear-list-item-empty">No items to display</span>
+            @for (var i = 0; i < LoadingItemCount; i++)
+            {
+                <li class="drop-bear-list-item drop-bear-list-item--loading" role="listitem">
+                    <div class="drop-bear-list-loading-content">
+                        <div class="drop-bear-list-loading-skeleton"></div>
+                    </div>
+                </li>
+            }
+        }
+        else if (Items is null || Items.Count == 0)
+        {
+            <li class="drop-bear-list-item" role="listitem">
+                <div class="drop-bear-list-item-empty">
+                    @if (!string.IsNullOrEmpty(EmptyStateMessage))
+                    {
+                        @EmptyStateMessage
+                    }
+                    else
+                    {
+                        <span>No items to display</span>
+                    }
+                </div>
             </li>
         }
         else
         {
-            @foreach (var item in Items)
+            @foreach (var (item, index) in Items.Select((item, index) => (item, index)))
             {
-                <li class="drop-bear-list-item">
+                <li class="drop-bear-list-item"
+                    role="listitem"
+                    tabindex="@(IsItemInteractive ? "0" : "-1")"
+                    @onclick="() => HandleItemClick(item, index)"
+                    @onkeydown="e => HandleItemKeyDown(e, item, index)"
+                    data-item-index="@index">
                     @if (ItemTemplate is not null)
                     {
                         @ItemTemplate(item)
                     }
                     else
                     {
-                        @item.ToString()
+                        <span>@item?.ToString()</span>
                     }
                 </li>
             }
         }
     </ul>
 </div>
+
+<style>
+    /* Loading skeleton styles */
+    .drop-bear-list-item--loading {
+        pointer-events: none;
+    }
+
+    .drop-bear-list-loading-content {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .drop-bear-list-loading-skeleton {
+        height: 1rem;
+        background: linear-gradient(90deg, rgba(255, 255, 255, 0.1) 25%, rgba(255, 255, 255, 0.2) 50%, rgba(255, 255, 255, 0.1) 75%);
+        background-size: 200% 100%;
+        border-radius: 4px;
+        flex: 1;
+        animation: loading-shimmer 2s infinite;
+    }
+
+
+
+    .drop-bear-list-count {
+        font-size: 0.85rem;
+        font-weight: 400;
+        opacity: 0.8;
+        margin-left: 0.25rem;
+    }
+
+    /* Interactive item styles */
+    .drop-bear-list-item[tabindex="0"] {
+        cursor: pointer;
+    }
+
+    .drop-bear-list-item[tabindex="0"]:focus-visible {
+        outline: none;
+        box-shadow: inset 0 0 0 2px rgba(59, 130, 246, 0.5);
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%);
+    }
+
+    /* Enhanced empty state */
+    .drop-bear-list-item-empty {
+        min-height: 4rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+</style>

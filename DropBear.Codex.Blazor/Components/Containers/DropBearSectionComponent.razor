@@ -1,8 +1,7 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
-
 @if (ShouldRenderContent)
 {
-    <section class="section-component-section" id="@($"section-{ComponentId}")">
+    <div class="section-component-section @(Disabled ? "section-component-disabled" : "")" aria-disabled="@Disabled">
         @ChildContent
-    </section>
+    </div>
 }

@@ -1,10 +1,10 @@
 ﻿#region
 
-using System.Collections.Concurrent;
-using System.Runtime.Versioning;
+using System.Collections.Frozen;
+using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Progress;
 using DropBear.Codex.Blazor.Enums;
-using DropBear.Codex.Blazor.Exceptions;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
@@ -19,15 +19,49 @@ using Serilog;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Bridges the <see cref="ExecutionEngine" /> messages (via MessagePipe) to the <see cref="DropBearProgressBar" />.
-///     Handles indeterminate, normal, and stepped progress modes without directly writing to the bar's parameters.
+///     Modern execution progress manager optimized for .NET 9 and Blazor Server.
+///     Bridges ExecutionEngine messages to DropBearProgressBar with improved performance and UX.
 /// </summary>
 public sealed class ExecutionProgressManager : IExecutionProgressManager
 {
-    #region Constructors
+    #region Constants
+
+    private static readonly TimeSpan LockTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan OperationTimeout = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan CompletionDisplayDuration = TimeSpan.FromMilliseconds(750);
+
+    #endregion
+
+    #region Fields
+
+    private readonly ILogger _logger;
+    private readonly Lock _stateLock = new(); // .NET 9 Lock object - optimized for high-contention scenarios
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+
+    // Component state
+    private DropBearProgressBar? _progressBar;
+    private ProgressMode _currentMode = ProgressMode.None;
+    private double _currentProgress;
+    private string _currentMessage = string.Empty;
+    private IReadOnlyList<ProgressStepConfig>? _steps;
+
+    // Step tracking with frozen collections for performance
+    private FrozenDictionary<string, StepState> _stepStates = FrozenDictionary<string, StepState>.Empty;
+
+    // MessagePipe integration
+    private DisposableBagBuilder? _subscriptions;
+    private IDisposable? _subscriptionBag;
+
+    // Cached state for performance
+    private ProgressUpdate? _lastProgressUpdate;
+    private bool _isVisible;
+
+    #endregion
+
+    #region Constructor
 
     /// <summary>
-    ///     Creates a new <see cref="ExecutionProgressManager" /> instance.
+    ///     Initializes a new instance of ExecutionProgressManager.
     /// </summary>
     public ExecutionProgressManager()
     {
@@ -36,69 +70,35 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
     #endregion
 
-    #region Private Fields and Constants
+    #region Properties
 
-    private readonly ILogger _logger;
-
-    /// <summary>
-    ///     Thread-safe dictionary holding step states for stepped mode.
-    /// </summary>
-    private readonly ConcurrentDictionary<string, StepUpdate> _stepStates = new();
-
-    /// <summary>
-    ///     Semaphore lock to protect critical sections.
-    /// </summary>
-    private readonly SemaphoreSlim _updateLock = new(1, 1);
-
-    // Timeouts for lock acquisition and progress bar operations.
-    private static readonly TimeSpan UpdateLockTimeout = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan ProgressBarOperationTimeout = TimeSpan.FromSeconds(10);
-
-    // Holds disposable resources from MessagePipe subscriptions.
-    private DisposableBagBuilder? _bagBuilder;
-    private IDisposable? _disposableBag;
-
-    // Internal state fields
-    private string _currentMessage = string.Empty;
-    private double _currentProgress;
-    private bool _isIndeterminateMode;
-    private bool _isSteppedMode;
-    private bool _isVisible;
-    private DropBearProgressBar? _progressBar;
-    private IReadOnlyList<ProgressStepConfig>? _steps;
-
-    #endregion
-
-    #region Public Properties and Events
-
-    /// <summary>
-    ///     Indicates whether this manager has been disposed.
-    /// </summary>
+    /// <inheritdoc />
     public bool IsDisposed { get; private set; }
 
-    /// <summary>
-    ///     Event fired whenever the manager updates progress, providing a <see cref="ProgressUpdate" />.
-    /// </summary>
+    /// <inheritdoc />
     public event Action<ProgressUpdate>? OnProgressUpdated;
 
     #endregion
 
-    #region Public Methods
+    #region Core API
 
-    /// <summary>
-    ///     Initializes the manager with a target <see cref="DropBearProgressBar" /> instance.
-    ///     Must be called before other methods are used.
-    /// </summary>
-    /// <param name="progressBar">The progress bar component to control.</param>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
-    /// <exception cref="ArgumentNullException">Thrown when progressBar is null.</exception>
+    /// <inheritdoc />
     public Result<Unit, ProgressManagerError> Initialize(DropBearProgressBar progressBar)
     {
-        ThrowIfDisposed();
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        ArgumentNullException.ThrowIfNull(progressBar);
 
         try
         {
-            _progressBar = progressBar ?? throw new ArgumentNullException(nameof(progressBar));
+            lock (_stateLock)
+            {
+                _progressBar = progressBar;
+                _currentMode = ProgressMode.None;
+                _currentProgress = 0;
+                _currentMessage = string.Empty;
+                _isVisible = false;
+            }
+
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -109,36 +109,29 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    /// <summary>
-    ///     Sets the progress bar to indeterminate mode (e.g., spinner).
-    /// </summary>
-    /// <param name="message">Message displayed to the user.</param>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
-    [UnsupportedOSPlatform("browser")]
+    /// <inheritdoc />
     public Result<Unit, ProgressManagerError> SetIndeterminateMode(string message)
     {
-        ThrowIfDisposed();
-        EnsureProgressBarInitialized();
-
-        // Acquire lock synchronously for state update.
-        if (!_updateLock.Wait(UpdateLockTimeout))
-        {
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Timed out waiting for lock in SetIndeterminateMode"));
-        }
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        EnsureInitialized();
 
         try
         {
-            _isIndeterminateMode = true;
-            _isSteppedMode = false;
-            _currentMessage = message;
-            _currentProgress = 0;
-            _isVisible = true;
-            _steps = null;
+            lock (_stateLock)
+            {
+                _currentMode = ProgressMode.Indeterminate;
+                _currentMessage = message;
+                _currentProgress = 0;
+                _isVisible = true;
+                _steps = null;
+                _stepStates = FrozenDictionary<string, StepState>.Empty;
+            }
 
-            // Fire-and-forget async call with timeout protection.
-            FireAndForget(() => _progressBar!.SetIndeterminateModeAsync(message), "SetIndeterminateModeAsync");
+            // Fire and forget UI update using .NET 9 Task.Run optimizations
+            _ = Task.Run(async () => await UpdateProgressBarAsync(indeterminate: true, message: message),
+                _cancellationTokenSource.Token);
             NotifyProgressUpdate();
+
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -147,40 +140,30 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Failed to set indeterminate mode", ex));
         }
-        finally
-        {
-            _updateLock.Release();
-        }
     }
 
-    /// <summary>
-    ///     Sets the progress bar to normal (determinate) mode without discrete steps.
-    /// </summary>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
-    [UnsupportedOSPlatform("browser")]
+    /// <inheritdoc />
     public Result<Unit, ProgressManagerError> SetNormalMode()
     {
-        ThrowIfDisposed();
-        EnsureProgressBarInitialized();
-
-        if (!_updateLock.Wait(UpdateLockTimeout))
-        {
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Timed out waiting for lock in SetNormalMode"));
-        }
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        EnsureInitialized();
 
         try
         {
-            _isIndeterminateMode = false;
-            _isSteppedMode = false;
-            _currentMessage = "Starting...";
-            _currentProgress = 0;
-            _isVisible = true;
-            _steps = null;
+            lock (_stateLock)
+            {
+                _currentMode = ProgressMode.Normal;
+                _currentMessage = "Starting...";
+                _currentProgress = 0;
+                _isVisible = true;
+                _steps = null;
+                _stepStates = FrozenDictionary<string, StepState>.Empty;
+            }
 
-            // Fire-and-forget UI update calls with timeout protection.
-            FireAndForget(() => _progressBar!.SetNormalProgressAsync(0, _currentMessage), "SetNormalProgressAsync");
+            _ = Task.Run(async () => await UpdateProgressBarAsync(progress: 0, message: _currentMessage),
+                _cancellationTokenSource.Token);
             NotifyProgressUpdate();
+
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -189,51 +172,39 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Failed to set normal mode", ex));
         }
-        finally
-        {
-            _updateLock.Release();
-        }
     }
 
-    /// <summary>
-    ///     Sets the progress bar to stepped mode with a provided list of step configurations.
-    /// </summary>
-    /// <param name="steps">A read-only list of step configurations.</param>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
-    [UnsupportedOSPlatform("browser")]
+    /// <inheritdoc />
     public Result<Unit, ProgressManagerError> SetSteppedMode(IReadOnlyList<ProgressStepConfig> steps)
     {
-        ThrowIfDisposed();
-        EnsureProgressBarInitialized();
-
-        if (!_updateLock.Wait(UpdateLockTimeout))
-        {
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Timed out waiting for lock in SetSteppedMode"));
-        }
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        EnsureInitialized();
+        ArgumentNullException.ThrowIfNull(steps);
 
         try
         {
-            _isIndeterminateMode = false;
-            _isSteppedMode = true;
-            _isVisible = true;
-            _currentMessage = steps.Count > 0 ? $"Step 1 of {steps.Count}" : "No steps";
-            _currentProgress = 0;
-            _steps = steps;
-
-            // Clear any existing step states and create new ones.
-            _stepStates.Clear();
-            foreach (var step in steps)
+            lock (_stateLock)
             {
-                var stepUpdate = new StepUpdate(step.Id, 0, StepStatus.NotStarted);
-                _stepStates[step.Id] = stepUpdate;
+                _currentMode = ProgressMode.Stepped;
+                _steps = steps;
+                _isVisible = true;
+                _currentProgress = 0;
+                _currentMessage = steps.Count > 0 ? $"Step 1 of {steps.Count}" : "No steps";
+
+                // Initialize step states efficiently using .NET 9 collection builders
+                var stepStatesBuilder = new Dictionary<string, StepState>(steps.Count);
+                foreach (var step in steps)
+                {
+                    stepStatesBuilder[step.Id] = new StepState(step.Id, 0, StepStatus.NotStarted);
+                }
+
+                _stepStates = stepStatesBuilder.ToFrozenDictionary();
             }
 
-            // Initialize the bar in normal mode and set steps.
-            FireAndForget(() => _progressBar!.SetNormalProgressAsync(0, _currentMessage), "SetNormalProgressAsync");
-            FireAndForget(() => _progressBar!.SetStepsAsync(steps), "SetStepsAsync");
+            _ = Task.Run(async () => await UpdateProgressBarAsync(steps: steps, progress: 0, message: _currentMessage),
+                _cancellationTokenSource.Token);
+            NotifyProgressUpdate();
 
-            NotifyProgressUpdate(_stepStates.Values);
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -242,67 +213,48 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Failed to set stepped mode", ex));
         }
-        finally
-        {
-            _updateLock.Release();
-        }
     }
 
-    /// <summary>
-    ///     Updates overall progress (0-100) in normal mode.
-    ///     Fails if the bar is currently in indeterminate or stepped mode.
-    /// </summary>
-    /// <param name="progress">A value from 0 to 100 representing the progress percentage.</param>
-    /// <param name="message">An optional message to display.</param>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
+    /// <inheritdoc />
     public async ValueTask<Result<Unit, ProgressManagerError>> UpdateProgressAsync(
         double progress,
         string? message = null)
     {
-        ThrowIfDisposed();
-        EnsureProgressBarInitialized();
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        EnsureInitialized();
 
-        if (_isIndeterminateMode)
+        if (_currentMode == ProgressMode.Indeterminate)
         {
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Cannot update progress in indeterminate mode"));
         }
 
-        if (_isSteppedMode)
+        if (_currentMode == ProgressMode.Stepped)
         {
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Use UpdateStepProgressAsync in stepped mode"));
         }
 
-        // Acquire the lock asynchronously with a timeout.
-        if (!await _updateLock.WaitAsync(UpdateLockTimeout).ConfigureAwait(false))
-        {
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Timed out waiting for lock in UpdateProgressAsync"));
-        }
-
         try
         {
-            _currentProgress = Math.Clamp(progress, 0, 100);
-            if (!string.IsNullOrEmpty(message))
+            var clampedProgress = Math.Clamp(progress, 0, 100);
+            string currentMessage;
+
+            lock (_stateLock)
             {
-                _currentMessage = message;
+                _currentProgress = clampedProgress;
+                if (!string.IsNullOrEmpty(message))
+                {
+                    _currentMessage = message;
+                }
+
+                currentMessage = _currentMessage;
             }
 
-            // Await the UI update with timeout support.
-            await ExecuteWithTimeoutAsync(
-                () => _progressBar!.SetNormalProgressAsync(_currentProgress, _currentMessage),
-                ProgressBarOperationTimeout,
-                "SetNormalProgressAsync").ConfigureAwait(false);
-
+            await UpdateProgressBarAsync(progress: clampedProgress, message: currentMessage);
             NotifyProgressUpdate();
+
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
-        }
-        catch (TimeoutException tex)
-        {
-            _logger.Error(tex, "Operation timed out in UpdateProgressAsync");
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Operation timed out in UpdateProgressAsync", tex));
         }
         catch (Exception ex)
         {
@@ -310,170 +262,141 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Failed to update progress", ex));
         }
-        finally
-        {
-            _updateLock.Release();
-        }
     }
 
-    /// <summary>
-    ///     Updates progress for a specific step in stepped mode (including progress and status).
-    ///     Fails if not in stepped mode.
-    /// </summary>
-    /// <param name="stepId">Unique identifier for the step.</param>
-    /// <param name="progress">A value from 0 to 100 for the step's completion percentage.</param>
-    /// <param name="status">The step's new status (e.g., InProgress, Completed).</param>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
+    /// <inheritdoc />
     public async ValueTask<Result<Unit, ProgressManagerError>> UpdateStepProgressAsync(
         string stepId,
         double progress,
         StepStatus status)
     {
-        ThrowIfDisposed();
-        EnsureProgressBarInitialized();
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        EnsureInitialized();
+        ArgumentException.ThrowIfNullOrEmpty(stepId);
 
-        if (!_isSteppedMode)
+        if (_currentMode != ProgressMode.Stepped)
         {
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Cannot update step progress when not in stepped mode"));
         }
 
-        if (!await _updateLock.WaitAsync(UpdateLockTimeout).ConfigureAwait(false))
-        {
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Timed out waiting for lock in UpdateStepProgressAsync"));
-        }
-
         try
         {
             var clampedProgress = Math.Clamp(progress, 0, 100);
-            var stepUpdate = new StepUpdate(stepId, clampedProgress, status);
-            _stepStates[stepId] = stepUpdate;
+            StepState updatedStep;
+            string currentMessage;
 
-            // Await the UI update for the step with timeout support.
-            await ExecuteWithTimeoutAsync(
-                () => _progressBar!.UpdateStepProgressAsync(stepId, clampedProgress, status),
-                ProgressBarOperationTimeout,
-                "UpdateStepProgressAsync").ConfigureAwait(false);
-
-            // Optionally update the overall message (e.g., "Step 2 of 5")
-            if (_steps is { Count: > 0 })
+            lock (_stateLock)
             {
-                // Use a local copy to avoid multiple enumerations.
-                var stepList = _steps is List<ProgressStepConfig> list ? list : _steps.ToList();
-                var stepIndex = stepList.FindIndex(s => s.Id == stepId);
-                if (stepIndex >= 0)
+                if (!_stepStates.TryGetValue(stepId, out var existingStep))
                 {
-                    _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
-                    await ExecuteWithTimeoutAsync(
-                        () => _progressBar?.SetNormalProgressAsync(_currentProgress, _currentMessage) ??
-                              throw new InvalidOperationException(),
-                        ProgressBarOperationTimeout,
-                        "SetNormalProgressAsync").ConfigureAwait(false);
+                    return Result<Unit, ProgressManagerError>.Failure(
+                        new ProgressManagerError($"Step '{stepId}' not found"));
                 }
-            }
 
-            NotifyProgressUpdate([stepUpdate]);
-            return Result<Unit, ProgressManagerError>.Success(Unit.Value);
-        }
-        catch (TimeoutException tex)
-        {
-            _logger.Error(tex, "Operation timed out in UpdateStepProgressAsync");
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Operation timed out in UpdateStepProgressAsync", tex));
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to update step progress");
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Failed to update step progress", ex));
-        }
-        finally
-        {
-            _updateLock.Release();
-        }
-    }
+                updatedStep = existingStep with { Progress = clampedProgress, Status = status };
 
-    /// <summary>
-    ///     Completes the current progress operation, marking all steps as 100% if in stepped mode,
-    ///     then hides the progress bar after a short delay.
-    /// </summary>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
-    public async ValueTask<Result<Unit, ProgressManagerError>> CompleteAsync()
-    {
-        const int completionDelayMs = 500; // Delay to allow the "Completed" state to be visible
+                // Create new frozen dictionary with updated step using .NET 9 optimizations
+                var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates);
+                stepStatesBuilder[stepId] = updatedStep;
+                _stepStates = stepStatesBuilder.ToFrozenDictionary();
 
-        ThrowIfDisposed();
-        EnsureProgressBarInitialized();
-
-        if (!await _updateLock.WaitAsync(UpdateLockTimeout).ConfigureAwait(false))
-        {
-            return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Timed out waiting for lock in CompleteAsync"));
-        }
-
-        try
-        {
-            if (_isSteppedMode)
-            {
-                // Mark incomplete steps as completed.
-                var updates = new List<StepUpdate>();
-                foreach (var (stepId, oldState) in _stepStates)
+                // Update overall message
+                if (_steps is { Count: > 0 })
                 {
-                    if (oldState.Status is not (StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped))
+                    var stepIndex = _steps.ToList().FindIndex(s => s.Id == stepId);
+                    if (stepIndex >= 0)
                     {
-                        var stepUpdate = new StepUpdate(stepId, 100, StepStatus.Completed);
-                        _stepStates[stepId] = stepUpdate;
-                        await ExecuteWithTimeoutAsync(
-                            () => _progressBar!.UpdateStepProgressAsync(stepId, 100, StepStatus.Completed),
-                            ProgressBarOperationTimeout,
-                            "UpdateStepProgressAsync").ConfigureAwait(false);
-                        updates.Add(stepUpdate);
+                        _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
                     }
                 }
 
-                if (updates.Count > 0)
-                {
-                    NotifyProgressUpdate(updates);
-                }
-            }
-            else
-            {
-                // Normal mode: update progress to 100%.
-                _currentProgress = 100;
-                _currentMessage = "Completed";
-                await ExecuteWithTimeoutAsync(
-                    () => _progressBar!.SetNormalProgressAsync(_currentProgress, _currentMessage),
-                    ProgressBarOperationTimeout,
-                    "SetNormalProgressAsync").ConfigureAwait(false);
-                NotifyProgressUpdate();
+                currentMessage = _currentMessage;
             }
 
-            // Delay briefly so that the user can see the "Completed" state.
-            await Task.Delay(completionDelayMs).ConfigureAwait(false);
+            await UpdateStepInProgressBarAsync(stepId, clampedProgress, status);
+            await UpdateProgressBarAsync(message: currentMessage);
 
-            // Reset the progress bar UI.
-            if (_progressBar != null)
-            {
-                await ExecuteWithTimeoutAsync(
-                    () => _progressBar.SetNormalProgressAsync(0, string.Empty),
-                    ProgressBarOperationTimeout,
-                    "SetNormalProgressAsync").ConfigureAwait(false);
-                await ExecuteWithTimeoutAsync(
-                    () => _progressBar.SetStepsAsync(null),
-                    ProgressBarOperationTimeout,
-                    "SetStepsAsync").ConfigureAwait(false);
-            }
+            NotifyProgressUpdate([updatedStep]);
 
-            _isVisible = false;
-            NotifyProgressUpdate();
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
-        catch (TimeoutException tex)
+        catch (Exception ex)
         {
-            _logger.Error(tex, "Operation timed out in CompleteAsync");
+            _logger.Error(ex, "Failed to update step progress for step {StepId}", stepId);
             return Result<Unit, ProgressManagerError>.Failure(
-                new ProgressManagerError("Operation timed out in CompleteAsync", tex));
+                new ProgressManagerError($"Failed to update step progress for step '{stepId}'", ex));
+        }
+    }
+
+    /// <inheritdoc />
+    public async ValueTask<Result<Unit, ProgressManagerError>> CompleteAsync()
+    {
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        EnsureInitialized();
+
+        try
+        {
+            var completedSteps = new List<StepState>();
+
+            lock (_stateLock)
+            {
+                if (_currentMode == ProgressMode.Stepped)
+                {
+                    // Complete any incomplete steps using .NET 9 collection improvements
+                    var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates);
+                    foreach (var (stepId, stepState) in _stepStates)
+                    {
+                        if (stepState.Status is not (StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped))
+                        {
+                            var completedStep = stepState with { Progress = 100, Status = StepStatus.Completed };
+                            stepStatesBuilder[stepId] = completedStep;
+                            completedSteps.Add(completedStep);
+                        }
+                    }
+
+                    _stepStates = stepStatesBuilder.ToFrozenDictionary();
+                }
+                else
+                {
+                    _currentProgress = 100;
+                    _currentMessage = "Completed";
+                }
+            }
+
+            // Update UI for completed steps using parallel processing where beneficial
+            if (completedSteps.Count > 0)
+            {
+                await Task.WhenAll(completedSteps.Select(step =>
+                    UpdateStepInProgressBarAsync(step.Id, step.Progress, step.Status).AsTask()));
+            }
+
+            if (_currentMode != ProgressMode.Stepped)
+            {
+                await UpdateProgressBarAsync(progress: 100, message: "Completed");
+            }
+
+            NotifyProgressUpdate(completedSteps.Count > 0 ? completedSteps : null);
+
+            // Brief delay to show completion state using .NET 9 optimized Task.Delay
+            await Task.Delay(CompletionDisplayDuration, _cancellationTokenSource.Token);
+
+            // Reset the progress bar
+            await ResetProgressBarAsync();
+
+            lock (_stateLock)
+            {
+                _isVisible = false;
+            }
+
+            NotifyProgressUpdate();
+
+            return Result<Unit, ProgressManagerError>.Success(Unit.Value);
+        }
+        catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            // Expected during disposal
+            return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
@@ -481,48 +404,13 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             return Result<Unit, ProgressManagerError>.Failure(
                 new ProgressManagerError("Failed to complete progress", ex));
         }
-        finally
-        {
-            _updateLock.Release();
-        }
     }
 
-    /// <summary>
-    ///     Disposes this manager asynchronously, releasing all resources.
-    /// </summary>
-    /// <returns>A <see cref="ValueTask" /> representing the asynchronous disposal operation.</returns>
-    public async ValueTask DisposeAsync()
-    {
-        if (IsDisposed)
-        {
-            return;
-        }
+    #endregion
 
-        IsDisposed = true;
+    #region ExecutionEngine Integration
 
-        // Unsubscribe from any MessagePipe integrations.
-        DisableExecutionEngineIntegration();
-
-        // Dispose of the semaphore.
-        _updateLock.Dispose();
-
-        // Clear references.
-        _progressBar = null;
-        _stepStates.Clear();
-
-        // Complete any additional asynchronous cleanup.
-        await Task.CompletedTask.ConfigureAwait(false);
-    }
-
-    /// <summary>
-    ///     Enables integration with the ExecutionEngine via MessagePipe subscribers.
-    /// </summary>
-    /// <param name="channelId">The channel ID for subscribing to engine messages.</param>
-    /// <param name="taskStartedSubscriber">Subscriber for <see cref="TaskStartedMessage" />.</param>
-    /// <param name="taskProgressSubscriber">Subscriber for <see cref="TaskProgressMessage" />.</param>
-    /// <param name="taskCompletedSubscriber">Subscriber for <see cref="TaskCompletedMessage" />.</param>
-    /// <param name="taskFailedSubscriber">Subscriber for <see cref="TaskFailedMessage" />.</param>
-    /// <returns>A <see cref="Result{T, TError}" /> indicating success or failure.</returns>
+    /// <inheritdoc />
     public Result<Unit, ProgressManagerError> EnableExecutionEngineIntegration(
         Guid channelId,
         IAsyncSubscriber<Guid, TaskStartedMessage> taskStartedSubscriber,
@@ -530,36 +418,38 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         IAsyncSubscriber<Guid, TaskCompletedMessage> taskCompletedSubscriber,
         IAsyncSubscriber<Guid, TaskFailedMessage> taskFailedSubscriber)
     {
-        ThrowIfDisposed();
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
+        ArgumentNullException.ThrowIfNull(taskStartedSubscriber);
+        ArgumentNullException.ThrowIfNull(taskProgressSubscriber);
+        ArgumentNullException.ThrowIfNull(taskCompletedSubscriber);
+        ArgumentNullException.ThrowIfNull(taskFailedSubscriber);
 
         try
         {
-            // Unsubscribe any previous subscriptions.
+            // Clean up existing subscriptions
             DisableExecutionEngineIntegration();
-            _bagBuilder = DisposableBag.CreateBuilder();
 
-            // Subscribe to engine messages.
-            taskProgressSubscriber
-                .Subscribe(channelId,
-                    async (message, ct) => await HandleTaskProgressAsync(message, ct).ConfigureAwait(false))
-                .AddTo(_bagBuilder);
+            _subscriptions = DisposableBag.CreateBuilder();
 
+            // Subscribe to execution engine messages using .NET 9 optimized delegates
             taskStartedSubscriber
-                .Subscribe(channelId,
-                    async (message, ct) => await HandleTaskStartedAsync(message, ct).ConfigureAwait(false))
-                .AddTo(_bagBuilder);
+                .Subscribe(channelId, (message, ct) => HandleTaskStartedAsync(message, ct))
+                .AddTo(_subscriptions);
+
+            taskProgressSubscriber
+                .Subscribe(channelId, (message, ct) => HandleTaskProgressAsync(message, ct))
+                .AddTo(_subscriptions);
 
             taskCompletedSubscriber
-                .Subscribe(channelId,
-                    async (message, ct) => await HandleTaskCompletedAsync(message, ct).ConfigureAwait(false))
-                .AddTo(_bagBuilder);
+                .Subscribe(channelId, (message, ct) => HandleTaskCompletedAsync(message, ct))
+                .AddTo(_subscriptions);
 
             taskFailedSubscriber
-                .Subscribe(channelId,
-                    async (message, ct) => await HandleTaskFailedAsync(message, ct).ConfigureAwait(false))
-                .AddTo(_bagBuilder);
+                .Subscribe(channelId, (message, ct) => HandleTaskFailedAsync(message, ct))
+                .AddTo(_subscriptions);
 
-            _disposableBag = _bagBuilder.Build();
+            _subscriptionBag = _subscriptions.Build();
+
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -570,103 +460,69 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    #endregion
-
-    #region Private Integration Methods
-
-    /// <summary>
-    ///     Disables integration by disposing all engine event subscriptions.
-    /// </summary>
     private void DisableExecutionEngineIntegration()
     {
-        _disposableBag?.Dispose();
-        _disposableBag = null;
-        _bagBuilder = null;
+        _subscriptionBag?.Dispose();
+        _subscriptionBag = null;
+        _subscriptions = null;
     }
 
-    private async Task HandleTaskProgressAsync(TaskProgressMessage message, CancellationToken cancellationToken)
-    {
-        if (IsDisposed || cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
+    #endregion
 
-        if (_isSteppedMode)
+    #region Message Handlers
+
+    private async ValueTask HandleTaskStartedAsync(TaskStartedMessage message, CancellationToken cancellationToken)
+    {
+        if (IsDisposed || cancellationToken.IsCancellationRequested) return;
+
+        if (_currentMode == ProgressMode.Stepped)
         {
-            if (message.TaskProgressPercentage.HasValue)
-            {
-                await UpdateStepProgressAsync(
-                    message.TaskName,
-                    message.TaskProgressPercentage.Value,
-                    StepStatus.InProgress).ConfigureAwait(false);
-            }
-        }
-        else if (!_isIndeterminateMode && message.OverallProgressPercentage.HasValue)
-        {
-            await UpdateProgressAsync(
-                message.OverallProgressPercentage.Value,
-                message.Message).ConfigureAwait(false);
+            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.InProgress);
         }
     }
 
-    private async Task HandleTaskStartedAsync(TaskStartedMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskProgressAsync(TaskProgressMessage message, CancellationToken cancellationToken)
     {
-        if (IsDisposed || cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
+        if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
-        if (_isSteppedMode)
+        switch (_currentMode)
         {
-            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.InProgress).ConfigureAwait(false);
+            case ProgressMode.Stepped when message.TaskProgressPercentage.HasValue:
+                await UpdateStepProgressAsync(message.TaskName, message.TaskProgressPercentage.Value,
+                    StepStatus.InProgress);
+                break;
+            case ProgressMode.Normal when message.OverallProgressPercentage.HasValue:
+                await UpdateProgressAsync(message.OverallProgressPercentage.Value, message.Message);
+                break;
         }
     }
 
-    private async Task HandleTaskCompletedAsync(TaskCompletedMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskCompletedAsync(TaskCompletedMessage message, CancellationToken cancellationToken)
     {
-        if (IsDisposed || cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
+        if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
-        if (_isSteppedMode)
+        if (_currentMode == ProgressMode.Stepped)
         {
-            await UpdateStepProgressAsync(message.TaskName, 100, StepStatus.Completed).ConfigureAwait(false);
+            await UpdateStepProgressAsync(message.TaskName, 100, StepStatus.Completed);
         }
     }
 
-    private async Task HandleTaskFailedAsync(TaskFailedMessage message, CancellationToken cancellationToken)
+    private async ValueTask HandleTaskFailedAsync(TaskFailedMessage message, CancellationToken cancellationToken)
     {
-        if (IsDisposed || cancellationToken.IsCancellationRequested)
-        {
-            return;
-        }
+        if (IsDisposed || cancellationToken.IsCancellationRequested) return;
 
-        if (_isSteppedMode)
+        if (_currentMode == ProgressMode.Stepped)
         {
-            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.Failed).ConfigureAwait(false);
+            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.Failed);
         }
     }
 
     #endregion
 
-    #region Helpers
+    #region Helper Methods
 
-    /// <summary>
-    ///     Throws an <see cref="ObjectDisposedException" /> if this manager has been disposed.
-    /// </summary>
-    private void ThrowIfDisposed()
-    {
-        if (IsDisposed)
-        {
-            throw new ObjectDisposedException(nameof(ExecutionProgressManager));
-        }
-    }
-
-    /// <summary>
-    ///     Throws an <see cref="InvalidOperationException" /> if the progress bar has not been initialized.
-    /// </summary>
-    private void EnsureProgressBarInitialized()
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void EnsureInitialized()
     {
         if (_progressBar == null)
         {
@@ -674,98 +530,186 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         }
     }
 
-    /// <summary>
-    ///     Fires the <see cref="OnProgressUpdated" /> event in a safe manner.
-    ///     Each subscriber is invoked individually so that one faulty handler does not affect the others.
-    /// </summary>
-    /// <param name="stepUpdates">Optional collection of step updates.</param>
-    private void NotifyProgressUpdate(IEnumerable<StepUpdate>? stepUpdates = null)
+    private async ValueTask UpdateProgressBarAsync(
+        bool? indeterminate = null,
+        double? progress = null,
+        string? message = null,
+        IReadOnlyList<ProgressStepConfig>? steps = null)
+    {
+        if (_progressBar == null || IsDisposed) return;
+
+        try
+        {
+            // Use .NET 9 optimized cancellation token linking
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+            cts.CancelAfter(OperationTimeout);
+
+            // Update progress bar properties directly
+            if (indeterminate == true)
+            {
+                _progressBar.IsIndeterminate = true;
+                if (message != null) _progressBar.Message = message;
+            }
+            else
+            {
+                _progressBar.IsIndeterminate = false;
+                if (progress.HasValue) _progressBar.Progress = progress.Value;
+                if (message != null) _progressBar.Message = message;
+                if (steps != null) _progressBar.Steps = steps;
+            }
+
+            // Force UI refresh through component's public method
+            await _progressBar.UpdateProgressAsync(_progressBar.Progress, _progressBar.Message);
+        }
+        catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            // Expected during disposal
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to update progress bar UI");
+        }
+    }
+
+    private async ValueTask UpdateStepInProgressBarAsync(string stepId, double progress, StepStatus status)
+    {
+        if (_progressBar == null || IsDisposed) return;
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+            cts.CancelAfter(OperationTimeout);
+
+            await _progressBar.UpdateStepAsync(stepId, progress, status);
+        }
+        catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            // Expected during disposal
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to update step {StepId} in progress bar", stepId);
+        }
+    }
+
+    private async ValueTask ResetProgressBarAsync()
+    {
+        if (_progressBar == null || IsDisposed) return;
+
+        try
+        {
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+            cts.CancelAfter(OperationTimeout);
+
+            await _progressBar.ResetAsync();
+        }
+        catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
+        {
+            // Expected during disposal
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to reset progress bar");
+        }
+    }
+
+    private void NotifyProgressUpdate(IReadOnlyList<StepState>? stepUpdates = null)
     {
         var handler = OnProgressUpdated;
-        if (handler == null)
+        if (handler == null) return;
+
+        ProgressUpdate progressUpdate;
+        lock (_stateLock)
         {
-            return;
+            progressUpdate = new ProgressUpdate
+            {
+                IsVisible = _isVisible,
+                IsIndeterminate = _currentMode == ProgressMode.Indeterminate,
+                Message = _currentMessage,
+                Progress = _currentProgress,
+                Steps = _steps,
+                StepUpdates = stepUpdates?.Select(s => new StepUpdate(s.Id, s.Progress, s.Status)).ToList()
+            };
+
+            // Avoid redundant notifications using .NET 9 optimized equality comparison
+            if (_lastProgressUpdate?.Equals(progressUpdate) == true) return;
+            _lastProgressUpdate = progressUpdate;
         }
 
-        // Capture current state in local variables for thread safety.
-        var progressUpdate = new ProgressUpdate
+        // Safely invoke all event handlers using .NET 9 delegate optimizations
+        var invocationList = handler.GetInvocationList();
+        if (invocationList.Length == 1)
         {
-            IsVisible = _isVisible,
-            IsIndeterminate = _isIndeterminateMode,
-            Message = _currentMessage,
-            Progress = _currentProgress,
-            Steps = _steps,
-            StepUpdates = stepUpdates?.ToList()
-        };
-
-        // Invoke each subscriber separately.
-        foreach (var singleHandler in handler.GetInvocationList().Cast<Action<ProgressUpdate>>())
-        {
+            // Single handler - direct invocation
             try
             {
-                singleHandler(progressUpdate);
+                handler(progressUpdate);
             }
             catch (Exception ex)
             {
                 _logger.Error(ex, "Error in OnProgressUpdated event handler");
             }
         }
+        else
+        {
+            // Multiple handlers - parallel invocation for better performance
+            Parallel.ForEach(invocationList.Cast<Action<ProgressUpdate>>(), singleHandler =>
+            {
+                try
+                {
+                    singleHandler(progressUpdate);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Error(ex, "Error in OnProgressUpdated event handler");
+                }
+            });
+        }
     }
 
-    /// <summary>
-    ///     Executes an asynchronous operation with a timeout. If the operation does not complete
-    ///     within the specified timeout, a <see cref="TimeoutException" /> is thrown.
-    /// </summary>
-    /// <param name="operation">The asynchronous operation to execute.</param>
-    /// <param name="timeout">The timeout duration.</param>
-    /// <param name="operationName">A name for the operation (used in exception messages).</param>
-    /// <returns>A <see cref="Task" /> representing the operation.</returns>
-    /// <exception cref="TimeoutException">Thrown if the operation times out.</exception>
-    private async Task ExecuteWithTimeoutAsync(Func<Task> operation, TimeSpan timeout, string operationName)
+    #endregion
+
+    #region Disposal
+
+    /// <inheritdoc />
+    public async ValueTask DisposeAsync()
     {
-        try
-        {
-            var task = operation();
-            var delayTask = Task.Delay(timeout);
-            if (await Task.WhenAny(task, delayTask).ConfigureAwait(false) == delayTask)
-            {
-                throw new TimeoutException($"{operationName} timed out after {timeout.TotalSeconds} seconds.");
-            }
+        if (IsDisposed) return;
 
-            await task.ConfigureAwait(false);
-        }
-        catch (Exception ex)when (ex is TaskCanceledException or ObjectDisposedException)
+        IsDisposed = true;
+
+        // Cancel all operations using .NET 9 optimized cancellation
+        await _cancellationTokenSource.CancelAsync();
+
+        // Clean up subscriptions
+        DisableExecutionEngineIntegration();
+
+        // Dispose resources
+        _cancellationTokenSource.Dispose();
+
+        // Clear state
+        lock (_stateLock)
         {
-            // Ignore TaskCanceledException (thrown by Task.WhenAny)
-            _logger.Debug(ex, $"{operationName} was canceled or object was already disposed.");
-        }
-        catch (Exception e)
-        {
-            _logger.Error(e, $"{operationName} failed or timed out.");
+            _progressBar = null;
+            _steps = null;
+            _stepStates = FrozenDictionary<string, StepState>.Empty;
+            _lastProgressUpdate = null;
         }
     }
 
-    /// <summary>
-    ///     Executes an asynchronous operation in a fire-and-forget manner.
-    ///     Any exceptions (including timeouts) are caught and logged.
-    /// </summary>
-    /// <param name="operation">The asynchronous operation to execute.</param>
-    /// <param name="operationName">A name for the operation (used in logging).</param>
-    private void FireAndForget(Func<Task> operation, string operationName)
+    #endregion
+
+    #region Supporting Types
+
+    private enum ProgressMode
     {
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await ExecuteWithTimeoutAsync(operation, ProgressBarOperationTimeout, operationName)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.Error(ex, $"{operationName} failed or timed out.");
-            }
-        });
+        None,
+        Indeterminate,
+        Normal,
+        Stepped
     }
+
+    private sealed record StepState(string Id, double Progress, StepStatus Status);
 
     #endregion
 }

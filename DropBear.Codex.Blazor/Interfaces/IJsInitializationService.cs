@@ -3,23 +3,32 @@
 namespace DropBear.Codex.Blazor.Interfaces;
 
 /// <summary>
-///     Provides thread-safe initialization management for JavaScript modules in Blazor.
+///     Service for initializing JavaScript modules in Blazor components.
+///     Enhanced for .NET 9 with improved async patterns.
 /// </summary>
-public interface IJsInitializationService : IAsyncDisposable
+public interface IJsInitializationService
 {
     /// <summary>
-    ///     Ensures a JavaScript module is initialized with timeout and cancellation support.
+    ///     Ensures a JavaScript module is properly initialized.
     /// </summary>
     /// <param name="moduleName">The name of the module to initialize.</param>
-    /// <param name="timeout">Optional timeout duration (defaults to 5 seconds).</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <exception cref="ArgumentException">If moduleName is null or empty.</exception>
-    /// <exception cref="ObjectDisposedException">If the service is disposed.</exception>
-    /// <exception cref="TimeoutException">If initialization exceeds the timeout period.</exception>
-    /// <exception cref="OperationCanceledException">If initialization is cancelled.</exception>
-    /// <exception cref="JSException">If module initialization fails.</exception>
-    Task EnsureJsModuleInitializedAsync(
+    /// <param name="timeout">Optional timeout for the initialization.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A ValueTask representing the initialization operation.</returns>
+    ValueTask EnsureJsModuleInitializedAsync(
         string moduleName,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Checks if a JavaScript module is already initialized.
+    /// </summary>
+    /// <param name="moduleName">The name of the module to check.</param>
+    /// <returns>True if the module is initialized, false otherwise.</returns>
+    bool IsModuleInitialized(string moduleName);
+
+    /// <summary>
+    ///     Clears the initialization state for all modules.
+    /// </summary>
+    void ClearInitializationState();
 }

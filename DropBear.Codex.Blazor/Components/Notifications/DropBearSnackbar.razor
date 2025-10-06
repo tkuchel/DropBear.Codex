@@ -1,32 +1,48 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Notifications
-@using DropBear.Codex.Blazor.Components.Icons
+@using DropBear.Codex.Blazor.Enums
+@using DropBear.Codex.Blazor.Helpers
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div id="@SnackbarInstance.Id"
      class="@CssClasses"
-     style="--duration: @(SnackbarInstance.Duration)ms"
+     style="--duration: @(SnackbarInstance.Duration)ms; --delay: @(SnackbarInstance.ShowDelay)ms"
+     role="alert"
+     aria-live="@GetAriaLive()"
+     aria-atomic="true"
      @attributes="AdditionalAttributes">
 
-    <div class="dropbear-snackbar-icon">
-        <SvgIcon Type="SnackbarInstance.Type"/>
+    <!-- Status Icon -->
+    <div class="snackbar-icon" aria-hidden="true">
+        @SnackbarIcons.GetIcon(SnackbarInstance.Type)
     </div>
 
-    <div class="dropbear-snackbar-content">
-        <div class="dropbear-snackbar-title" role="heading" aria-level="2">
-            @SnackbarInstance.Title
-        </div>
-        <div class="dropbear-snackbar-message">
+    <!-- Content Area -->
+    <div class="snackbar-content">
+        @if (!string.IsNullOrWhiteSpace(SnackbarInstance.Title))
+        {
+            <div class="snackbar-title">@SnackbarInstance.Title</div>
+        }
+
+        <div class="snackbar-message">
             @((MarkupString)SnackbarInstance.Message)
         </div>
 
         @if (SnackbarInstance.Actions?.Any() == true)
         {
-            <div class="dropbear-snackbar-actions">
+            <div class="snackbar-actions">
                 @foreach (var action in SnackbarInstance.Actions)
                 {
                     <button type="button"
-                            class="dropbear-snackbar-action"
-                            @onclick="() => HandleActionClick(action)">
+                            class="snackbar-action @(action.IsPrimary ? "primary" : "secondary")"
+                            disabled="@(IsDisposed || action.IsDisabled)"
+                            title="@action.Tooltip"
+                            @onclick="@(() => HandleActionClickAsync(action))"
+                            @onclick:preventDefault="true"
+                            @onclick:stopPropagation="true">
+                        @if (!string.IsNullOrWhiteSpace(action.Icon))
+                        {
+                            <i class="@action.Icon" aria-hidden="true"></i>
+                        }
                         @action.Label
                     </button>
                 }
@@ -34,12 +50,40 @@
         }
     </div>
 
-    <button type="button"
-            class="dropbear-snackbar-close"
-            aria-label="Close notification"
-            @onclick="CloseAsync">
-        <CloseIcon/>
-    </button>
+    <!-- Close Button -->
+    @if (!SnackbarInstance.RequiresManualClose || SnackbarInstance.Actions?.Any() != true)
+    {
+        <button type="button"
+                class="snackbar-close"
+                aria-label="Close notification"
+                disabled="@IsDisposed"
+                @onclick="CloseAsync"
+                @onclick:preventDefault="true"
+                @onclick:stopPropagation="true">
+            @SnackbarIcons.CloseIcon
+        </button>
+    }
 
-    <div class="progress-bar" role="progressbar" aria-hidden="true"></div>
+    <!-- Progress Bar -->
+    @if (ShouldAutoClose)
+    {
+        <div class="snackbar-progress" role="progressbar" aria-hidden="true" aria-valuenow="100" aria-valuemin="0"
+             aria-valuemax="100">
+            <div class="progress-fill"></div>
+        </div>
+    }
 </div>
+
+@code {
+
+    /// <summary>
+    /// Gets the appropriate ARIA live region setting based on snackbar type.
+    /// </summary>
+    private string GetAriaLive() => SnackbarInstance.Type switch
+    {
+        SnackbarType.Error => "assertive",
+        SnackbarType.Warning => "assertive",
+        _ => "polite"
+    };
+
+}

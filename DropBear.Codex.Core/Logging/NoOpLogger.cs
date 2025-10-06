@@ -15,34 +15,19 @@ namespace DropBear.Codex.Core.Logging;
 public sealed class NoOpLogger : ILogger
 {
     /// <inheritdoc />
-    public ILogger ForContext(ILogEventEnricher enricher)
-    {
-        return this;
-    }
+    public ILogger ForContext(ILogEventEnricher enricher) => this;
 
     /// <inheritdoc />
-    public ILogger ForContext(IEnumerable<ILogEventEnricher> enrichers)
-    {
-        return this;
-    }
+    public ILogger ForContext(IEnumerable<ILogEventEnricher> enrichers) => this;
 
     /// <inheritdoc />
-    public ILogger ForContext(string propertyName, object? value, bool destructureObjects = false)
-    {
-        return this;
-    }
+    public ILogger ForContext(string propertyName, object? value, bool destructureObjects = false) => this;
 
     /// <inheritdoc />
-    public ILogger ForContext<TSource>()
-    {
-        return this;
-    }
+    public ILogger ForContext<TSource>() => this;
 
     /// <inheritdoc />
-    public ILogger ForContext(Type source)
-    {
-        return this;
-    }
+    public ILogger ForContext(Type source) => this;
 
     /// <inheritdoc />
     public void Write(LogEvent logEvent)

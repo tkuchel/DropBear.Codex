@@ -1,39 +1,68 @@
 ﻿@using DropBear.Codex.Blazor.Enums
+@using DropBear.Codex.Blazor.Models
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="step-box @GetPositionClass()" data-status="@GetStatusClass()">
-    <div class="step-header">
-        <div class="step-icon">
-            @switch (Status)
+<div class="progress-step @GetPositionClass() @GetCompactClass()"
+     data-status="@GetStatusAttribute()"
+     data-variant="@Variant.ToString().ToLowerInvariant()"
+     role="progressbar"
+     aria-valuemin="0"
+     aria-valuemax="100"
+     aria-valuenow="@Progress"
+     aria-label="@Config.Name">
+
+    <div class="step-content">
+        <!-- Step Icon and Title -->
+        <div class="step-header">
+            <div class="step-icon" aria-hidden="true">
+                @GetStatusIcon()
+            </div>
+
+            <div class="step-info">
+                <h4 class="step-title">@Config.Name</h4>
+
+                @if (!CompactMode && !string.IsNullOrEmpty(Config.Description))
+                {
+                    <p class="step-description">@Config.Description</p>
+                }
+            </div>
+
+            @if (!CompactMode)
             {
-                case StepStatus.Completed:
-                    <i class="fas fa-check-circle"></i>
-                    break;
-                case StepStatus.InProgress:
-                    <i class="fas fa-spinner"></i>
-                    break;
-                case StepStatus.Warning:
-                    <i class="fas fa-exclamation-circle"></i>
-                    break;
-                case StepStatus.Failed:
-                    <i class="fas fa-times-circle"></i>
-                    break;
-                case StepStatus.Skipped:
-                    <i class="fas fa-forward"></i>
-                    break;
-                default:
-                    <i class="far fa-circle"></i>
-                    break;
+                <div class="step-progress-text">
+                    @($"{Progress:F0}%")
+                </div>
             }
         </div>
-        <div class="step-name" data-tooltip="@Config.Tooltip">
-            @Config.Name
-        </div>
+
+        <!-- Step Progress Bar -->
+        @if (ShowProgressBar)
+        {
+            <div class="step-progress-track">
+                <div class="step-progress-fill" style="@GetProgressStyle()">
+                    @if (Status == StepStatus.InProgress && ShowPulseAnimation)
+                    {
+                        <div class="progress-pulse"></div>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- Step Status Message -->
+        @if (!CompactMode && !string.IsNullOrEmpty(GetStatusMessage()))
+        {
+            <div class="step-status-message">
+                <span>@GetStatusMessage()</span>
+                @if (ShowDuration && Status != StepStatus.NotStarted)
+                {
+                    <span class="step-duration">@FormatDuration()</span>
+                }
+            </div>
+        }
     </div>
 
-    <div class="step-progress progress-bar-container">
-        <div class="progress-bar" style="width: @($"{DisplayProgress:F1}%")"></div>
-    </div>
-
-    <div class="step-status">@GetStatusText()</div>
+    @if (!CompactMode && Position == StepPosition.Current && Status == StepStatus.InProgress)
+    {
+        <div class="step-indicator" aria-hidden="true"></div>
+    }
 </div>

@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
 
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.2.0</Version>
-    <PackageVersion>2025.2.0</PackageVersion>
+    <Version>2025.7.0</Version>
+    <PackageVersion>2025.9.0</PackageVersion>
     <PackageId>DropBear.Codex.Tasks</PackageId>
     <Title>DropBear Codex Tasks</Title>
     <Description>Provides task management utilities for the DropBear.Codex ecosystem</Description>
@@ -40,13 +40,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2024.3.0" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" />
     <PackageReference Include="MessagePipe" Version="1.8.1"/>
     <PackageReference Include="MessagePipe.Analyzer" Version="1.8.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.188">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.212">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -57,8 +57,8 @@
     <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="8.0.11"/>
     <PackageReference Include="Microsoft.Extensions.Options" Version="8.0.2"/>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3"/>
-    <PackageReference Include="Polly" Version="8.5.2"/>
-    <PackageReference Include="Serilog" Version="4.2.0"/>
+    <PackageReference Include="Polly" Version="8.6.2" />
+    <PackageReference Include="Serilog" Version="4.3.0" />
   </ItemGroup>
 
 </Project>

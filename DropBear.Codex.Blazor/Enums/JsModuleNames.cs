@@ -15,5 +15,4 @@ public static class JsModuleNames
     public const string Snackbar = "DropBearSnackbar";
     public const string Utils = "DropBearUtils";
     public const string ValidationErrors = "DropBearValidationErrors";
-
 }

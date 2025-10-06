@@ -1,0 +1,24 @@
+﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+@using DropBear.Codex.Blazor.Helpers
+
+<IconBase Title="@Title"
+          Size="@Size"
+          Color="@Color"
+          CssClass="@CssClass"
+          Clickable="@Clickable"
+          OnClick="@OnClick"
+          @attributes="AdditionalAttributes">
+    @((MarkupString)SvgIcons.EmptyState)
+</IconBase>
+
+@code {
+    [Parameter] public string? Title { get; set; } = "No items";
+    [Parameter] public int Size { get; set; } = 32;
+    [Parameter] public string Color { get; set; } = "currentColor";
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+    [Parameter] public bool Clickable { get; set; } = false;
+    [Parameter] public EventCallback OnClick { get; set; }
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

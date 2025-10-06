@@ -1,14 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
 
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.2.0</Version>
-    <PackageVersion>2025.2.0</PackageVersion>
+    <Version>2025.7.0</Version>
+    <PackageVersion>2025.9.0</PackageVersion>
     <PackageId>DropBear.Codex.Hashing</PackageId>
     <Title>DropBear Codex Hashing</Title>
     <Description>Provides various hashing implementations and utilities for the DropBear.Codex ecosystem</Description>
@@ -43,9 +43,9 @@
   <ItemGroup>
     <PackageReference Include="Blake3" Version="2.0.0" />
     <PackageReference Include="HashDepot" Version="3.1.0"/>
-    <PackageReference Include="JetBrains.Annotations" Version="2024.3.0" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" />
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1"/>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.188">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.212">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

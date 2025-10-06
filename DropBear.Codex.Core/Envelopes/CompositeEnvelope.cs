@@ -1,5 +1,7 @@
 ﻿#region
 
+using System.Collections.Frozen;
+using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Diagnostics;
@@ -11,212 +13,551 @@ namespace DropBear.Codex.Core.Envelopes;
 
 /// <summary>
 ///     A composite envelope that encapsulates a collection of payloads.
-///     Useful for batch processing scenarios.
+///     Immutable and thread-safe by design.
+///     Optimized for .NET 9 with batch processing support.
 /// </summary>
 /// <typeparam name="T">Type of the individual payload.</typeparam>
-public class CompositeEnvelope<T> : Envelope<IList<T>>
+public sealed class CompositeEnvelope<T>
 {
+    private readonly FrozenDictionary<string, object> _headers;
+    private readonly FrozenSet<T> _payloads;
+    private readonly IResultTelemetry _telemetry;
 
-    private readonly IResultTelemetry? _telemetry;
+    #region Batch Processing
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="CompositeEnvelope{T}" /> class
-    ///     with the specified payload collection and optional headers/telemetry.
+    ///     Processes payloads in batches with configurable batch size.
+    ///     Uses modern Chunk() method for efficient batching.
     /// </summary>
-    /// <param name="payloads">The list of payloads. Must not be null.</param>
-    /// <param name="headers">Optional initial headers to include in this envelope.</param>
-    /// <param name="telemetry">Optional telemetry service for logging or diagnostics.</param>
-    /// <exception cref="ArgumentNullException">
-    ///     Thrown if <paramref name="payloads" /> is null.
-    /// </exception>
-    public CompositeEnvelope(
-        IList<T> payloads,
-        IDictionary<string, object>? headers = null,
-        IResultTelemetry? telemetry = null)
-        : base(payloads ?? throw new ArgumentNullException(nameof(payloads)), telemetry)
+    public async ValueTask<Result<Unit, ValidationError>> ProcessInBatchesAsync(
+        Func<IEnumerable<T>, CancellationToken, ValueTask<Result<Unit, ValidationError>>> batchProcessor,
+        int batchSize = 10,
+        CancellationToken cancellationToken = default)
     {
-        if (headers != null)
+        ArgumentNullException.ThrowIfNull(batchProcessor);
+
+        if (batchSize <= 0)
         {
-            foreach (var header in headers)
+            throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be positive");
+        }
+
+        var errors = new List<ValidationError>();
+
+        foreach (var batch in _payloads.Chunk(batchSize))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var result = await batchProcessor(batch, cancellationToken).ConfigureAwait(false);
+            if (!result.IsSuccess && result.Error is not null)
             {
-                AddHeader(header.Key, header.Value);
+                errors.Add(result.Error);
             }
         }
 
-        if(telemetry != null)
+        if (errors.Count > 0)
         {
-            _telemetry = telemetry;
+            var combinedMessage = string.Join("; ", errors.Select(e => e.Message));
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError($"Batch processing failed: {combinedMessage}"));
         }
+
+        return Result<Unit, ValidationError>.Success(Unit.Value);
+    }
+
+    #endregion
+
+    #region Builder Pattern
+
+    /// <summary>
+    ///     Creates a builder for constructing composite envelopes with a fluent API.
+    /// </summary>
+    public static CompositeEnvelopeBuilder<T> CreateBuilder() => new();
+
+    #endregion
+
+    #region Constructors
+
+    /// <summary>
+    ///     Internal constructor used by builder.
+    /// </summary>
+    internal CompositeEnvelope(
+        FrozenSet<T> payloads,
+        FrozenDictionary<string, object> headers,
+        bool isSealed,
+        DateTime createdAt,
+        DateTime? sealedAt,
+        string? signature,
+        IResultTelemetry telemetry)
+    {
+        _payloads = payloads;
+        _headers = headers;
+        IsSealed = isSealed;
+        CreatedAt = createdAt;
+        SealedAt = sealedAt;
+        Signature = signature;
+        _telemetry = telemetry;
+
+        _telemetry.TrackResultCreated(
+            isSealed ? ResultState.Success : ResultState.Pending,
+            typeof(CompositeEnvelope<T>));
     }
 
     /// <summary>
-    ///     Internal constructor for deserialization scenarios.
+    ///     Creates a new composite envelope with the specified payloads.
+    ///     Uses collection expressions for modern syntax.
     /// </summary>
-    /// <param name="dto">The data transfer object (DTO) used for deserialization.</param>
-    /// <param name="telemetry">Optional telemetry service for logging or diagnostics.</param>
-    internal CompositeEnvelope(
-        EnvelopeDto<IList<T>> dto,
+    public CompositeEnvelope(
+        IEnumerable<T> payloads,
+        IReadOnlyDictionary<string, object>? headers = null,
         IResultTelemetry? telemetry = null)
-        : base(dto, telemetry)
     {
-        // No additional checks needed here, as base envelope constructor
-        // already handles null-checking on dto.
+        ArgumentNullException.ThrowIfNull(payloads);
 
-        if(telemetry != null)
+        var payloadList = payloads.ToList();
+        if (payloadList.Count == 0)
         {
-            _telemetry = telemetry;
+            throw new ArgumentException("Payloads collection cannot be empty", nameof(payloads));
         }
+
+        _payloads = payloadList.ToFrozenSet();
+        _headers = headers?.ToFrozenDictionary(StringComparer.Ordinal) ?? FrozenDictionary<string, object>.Empty;
+        IsSealed = false;
+        CreatedAt = DateTime.UtcNow;
+        SealedAt = null;
+        Signature = null;
+        _telemetry = telemetry ?? new DefaultResultTelemetry();
+
+        _telemetry.TrackResultCreated(ResultState.Pending, typeof(CompositeEnvelope<T>));
     }
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    ///     Gets the payloads as a read-only collection.
+    /// </summary>
+    public IReadOnlyCollection<T> Payloads => _payloads;
+
+    /// <summary>
+    ///     Gets the number of payloads in this envelope.
+    /// </summary>
+    public int Count => _payloads.Count;
+
+    /// <summary>
+    ///     Gets the headers associated with this envelope.
+    /// </summary>
+    public IReadOnlyDictionary<string, object> Headers => _headers;
+
+    /// <summary>
+    ///     Gets whether this envelope is sealed.
+    /// </summary>
+    public bool IsSealed { get; }
+
+    /// <summary>
+    ///     Gets the creation timestamp.
+    /// </summary>
+    public DateTime CreatedAt { get; }
+
+    /// <summary>
+    ///     Gets the timestamp when this envelope was sealed, if applicable.
+    /// </summary>
+    public DateTime? SealedAt { get; }
+
+    /// <summary>
+    ///     Gets the digital signature of this envelope, if sealed.
+    /// </summary>
+    public string? Signature { get; }
+
+    /// <summary>
+    ///     Gets the age of this envelope.
+    /// </summary>
+    public TimeSpan Age => DateTime.UtcNow - CreatedAt;
+
+    #endregion
+
+    #region Header Operations
+
+    /// <summary>
+    ///     Tries to get a header value by key.
+    /// </summary>
+    public bool TryGetHeader<TValue>(string key, out TValue? value)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        if (_headers.TryGetValue(key, out var obj) && obj is TValue typed)
+        {
+            value = typed;
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
+    /// <summary>
+    ///     Gets a header value by key, or returns a default value.
+    /// </summary>
+    public TValue? GetHeaderOrDefault<TValue>(string key, TValue? defaultValue = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+
+        return TryGetHeader<TValue>(key, out var value) ? value : defaultValue;
+    }
+
+    #endregion
+
+    #region Processing Operations
+
+    /// <summary>
+    ///     Processes all payloads synchronously.
+    ///     Uses modern collection expressions for error aggregation.
+    /// </summary>
+    public Result<Unit, ValidationError> ProcessPayloads(
+        Func<T, Result<Unit, ValidationError>> processingFunc)
+    {
+        ArgumentNullException.ThrowIfNull(processingFunc);
+
+        var errors = new List<ValidationError>();
+
+        foreach (var payload in _payloads)
+        {
+            var result = processingFunc(payload);
+            if (!result.IsSuccess && result.Error is not null)
+            {
+                errors.Add(result.Error);
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            var combinedMessage = string.Join("; ", errors.Select(e => e.Message));
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError($"Processing failed for {errors.Count} payloads: {combinedMessage}"));
+        }
+
+        return Result<Unit, ValidationError>.Success(Unit.Value);
+    }
+
+    /// <summary>
+    ///     Processes all payloads asynchronously.
+    /// </summary>
+    public async ValueTask<Result<Unit, ValidationError>> ProcessPayloadsAsync(
+        Func<T, CancellationToken, ValueTask<Result<Unit, ValidationError>>> processingFunc,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(processingFunc);
+
+        var errors = new List<ValidationError>();
+
+        foreach (var payload in _payloads)
+        {
+            var result = await processingFunc(payload, cancellationToken).ConfigureAwait(false);
+            if (!result.IsSuccess && result.Error is not null)
+            {
+                errors.Add(result.Error);
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            var combinedMessage = string.Join("; ", errors.Select(e => e.Message));
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError($"Processing failed for {errors.Count} payloads: {combinedMessage}"));
+        }
+
+        return Result<Unit, ValidationError>.Success(Unit.Value);
+    }
+
+    /// <summary>
+    ///     Processes all payloads in parallel with controlled degree of parallelism.
+    ///     Uses modern Parallel.ForAsync for optimal performance.
+    /// </summary>
+    public async ValueTask<Result<Unit, ValidationError>> ProcessPayloadsParallelAsync(
+        Func<T, CancellationToken, ValueTask<Result<Unit, ValidationError>>> processingFunc,
+        int maxDegreeOfParallelism = -1,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(processingFunc);
+
+        var payloadArray = _payloads.ToArray();
+        var results = new Result<Unit, ValidationError>[payloadArray.Length];
+
+        var options = new ParallelOptions
+        {
+            MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken
+        };
+
+        await Parallel.ForAsync(0, payloadArray.Length, options, async (i, ct) =>
+        {
+            results[i] = await processingFunc(payloadArray[i], ct).ConfigureAwait(false);
+        }).ConfigureAwait(false);
+
+        var errors = results
+            .Where(r => !r.IsSuccess && r.Error is not null)
+            .Select(r => r.Error!)
+            .ToList();
+
+        if (errors.Count > 0)
+        {
+            var combinedMessage = string.Join("; ", errors.Select(e => e.Message));
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError($"Processing failed for {errors.Count} payloads: {combinedMessage}"));
+        }
+
+        return Result<Unit, ValidationError>.Success(Unit.Value);
+    }
+
+    #endregion
+
+    #region Transformation
+
+    /// <summary>
+    ///     Maps all payloads to a new type, creating a new composite envelope.
+    /// </summary>
+    public CompositeEnvelope<TResult> Map<TResult>(Func<T, TResult> mapper)
+    {
+        ArgumentNullException.ThrowIfNull(mapper);
+
+        var mappedPayloads = _payloads.Select(mapper).ToFrozenSet();
+
+        return new CompositeEnvelope<TResult>(
+            mappedPayloads,
+            _headers,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
+            _telemetry);
+    }
+
+    /// <summary>
+    ///     Maps all payloads asynchronously to a new type.
+    /// </summary>
+    public async ValueTask<CompositeEnvelope<TResult>> MapAsync<TResult>(
+        Func<T, ValueTask<TResult>> mapperAsync,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mapperAsync);
+
+        var mappedPayloads = new List<TResult>(_payloads.Count);
+
+        foreach (var payload in _payloads)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var mapped = await mapperAsync(payload).ConfigureAwait(false);
+            mappedPayloads.Add(mapped);
+        }
+
+        return new CompositeEnvelope<TResult>(
+            mappedPayloads.ToFrozenSet(),
+            _headers,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
+            _telemetry);
+    }
+
+    /// <summary>
+    ///     Filters payloads based on a predicate.
+    /// </summary>
+    public CompositeEnvelope<T> Where(Func<T, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        var filteredPayloads = _payloads.Where(predicate).ToFrozenSet();
+
+        if (filteredPayloads.Count == 0)
+        {
+            throw new InvalidOperationException("Filter would result in empty composite envelope");
+        }
+
+        return new CompositeEnvelope<T>(
+            filteredPayloads,
+            _headers,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
+            _telemetry);
+    }
+
+    #endregion
+
+    #region Sealing
+
+    /// <summary>
+    ///     Seals this composite envelope with a digital signature.
+    /// </summary>
+    public CompositeEnvelope<T> Seal(Func<IEnumerable<T>, string> signatureGenerator)
+    {
+        ArgumentNullException.ThrowIfNull(signatureGenerator);
+
+        if (IsSealed)
+        {
+            throw new InvalidOperationException("Composite envelope is already sealed");
+        }
+
+        var signature = signatureGenerator(_payloads);
+
+        return new CompositeEnvelope<T>(
+            _payloads,
+            _headers,
+            true,
+            CreatedAt,
+            DateTime.UtcNow,
+            signature,
+            _telemetry);
+    }
+
+    /// <summary>
+    ///     Verifies the signature of a sealed composite envelope.
+    /// </summary>
+    public Result<Unit, ValidationError> VerifySignature(Func<IEnumerable<T>, string, bool> verifier)
+    {
+        ArgumentNullException.ThrowIfNull(verifier);
+
+        if (!IsSealed)
+        {
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError("Composite envelope is not sealed"));
+        }
+
+        if (Signature is null)
+        {
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError("Invalid envelope state for verification"));
+        }
+
+        var isValid = verifier(_payloads, Signature);
+
+        return isValid
+            ? Result<Unit, ValidationError>.Success(Unit.Value)
+            : Result<Unit, ValidationError>.Failure(
+                new ValidationError("Signature verification failed"));
+    }
+
+    #endregion
+}
+
+/// <summary>
+///     Fluent builder for constructing composite envelopes.
+///     Optimized for .NET 9 with modern builder patterns.
+/// </summary>
+public sealed class CompositeEnvelopeBuilder<T>
+{
+    private readonly Dictionary<string, object> _headers = new(StringComparer.Ordinal);
+    private readonly List<T> _payloads = [];
+    private IResultTelemetry? _telemetry;
 
     /// <summary>
     ///     Adds a single payload to the composite envelope.
     /// </summary>
-    /// <param name="payload">The payload to add. Must not be null if <typeparamref name="T" /> is a reference type.</param>
-    /// <returns>
-    ///     A <see cref="Result{TSuccess, TError}" /> indicating success or failure of the operation,
-    ///     with an appropriate <see cref="ValidationError" /> on failure.
-    /// </returns>
-    /// <remarks>
-    ///     This method creates a new list containing all existing payloads plus the new payload,
-    ///     then attempts to update the underlying envelope state.
-    ///     If you are frequently adding items in a loop, consider collecting them first and creating
-    ///     a single updated list to reduce overhead.
-    /// </remarks>
-    public Result<Unit, ValidationError> AddPayload(T payload)
+    public CompositeEnvelopeBuilder<T> AddPayload(T payload)
     {
-        // Defensive check if T is a reference type (can also rely on calling code to pass non-null).
-        if (payload == null && !typeof(T).IsValueType)
-        {
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError("Cannot add a null payload to the envelope.")
-            );
-        }
-
-        // Create a new list with the additional item
-        var newPayloads = new List<T>(Payload) { payload };
-
-        // Attempt to update the underlying payload in base envelope
-        var result = TryModifyPayload(newPayloads);
-        return result.IsSuccess
-            ? Result<Unit, ValidationError>.Success(Unit.Value)
-            : Result<Unit, ValidationError>.Failure(result.Error!);
+        ArgumentNullException.ThrowIfNull(payload);
+        _payloads.Add(payload);
+        return this;
     }
 
     /// <summary>
-    ///     Removes a single payload from the composite envelope.
+    ///     Adds multiple payloads to the composite envelope.
+    ///     Uses params collection for modern syntax.
     /// </summary>
-    /// <param name="payload">The payload to remove.</param>
-    /// <returns>
-    ///     A <see cref="Result{TSuccess, TError}" /> indicating success or failure of the operation,
-    ///     with an appropriate <see cref="ValidationError" /> on failure.
-    /// </returns>
-    /// <remarks>
-    ///     This method creates a new list with all items except the specified <paramref name="payload" />.
-    ///     If multiple items match the payload, they all get removed.
-    /// </remarks>
-    public Result<Unit, ValidationError> RemovePayload(T payload)
+    public CompositeEnvelopeBuilder<T> AddPayloads(params IEnumerable<T> payloads)
     {
-        // You might check for null if T is a reference type
-        if (payload == null && !typeof(T).IsValueType)
+        ArgumentNullException.ThrowIfNull(payloads);
+
+        foreach (var payload in payloads)
         {
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError("Cannot remove a null payload from the envelope.")
-            );
+            ArgumentNullException.ThrowIfNull(payload);
+            _payloads.Add(payload);
         }
 
-        // Filter out all matches
-        var newPayloads = Payload
-            .Where(p => !EqualityComparer<T>.Default.Equals(p, payload))
-            .ToList();
-
-        // Attempt to update the underlying payload
-        var result = TryModifyPayload(newPayloads);
-        return result.IsSuccess
-            ? Result<Unit, ValidationError>.Success(Unit.Value)
-            : Result<Unit, ValidationError>.Failure(result.Error!);
+        return this;
     }
 
     /// <summary>
-    ///     Filters payloads in the composite envelope based on a specified predicate,
-    ///     returning a new <see cref="CompositeEnvelope{T}" /> containing only the matching items.
+    ///     Adds a header to the composite envelope.
     /// </summary>
-    /// <param name="predicate">The predicate to filter payloads by. Must not be null.</param>
-    /// <returns>
-    ///     A <see cref="Result{TSuccess, TError}" /> whose success value is the new
-    ///     <see cref="CompositeEnvelope{T}" /> with filtered payloads, or a <see cref="ValidationError" /> on failure.
-    /// </returns>
-    public Result<CompositeEnvelope<T>, ValidationError> FilterPayloads(Func<T, bool> predicate)
+    public CompositeEnvelopeBuilder<T> WithHeader(string key, object value)
     {
-        if (predicate == null)
-        {
-            return Result<CompositeEnvelope<T>, ValidationError>.Failure(
-                new ValidationError("Predicate cannot be null.")
-            );
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
 
-        try
-        {
-            var filteredPayloads = Payload.Where(predicate).ToList();
-            var filteredEnvelope = new CompositeEnvelope<T>(filteredPayloads, null, _telemetry ?? new DefaultResultTelemetry());
-
-            return Result<CompositeEnvelope<T>, ValidationError>.Success(filteredEnvelope);
-        }
-        catch (Exception ex)
-        {
-            // If the predicate throws, for example
-            return Result<CompositeEnvelope<T>, ValidationError>.Failure(
-                new ValidationError($"Payload filtering failed: {ex.Message}")
-            );
-        }
+        _headers[key] = value;
+        return this;
     }
 
     /// <summary>
-    ///     Performs a batch operation on all payloads using the provided function.
+    ///     Adds multiple headers to the composite envelope.
     /// </summary>
-    /// <param name="processingFunc">
-    ///     A function that processes each payload, returning
-    ///     a <see cref="Result{TSuccess, TError}" /> indicating success or failure for that item.
-    /// </param>
-    /// <returns>
-    ///     A <see cref="Result{TSuccess, TError}" /> indicating success if all items were processed,
-    ///     or a single <see cref="ValidationError" /> if any item fails.
-    /// </returns>
-    /// <remarks>
-    ///     This method is currently atomic: if any item fails to process,
-    ///     the entire operation is considered failed. The error contains how many items failed.
-    /// </remarks>
-    public Result<Unit, ValidationError> ProcessPayloads(Func<T, Result<Unit, ValidationError>> processingFunc)
+    public CompositeEnvelopeBuilder<T> WithHeaders(params IEnumerable<KeyValuePair<string, object>> headers)
     {
-        if (processingFunc == null)
+        ArgumentNullException.ThrowIfNull(headers);
+
+        foreach (var (key, value) in headers)
         {
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError("Processing function cannot be null.")
-            );
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
+            ArgumentNullException.ThrowIfNull(value);
+            _headers[key] = value;
         }
 
+        return this;
+    }
 
-        var results = Payload.Select(item =>
+    /// <summary>
+    ///     Sets the telemetry instance for the composite envelope.
+    /// </summary>
+    public CompositeEnvelopeBuilder<T> WithTelemetry(IResultTelemetry telemetry)
+    {
+        ArgumentNullException.ThrowIfNull(telemetry);
+        _telemetry = telemetry;
+        return this;
+    }
+
+    /// <summary>
+    ///     Builds the composite envelope.
+    /// </summary>
+    public CompositeEnvelope<T> Build()
+    {
+        if (_payloads.Count == 0)
         {
-            try
-            {
-                return processingFunc(item);
-            }
-            catch (Exception ex)
-            {
-                // Wrap thrown exceptions in a failure result
-                return Result<Unit, ValidationError>.Failure(new ValidationError($"Exception: {ex.Message}"));
-            }
-        }).ToList();
-
-        var failedResults = results.Where(r => !r.IsSuccess).ToList();
-
-        if (failedResults.Any())
-        {
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError($"Batch processing failed. {failedResults.Count} items failed.")
-            );
+            throw new InvalidOperationException("At least one payload is required");
         }
 
-        return Result<Unit, ValidationError>.Success(Unit.Value);
+        return new CompositeEnvelope<T>(
+            _payloads.ToFrozenSet(),
+            _headers.ToFrozenDictionary(StringComparer.Ordinal),
+            false,
+            DateTime.UtcNow,
+            null,
+            null,
+            _telemetry ?? new DefaultResultTelemetry());
+    }
+
+    /// <summary>
+    ///     Builds and seals the composite envelope with a signature.
+    /// </summary>
+    public CompositeEnvelope<T> BuildAndSeal(Func<IEnumerable<T>, string> signatureGenerator)
+    {
+        ArgumentNullException.ThrowIfNull(signatureGenerator);
+
+        if (_payloads.Count == 0)
+        {
+            throw new InvalidOperationException("At least one payload is required");
+        }
+
+        var signature = signatureGenerator(_payloads);
+
+        return new CompositeEnvelope<T>(
+            _payloads.ToFrozenSet(),
+            _headers.ToFrozenDictionary(StringComparer.Ordinal),
+            true,
+            DateTime.UtcNow,
+            DateTime.UtcNow,
+            signature,
+            _telemetry ?? new DefaultResultTelemetry());
     }
 }

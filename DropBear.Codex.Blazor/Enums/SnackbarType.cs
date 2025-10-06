@@ -1,27 +1,27 @@
 ﻿namespace DropBear.Codex.Blazor.Enums;
 
 /// <summary>
-///     Defines the types of snackbars that can be used.
+///     Defines the visual type and semantic meaning of a snackbar notification.
 /// </summary>
 public enum SnackbarType
 {
     /// <summary>
-    ///     Information snackbar.
+    ///     General informational message (blue theme).
     /// </summary>
-    Information,
+    Information = 0,
 
     /// <summary>
-    ///     Success snackbar.
+    ///     Success notification (green theme).
     /// </summary>
-    Success,
+    Success = 1,
 
     /// <summary>
-    ///     Warning snackbar.
+    ///     Warning message (amber/orange theme).
     /// </summary>
-    Warning,
+    Warning = 2,
 
     /// <summary>
-    ///     Error snackbar.
+    ///     Error or failure notification (red theme).
     /// </summary>
-    Error
+    Error = 3
 }

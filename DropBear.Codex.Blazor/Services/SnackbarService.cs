@@ -3,6 +3,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Exceptions;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
@@ -14,346 +15,291 @@ using Microsoft.Extensions.Logging;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Thread-safe service for managing snackbar notifications in Blazor Server.
+///     Thread-safe implementation of the snackbar service for Blazor Server applications.
 /// </summary>
-public sealed class SnackbarService : ISnackbarService
+public sealed class SnackbarService : ISnackbarService, IDisposable
 {
-    private const int MaxSnackbars = 5;
-    private const int DefaultSuccessDuration = 5000;
-    private const int DefaultWarningDuration = 8000;
-    private const int DefaultInfoDuration = 5000;
-    private const int OperationTimeoutMs = 5000;
+    #region Fields
 
-    private readonly ConcurrentDictionary<string, SnackbarInstance> _activeSnackbars;
-    private readonly CancellationTokenSource _disposalCts;
+    private readonly ConcurrentDictionary<string, SnackbarInstance> _activeSnackbars = new();
+    private readonly SemaphoreSlim _operationSemaphore = new(1, 1);
     private readonly ILogger<SnackbarService> _logger;
-    private readonly SemaphoreSlim _operationLock;
-    private int _isDisposed;
+    private volatile bool _disposed;
+
+    #endregion
+
+    #region Constructor
 
     public SnackbarService(ILogger<SnackbarService> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _activeSnackbars = new ConcurrentDictionary<string, SnackbarInstance>();
-        _operationLock = new SemaphoreSlim(1, 1);
-        _disposalCts = new CancellationTokenSource();
     }
 
-    public event Func<SnackbarInstance, Task>? OnShow;
-    public event Func<string, Task>? OnRemove;
+    #endregion
 
-    public async Task<Result<Unit, SnackbarError>> Show(
-        SnackbarInstance snackbar,
-        CancellationToken cancellationToken = default)
+    #region Events
+
+    /// <inheritdoc />
+    public event Func<SnackbarInstance, Task> OnShow = delegate { return Task.CompletedTask; };
+
+    /// <inheritdoc />
+    public event Func<string, Task> OnRemove = delegate { return Task.CompletedTask; };
+
+    #endregion
+
+    #region Public Methods
+
+    /// <inheritdoc />
+    public async Task Show(SnackbarInstance snackbar, CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(snackbar);
         ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(snackbar);
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
-        cts.CancelAfter(OperationTimeoutMs);
+        if (string.IsNullOrWhiteSpace(snackbar.Message))
+        {
+            throw new ArgumentException("Snackbar message cannot be empty.", nameof(snackbar));
+        }
 
         try
         {
-            await _operationLock.WaitAsync(cts.Token);
+            await _operationSemaphore.WaitAsync(cancellationToken);
             try
             {
-                await ManageSnackbarLimitAsync(snackbar.Type, cts.Token);
+                // Add to active collection
+                _activeSnackbars.TryAdd(snackbar.Id, snackbar);
 
-                if (_activeSnackbars.TryRemove(snackbar.Id, out _))
+                // Notify subscribers
+                await OnShow.Invoke(snackbar);
+
+                _logger.LogDebug("Snackbar shown: {Id} - {Type} - {Message}",
+                    snackbar.Id, snackbar.Type, snackbar.Message);
+
+                // Auto-remove if duration is set and not manual close
+                if (!snackbar.RequiresManualClose && snackbar.Duration > 0)
                 {
-                    _logger.LogDebug(
-                        "Replaced existing snackbar: {Id}",
-                        snackbar.Id
-                    );
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await Task.Delay(snackbar.Duration, cancellationToken);
+                            await RemoveSnackbar(snackbar.Id, cancellationToken);
+                        }
+                        catch (TaskCanceledException)
+                        {
+                            // Expected when cancelled
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Error auto-removing snackbar: {Id}", snackbar.Id);
+                        }
+                    }, cancellationToken);
                 }
-
-                if (!_activeSnackbars.TryAdd(snackbar.Id, snackbar))
-                {
-                    throw new SnackbarException(
-                        $"Failed to add snackbar: {snackbar.Id}"
-                    );
-                }
-
-                await NotifySnackbarShownAsync(snackbar, cts.Token);
-                return Result<Unit, SnackbarError>.Success(Unit.Value);
             }
             finally
             {
-                _operationLock.Release();
+                _operationSemaphore.Release();
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return Result<Unit, SnackbarError>.Failure(
-                new SnackbarError("Operation timed out")
-            );
-        }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogError(ex, "Failed to show snackbar: {Id}", snackbar.Id);
-            return Result<Unit, SnackbarError>.Failure(
-                new SnackbarError(ex.Message)
-            );
+            throw;
         }
     }
 
-    public async Task<Result<Unit, SnackbarError>> RemoveSnackbar(
-        string id,
+    /// <inheritdoc />
+    public Task ShowInfo(string message, string? title = null, int duration = 5000,
         CancellationToken cancellationToken = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(id);
-        ThrowIfDisposed();
+        var snackbar = new SnackbarInstance
+        {
+            Message = message,
+            Title = title,
+            Type = SnackbarType.Information,
+            Duration = duration,
+            RequiresManualClose = duration <= 0
+        };
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(
-            _disposalCts.Token,
-            cancellationToken
-        );
-        cts.CancelAfter(OperationTimeoutMs);
+        return Show(snackbar, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task ShowSuccess(string message, string? title = null, int duration = 4000,
+        CancellationToken cancellationToken = default)
+    {
+        var snackbar = new SnackbarInstance
+        {
+            Message = message,
+            Title = title,
+            Type = SnackbarType.Success,
+            Duration = duration,
+            RequiresManualClose = duration <= 0
+        };
+
+        return Show(snackbar, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task ShowWarning(string message, string? title = null, int duration = 7000,
+        CancellationToken cancellationToken = default)
+    {
+        var snackbar = new SnackbarInstance
+        {
+            Message = message,
+            Title = title,
+            Type = SnackbarType.Warning,
+            Duration = duration,
+            RequiresManualClose = duration <= 0
+        };
+
+        return Show(snackbar, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public Task ShowError(string message, string? title = null, int duration = 0,
+        CancellationToken cancellationToken = default)
+    {
+        var snackbar = new SnackbarInstance
+        {
+            Message = message,
+            Title = title,
+            Type = SnackbarType.Error,
+            Duration = duration,
+            RequiresManualClose = true // Errors always require manual close
+        };
+
+        return Show(snackbar, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task RemoveSnackbar(string snackbarId, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(snackbarId);
 
         try
         {
-            await _operationLock.WaitAsync(cts.Token);
+            await _operationSemaphore.WaitAsync(cancellationToken);
             try
             {
-                if (!_activeSnackbars.TryRemove(id, out _))
+                if (_activeSnackbars.TryRemove(snackbarId, out var removedSnackbar))
                 {
-                    return Result<Unit, SnackbarError>.Failure(
-                        new SnackbarError($"Snackbar not found: {id}")
-                    );
+                    await OnRemove.Invoke(snackbarId);
+                    _logger.LogDebug("Snackbar removed: {Id}", snackbarId);
                 }
-
-                await NotifySnackbarRemovedAsync(id, cts.Token);
-                return Result<Unit, SnackbarError>.Success(Unit.Value);
             }
             finally
             {
-                _operationLock.Release();
+                _operationSemaphore.Release();
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return Result<Unit, SnackbarError>.Failure(
-                new SnackbarError("Operation timed out")
-            );
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to remove snackbar: {Id}", id);
-            return Result<Unit, SnackbarError>.Failure(
-                new SnackbarError(ex.Message)
-            );
+            _logger.LogError(ex, "Failed to remove snackbar: {Id}", snackbarId);
+            throw;
         }
     }
 
-    public IReadOnlyCollection<SnackbarInstance> GetActiveSnackbars()
+    /// <inheritdoc />
+    public async Task RemoveAll(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        try
+        {
+            await _operationSemaphore.WaitAsync(cancellationToken);
+            try
+            {
+                var snackbarIds = _activeSnackbars.Keys.ToList();
+                _activeSnackbars.Clear();
+
+                // Notify for each removed snackbar
+                foreach (var id in snackbarIds)
+                {
+                    await OnRemove.Invoke(id);
+                }
+
+                _logger.LogDebug("All snackbars removed: {Count}", snackbarIds.Count);
+            }
+            finally
+            {
+                _operationSemaphore.Release();
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogError(ex, "Failed to remove all snackbars");
+            throw;
+        }
+    }
+
+    /// <inheritdoc />
+    public IReadOnlyList<SnackbarInstance> GetActiveSnackbars()
     {
         ThrowIfDisposed();
         return _activeSnackbars.Values.ToList().AsReadOnly();
     }
 
-    public Task<Result<Unit, SnackbarError>> ShowSuccess(
-        string title,
-        string message,
-        int duration = DefaultSuccessDuration,
-        CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public int GetActiveCount()
     {
-        return Show(
-            CreateSnackbar(title, message, SnackbarType.Success, duration),
-            cancellationToken
-        );
+        ThrowIfDisposed();
+        return _activeSnackbars.Count;
     }
 
-    public Task<Result<Unit, SnackbarError>> ShowError(
-        string title,
-        string message,
-        int duration = 0,
-        CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public bool IsActive(string snackbarId)
     {
-        return Show(
-            CreateSnackbar(title, message, SnackbarType.Error, duration, true),
-            cancellationToken
-        );
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(snackbarId);
+        return _activeSnackbars.ContainsKey(snackbarId);
     }
 
-    public Task<Result<Unit, SnackbarError>> ShowWarning(
-        string title,
-        string message,
-        int duration = DefaultWarningDuration,
-        CancellationToken cancellationToken = default)
-    {
-        return Show(
-            CreateSnackbar(title, message, SnackbarType.Warning, duration),
-            cancellationToken
-        );
-    }
+    #endregion
 
-    public Task<Result<Unit, SnackbarError>> ShowInformation(
-        string title,
-        string message,
-        int duration = DefaultInfoDuration,
-        CancellationToken cancellationToken = default)
-    {
-        return Show(
-            CreateSnackbar(title, message, SnackbarType.Information, duration),
-            cancellationToken
-        );
-    }
+    #region Disposal
 
-    public async ValueTask DisposeAsync()
+    /// <summary>
+    ///     Disposes the service and cleans up resources.
+    /// </summary>
+    public void Dispose()
     {
-        if (Interlocked.Exchange(ref _isDisposed, 1) != 0)
-        {
-            return;
-        }
+        if (_disposed) return;
 
         try
         {
-            await _disposalCts.CancelAsync();
-
-            await _operationLock.WaitAsync();
+            _operationSemaphore.Wait(TimeSpan.FromSeconds(5));
             try
             {
-                foreach (var id in _activeSnackbars.Keys.ToList())
-                {
-                    try
-                    {
-                        await RemoveSnackbar(
-                            id,
-                            new CancellationTokenSource(1000).Token
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogWarning(
-                            ex,
-                            "Error removing snackbar during disposal: {Id}",
-                            id
-                        );
-                    }
-                }
-
                 _activeSnackbars.Clear();
+                OnShow = delegate { return Task.CompletedTask; };
+                OnRemove = delegate { return Task.CompletedTask; };
             }
             finally
             {
-                _operationLock.Release();
+                _operationSemaphore.Release();
             }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during SnackbarService disposal");
         }
         finally
         {
-            _disposalCts.Dispose();
-            _operationLock.Dispose();
+            _operationSemaphore.Dispose();
+            _disposed = true;
         }
+
+        GC.SuppressFinalize(this);
     }
 
-    private async Task ManageSnackbarLimitAsync(
-        SnackbarType newType,
-        CancellationToken cancellationToken)
+    private void ThrowIfDisposed()
     {
-        if (_activeSnackbars.Count < MaxSnackbars)
+        if (_disposed)
         {
-            return;
-        }
-
-        if (newType != SnackbarType.Error)
-        {
-            var oldest = _activeSnackbars.Values
-                .Where(s => s.Type != SnackbarType.Error)
-                .OrderBy(s => s.CreatedAt)
-                .FirstOrDefault();
-
-            if (oldest != null)
-            {
-                await RemoveSnackbar(oldest.Id, cancellationToken);
-                return;
-            }
-        }
-
-        if (newType != SnackbarType.Error)
-        {
-            throw new SnackbarException("Maximum error snackbars reached");
+            throw new ObjectDisposedException(nameof(SnackbarService));
         }
     }
 
-    private async Task NotifySnackbarShownAsync(
-        SnackbarInstance snackbar,
-        CancellationToken cancellationToken)
-    {
-        if (OnShow != null)
-        {
-            try
-            {
-                // Check the token before invoking the event
-                cancellationToken.ThrowIfCancellationRequested();
-
-                // Notify listeners that a snackbar has been shown
-                await OnShow.Invoke(snackbar);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Error in OnShow handler for: {Id}",
-                    snackbar.Id
-                );
-            }
-        }
-    }
-
-    private async Task NotifySnackbarRemovedAsync(
-        string id,
-        CancellationToken cancellationToken)
-    {
-        if (OnRemove != null)
-        {
-            try
-            {
-                // Check the token before invoking the event
-                cancellationToken.ThrowIfCancellationRequested();
-
-                // Notify listeners that a snackbar has been removed
-                await OnRemove.Invoke(id);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(
-                    ex,
-                    "Error in OnRemove handler for: {Id}",
-                    id
-                );
-            }
-        }
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static SnackbarInstance CreateSnackbar(
-        string title,
-        string message,
-        SnackbarType type,
-        int duration,
-        bool requiresManualClose = false)
-    {
-        return new SnackbarInstance
-        {
-            Title = title,
-            Message = message,
-            Type = type,
-            Duration = duration,
-            RequiresManualClose = requiresManualClose,
-            CreatedAt = DateTime.UtcNow
-        };
-    }
-
-    private void ThrowIfDisposed([CallerMemberName] string? caller = null)
-    {
-        if (Volatile.Read(ref _isDisposed) != 0)
-        {
-            throw new ObjectDisposedException(
-                GetType().Name,
-                $"Cannot {caller} on disposed SnackbarService"
-            );
-        }
-    }
+    #endregion
 }

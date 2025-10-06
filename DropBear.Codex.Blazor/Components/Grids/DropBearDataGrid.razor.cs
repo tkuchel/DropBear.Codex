@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
@@ -21,6 +22,9 @@ namespace DropBear.Codex.Blazor.Components.Grids;
 /// <summary>
 ///     A Blazor component for rendering a data grid with sorting, searching, and pagination capabilities.
 ///     Optimized for performance with large datasets and resilience against network issues.
+///     Thread safety: This component uses locks and atomic operations to handle concurrent access
+///     to internal data structures. Modifications to the Items collection during rendering or search
+///     operations may cause unexpected behavior.
 /// </summary>
 /// <typeparam name="TItem">The type of the data items.</typeparam>
 public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase where TItem : class
@@ -47,7 +51,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         SizeLimit = SelectorCacheMaxSize, ExpirationScanFrequency = TimeSpan.FromMinutes(10)
     });
 
-    private readonly ConditionalWeakTable<TItem, Dictionary<string, string>> _searchableValues = new();
+    private ConditionalWeakTable<TItem, Dictionary<string, string>> _searchableValues = new();
 
     private readonly MemoryCache _searchTermCache = new(new MemoryCacheOptions
     {
@@ -99,7 +103,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     [Parameter] public EventCallback<TItem> OnRowClicked { get; set; }
     [Parameter] public EventCallback<TItem> OnRowDoubleClicked { get; set; }
     [Parameter] public EventCallback<Result<bool, DataGridError>> OnOperationError { get; set; }
-    [Parameter] public RenderFragment Columns { get; set; } = default!;
+    [Parameter] public RenderFragment Columns { get; set; } = null!;
     [Parameter] public RenderFragment? LoadingTemplate { get; set; }
     [Parameter] public RenderFragment? NoDataTemplate { get; set; }
     [Parameter] public RenderFragment<DataGridError>? ErrorTemplate { get; set; }
@@ -172,12 +176,21 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
             _searchableValues.Clear();
 
-            // Clear memory caches
+            // Clear memory caches BEFORE disposing them
+            try
+            {
+                _searchTermCache.Clear();
+                _compiledSelectors.Clear();
+            }
+            catch (ObjectDisposedException)
+            {
+                // Cache might already be disposed, which is fine
+            }
+
+            // Now dispose the caches
             _searchTermCache.Dispose();
             _compiledSelectors.Dispose();
             _updateLock.Dispose();
-
-            _compiledSelectors.Clear();
         }
         catch (Exception ex)
         {
@@ -185,19 +198,73 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
 
         await base.DisposeAsync();
-
-        GC.SuppressFinalize(this);
     }
 
     protected override async Task OnParametersSetAsync()
     {
         await base.OnParametersSetAsync();
 
+        // Add detailed logging to track the state
+        if (EnableDebugMode)
+        {
+            Logger.Debug("OnParametersSetAsync - Previous Items: {PreviousItems}, New Items: {NewItems}",
+                _previousItems != null ? "not null" : "null",
+                Items != null ? "not null" : "null");
+
+            if (Items != null)
+            {
+                // Force evaluation of Items to check if it contains data
+                var count = Items.Count();
+                Logger.Debug("Items count: {Count}", count);
+            }
+        }
+
         if (!ReferenceEquals(_previousItems, Items))
         {
+            // Store the previous reference
             _previousItems = Items;
-            _cachedItems = Items?.ToList();
+
+            // Ensure Items is evaluated into a concrete List
+            if (Items != null)
+            {
+                try
+                {
+                    var tempList = Items.ToList();
+
+                    if (EnableDebugMode)
+                    {
+                        Logger.Debug("Created cached items list with {Count} items", tempList.Count);
+                    }
+
+                    _cachedItems = tempList;
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error converting Items to List");
+                    _cachedItems = new List<TItem>();
+                }
+            }
+            else
+            {
+                _cachedItems = new List<TItem>();
+
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("Items was null, created empty cached items list");
+                }
+            }
+
             await LoadDataAsync();
+        }
+        else if (_cachedItems == null || _cachedItems.Count == 0)
+        {
+            // Safety check: if _cachedItems is empty but Items contains data, refresh it
+            if (Items != null && Items.Any())
+            {
+                Logger.Debug("Items contains data but _cachedItems is empty, refreshing cache");
+                _cachedItems = Items.ToList();
+                await LoadDataAsync();
+            }
         }
 
         _isInitialized = true;
@@ -221,7 +288,14 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             {
                 IsLoading = true;
                 _metricsService.IsEnabled = EnableDebugMode;
-                _metricsService.StartSearchTimer();
+                await _metricsService.StartSearchTimerAsync();
+
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("LoadDataAsync - Cached Items: {CachedItems}",
+                        _cachedItems != null ? $"not null (Count: {_cachedItems.Count})" : "null");
+                }
+
                 StateHasChanged();
 
                 // Use a fresh weak table to avoid memory issues
@@ -238,21 +312,40 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                         PreComputeSearchableValuesSequential(newSearchableValues);
                     }
 
-                    // Replace the old table with the new one
-                    _searchableValues.Clear();
-                    foreach (var item in _cachedItems)
+                    // Replace the old table with the new one atomically
+                    Interlocked.Exchange(ref _searchableValues, newSearchableValues);
+                }
+                else if (EnableDebugMode)
+                {
+                    Logger.Debug("_cachedItems is null in LoadDataAsync");
+                }
+
+                // Ensure we set _cachedFilteredItems with data if available
+                if (_cachedItems?.Count > 0)
+                {
+                    _cachedFilteredItems = _cachedItems;
+                    if (EnableDebugMode)
                     {
-                        if (newSearchableValues.TryGetValue(item, out var values))
-                        {
-                            _searchableValues.Add(item, values);
-                        }
+                        Logger.Debug("Set _cachedFilteredItems with {Count} items", _cachedFilteredItems.Count);
+                    }
+                }
+                else
+                {
+                    _cachedFilteredItems = new List<TItem>();
+                    if (EnableDebugMode)
+                    {
+                        Logger.Debug("No cached items available, using empty list for _cachedFilteredItems");
                     }
                 }
 
-                _cachedFilteredItems = _cachedItems;
                 UpdateDisplayedItems();
 
-                _metricsService.StopSearchTimer(
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("After UpdateDisplayedItems: DisplayedItems count = {Count}", DisplayedItems.Count());
+                }
+
+                await _metricsService.StopSearchTimerAsync(
                     _cachedItems?.Count ?? 0,
                     _cachedFilteredItems?.Count ?? 0,
                     DisplayedItems.Count());
@@ -262,7 +355,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error loading data in DropBearDataGrid.");
-                _metricsService.Reset();
+                await _metricsService.ResetAsync();
 
                 _lastOperationResult = Result<bool, DataGridError>.Failure(
                     DataGridError.LoadingFailed(ex.Message), ex);
@@ -301,7 +394,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     /// <summary>
     ///     Handles the search input change with debouncing.
     /// </summary>
-    private async void OnSearchInput(ChangeEventArgs e)
+    private async Task<Unit> OnSearchInput(ChangeEventArgs e)
     {
         SearchTerm = e.Value?.ToString() ?? string.Empty;
 
@@ -327,20 +420,31 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             // Ignore cancellation.
         }
+
+        return Unit.Value;
     }
 
     /// <summary>
-    ///     Computes searchable values for a given item.
+    ///     Computes searchable values for a given item in a thread-safe manner.
     /// </summary>
     private Dictionary<string, string> ComputeSearchableValues(TItem item)
     {
-        var values = new Dictionary<string, string>(_columns.Count);
+        // Create a thread-safe snapshot of the columns
+        List<DataGridColumn<TItem>> columnsCopy;
+        lock (_columns)
+        {
+            columnsCopy = _columns.ToList();
+        }
 
-        foreach (var column in _columns.Where(c => c.PropertySelector != null && c.Filterable))
+        var values = new Dictionary<string, string>(columnsCopy.Count, StringComparer.Ordinal);
+
+        foreach (var column in columnsCopy.Where(c => c.PropertySelector != null && c.Filterable))
         {
             try
             {
                 var selectorKey = $"{typeof(TItem).Name}.{column.PropertyName}";
+
+                // Use TryGetValue to avoid potential race conditions with the cache
                 if (!_compiledSelectors.TryGetValue(selectorKey, out Func<TItem, object>? selector))
                 {
                     if (column.PropertySelector == null)
@@ -348,23 +452,44 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                         continue;
                     }
 
-                    selector = column.PropertySelector.Compile();
-                    var cacheOptions = new MemoryCacheEntryOptions
+                    try
                     {
-                        Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
-                    };
-                    _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+                        selector = column.PropertySelector.Compile();
+                        var cacheOptions = new MemoryCacheEntryOptions
+                        {
+                            Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
+                        };
+                        _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error(ex, "Failed to compile selector for {PropertyName}", column.PropertyName);
+                        continue;
+                    }
                 }
 
-                var rawValue = selector!(item);
-                if (rawValue != null)
+                if (selector == null)
                 {
-                    values[column.PropertyName] = FormatValue(rawValue, column.Format).ToLowerInvariant();
+                    continue;
+                }
+
+                try
+                {
+                    var rawValue = selector(item);
+                    if (rawValue != null)
+                    {
+                        values[column.PropertyName] = FormatValue(rawValue, column.Format).ToLowerInvariant();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.Error(ex, "Error extracting value for column {PropertyName}", column.PropertyName);
                 }
             }
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error processing column {Column}", column.PropertyName);
+                // Continue with other columns instead of failing completely
             }
         }
 
@@ -375,13 +500,18 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     {
         return value switch
         {
-            DateTime date => string.IsNullOrEmpty(format) ? date.ToString() : date.ToString(format),
+            DateTime date => string.IsNullOrEmpty(format)
+                ? date.ToString(CultureInfo.InvariantCulture)
+                : date.ToString(format),
             DateTimeOffset dto => string.IsNullOrEmpty(format) ? dto.ToString() : dto.ToString(format),
             IFormattable formattable => formattable.ToString(format, null),
             _ => value.ToString() ?? string.Empty
         };
     }
 
+    /// <summary>
+    ///     Pre-computes searchable values sequentially in a thread-safe manner.
+    /// </summary>
     private void PreComputeSearchableValuesSequential(
         ConditionalWeakTable<TItem, Dictionary<string, string>> searchValues)
     {
@@ -390,15 +520,46 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             return;
         }
 
-        foreach (var item in _cachedItems)
+        // Create a thread-safe snapshot
+        IReadOnlyList<TItem> localItems;
+        lock (_cachedItems)
         {
-            if (!searchValues.TryGetValue(item, out _))
+            localItems = _cachedItems.ToList();
+        }
+
+        foreach (var item in localItems)
+        {
+            if (item == null)
             {
-                searchValues.Add(item, ComputeSearchableValues(item));
+                continue;
+            }
+
+            try
+            {
+                if (!searchValues.TryGetValue(item, out _))
+                {
+                    var values = ComputeSearchableValues(item);
+                    try
+                    {
+                        searchValues.Add(item, values);
+                    }
+                    catch (ArgumentException)
+                    {
+                        // Another thread might have added the item in the meantime
+                        // This is expected and safe to ignore
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error pre-computing search values for item sequentially");
             }
         }
     }
 
+    /// <summary>
+    ///     Pre-computes searchable values for all items in parallel, using a thread-safe approach.
+    /// </summary>
     private Task PreComputeSearchableValuesParallelAsync(
         ConditionalWeakTable<TItem, Dictionary<string, string>> searchValues)
     {
@@ -409,26 +570,52 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
         return Task.Run(() =>
         {
-            var localItems = _cachedItems.ToArray(); // Create local copy for thread safety
-            var itemsProcessed = 0;
+            // Create a thread-safe snapshot of the items
+            TItem[] localItems;
+            lock (_cachedItems)
+            {
+                localItems = _cachedItems.ToArray();
+            }
 
-            Parallel.ForEach(localItems, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
-                item =>
+            var itemsProcessed = 0;
+            var totalItems = localItems.Length;
+            var options = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1) };
+
+            try
+            {
+                Parallel.ForEach(localItems, options, item =>
                 {
+                    if (item == null)
+                    {
+                        return; // Skip null items
+                    }
+
                     try
                     {
-                        if (!searchValues.TryGetValue(item, out _))
+                        // Check if we already have values for this item
+                        if (searchValues.TryGetValue(item, out _))
                         {
-                            var values = ComputeSearchableValues(item);
+                            return; // Skip items that already have values
+                        }
+
+                        var values = ComputeSearchableValues(item);
+
+                        // Thread-safe add to the ConditionalWeakTable
+                        try
+                        {
                             searchValues.Add(item, values);
 
-                            Interlocked.Increment(ref itemsProcessed);
-
-                            if (EnableDebugMode && itemsProcessed % 1000 == 0)
+                            var processed = Interlocked.Increment(ref itemsProcessed);
+                            if (EnableDebugMode && processed % 1000 == 0)
                             {
                                 Logger.Debug("Processed {Count} of {Total} items for search indexing",
-                                    itemsProcessed, localItems.Length);
+                                    processed, totalItems);
                             }
+                        }
+                        catch (ArgumentException)
+                        {
+                            // Another thread might have added the item in the meantime
+                            // This is expected and safe to ignore
                         }
                     }
                     catch (Exception ex)
@@ -436,6 +623,17 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                         Logger.Error(ex, "Error pre-computing search values for item");
                     }
                 });
+
+                if (EnableDebugMode)
+                {
+                    Logger.Debug("Completed processing {Count} items for search indexing",
+                        Volatile.Read(ref itemsProcessed));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error during parallel pre-computation of search values");
+            }
         });
     }
 
@@ -470,6 +668,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         return terms!;
     }
 
+    /// <summary>
+    ///     Determines if an item matches the search criteria in a thread-safe manner.
+    /// </summary>
     private bool ItemMatchesSearch(TItem item, string[] searchTerms)
     {
         if (searchTerms.Length == 0)
@@ -477,10 +678,42 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             return true;
         }
 
-        if (!_searchableValues.TryGetValue(item, out var values))
+        Dictionary<string, string>? values = null;
+        var needsComputation = false;
+
+        // Try to get existing values first
+        try
         {
-            values = ComputeSearchableValues(item);
-            _searchableValues.Add(item, values);
+            needsComputation = !_searchableValues.TryGetValue(item, out values);
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error accessing searchable values for item");
+            needsComputation = true;
+        }
+
+        // Compute values if needed
+        if (needsComputation || values == null)
+        {
+            try
+            {
+                values = ComputeSearchableValues(item);
+
+                // Try to add to the table but don't throw if it fails
+                try
+                {
+                    _searchableValues.Add(item, values);
+                }
+                catch (ArgumentException)
+                {
+                    // Another thread might have added it already, which is fine
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error computing searchable values during search");
+                return false; // If we can't compute values, consider it a non-match
+            }
         }
 
         // If "AND" search logic is desired (all terms must match)
@@ -547,7 +780,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             {
                 _isSearching = true;
                 await InvokeAsync(StateHasChanged);
-                _metricsService.StartSearchTimer();
+                await _metricsService.StartSearchTimerAsync();
 
                 var totalItems = _cachedItems?.Count ?? 0;
                 _previousSearchTerm = SearchTerm;
@@ -559,7 +792,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 CurrentPage = 1;
                 UpdateDisplayedItems();
 
-                _metricsService.StopSearchTimer(
+                await _metricsService.StopSearchTimerAsync(
                     totalItems,
                     _cachedFilteredItems.Count,
                     DisplayedItems.Count());
@@ -569,7 +802,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             catch (Exception ex)
             {
                 Logger.Error(ex, "Error during search in DropBearDataGrid.");
-                _metricsService.Reset();
+                await _metricsService.ResetAsync();
 
                 _lastOperationResult = Result<bool, DataGridError>.Failure(
                     DataGridError.SearchFailed(SearchTerm, ex.Message), ex);
@@ -598,7 +831,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     /// </summary>
     private void UpdateDisplayedItems()
     {
-        if (_cachedFilteredItems is null)
+        if (_cachedFilteredItems is null || _cachedFilteredItems.Count == 0)
         {
             DisplayedItems = Array.Empty<TItem>();
             return;
@@ -606,6 +839,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
         IEnumerable<TItem> items = _cachedFilteredItems;
 
+        // Apply sorting if a sort column is specified
         if (_currentSortColumn?.PropertySelector != null)
         {
             try
@@ -640,6 +874,16 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
             }
         }
+        // If no sort column specified but we have data, ensure we have a stable sort order
+        else if (_cachedFilteredItems.Count > 0)
+        {
+            // Optional: Apply a default sort if needed
+            // For example, if your items have an ID or similar property that could be used
+            // This ensures a consistent display order even without explicit sorting
+
+            // Just use the items as they are (no default sort)
+            items = _cachedFilteredItems;
+        }
 
         // Apply pagination
         var skip = (CurrentPage - 1) * ItemsPerPage;
@@ -655,7 +899,15 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
         }
 
+        // Ensure we convert to a list for stable behavior
         DisplayedItems = items.Skip(skip).Take(take).ToList();
+
+        // Debug logging if needed
+        if (EnableDebugMode)
+        {
+            Logger.Debug("Updated displayed items: {Count} items shown out of {TotalCount} filtered items",
+                DisplayedItems.Count(), _cachedFilteredItems.Count);
+        }
     }
 
     #endregion
@@ -663,7 +915,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     #region Column Management
 
     /// <summary>
-    ///     Adds a new column to the grid.
+    ///     Adds a new column to the grid in a thread-safe manner.
     /// </summary>
     public void AddColumn(DataGridColumn<TItem> column)
     {
@@ -672,30 +924,48 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             throw new ArgumentNullException(nameof(column));
         }
 
-        if (_columns.Any(c => c.PropertyName == column.PropertyName))
+        var columnAdded = false;
+        lock (_columns)
         {
-            Logger.Warning("Column with property name {PropertyName} already exists.", column.PropertyName);
+            if (_columns.Any(c => c.PropertyName == column.PropertyName))
+            {
+                Logger.Warning("Column with property name {PropertyName} already exists.", column.PropertyName);
+                return;
+            }
+
+            _columns.Add(column);
+            columnAdded = true;
+        }
+
+        if (!columnAdded)
+        {
             return;
         }
 
         if (column.PropertySelector != null)
         {
-            var selectorKey = $"{typeof(TItem).Name}.{column.PropertyName}";
-            var selector = column.PropertySelector.Compile();
-            var cacheOptions = new MemoryCacheEntryOptions { Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30) };
-            _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+            try
+            {
+                var selectorKey = $"{typeof(TItem).Name}.{column.PropertyName}";
+                var selector = column.PropertySelector.Compile();
+                var cacheOptions = new MemoryCacheEntryOptions
+                {
+                    Size = 1, SlidingExpiration = TimeSpan.FromMinutes(30)
+                };
+                _compiledSelectors.Set(selectorKey, selector, cacheOptions);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to compile selector for column {Column}", column.PropertyName);
+            }
         }
 
-        _columns.Add(column);
-
         // Clear the search values to force recomputation
-        _searchableValues.Clear();
+        // Use a new ConditionalWeakTable to avoid threading issues
+        var newSearchableValues = new ConditionalWeakTable<TItem, Dictionary<string, string>>();
 
         if (_cachedItems is not null)
         {
-            // Use a new ConditionalWeakTable to avoid threading issues
-            var newSearchableValues = new ConditionalWeakTable<TItem, Dictionary<string, string>>();
-
             if (_cachedItems.Count > ParallelThreshold)
             {
                 _ = PreComputeSearchableValuesParallelAsync(newSearchableValues);
@@ -705,28 +975,28 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 PreComputeSearchableValuesSequential(newSearchableValues);
             }
 
-            // Replace the old table with the new one
-            _searchableValues.Clear();
-            foreach (var item in _cachedItems)
-            {
-                if (newSearchableValues.TryGetValue(item, out var values))
-                {
-                    _searchableValues.Add(item, values);
-                }
-            }
+            // Replace the old table with the new one atomically
+            Interlocked.Exchange(ref _searchableValues, newSearchableValues);
         }
 
         StateHasChanged();
     }
 
     /// <summary>
-    ///     Resets all columns and clears related caches.
+    ///     Resets all columns and clears related caches in a thread-safe manner.
     /// </summary>
     public void ResetColumns()
     {
-        _columns.Clear();
+        lock (_columns)
+        {
+            _columns.Clear();
+        }
+
         _compiledSelectors.Clear();
-        _searchableValues.Clear();
+
+        // Create and set a new empty table instead of clearing the existing one
+        Interlocked.Exchange(ref _searchableValues, new ConditionalWeakTable<TItem, Dictionary<string, string>>());
+
         _searchTermCache.Clear();
         StateHasChanged();
     }
@@ -773,6 +1043,28 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     #endregion
 
     #region Selection and Row Events
+
+    private async Task ClearSelectionAsync()
+    {
+        try
+        {
+            _selectedItems.Clear();
+            if (OnSelectionChanged.HasDelegate)
+            {
+                await OnSelectionChanged.InvokeAsync(_selectedItems.ToList());
+            }
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.Error(ex, "Error clearing selection");
+            _lastOperationResult = Result<bool, DataGridError>.Failure(
+                new DataGridError($"Failed to clear selection: {ex.Message}"), ex);
+            _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
+            StateHasChanged();
+        }
+    }
+
 
     /// <summary>
     ///     Handles changes in row selection, notifying subscribers via the OnSelectionChanged event.
@@ -863,7 +1155,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             await this.WithCircuitResilienceAsync(
                 async token =>
                 {
-                    await OnExportData.InvokeAsync();
+                    await OnExportData.InvokeAsync(token);
                     return true;
                 },
                 TimeSpan.FromMilliseconds(CircuitReconnectTimeoutMs)
@@ -902,7 +1194,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             await this.WithCircuitResilienceAsync(
                 async token =>
                 {
-                    await OnAddItem.InvokeAsync();
+                    await OnAddItem.InvokeAsync(token);
                     return true;
                 },
                 TimeSpan.FromMilliseconds(CircuitReconnectTimeoutMs)
@@ -1317,7 +1609,10 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     /// <returns>The column, or null if not found.</returns>
     public DataGridColumn<TItem>? GetColumn(string propertyName)
     {
-        return _columns.FirstOrDefault(c => c.PropertyName == propertyName);
+        lock (_columns)
+        {
+            return _columns.FirstOrDefault(c => c.PropertyName == propertyName);
+        }
     }
 
     /// <summary>

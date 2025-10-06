@@ -1,0 +1,64 @@
+﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="notification-item @CssClasses" @onclick="ToggleExpanded">
+    <div class="notification-icon">
+        <SvgIcon Type="@IconType"/>
+    </div>
+
+    <div class="notification-content">
+        <div class="notification-header">
+            <h3 class="notification-title">@Notification.Title</h3>
+            <div class="notification-meta">
+                <span class="notification-time" title="@Notification.CreatedAt.ToString("g")">
+                    @RelativeTime
+                </span>
+                @if (Notification.ReadAt.HasValue)
+                {
+                    <span class="notification-status read">Read</span>
+                }
+            </div>
+        </div>
+
+        <div class="notification-message @(IsExpanded ? "expanded" : "")">
+            @((MarkupString)Notification.Message)
+        </div>
+
+        @if (IsExpanded && !string.IsNullOrEmpty(Notification.SerializedData))
+        {
+            <div class="notification-details">
+                <h4>Additional Details</h4>
+                <pre>@FormatData(Notification.GetData())</pre>
+            </div>
+        }
+
+        <div class="notification-actions">
+            @if (!Notification.ReadAt.HasValue)
+            {
+                <button class="btn btn-text" @onclick="HandleMarkAsRead" @onclick:stopPropagation="true">
+                    <MarkReadIcon/>
+                    Mark as read
+                </button>
+            }
+
+            @if (!Notification.DismissedAt.HasValue)
+            {
+                <button class="btn btn-text" @onclick="HandleDismiss" @onclick:stopPropagation="true">
+                    <DismissIcon/>
+                    Dismiss
+                </button>
+            }
+
+            <button class="btn btn-icon" @onclick="ToggleExpanded" @onclick:stopPropagation="true">
+                @if (IsExpanded)
+                {
+                    <CollapseIcon/>
+                }
+                else
+                {
+                    <ExpandIcon/>
+                }
+            </button>
+        </div>
+    </div>
+</div>

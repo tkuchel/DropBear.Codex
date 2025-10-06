@@ -15,3 +15,9 @@
   /* Animation */
   animation: sectionEntry 300ms ease-out;
 }
+
+.section-component-disabled {
+  pointer-events: none; /* Prevent clicks and other interactions */
+  opacity: 0.5;         /* Dim the appearance */
+  user-select: none;    /* Prevent text selection (optional) */
+}

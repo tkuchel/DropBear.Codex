@@ -1,6 +1,6 @@
 ﻿#region
 
-using System.Collections.Concurrent;
+using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
@@ -8,7 +8,7 @@ using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Diagnostics;
 using DropBear.Codex.Core.Results.Errors;
-using Microsoft.Extensions.ObjectPool;
+using DropBear.Codex.Core.Results.Extensions;
 using Serilog;
 
 #endregion
@@ -17,22 +17,38 @@ namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
 ///     An abstract base class for all Result types, providing common functionality.
+///     Optimized for .NET 9 with enhanced performance, reduced allocations, and improved diagnostics.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
-public abstract class ResultBase : IResult
+public abstract class ResultBase : IResult, IResultDiagnostics
 {
+    // Static resources shared by all result types
     private protected static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ResultBase>();
-    private protected static readonly IResultTelemetry Telemetry = new DefaultResultTelemetry();
 
-    // Static pool for exception lists to reduce allocations
-    private static readonly ConcurrentDictionary<Type, DefaultObjectPool<List<Exception>>> ExceptionListPool = new();
-    private static readonly HashSet<ResultState> ValidStates = [..Enum.GetValues<ResultState>()];
-    private readonly IReadOnlyCollection<Exception> _exceptions;
+    // Frozen set for better performance in .NET 9 - using collection expression
+    private static readonly FrozenSet<ResultState> ValidStates =
+    [
+        ResultState.Success,
+        ResultState.Failure,
+        ResultState.Pending,
+        ResultState.Cancelled,
+        ResultState.Warning,
+        ResultState.PartialSuccess,
+        ResultState.NoOp
+    ];
 
-    #region Constructor
+    // Time provider for testability (.NET 9 feature)
+    private static TimeProvider _timeProvider = TimeProvider.System;
+
+    // Diagnostic info for this result
+    private DiagnosticInfo _diagnosticInfo;
+
+    // Exception storage - using collection expression for empty array
+    private Exception[] _exceptions;
 
     /// <summary>
     ///     Initializes a new instance of <see cref="ResultBase" />.
+    ///     Optimized constructor for .NET 9 with improved validation and reduced allocations.
     /// </summary>
     /// <param name="state">The <see cref="ResultState" /> (e.g., Success, Failure, etc.).</param>
     /// <param name="exception">An optional <see cref="Exception" /> if the result failed.</param>
@@ -41,216 +57,222 @@ public abstract class ResultBase : IResult
         ValidateState(state);
 
         State = state;
-        Exception = exception;
-        _exceptions = CreateExceptionCollection(exception);
+        _exceptions = CreateExceptionArray(exception);
+        _diagnosticInfo = DiagnosticInfo.Create(state, GetType());
+
+        // Track telemetry for result creation
+        TrackTelemetryAsync(state, exception);
+    }
+
+    /// <summary>
+    ///     Gets the creation timestamp for this result.
+    /// </summary>
+    public DateTime CreatedAt => _diagnosticInfo.CreatedAt;
+
+    #region Debugger Display
+
+    /// <summary>
+    ///     Gets a string representation for the debugger display.
+    /// </summary>
+    protected virtual string DebuggerDisplay =>
+        $"State = {State}, Success = {IsSuccess}";
+
+    #endregion
+
+    /// <summary>
+    ///     Sets the time provider for testing purposes.
+    ///     Only use this in unit tests.
+    /// </summary>
+    internal static void SetTimeProvider(TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        _timeProvider = timeProvider;
+    }
+
+    /// <summary>
+    ///     Resets the time provider to the system default.
+    /// </summary>
+    internal static void ResetTimeProvider() => _timeProvider = TimeProvider.System;
+
+    #region Pooling Support
+
+    /// <summary>
+    ///     Re-initializes the result state for pooled instances.
+    ///     This is an internal method used only by the compatibility layer pooling.
+    /// </summary>
+    /// <param name="state">The new result state.</param>
+    /// <param name="exception">Optional exception.</param>
+    protected internal void SetStateInternal(ResultState state, Exception? exception)
+    {
+        ValidateState(state);
+
+        // Update the state
+        State = state;
+
+        // Update exceptions
+        _exceptions = CreateExceptionArray(exception);
+
+        // Update diagnostic info
+        _diagnosticInfo = DiagnosticInfo.Create(state, GetType());
 
         // Track telemetry
-        Telemetry.TrackResultCreated(state, GetType());
-
-        if (exception != null)
-        {
-            Telemetry.TrackException(exception, state, GetType());
-        }
+        TrackTelemetryAsync(state, exception);
     }
 
     #endregion
 
-    #region Properties
+    #region Exception Handling
 
     /// <summary>
-    ///     Gets the <see cref="ResultState" /> of this result.
+    ///     Creates an exception array from a single exception (if present).
+    ///     Uses modern collection expressions for optimal allocation.
     /// </summary>
-    public ResultState State { get; }
-
-    /// <summary>
-    ///     Indicates whether the result represents success or partial success.
-    /// </summary>
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    public bool IsSuccess => State is ResultState.Success or ResultState.PartialSuccess;
-
-    /// <summary>
-    ///     Indicates whether the result represents a complete success.
-    /// </summary>
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    public bool IsCompleteSuccess => State == ResultState.Success;
-
-    /// <summary>
-    ///     Indicates whether the result represents a failure.
-    /// </summary>
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    public bool IsFailure => !IsSuccess;
-
-    /// <summary>
-    ///     Gets the primary exception associated with this result, if any.
-    /// </summary>
-    public Exception? Exception { get; }
-
-    /// <summary>
-    ///     Gets all exceptions associated with this result.
-    /// </summary>
-    public virtual IReadOnlyCollection<Exception> Exceptions => _exceptions;
-
-    #endregion
-
-    #region Protected Methods
-
-    /// <summary>
-    ///     Executes the specified action safely, catching and logging any exceptions.
-    /// </summary>
-    /// <param name="action">The action to execute.</param>
-    protected static void SafeExecute(Action action)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        try
-        {
-            action();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Exception during synchronous execution");
-            Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase));
-        }
-    }
-
-    /// <summary>
-    ///     Executes an asynchronous action safely, catching and logging any exceptions.
-    /// </summary>
-    /// <param name="action">The asynchronous action to execute.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>A <see cref="ValueTask" /> representing the asynchronous operation.</returns>
-    protected static async ValueTask SafeExecuteAsync(
-        Func<CancellationToken, Task> action,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-
-        try
-        {
-            await action(cancellationToken).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            Logger.Error(ex, "Exception during asynchronous execution");
-            Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase));
-        }
-    }
-
-    /// <summary>
-    ///     Executes an asynchronous action safely with a timeout.
-    /// </summary>
-    /// <param name="action">The asynchronous action to execute.</param>
-    /// <param name="timeout">The timeout period.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>A <see cref="ValueTask" /> representing the asynchronous operation.</returns>
-    protected static async ValueTask SafeExecuteWithTimeoutAsync(
-        Func<CancellationToken, Task> action,
-        TimeSpan timeout,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(action);
-        if (timeout <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be greater than zero.");
-        }
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(timeout);
-
-        try
-        {
-            await action(cts.Token).ConfigureAwait(false);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            Logger.Error(ex, "Exception during asynchronous execution with timeout");
-            Telemetry.TrackException(ex, ResultState.Failure, typeof(ResultBase));
-        }
-    }
-
-    #endregion
-
-    #region Private Methods
-
-    /// <summary>
-    ///     Validates that the specified state is a valid <see cref="ResultState" />.
-    /// </summary>
-    /// <param name="state">The state to validate.</param>
-    /// <exception cref="ResultValidationException">Thrown if the state is invalid.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void ValidateState(ResultState state)
+    private static Exception[] CreateExceptionArray(Exception? exception)
+    {
+        return exception switch
+        {
+            null => [],
+            AggregateException aggEx => [.. aggEx.Flatten().InnerExceptions],
+            _ => [exception]
+        };
+    }
+
+    #endregion
+
+    #region Telemetry
+
+    /// <summary>
+    ///     Tracks telemetry for this result using the global telemetry provider.
+    ///     Non-blocking operation that respects the configured telemetry mode.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void TrackTelemetryAsync(ResultState state, Exception? exception)
+    {
+        // Only track if telemetry is enabled
+        if (!TelemetryProvider.IsEnabled)
+        {
+            return;
+        }
+
+        var telemetry = TelemetryProvider.Current;
+
+        if (exception is not null)
+        {
+            telemetry.TrackException(exception, state, GetType());
+        }
+        else
+        {
+            telemetry.TrackResultCreated(state, GetType());
+        }
+    }
+
+    #endregion
+
+    #region Performance-Optimized Methods
+
+    /// <summary>
+    ///     Fast path state check without virtual call overhead.
+    ///     Uses aggressive inlining for hot path optimization.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsSuccessFast() => State is ResultState.Success or ResultState.PartialSuccess;
+
+    /// <summary>
+    ///     Fast path failure check.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool IsFailureFast() => State is ResultState.Failure;
+
+    /// <summary>
+    ///     Gets exception count without enumerating the collection.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public int GetExceptionCount() => _exceptions.Length;
+
+    /// <summary>
+    ///     Tries to get the primary exception without allocation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public bool TryGetException(out Exception? exception)
+    {
+        if (_exceptions.Length > 0)
+        {
+            exception = _exceptions[0];
+            return true;
+        }
+
+        exception = null;
+        return false;
+    }
+
+    #endregion
+
+    #region IResult Implementation
+
+    /// <inheritdoc />
+    public ResultState State { get; protected set; }
+
+    /// <inheritdoc />
+    public bool IsSuccess => State.IsSuccessState();
+
+    /// <inheritdoc />
+    public Exception? Exception => _exceptions.Length > 0 ? _exceptions[0] : null;
+
+    /// <inheritdoc />
+    public IReadOnlyCollection<Exception> Exceptions => _exceptions;
+
+    #endregion
+
+    #region IResultDiagnostics Implementation
+
+    /// <inheritdoc />
+    public DiagnosticInfo GetDiagnostics() => _diagnosticInfo;
+
+    /// <inheritdoc />
+    public ActivityContext GetTraceContext()
+    {
+        var current = Activity.Current;
+        return current?.Context ?? default;
+    }
+
+    #endregion
+
+    #region Validation
+
+    /// <summary>
+    ///     Validates that the provided state is a valid ResultState value.
+    ///     Uses modern frozen set lookup for optimal performance.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private protected static void ValidateState(ResultState state)
     {
         if (!ValidStates.Contains(state))
         {
-            throw new ResultValidationException($"Invalid result state: {state}");
+            throw new ResultException($"Invalid ResultState value: {state}");
         }
     }
 
     /// <summary>
-    ///     Creates a collection of exceptions from a single exception.
+    ///     Validates that the error state is consistent with the provided error.
     /// </summary>
-    /// <param name="exception">The exception to include in the collection, if any.</param>
-    /// <returns>A read-only collection of exceptions.</returns>
-    private static IReadOnlyCollection<Exception> CreateExceptionCollection(Exception? exception)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private protected static void ValidateErrorState<TError>(ResultState state, TError? error)
+        where TError : ResultError
     {
-        if (exception is null)
+        // Failure, Warning, PartialSuccess, Cancelled, Pending, NoOp require an error
+        var requiresError = state is ResultState.Failure or ResultState.Warning
+            or ResultState.PartialSuccess or ResultState.Cancelled
+            or ResultState.Pending or ResultState.NoOp;
+
+        if (requiresError && error is null)
         {
-            return Array.Empty<Exception>();
+            throw new ResultException($"ResultState {state} requires an error, but none was provided.");
         }
 
-        var pool = ExceptionListPool.GetOrAdd(
-            typeof(ResultBase),
-            _ => new DefaultObjectPool<List<Exception>>(
-                new DefaultPooledObjectPolicy<List<Exception>>()));
-
-        var exceptionList = pool.Get();
-        try
+        if (!requiresError && error is not null)
         {
-            if (exception is AggregateException aggregateException)
-            {
-                exceptionList.AddRange(aggregateException.InnerExceptions);
-            }
-            else
-            {
-                exceptionList.Add(exception);
-            }
-
-            return exceptionList.ToArray();
-        }
-        finally
-        {
-            exceptionList.Clear();
-            pool.Return(exceptionList);
-        }
-    }
-
-    #endregion
-
-    #region Debugging Support
-
-    private string DebuggerDisplay => $"State = {State}, Success = {IsSuccess}";
-
-    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
-    private string DebugView
-    {
-        get
-        {
-            var items = new Dictionary<string, object>
-                (StringComparer.Ordinal)
-                {
-                    { "State", State },
-                    { "IsSuccess", IsSuccess },
-                    { "IsCompleteSuccess", IsCompleteSuccess },
-                    { "HasException", Exception != null }
-                };
-
-            if (Exception != null)
-            {
-                items.Add("Exception", Exception.Message);
-            }
-
-            return string.Join(Environment.NewLine,
-                items.Select(kvp => $"{kvp.Key} = {kvp.Value}"));
+            Logger.Warning("ResultState {State} does not typically have an error, but one was provided", state);
         }
     }
 

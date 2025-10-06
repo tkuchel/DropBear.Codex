@@ -1,0 +1,27 @@
+﻿@using DropBear.Codex.Blazor.Helpers
+@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+<div class="spinner-container @CssClass" @attributes="AdditionalAttributes">
+    <IconBase Title="@Title"
+              Size="@Size"
+              Color="@Color"
+              CssClass="spinner-icon">
+        @((MarkupString)SvgIcons.Spinner)
+    </IconBase>
+    @if (!string.IsNullOrEmpty(Text))
+    {
+        <span class="spinner-text">@Text</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Title { get; set; } = "Loading";
+    [Parameter] public string? Text { get; set; }
+    [Parameter] public int Size { get; set; } = 24;
+    [Parameter] public string Color { get; set; } = "currentColor";
+    [Parameter] public string CssClass { get; set; } = string.Empty;
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+}

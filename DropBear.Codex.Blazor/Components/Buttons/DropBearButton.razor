@@ -2,16 +2,29 @@
 
 <button @attributes="AdditionalAttributes"
         class="@CssClass"
-        type="@Type"
-        disabled="@IsDisabled"
-        aria-disabled="@IsDisabled"
+        type="@ButtonType"
+        disabled="@(IsDisabled || IsLoading)"
+        aria-disabled="@AriaDisabled"
+        aria-busy="@(IsLoading.ToString().ToLowerInvariant())"
+        title="@Tooltip"
         @onclick="OnClickHandler"
         @onclick:preventDefault="@(Type != "submit")"
         @onclick:stopPropagation="true">
-    @if (!string.IsNullOrEmpty(Icon))
+
+    @if (IsLoading)
     {
-        <i class="@Icon" aria-hidden="true"></i>
+        <span class="dropbear-btn__spinner" aria-hidden="true"></span>
+    }
+    else if (!string.IsNullOrEmpty(Icon))
+    {
+        <i class="@Icon dropbear-btn__icon" aria-hidden="true"></i>
     }
 
-    @ChildContent
+    @if (ChildContent is not null)
+    {
+        <span class="dropbear-btn__content">
+            @ChildContent
+        </span>
+    }
+
 </button>

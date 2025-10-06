@@ -1,38 +1,111 @@
 ﻿#region
 
 using MessagePack;
-using MessagePack.Resolvers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 #endregion
 
 namespace DropBear.Codex.Core.Extensions;
 
 /// <summary>
-///     Extension methods for configuring MessagePack serialization in the dependency injection container.
+///     Extension methods for configuring MessagePack serialization in the DI container.
+///     Optimized for .NET 9 with modern patterns.
 /// </summary>
 public static class MessagePackServiceCollectionExtensions
 {
     /// <summary>
-    ///     Adds MessagePack serialization configuration to the service collection.
+    ///     Adds MessagePack serialization with default configuration.
     /// </summary>
-    /// <param name="services">The <see cref="IServiceCollection" /> to add services to.</param>
-    /// <param name="configureOptions">The <see cref="MessagePackSerializerOptions"/> to use for configuration.</param>
-    /// <returns>The <see cref="IServiceCollection" /> so that additional calls can be chained.</returns>
-    public static IServiceCollection AddMessagePackSerialization(
-        this IServiceCollection services,
-        Action<MessagePackSerializerOptions>? configureOptions = null)
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddMessagePackSerialization(this IServiceCollection services)
     {
-        var options = MessagePackSerializerOptions.Standard
-            .WithCompression(MessagePackCompression.Lz4BlockArray)
-            .WithResolver(StandardResolverAllowPrivate.Instance)
-            .WithSecurity(MessagePackSecurity.UntrustedData);
+        ArgumentNullException.ThrowIfNull(services);
 
-        configureOptions?.Invoke(options);
-
+        var options = MessagePackConfig.GetOptions();
         MessagePackSerializer.DefaultOptions = options;
 
-        services.AddSingleton(options);
+        services.TryAddSingleton(options);
+        return services;
+    }
+
+    /// <summary>
+    ///     Adds MessagePack serialization with custom configuration.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureOptions">Action to configure MessagePack options.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddMessagePackSerialization(
+        this IServiceCollection services,
+        Action<MessagePackSerializerOptions> configureOptions)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configureOptions);
+
+        var options = MessagePackConfig.GetOptions();
+        configureOptions(options);
+
+        MessagePackSerializer.DefaultOptions = options;
+        services.TryAddSingleton(options);
+
+        return services;
+    }
+
+    /// <summary>
+    ///     Adds MessagePack serialization using a builder.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configureBuilder">Action to configure the builder.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddMessagePackSerialization(
+        this IServiceCollection services,
+        Action<MessagePackConfigBuilder> configureBuilder)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        ArgumentNullException.ThrowIfNull(configureBuilder);
+
+        var builder = MessagePackConfig.CreateBuilder();
+        configureBuilder(builder);
+        var options = builder.Build();
+
+        MessagePackSerializer.DefaultOptions = options;
+        services.TryAddSingleton(options);
+
+        return services;
+    }
+
+    /// <summary>
+    ///     Adds high-performance MessagePack serialization (no compression).
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddHighPerformanceMessagePackSerialization(
+        this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var options = MessagePackConfig.GetHighPerformanceOptions();
+        MessagePackSerializer.DefaultOptions = options;
+
+        services.TryAddSingleton(options);
+        return services;
+    }
+
+    /// <summary>
+    ///     Adds compact MessagePack serialization (maximum compression).
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    public static IServiceCollection AddCompactMessagePackSerialization(
+        this IServiceCollection services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+
+        var options = MessagePackConfig.GetCompactOptions();
+        MessagePackSerializer.DefaultOptions = options;
+
+        services.TryAddSingleton(options);
         return services;
     }
 }

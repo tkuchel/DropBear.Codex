@@ -12,147 +12,229 @@ using Microsoft.JSInterop;
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
 /// <summary>
-///     A Blazor component for displaying snackbar notifications.
-///     Optimized for Blazor Server with proper thread safety and state management.
+///     Modern snackbar component optimized for .NET 8+ and Blazor Server.
+///     Provides smooth animations, accessibility support, and responsive design.
 /// </summary>
 public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
-    #region Constants & Fields
+    #region Constants
 
-    private const string JsModuleName = JsModuleNames.Snackbar;
-
-    private readonly SemaphoreSlim _snackbarSemaphore = new(1, 1);
-    private volatile bool _isInitialized;
-    private IJSObjectReference? _jsModule;
-    private DotNetObjectReference<DropBearSnackbar>? _dotNetRef;
-
-    // Flag to track if component should render
-    private bool _shouldRender = true;
-
-    // Cache for computed CSS classes
-    private string? _cachedCssClasses;
+    private const string JsModuleName = "snackbar";
+    private const int DefaultDuration = 5000;
+    private const int MaxRetries = 3;
 
     #endregion
 
-    #region Properties & Parameters
+    #region Fields
+
+    private readonly SemaphoreSlim _operationSemaphore = new(1, 1);
+    private IJSObjectReference? _jsModule;
+    private DotNetObjectReference<DropBearSnackbar>? _dotNetRef;
+    private CancellationTokenSource? _timeoutCts;
+
+    private volatile bool _isInitialized;
+    private volatile bool _isVisible;
+    private int _retryCount;
+
+    // Cached values for performance
+    private string? _cachedCssClasses;
+    private SnackbarType _cachedType = (SnackbarType)(-1);
+
+    #endregion
+
+    #region Parameters
 
     /// <summary>
-    ///     Gets or sets the snackbar instance that contains all the information needed to display the notification.
+    ///     Gets or sets the snackbar instance containing all display information.
     /// </summary>
-    [Parameter]
-    [EditorRequired]
-    public SnackbarInstance SnackbarInstance { get; init; } = null!;
+    [Parameter, EditorRequired]
+    public required SnackbarInstance SnackbarInstance { get; init; }
 
     /// <summary>
-    ///     Event callback that is invoked when the snackbar is closed.
+    ///     Event callback invoked when the snackbar is closed.
     /// </summary>
     [Parameter]
     public EventCallback OnClose { get; set; }
 
     /// <summary>
-    ///     Additional HTML attributes to be applied to the snackbar container.
+    ///     Additional HTML attributes for the container.
     /// </summary>
     [Parameter(CaptureUnmatchedValues = true)]
-    public Dictionary<string, object> AdditionalAttributes { get; set; } = new();
+    public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    #endregion
+
+    #region Properties
 
     /// <summary>
-    ///     Gets the CSS classes for the snackbar, including the type-specific class.
+    ///     Gets the CSS classes with performance caching.
     /// </summary>
     private string CssClasses
     {
         get
         {
-            if (_cachedCssClasses == null)
+            if (_cachedType != SnackbarInstance.Type || _cachedCssClasses is null)
             {
-                _cachedCssClasses = $"dropbear-snackbar {SnackbarInstance.Type.ToString().ToLower()}";
+                _cachedType = SnackbarInstance.Type;
+                _cachedCssClasses = $"dropbear-snackbar {GetTypeClass()} {GetVisibilityClass()}";
             }
 
             return _cachedCssClasses;
         }
     }
 
+    /// <summary>
+    ///     Gets whether the snackbar should auto-close.
+    /// </summary>
+    private bool ShouldAutoClose => !SnackbarInstance.RequiresManualClose && SnackbarInstance.Duration > 0;
+
     #endregion
 
     #region Lifecycle Methods
 
     /// <summary>
-    ///     Controls whether the component should render, optimizing for performance.
-    /// </summary>
-    /// <returns>True if the component should render, false otherwise.</returns>
-    protected override bool ShouldRender()
-    {
-        if (_shouldRender)
-        {
-            _shouldRender = false;
-            return true;
-        }
-
-        return false;
-    }
-
-    /// <summary>
-    ///     Initializes the component by setting up JavaScript interop and starting the snackbar.
+    ///     Initializes the component after first render.
     /// </summary>
     protected override async ValueTask InitializeComponentAsync()
     {
-        if (_isInitialized || IsDisposed)
-        {
-            return;
-        }
+        if (_isInitialized || IsDisposed) return;
 
+        await ExecuteWithRetry(async () =>
+        {
+            await _operationSemaphore.WaitAsync(ComponentToken);
+            try
+            {
+                await InitializeJavaScriptAsync();
+                await ShowSnackbarAsync();
+
+                if (ShouldAutoClose)
+                {
+                    StartAutoCloseTimer();
+                }
+
+                _isInitialized = true;
+                _isVisible = true;
+
+                LogDebug("Snackbar initialized successfully: {Id}", SnackbarInstance.Id);
+            }
+            finally
+            {
+                _operationSemaphore.Release();
+            }
+        });
+    }
+
+    /// <summary>
+    ///     Optimized render control using cached state.
+    /// </summary>
+    protected override bool ShouldRender()
+    {
+        return !IsDisposed && (_cachedCssClasses is null || _cachedType != SnackbarInstance.Type);
+    }
+
+    /// <summary>
+    ///     Cleanup resources on disposal.
+    /// </summary>
+    protected override async ValueTask DisposeAsyncCore()
+    {
         try
         {
-            await _snackbarSemaphore.WaitAsync(ComponentToken);
+            _timeoutCts?.Cancel();
 
-            _jsModule = await GetJsModuleAsync(JsModuleName);
-
-            // Create the snackbar in JS
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.createSnackbar",
-                ComponentToken,
-                SnackbarInstance.Id,
-                SnackbarInstance
-            );
-
-            // Set up .NET reference for callbacks
-            _dotNetRef = DotNetObjectReference.Create(this);
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.setDotNetReference",
-                ComponentToken,
-                SnackbarInstance.Id,
-                _dotNetRef
-            );
-
-            // Show the snackbar
-            await _jsModule.InvokeVoidAsync(
-                $"{JsModuleName}API.show",
-                ComponentToken,
-                SnackbarInstance.Id
-            );
-
-            // Start progress if auto-close enabled
-            if (SnackbarInstance is { RequiresManualClose: false, Duration: > 0 })
+            await _operationSemaphore.WaitAsync(TimeSpan.FromSeconds(2));
+            try
             {
-                await _jsModule.InvokeVoidAsync(
-                    $"{JsModuleName}API.startProgress",
-                    ComponentToken,
-                    SnackbarInstance.Id,
-                    SnackbarInstance.Duration
-                );
+                await CleanupJavaScriptAsync();
             }
-
-            _isInitialized = true;
-            LogDebug("Snackbar initialized: {Id}", SnackbarInstance.Id);
-            _shouldRender = true;
+            finally
+            {
+                _operationSemaphore.Release();
+            }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is TaskCanceledException or ObjectDisposedException)
         {
-            LogError("Failed to initialize snackbar: {Id}", ex, SnackbarInstance.Id);
-            throw;
+            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
         }
         finally
         {
-            _snackbarSemaphore.Release();
+            _dotNetRef?.Dispose();
+            _timeoutCts?.Dispose();
+            _operationSemaphore.Dispose();
+
+            _dotNetRef = null;
+            _jsModule = null;
+            _timeoutCts = null;
+        }
+
+        await base.DisposeAsyncCore();
+    }
+
+    #endregion
+
+    #region JavaScript Interop
+
+    /// <summary>
+    ///     Initializes JavaScript module and setup.
+    /// </summary>
+    private async Task InitializeJavaScriptAsync()
+    {
+        var moduleResult = await GetJsModuleAsync(JsModuleName);
+        if (moduleResult.IsFailure)
+        {
+            throw new InvalidOperationException($"Failed to load JS module: {moduleResult.Exception?.Message}");
+        }
+
+        _jsModule = moduleResult.Value;
+        _dotNetRef = DotNetObjectReference.Create(this);
+
+        // Initialize with optimized single call
+        await _jsModule.InvokeVoidAsync("initialize", ComponentToken,
+            SnackbarInstance.Id, _dotNetRef, SnackbarInstance);
+    }
+
+    /// <summary>
+    ///     Shows the snackbar with animation.
+    /// </summary>
+    private async Task ShowSnackbarAsync()
+    {
+        if (_jsModule is null) return;
+
+        await _jsModule.InvokeVoidAsync("show", ComponentToken, SnackbarInstance.Id);
+        _isVisible = true;
+
+        // Update CSS classes to reflect visibility
+        _cachedCssClasses = null;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    ///     Hides the snackbar with animation.
+    /// </summary>
+    private async Task HideSnackbarAsync()
+    {
+        if (_jsModule is null || !_isVisible) return;
+
+        await _jsModule.InvokeVoidAsync("hide", ComponentToken, SnackbarInstance.Id);
+        _isVisible = false;
+
+        // Update CSS classes to reflect visibility
+        _cachedCssClasses = null;
+    }
+
+    /// <summary>
+    ///     Cleanup JavaScript resources.
+    /// </summary>
+    private async Task CleanupJavaScriptAsync()
+    {
+        if (_jsModule is null) return;
+
+        try
+        {
+            await _jsModule.InvokeVoidAsync("dispose", ComponentToken, SnackbarInstance.Id);
+        }
+        catch (JSException ex) when (IsElementNotFoundError(ex))
+        {
+            LogDebug("Element already removed: {Id}", SnackbarInstance.Id);
         }
     }
 
@@ -161,20 +243,16 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     #region Event Handlers
 
     /// <summary>
-    ///     Handles a click on an action button.
+    ///     Handles action button clicks.
     /// </summary>
-    /// <param name="action">The action that was clicked.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private async Task HandleActionClick(SnackbarAction action)
+    private async Task HandleActionClickAsync(SnackbarAction action)
     {
-        if (!_isInitialized || IsDisposed)
-        {
-            return;
-        }
+        if (!_isInitialized || IsDisposed) return;
 
         try
         {
-            if (action.OnClick != null)
+            if (action.OnClick is not null)
             {
                 await action.OnClick.Invoke();
             }
@@ -184,136 +262,142 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
         catch (Exception ex)
         {
             LogError("Action click failed: {Label}", ex, action.Label);
+            // Always attempt to close on error
             await CloseAsync();
         }
     }
 
     /// <summary>
-    ///     Closes the snackbar, hiding the UI element and invoking the OnClose callback.
+    ///     Closes the snackbar and invokes the close callback.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private async Task CloseAsync()
+    public async Task CloseAsync()
     {
-        if (!_isInitialized || IsDisposed || _jsModule == null)
-        {
-            return;
-        }
+        if (!_isInitialized || IsDisposed) return;
 
         try
         {
-            await _snackbarSemaphore.WaitAsync(ComponentToken);
+            _timeoutCts?.Cancel();
 
+            await _operationSemaphore.WaitAsync(ComponentToken);
             try
             {
-                await _jsModule.InvokeVoidAsync(
-                    $"{JsModuleName}API.hide",
-                    ComponentToken,
-                    SnackbarInstance.Id
-                );
-            }
-            catch (Exception ex) when (IsElementRemovedError(ex))
-            {
-                LogWarning("Element already removed: {Id}", SnackbarInstance.Id);
-            }
+                await HideSnackbarAsync();
 
-            if (OnClose.HasDelegate)
-            {
-                await InvokeAsync(async () => await OnClose.InvokeAsync());
-            }
+                if (OnClose.HasDelegate)
+                {
+                    await OnClose.InvokeAsync();
+                }
 
-            LogDebug("Snackbar closed: {Id}", SnackbarInstance.Id);
-            _shouldRender = true;
+                LogDebug("Snackbar closed: {Id}", SnackbarInstance.Id);
+            }
+            finally
+            {
+                _operationSemaphore.Release();
+            }
         }
         catch (Exception ex)
         {
             LogError("Failed to close snackbar: {Id}", ex, SnackbarInstance.Id);
         }
-        finally
-        {
-            _snackbarSemaphore.Release();
-        }
     }
 
     /// <summary>
-    ///     Method called by JavaScript when the progress animation completes.
+    ///     JavaScript callback when auto-close timer expires.
     /// </summary>
     [JSInvokable]
-    public async Task OnProgressComplete()
+    public async Task OnAutoCloseAsync()
     {
-        LogDebug("Progress complete: {Id}", SnackbarInstance.Id);
-        await InvokeAsync(async () => await CloseAsync());
+        await InvokeAsync(CloseAsync);
     }
 
     #endregion
 
-    #region Cleanup & Helpers
+    #region Helper Methods
 
     /// <summary>
-    ///     Cleans up JavaScript resources when the component is disposed.
+    ///     Starts the auto-close timer for snackbars that should auto-dismiss.
     /// </summary>
-    protected override async Task CleanupJavaScriptResourcesAsync()
+    private void StartAutoCloseTimer()
     {
-        try
-        {
-            if (_jsModule != null)
-            {
-                await _snackbarSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
-                try
-                {
-                    using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
-                    await _jsModule.InvokeVoidAsync(
-                        $"{JsModuleName}API.dispose",
-                        cts.Token,
-                        SnackbarInstance.Id
-                    );
-                    LogDebug("Snackbar resources cleaned up: {Id}", SnackbarInstance.Id);
-                }
-                catch (Exception ex) when (IsElementRemovedError(ex))
-                {
-                    LogWarning("Element already removed during cleanup: {Id}", SnackbarInstance.Id);
-                }
-                finally
-                {
-                    _snackbarSemaphore.Release();
-                }
-            }
-        }
-        catch (Exception ex) when (ex is JSDisconnectedException or TaskCanceledException or ObjectDisposedException)
-        {
-            LogWarning("Cleanup interrupted: {Reason}", ex.GetType().Name);
-        }
-        catch (Exception ex)
-        {
-            LogError("Failed to cleanup snackbar: {Id}", ex, SnackbarInstance.Id);
-        }
-        finally
+        if (!ShouldAutoClose) return;
+
+        _timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
+
+        _ = Task.Run(async () =>
         {
             try
             {
-                _dotNetRef?.Dispose();
-                _snackbarSemaphore.Dispose();
+                await Task.Delay(SnackbarInstance.Duration, _timeoutCts.Token);
+                if (!IsDisposed && _isVisible)
+                {
+                    await InvokeAsync(CloseAsync);
+                }
             }
-            catch (ObjectDisposedException) { }
+            catch (TaskCanceledException)
+            {
+                // Expected when cancelled
+            }
+        }, _timeoutCts.Token);
+    }
 
-            _dotNetRef = null;
-            _jsModule = null;
-            _isInitialized = false;
-            _cachedCssClasses = null;
+    /// <summary>
+    ///     Executes an operation with retry logic.
+    /// </summary>
+    private async Task ExecuteWithRetry(Func<Task> operation, int maxRetries = MaxRetries)
+    {
+        var attempts = 0;
+        while (attempts < maxRetries)
+        {
+            try
+            {
+                await operation();
+                return;
+            }
+            catch (Exception ex) when (ShouldRetry(ex, attempts))
+            {
+                attempts++;
+                if (attempts < maxRetries)
+                {
+                    var delay = TimeSpan.FromMilliseconds(100 * Math.Pow(2, attempts));
+                    await Task.Delay(delay, ComponentToken);
+                    LogWarning("Retrying operation, attempt {Attempt}/{MaxRetries}", attempts, maxRetries);
+                }
+            }
         }
     }
 
     /// <summary>
-    ///     Determines if an exception is related to an element being removed from the DOM.
+    ///     Determines if an exception should trigger a retry.
     /// </summary>
-    /// <param name="ex">The exception to check.</param>
-    /// <returns>True if the exception indicates the element was already removed.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool IsElementRemovedError(Exception? ex)
+    private static bool ShouldRetry(Exception ex, int currentAttempt) =>
+        currentAttempt < MaxRetries && ex is JSException or TaskCanceledException;
+
+    /// <summary>
+    ///     Gets the CSS class for the snackbar type.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetTypeClass() => SnackbarInstance.Type switch
     {
-        return ex is not null &&
-               ex.Message.Contains("removeChild") &&
-               ex.Message.Contains("parentNode is null");
-    }
+        SnackbarType.Success => "success",
+        SnackbarType.Error => "error",
+        SnackbarType.Warning => "warning",
+        SnackbarType.Information => "info",
+        _ => "info"
+    };
+
+    /// <summary>
+    ///     Gets the CSS class for visibility state.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetVisibilityClass() => _isVisible ? "visible" : "hidden";
+
+    /// <summary>
+    ///     Checks if an exception indicates element not found.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsElementNotFoundError(JSException ex) =>
+        ex.Message.Contains("not found") || ex.Message.Contains("null");
 
     #endregion
 }

@@ -1,5 +1,6 @@
 ﻿#region
 
+using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Exceptions;
 using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Results.Base;
@@ -9,104 +10,103 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Blazor.Interfaces;
 
 /// <summary>
-///     Defines a thread-safe service for managing snackbar notifications.
+///     Service for managing snackbar notifications in Blazor applications.
 /// </summary>
-public interface ISnackbarService : IAsyncDisposable
+public interface ISnackbarService
 {
     /// <summary>
-    ///     Occurs when a snackbar is shown.
+    ///     Event fired when a new snackbar is shown.
     /// </summary>
-    event Func<SnackbarInstance, Task>? OnShow;
+    event Func<SnackbarInstance, Task> OnShow;
 
     /// <summary>
-    ///     Occurs when a snackbar is removed.
+    ///     Event fired when a snackbar is removed.
     /// </summary>
-    event Func<string, Task>? OnRemove;
+    event Func<string, Task> OnRemove;
 
     /// <summary>
-    ///     Shows a snackbar with thread-safe state management.
+    ///     Shows a snackbar notification.
     /// </summary>
-    /// <param name="snackbar">The snackbar to show.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Success result or error details.</returns>
-    /// <exception cref="ArgumentNullException">If snackbar is null.</exception>
-    /// <exception cref="ObjectDisposedException">If service is disposed.</exception>
-    Task<Result<Unit, SnackbarError>> Show(
-        SnackbarInstance snackbar,
+    /// <param name="snackbar">The snackbar instance to show.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task Show(SnackbarInstance snackbar, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Shows a simple informational snackbar.
+    /// </summary>
+    /// <param name="message">The message to display.</param>
+    /// <param name="title">Optional title.</param>
+    /// <param name="duration">Duration in milliseconds (0 for manual close).</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task ShowInfo(string message, string? title = null, int duration = 5000,
         CancellationToken cancellationToken = default);
-
-    /// <summary>
-    ///     Removes a snackbar by ID.
-    /// </summary>
-    /// <param name="id">The snackbar ID to remove.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Success result or error details.</returns>
-    /// <exception cref="ArgumentException">If ID is invalid.</exception>
-    /// <exception cref="ObjectDisposedException">If service is disposed.</exception>
-    Task<Result<Unit, SnackbarError>> RemoveSnackbar(
-        string id,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    ///     Gets a thread-safe snapshot of active snackbars.
-    /// </summary>
-    /// <returns>Read-only collection of active snackbars.</returns>
-    /// <exception cref="ObjectDisposedException">If service is disposed.</exception>
-    IReadOnlyCollection<SnackbarInstance> GetActiveSnackbars();
 
     /// <summary>
     ///     Shows a success snackbar.
     /// </summary>
-    /// <param name="title">The snackbar title.</param>
-    /// <param name="message">The snackbar message.</param>
-    /// <param name="duration">Optional duration in milliseconds.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Success result or error details.</returns>
-    Task<Result<Unit, SnackbarError>> ShowSuccess(
-        string title,
-        string message,
-        int duration = 5000,
-        CancellationToken cancellationToken = default);
-
-    /// <summary>
-    ///     Shows an error snackbar.
-    /// </summary>
-    /// <param name="title">The snackbar title.</param>
-    /// <param name="message">The snackbar message.</param>
-    /// <param name="duration">Optional duration (0 for manual close).</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Success result or error details.</returns>
-    Task<Result<Unit, SnackbarError>> ShowError(
-        string title,
-        string message,
-        int duration = 0,
+    /// <param name="message">The message to display.</param>
+    /// <param name="title">Optional title.</param>
+    /// <param name="duration">Duration in milliseconds (0 for manual close).</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task ShowSuccess(string message, string? title = null, int duration = 4000,
         CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Shows a warning snackbar.
     /// </summary>
-    /// <param name="title">The snackbar title.</param>
-    /// <param name="message">The snackbar message.</param>
-    /// <param name="duration">Optional duration in milliseconds.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Success result or error details.</returns>
-    Task<Result<Unit, SnackbarError>> ShowWarning(
-        string title,
-        string message,
-        int duration = 8000,
+    /// <param name="message">The message to display.</param>
+    /// <param name="title">Optional title.</param>
+    /// <param name="duration">Duration in milliseconds (0 for manual close).</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task ShowWarning(string message, string? title = null, int duration = 7000,
         CancellationToken cancellationToken = default);
 
     /// <summary>
-    ///     Shows an information snackbar.
+    ///     Shows an error snackbar (requires manual close by default).
     /// </summary>
-    /// <param name="title">The snackbar title.</param>
-    /// <param name="message">The snackbar message.</param>
-    /// <param name="duration">Optional duration in milliseconds.</param>
-    /// <param name="cancellationToken">Optional cancellation token.</param>
-    /// <returns>Success result or error details.</returns>
-    Task<Result<Unit, SnackbarError>> ShowInformation(
-        string title,
-        string message,
-        int duration = 5000,
+    /// <param name="message">The message to display.</param>
+    /// <param name="title">Optional title.</param>
+    /// <param name="duration">Duration in milliseconds (0 for manual close).</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task ShowError(string message, string? title = null, int duration = 0,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Removes a specific snackbar by ID.
+    /// </summary>
+    /// <param name="snackbarId">The ID of the snackbar to remove.</param>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task RemoveSnackbar(string snackbarId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Removes all active snackbars.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the operation.</param>
+    /// <returns>A task representing the operation.</returns>
+    Task RemoveAll(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    ///     Gets all currently active snackbars.
+    /// </summary>
+    /// <returns>A collection of active snackbar instances.</returns>
+    IReadOnlyList<SnackbarInstance> GetActiveSnackbars();
+
+    /// <summary>
+    ///     Gets the count of active snackbars.
+    /// </summary>
+    /// <returns>The number of active snackbars.</returns>
+    int GetActiveCount();
+
+    /// <summary>
+    ///     Checks if a specific snackbar is currently active.
+    /// </summary>
+    /// <param name="snackbarId">The ID of the snackbar to check.</param>
+    /// <returns>True if the snackbar is active, false otherwise.</returns>
+    bool IsActive(string snackbarId);
 }

@@ -1,17 +1,28 @@
 ﻿namespace DropBear.Codex.Blazor.Enums;
 
+
 /// <summary>
-///     Defines the shapes that can be used for badges.
+/// Defines the shape variants available for badges.
 /// </summary>
 public enum BadgeShape
 {
     /// <summary>
-    ///     Normal shape.
+    /// Standard rounded corners.
     /// </summary>
     Normal,
 
     /// <summary>
-    ///     Pill shape.
+    /// Fully rounded (pill-shaped).
     /// </summary>
-    Pill
+    Pill,
+
+    /// <summary>
+    /// Square corners.
+    /// </summary>
+    Square,
+
+    /// <summary>
+    /// Circular shape (for single characters or icons).
+    /// </summary>
+    Circle
 }

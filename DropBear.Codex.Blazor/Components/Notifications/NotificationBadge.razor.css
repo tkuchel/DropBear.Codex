@@ -1,0 +1,43 @@
+﻿/* NotificationBadge.razor.css */
+
+.notification-badge {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  cursor: pointer;
+  color: var(--clr-text-secondary);
+  transition: color 0.2s ease;
+}
+
+.notification-badge:hover {
+  color: var(--clr-text-primary);
+}
+
+.notification-badge.has-notifications {
+  color: var(--clr-primary);
+}
+
+.notification-badge svg {
+  width: 24px;
+  height: 24px;
+}
+
+.badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background-color: var(--clr-error);
+  color: white;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-medium);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}

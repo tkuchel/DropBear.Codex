@@ -1,37 +1,55 @@
 ﻿@inject NavigationManager NavigationManager
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div id="@ComponentId" class="navigation-buttons">
+<div id="@ComponentId"
+     class="@ContainerCssClass @CssClass"
+     style="--edge-offset: @EdgeOffset; --button-gap: @ButtonGap; --animation-duration: @AnimationDuration;"
+     data-use-backdrop-blur="@UseBackdropBlur.ToString().ToLowerInvariant()">
+
     @if (ShowBackButton)
     {
         <button type="button"
-                class="nav-button back-button"
+                class="dropbear-nav-btn dropbear-nav-btn--back"
                 @onclick="GoBack"
-                aria-label="Go back"
-                style="top: @BackButtonTop; left: @BackButtonLeft;">
-            <i class="fas fa-arrow-left" aria-hidden="true"></i>
+                @onclick:preventDefault="true"
+                @onclick:stopPropagation="true"
+                aria-label="Go back to previous page"
+                title="Go back">
+            <svg class="dropbear-nav-btn__icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M17 10a.75.75 0 01-.75.75H5.612l4.158 3.96a.75.75 0 11-1.04 1.08l-5.5-5.25a.75.75 0 010-1.08l5.5-5.25a.75.75 0 111.04 1.08L5.612 9.25H16.25A.75.75 0 0117 10z" clip-rule="evenodd" />
+            </svg>
         </button>
     }
 
     @if (ShowHomeButton)
     {
         <button type="button"
-                class="nav-button home-button"
+                class="dropbear-nav-btn dropbear-nav-btn--home"
                 @onclick="GoHome"
-                aria-label="Go to home"
-                style="top: @HomeButtonTop; left: @HomeButtonLeft;">
-            <i class="fas fa-home" aria-hidden="true"></i>
+                @onclick:preventDefault="true"
+                @onclick:stopPropagation="true"
+                aria-label="Go to home page"
+                title="Go home">
+            <svg class="dropbear-nav-btn__icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M9.293 2.293a1 1 0 011.414 0l7 7A1 1 0 0117 11h-1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-3a1 1 0 00-1-1H9a1 1 0 00-1 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-6H3a1 1 0 01-.707-1.707l7-7z" clip-rule="evenodd" />
+            </svg>
         </button>
     }
 
     @if (ShowScrollTopButton)
     {
         <button type="button"
-                class="nav-button scroll-top-button @(IsVisible ? "visible" : "")"
+                class="dropbear-nav-btn dropbear-nav-btn--scroll-top @(IsVisible ? "dropbear-nav-btn--visible" : "")"
                 @onclick="ScrollToTop"
-                aria-label="Scroll to top"
-                style="bottom: @ScrollTopButtonBottom; right: @ScrollTopButtonRight;">
-            <i class="fas fa-arrow-up" aria-hidden="true"></i>
+                @onclick:preventDefault="true"
+                @onclick:stopPropagation="true"
+                aria-label="Scroll to top of page"
+                title="Scroll to top"
+                aria-hidden="@(!IsVisible).ToString().ToLowerInvariant()">
+            <svg class="dropbear-nav-btn__icon" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fill-rule="evenodd" d="M10 17a.75.75 0 01-.75-.75V5.612L5.29 9.77a.75.75 0 01-1.08-1.04l5.25-5.5a.75.75 0 011.08 0l5.25 5.5a.75.75 0 11-1.08 1.04L10.75 5.612V16.25A.75.75 0 0110 17z" clip-rule="evenodd" />
+            </svg>
         </button>
     }
+
 </div>

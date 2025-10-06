@@ -1,4 +1,8 @@
-﻿using System.Runtime.InteropServices;
+﻿#region
+
+using System.Runtime.InteropServices;
+
+#endregion
 
 namespace DropBear.Codex.Core.Results.Diagnostics;
 

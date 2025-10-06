@@ -1,18 +1,50 @@
-﻿namespace DropBear.Codex.Blazor.Models;
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace DropBear.Codex.Blazor.Models;
 
 /// <summary>
-///     Represents an actionable button on a snackbar notification.
+///     Represents an action button within a snackbar.
 /// </summary>
-public sealed class SnackbarAction
+public sealed record SnackbarAction
 {
     /// <summary>
-    ///     Gets or sets the label (text) displayed on the action button.
+    ///     Unique identifier for the action.
     /// </summary>
-    public string Label { get; set; } = string.Empty;
+    public string Id { get; init; } = Guid.NewGuid().ToString("N");
 
     /// <summary>
-    ///     Gets or sets a callback invoked when the user clicks this action.
-    ///     If null, no click action is performed.
+    ///     Display text for the action button.
     /// </summary>
-    public Func<Task>? OnClick { get; set; }
+    [Required]
+    public string Label { get; init; } = string.Empty;
+
+    /// <summary>
+    ///     Whether this is the primary action (different styling).
+    /// </summary>
+    public bool IsPrimary { get; init; }
+
+    /// <summary>
+    ///     Whether the action is currently disabled.
+    /// </summary>
+    public bool IsDisabled { get; init; }
+
+    /// <summary>
+    ///     Callback invoked when the action is clicked.
+    /// </summary>
+    public Func<Task>? OnClick { get; init; }
+
+    /// <summary>
+    ///     Optional icon name or CSS class for the action.
+    /// </summary>
+    public string? Icon { get; init; }
+
+    /// <summary>
+    ///     Additional CSS classes for the action button.
+    /// </summary>
+    public string? CssClass { get; init; }
+
+    /// <summary>
+    ///     Tooltip text for the action.
+    /// </summary>
+    public string? Tooltip { get; init; }
 }

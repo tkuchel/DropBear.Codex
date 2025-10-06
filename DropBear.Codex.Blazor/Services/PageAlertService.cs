@@ -1,6 +1,7 @@
 ﻿#region
 
-using System.Collections.Concurrent;
+using System.Collections.Frozen;
+using System.Threading.Channels;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Interfaces;
@@ -13,174 +14,180 @@ using Microsoft.Extensions.Logging;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-///     Thread-safe service for managing page alerts with batching and rate limiting support.
-///     Optimized for Blazor Server environments with Result pattern integration.
+/// High-performance page alert service optimized for .NET 8+ and Blazor Server.
 /// </summary>
 public sealed class PageAlertService : IPageAlertService
 {
-    private const int DefaultSuccessDuration = 5000;
-    private const int DefaultErrorDuration = 8000;
-    private const int DefaultWarningDuration = 6000;
-    private const int DefaultInfoDuration = 5000;
+    #region Constants and Static Data
+
     private const int MaxQueueSize = 100;
-    private const int MaxProcessingRetries = 3;
+    private const int OperationTimeoutMs = 5000;
 
-    private readonly CancellationTokenSource _cts;
-    private readonly SemaphoreSlim _eventSemaphore;
+    // Use FrozenDictionary for better performance in .NET 8+
+    private static readonly FrozenDictionary<PageAlertType, int> DefaultDurations =
+        new Dictionary<PageAlertType, int>
+        {
+            [PageAlertType.Success] = 5000,
+            [PageAlertType.Error] = 8000,
+            [PageAlertType.Warning] = 6000,
+            [PageAlertType.Info] = 5000
+        }.ToFrozenDictionary();
+
+    #endregion
+
+    #region Fields
+
     private readonly ILogger<PageAlertService>? _logger;
-    private readonly ConcurrentQueue<PageAlertInstance> _pendingAlerts;
-    private int _isDisposed;
-    private int _isProcessing;
+    private readonly Channel<PageAlertInstance> _alertChannel;
+    private readonly ChannelWriter<PageAlertInstance> _writer;
+    private readonly ChannelReader<PageAlertInstance> _reader;
+    private readonly CancellationTokenSource _cts = new();
+    private readonly SemaphoreSlim _eventSemaphore = new(1, 1);
 
-    /// <summary>
-    ///     Initializes a new instance of the PageAlertService.
-    /// </summary>
-    /// <param name="logger">Optional logger for diagnostic information.</param>
+    private Task? _processingTask;
+    private volatile bool _isDisposed;
+
+    #endregion
+
+    #region Events
+
+    public event Func<PageAlertInstance, Task>? OnAlert;
+    public event Action? OnClear;
+
+    #endregion
+
+    #region Constructor
+
     public PageAlertService(ILogger<PageAlertService>? logger = null)
     {
         _logger = logger;
-        _pendingAlerts = new ConcurrentQueue<PageAlertInstance>();
-        _cts = new CancellationTokenSource();
-        _eventSemaphore = new SemaphoreSlim(1, 1);
+
+        // Use bounded channel for better memory management
+        var options = new BoundedChannelOptions(MaxQueueSize)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false
+        };
+
+        _alertChannel = Channel.CreateBounded<PageAlertInstance>(options);
+        _writer = _alertChannel.Writer;
+        _reader = _alertChannel.Reader;
+
+        // Start background processing
+        _processingTask = ProcessAlertsAsync(_cts.Token);
+
+        _logger?.LogDebug("PageAlertService initialized with channel-based processing");
     }
 
-    /// <summary>
-    ///     Event fired when a new alert should be shown.
-    /// </summary>
-    public event Func<PageAlertInstance, Task>? OnAlert;
+    #endregion
 
-    /// <summary>
-    ///     Event fired when all alerts should be cleared.
-    /// </summary>
-    public event Action? OnClear;
+    #region Public Async Methods
 
-    /// <summary>
-    ///     Shows a general alert with the specified parameters.
-    /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="type">Type of the alert.</param>
-    /// <param name="duration">Duration in milliseconds (null for default).</param>
-    /// <param name="isPermanent">If true, the alert will not auto-dismiss.</param>
-    /// <returns>A Result indicating success or failure.</returns>
     public async Task<Result<Unit, AlertError>> ShowAlertAsync(
         string title,
         string message,
         PageAlertType type = PageAlertType.Info,
         int? duration = null,
-        bool isPermanent = false)
+        bool isPermanent = false,
+        CancellationToken cancellationToken = default)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) == 1)
+        if (_isDisposed)
         {
             return Result<Unit, AlertError>.Failure(
                 AlertError.CreateFailed("PageAlertService is disposed"));
         }
 
-        if (_pendingAlerts.Count >= MaxQueueSize)
-        {
-            _logger?.LogWarning("Alert queue is full. Dropping alert: {Title}", title);
-            return Result<Unit, AlertError>.Failure(
-                AlertError.CreateFailed("Alert queue is full"));
-        }
-
         try
         {
-            var alertId = $"alert-{Guid.NewGuid():N}";
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                _cts.Token, cancellationToken);
+            linkedCts.CancelAfter(OperationTimeoutMs);
 
             var alert = new PageAlertInstance
             {
-                Id = alertId,
+                Id = $"alert-{Guid.NewGuid():N}",
                 Title = title ?? string.Empty,
                 Message = message ?? string.Empty,
                 Type = type,
-                Duration = duration ?? GetDefaultDuration(type),
-                IsPermanent = isPermanent
+                Duration = duration ?? DefaultDurations[type],
+                IsPermanent = isPermanent,
+                CreatedAt = DateTime.UtcNow
             };
 
-            _pendingAlerts.Enqueue(alert);
+            // Try to write to channel
+            if (!await _writer.WaitToWriteAsync(linkedCts.Token))
+            {
+                return Result<Unit, AlertError>.Failure(
+                    AlertError.CreateFailed("Alert channel is closed"));
+            }
 
-            // Start processing alerts, but don't await it
-            _ = TryProcessPendingAlertsAsync();
+            if (!_writer.TryWrite(alert))
+            {
+                return Result<Unit, AlertError>.Failure(
+                    AlertError.CreateFailed("Alert queue is full"));
+            }
 
             return Result<Unit, AlertError>.Success(Unit.Value);
+        }
+        catch (OperationCanceledException)
+        {
+            _logger?.LogInformation("ShowAlert operation cancelled for: {Title}", title);
+            return Result<Unit, AlertError>.Failure(
+                AlertError.CreateFailed("Operation was cancelled"));
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error creating alert: {Title}", title);
             return Result<Unit, AlertError>.Failure(
-                AlertError.CreateFailed($"Error creating alert: {ex.Message}"));
+                AlertError.CreateFailed($"Error creating alert: {ex.Message}"), ex);
         }
     }
 
-    /// <summary>
-    ///     Shows a success alert.
-    /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="duration">Duration in milliseconds (null for default).</param>
-    /// <returns>A Result indicating success or failure.</returns>
-    public Task<Result<Unit, AlertError>> ShowSuccessAsync(string title, string message,
-        int? duration = DefaultSuccessDuration)
+    public Task<Result<Unit, AlertError>> ShowSuccessAsync(
+        string title,
+        string message,
+        int? duration = 5000,
+        CancellationToken cancellationToken = default)
     {
-        return ShowAlertAsync(title, message, PageAlertType.Success, duration);
+        return ShowAlertAsync(title, message, PageAlertType.Success,
+            duration ?? DefaultDurations[PageAlertType.Success], false, cancellationToken);
     }
 
-    /// <summary>
-    ///     Shows an error alert.
-    /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="duration">Duration in milliseconds (null for default).</param>
-    /// <returns>A Result indicating success or failure.</returns>
-    public Task<Result<Unit, AlertError>> ShowErrorAsync(string title, string message,
-        int? duration = DefaultErrorDuration)
+    public Task<Result<Unit, AlertError>> ShowErrorAsync(
+        string title,
+        string message,
+        int? duration = 8000,
+        CancellationToken cancellationToken = default)
     {
-        return ShowAlertAsync(title, message, PageAlertType.Error, duration);
+        return ShowAlertAsync(title, message, PageAlertType.Error,
+            duration ?? DefaultDurations[PageAlertType.Error], false, cancellationToken);
     }
 
-    /// <summary>
-    ///     Shows a warning alert.
-    /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="isPermanent">If true, the alert will not auto-dismiss.</param>
-    /// <returns>A Result indicating success or failure.</returns>
-    public Task<Result<Unit, AlertError>> ShowWarningAsync(string title, string message, bool isPermanent = false)
+    public Task<Result<Unit, AlertError>> ShowWarningAsync(
+        string title,
+        string message,
+        bool isPermanent = false,
+        CancellationToken cancellationToken = default)
     {
-        return ShowAlertAsync(
-            title,
-            message,
-            PageAlertType.Warning,
-            isPermanent ? null : DefaultWarningDuration,
-            isPermanent
-        );
+        return ShowAlertAsync(title, message, PageAlertType.Warning,
+            isPermanent ? null : DefaultDurations[PageAlertType.Warning], isPermanent, cancellationToken);
     }
 
-    /// <summary>
-    ///     Shows an info alert.
-    /// </summary>
-    /// <param name="title">The alert's title.</param>
-    /// <param name="message">The alert's message body.</param>
-    /// <param name="isPermanent">If true, the alert will not auto-dismiss.</param>
-    /// <returns>A Result indicating success or failure.</returns>
-    public Task<Result<Unit, AlertError>> ShowInfoAsync(string title, string message, bool isPermanent = false)
+    public Task<Result<Unit, AlertError>> ShowInfoAsync(
+        string title,
+        string message,
+        bool isPermanent = false,
+        CancellationToken cancellationToken = default)
     {
-        return ShowAlertAsync(
-            title,
-            message,
-            PageAlertType.Info,
-            isPermanent ? null : DefaultInfoDuration,
-            isPermanent
-        );
+        return ShowAlertAsync(title, message, PageAlertType.Info,
+            isPermanent ? null : DefaultDurations[PageAlertType.Info], isPermanent, cancellationToken);
     }
 
-    /// <summary>
-    ///     Clears all displayed alerts.
-    /// </summary>
-    /// <returns>A Result indicating success or failure.</returns>
-    public async Task<Result<Unit, AlertError>> ClearAsync()
+    public async Task<Result<Unit, AlertError>> ClearAsync(CancellationToken cancellationToken = default)
     {
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) == 1)
+        if (_isDisposed)
         {
             return Result<Unit, AlertError>.Failure(
                 AlertError.CreateFailed("PageAlertService is disposed"));
@@ -188,271 +195,211 @@ public sealed class PageAlertService : IPageAlertService
 
         try
         {
-            var semaphoreAcquired = false;
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+                _cts.Token, cancellationToken);
+            linkedCts.CancelAfter(OperationTimeoutMs);
+
+            var semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(2), linkedCts.Token);
+            if (!semaphoreAcquired)
+            {
+                return Result<Unit, AlertError>.Failure(
+                    AlertError.CreateFailed("Timeout waiting to acquire semaphore"));
+            }
+
             try
             {
-                semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(2), _cts.Token);
-                if (!semaphoreAcquired)
+                // Clear any pending alerts in channel by completing and recreating
+                _writer.Complete();
+
+                // Drain the channel
+                await foreach (var _ in _reader.ReadAllAsync(linkedCts.Token))
                 {
-                    _logger?.LogWarning("Timeout waiting for semaphore in ClearAsync");
-                    return Result<Unit, AlertError>.Failure(
-                        AlertError.CreateFailed("Timeout waiting to clear alerts"));
+                    // Just drain, don't process
                 }
 
-                // Clear pending queue
-                while (_pendingAlerts.TryDequeue(out _)) { }
-
-                // Invoke clear event
                 OnClear?.Invoke();
+                _logger?.LogDebug("Cleared all pending alerts");
 
                 return Result<Unit, AlertError>.Success(Unit.Value);
             }
             finally
             {
-                if (semaphoreAcquired && !_cts.IsCancellationRequested)
-                {
-                    _eventSemaphore.Release();
-                }
+                _eventSemaphore.Release();
             }
         }
         catch (OperationCanceledException)
         {
-            // Expected during shutdown
             return Result<Unit, AlertError>.Failure(
-                AlertError.CreateFailed("Operation was canceled"));
+                AlertError.CreateFailed("Operation was cancelled"));
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error clearing alerts");
             return Result<Unit, AlertError>.Failure(
-                AlertError.CreateFailed($"Error clearing alerts: {ex.Message}"));
+                AlertError.CreateFailed($"Error clearing alerts: {ex.Message}"), ex);
+        }
+    }
+
+    #endregion
+
+    #region Compatibility Sync Methods
+
+    public void ShowAlert(string title, string message, PageAlertType type = PageAlertType.Info,
+        int? duration = null, bool isPermanent = false)
+    {
+        _ = ShowAlertAsync(title, message, type, duration, isPermanent)
+            .ContinueWith(LogTaskErrors, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    public void ShowSuccess(string title, string message, int? duration = 5000)
+    {
+        _ = ShowSuccessAsync(title, message, duration)
+            .ContinueWith(LogTaskErrors, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    public void ShowError(string title, string message, int? duration = 8000)
+    {
+        _ = ShowErrorAsync(title, message, duration)
+            .ContinueWith(LogTaskErrors, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    public void ShowWarning(string title, string message, bool isPermanent = false)
+    {
+        _ = ShowWarningAsync(title, message, isPermanent)
+            .ContinueWith(LogTaskErrors, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    public void ShowInfo(string title, string message, bool isPermanent = false)
+    {
+        _ = ShowInfoAsync(title, message, isPermanent)
+            .ContinueWith(LogTaskErrors, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    public void Clear()
+    {
+        _ = ClearAsync()
+            .ContinueWith(LogTaskErrors, TaskContinuationOptions.OnlyOnFaulted);
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    /// <summary>
+    /// Background task for processing alerts using modern async enumerable.
+    /// </summary>
+    private async Task ProcessAlertsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var alert in _reader.ReadAllAsync(cancellationToken))
+            {
+                await ProcessSingleAlertAsync(alert);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error in alert processing background task");
         }
     }
 
     /// <summary>
-    ///     Disposes the service and its resources
+    /// Process a single alert with error handling.
     /// </summary>
-    public async ValueTask DisposeAsync()
+    private async Task ProcessSingleAlertAsync(PageAlertInstance alert)
     {
-        if (Interlocked.Exchange(ref _isDisposed, 1) == 1)
-        {
-            return;
-        }
+        if (OnAlert == null) return;
 
         try
         {
-            // Cancel any pending operations
+            var semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(1), _cts.Token);
+            if (!semaphoreAcquired)
+            {
+                _logger?.LogWarning("Timeout waiting for semaphore when processing alert: {AlertId}", alert.Id);
+                return;
+            }
+
+            try
+            {
+                await OnAlert.Invoke(alert);
+                _logger?.LogDebug("Alert processed: {AlertId} - {Title}", alert.Id, alert.Title);
+            }
+            finally
+            {
+                _eventSemaphore.Release();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Expected during shutdown
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogError(ex, "Error processing alert: {AlertId}", alert.Id);
+        }
+    }
+
+    /// <summary>
+    /// Log task errors for fire-and-forget operations.
+    /// </summary>
+    private void LogTaskErrors(Task task)
+    {
+        if (task.Exception != null)
+        {
+            _logger?.LogError(task.Exception, "Error in fire-and-forget alert operation");
+        }
+    }
+
+    #endregion
+
+    #region Disposal
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+
+        try
+        {
+            _logger?.LogDebug("Disposing PageAlertService");
+
+            // Complete the channel to stop accepting new alerts
+            _writer.Complete();
+
+            // Cancel background operations
             await _cts.CancelAsync();
 
-            // Clear pending queue to prevent memory leaks
-            while (_pendingAlerts.TryDequeue(out _)) { }
+            // Wait for processing to complete
+            if (_processingTask != null)
+            {
+                try
+                {
+                    await _processingTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected
+                }
+            }
 
             // Dispose resources
             _cts.Dispose();
             _eventSemaphore.Dispose();
 
-            // Clear event handlers to prevent memory leaks
+            // Clear event handlers
             OnAlert = null;
             OnClear = null;
+
+            _logger?.LogDebug("PageAlertService disposed successfully");
         }
         catch (Exception ex)
         {
             _logger?.LogError(ex, "Error disposing PageAlertService");
         }
-    }
-
-    /// <summary>
-    ///     Process pending alerts in a thread-safe manner
-    /// </summary>
-    private async Task TryProcessPendingAlertsAsync()
-    {
-        // Only one processing loop should be active at a time
-        if (Interlocked.CompareExchange(ref _isProcessing, 1, 0) == 1)
-        {
-            return;
-        }
-
-        if (Interlocked.CompareExchange(ref _isDisposed, 0, 0) == 1 || OnAlert == null)
-        {
-            Interlocked.Exchange(ref _isProcessing, 0);
-            return;
-        }
-
-        var semaphoreAcquired = false;
-        try
-        {
-            for (var retry = 0; retry < MaxProcessingRetries; retry++)
-            {
-                try
-                {
-                    // Try to acquire the semaphore with a reasonable timeout
-                    semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(2), _cts.Token);
-                    if (!semaphoreAcquired)
-                    {
-                        // If we can't acquire the semaphore, log and break the retry loop
-                        _logger?.LogWarning("Timeout waiting for semaphore in TryProcessPendingAlertsAsync");
-                        break;
-                    }
-
-                    // Process all pending alerts
-                    while (_pendingAlerts.TryDequeue(out var alert))
-                    {
-                        try
-                        {
-                            await OnAlert.Invoke(alert);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger?.LogError(ex, "Error processing alert: {AlertId}", alert.Id);
-                        }
-                    }
-
-                    // Processing succeeded, break the retry loop
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    // Expected during shutdown, break the retry loop
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    _logger?.LogError(ex, "Error processing pending alerts (attempt {Retry})", retry + 1);
-
-                    // If we've acquired the semaphore but encountered an error, release it
-                    if (semaphoreAcquired && !_cts.IsCancellationRequested)
-                    {
-                        _eventSemaphore.Release();
-                        semaphoreAcquired = false;
-                    }
-
-                    // Short delay before retry
-                    await Task.Delay(50, _cts.Token);
-                }
-            }
-        }
-        finally
-        {
-            // Ensure semaphore is released if we acquired it
-            if (semaphoreAcquired && !_cts.IsCancellationRequested)
-            {
-                _eventSemaphore.Release();
-            }
-
-            // Reset processing flag
-            Interlocked.Exchange(ref _isProcessing, 0);
-        }
-    }
-
-    /// <summary>
-    ///     Returns the default duration based on alert type
-    /// </summary>
-    private static int GetDefaultDuration(PageAlertType type)
-    {
-        return type switch
-        {
-            PageAlertType.Success => DefaultSuccessDuration,
-            PageAlertType.Error => DefaultErrorDuration,
-            PageAlertType.Warning => DefaultWarningDuration,
-            PageAlertType.Info => DefaultInfoDuration,
-            _ => DefaultInfoDuration
-        };
-    }
-
-    #region Backwards Compatibility Methods
-
-    // These methods maintain backwards compatibility with the old sync API
-
-    /// <summary>
-    ///     Shows a general alert (legacy sync method).
-    /// </summary>
-    public void ShowAlert(string title, string message, PageAlertType type = PageAlertType.Info,
-        int? duration = null, bool isPermanent = false)
-    {
-        // Fire-and-forget async operation with error handling
-        _ = ShowAlertAsync(title, message, type, duration, isPermanent)
-            .ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    _logger?.LogError(task.Exception, "Error in ShowAlert fire-and-forget");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-    }
-
-    /// <summary>
-    ///     Shows a success alert (legacy sync method).
-    /// </summary>
-    public void ShowSuccess(string title, string message, int? duration = DefaultSuccessDuration)
-    {
-        _ = ShowSuccessAsync(title, message, duration)
-            .ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    _logger?.LogError(task.Exception, "Error in ShowSuccess fire-and-forget");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-    }
-
-    /// <summary>
-    ///     Shows an error alert (legacy sync method).
-    /// </summary>
-    public void ShowError(string title, string message, int? duration = DefaultErrorDuration)
-    {
-        _ = ShowErrorAsync(title, message, duration)
-            .ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    _logger?.LogError(task.Exception, "Error in ShowError fire-and-forget");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-    }
-
-    /// <summary>
-    ///     Shows a warning alert (legacy sync method).
-    /// </summary>
-    public void ShowWarning(string title, string message, bool isPermanent = false)
-    {
-        _ = ShowWarningAsync(title, message, isPermanent)
-            .ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    _logger?.LogError(task.Exception, "Error in ShowWarning fire-and-forget");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-    }
-
-    /// <summary>
-    ///     Shows an info alert (legacy sync method).
-    /// </summary>
-    public void ShowInfo(string title, string message, bool isPermanent = false)
-    {
-        _ = ShowInfoAsync(title, message, isPermanent)
-            .ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    _logger?.LogError(task.Exception, "Error in ShowInfo fire-and-forget");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-    }
-
-    /// <summary>
-    ///     Clears all displayed alerts (legacy sync method).
-    /// </summary>
-    public void Clear()
-    {
-        _ = ClearAsync()
-            .ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    _logger?.LogError(task.Exception, "Error in Clear fire-and-forget");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
     }
 
     #endregion

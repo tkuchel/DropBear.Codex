@@ -36,7 +36,15 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
         {
             await _downloadSemaphore.WaitAsync(ComponentToken);
 
-            _module = await GetJsModuleAsync(JsModuleName);
+            var moduleResult = await GetJsModuleAsync(JsModuleName);
+
+            if (moduleResult.IsFailure)
+            {
+                LogError("Failed to load JS module: {Error}", moduleResult.Exception);
+                return;
+            }
+
+            _module = moduleResult.Value;
 
             // Check if module is initialized
             var isInitialized = await _module.InvokeAsync<bool>($"{JsModuleName}API.isInitialized");
@@ -464,7 +472,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
         await using var resultStream = await DownloadFileAsync(progress, token);
 
         // Rent a buffer from the pool and create a buffered stream
-        byte[] buffer = BufferPool.Rent(BufferSize);
+        var buffer = BufferPool.Rent(BufferSize);
         try
         {
             // Use optimized buffering for large streams with the pooled buffer
@@ -504,7 +512,15 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
     private async Task PerformJsDownload(DotNetStreamReference streamRef, CancellationToken token)
     {
         // Use the helper method instead of directly referencing _module
-        var module = await GetJsDownloaderModuleAsync();
+        var moduleResult = await GetJsDownloaderModuleAsync();
+
+        if (moduleResult.IsFailure)
+        {
+            LogError("Failed to download JS module: {Error}", moduleResult.Exception);
+            return;
+        }
+
+        var module = moduleResult.Value;
 
         try
         {
@@ -689,12 +705,25 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
     /// <summary>
     ///     Gets the JavaScript module instance, creating it if needed.
     /// </summary>
-    /// <returns>A ValueTask containing the JavaScript module reference.</returns>
-    private ValueTask<IJSObjectReference> GetJsDownloaderModuleAsync()
+    /// <returns>A result containing the JavaScript module reference or an error.</returns>
+    private async ValueTask<Result<IJSObjectReference, JsInteropError>> GetJsDownloaderModuleAsync()
     {
-        return _module != null
-            ? new ValueTask<IJSObjectReference>(_module)
-            : new ValueTask<IJSObjectReference>(GetJsModuleAsync(JsModuleName));
+        // If module is already loaded, return it as a successful result
+        if (_module != null)
+        {
+            return Result<IJSObjectReference, JsInteropError>.Success(_module);
+        }
+
+        // Otherwise, load the module and handle the result
+        var moduleResult = await GetJsModuleAsync(JsModuleName);
+
+        if (moduleResult.IsSuccess)
+        {
+            // Cache the module reference for future use
+            _module = moduleResult.Value;
+        }
+
+        return moduleResult;
     }
 
     #endregion

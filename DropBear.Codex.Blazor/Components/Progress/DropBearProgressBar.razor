@@ -2,57 +2,77 @@
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @namespace DropBear.Codex.Blazor.Components.Progress
 
-<div class="dropbear-progress-container @(IsIndeterminate ? "indeterminate" : "")"
+<div class="dropbear-progress"
      role="progressbar"
      aria-valuemin="0"
      aria-valuemax="100"
-     aria-valuenow="@(_state?.OverallProgress ?? 0)">
+     aria-valuenow="@CurrentProgress"
+     aria-label="@Message">
 
-    <div class="dropbear-progress">
-        <div class="progress-header">
-            <div class="progress-message">@Message</div>
-            @if (!IsIndeterminate && _state != null)
+    <!-- Header Section -->
+    <div class="progress-header">
+        <div class="progress-info">
+            <h3 class="progress-title">@Message</h3>
+            @if (ShowPercentage && !IsIndeterminate)
             {
-                <div class="progress-step">@($"{_state.OverallProgress:F0}%")</div>
+                <span class="progress-percentage">@($"{CurrentProgress:F0}%")</span>
             }
         </div>
 
-        <div class="progress-bar-container">
-            <div class="progress-bar @(IsIndeterminate ? "indeterminate" : "")"
-                 style="@(!IsIndeterminate && _state != null ? $"width: {_state.OverallProgress:F1}%" : "")">
-            </div>
-        </div>
-
-        @if (!IsIndeterminate && Steps?.Any() == true)
+        @if (ShowEstimatedTime && !IsIndeterminate && CurrentProgress > 0 && CurrentProgress < 100)
         {
-            <div class="steps-container">
-                @foreach (var (step, index) in GetVisibleSteps())
-                {
-                    var position = index switch
-                    {
-                        0 => StepPosition.Previous,
-                        1 => StepPosition.Current,
-                        2 => StepPosition.Next,
-                        _ => StepPosition.Next
-                    };
-
-                    var stepState = _state?.GetOrCreateStepState(step.Id);
-
-                    <DropBearProgressBarStep
-                        Config="step"
-                        Position="position"
-                        Progress="stepState?.Progress ?? 0"
-                        Status="stepState?.Status ?? StepStatus.NotStarted"/>
-                }
-            </div>
-        }
-
-        @if (!IsIndeterminate && _state?.OverallProgress is > 0 and < 100)
-        {
-            <div class="estimated-time">
-                <i class="fas fa-clock"></i>
-                <span>@GetEstimatedTimeRemaining()</span>
+            <div class="progress-meta">
+                <div class="estimated-time">
+                    <svg class="time-icon" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                    </svg>
+                    <span>@GetEstimatedTimeRemaining()</span>
+                </div>
             </div>
         }
     </div>
+
+    <!-- Main Progress Bar -->
+    <div class="progress-track" data-variant="@Variant.ToString().ToLowerInvariant()">
+        <div class="progress-fill @(IsIndeterminate ? "indeterminate" : "")"
+             style="@GetProgressFillStyle()">
+            @if (!IsIndeterminate && ShowProgressGlow)
+            {
+                <div class="progress-glow"></div>
+            }
+        </div>
+    </div>
+
+    <!-- Steps Section -->
+    @if (HasSteps)
+    {
+        <div class="steps-section">
+            <div class="steps-container" data-layout="@StepsLayout.ToString().ToLowerInvariant()">
+                @foreach (var (step, position) in GetVisibleSteps())
+                {
+                    <DropBearProgressBarStep
+                        Config="step"
+                        Position="position"
+                        Progress="GetStepProgress(step.Id)"
+                        Status="GetStepStatus(step.Id)"
+                        Variant="Variant"
+                        CompactMode="CompactSteps" />
+                }
+            </div>
+        </div>
+    }
+
+    <!-- Status Messages -->
+    @if (!string.IsNullOrEmpty(StatusMessage))
+    {
+        <div class="progress-status" data-status="@GetCurrentStatusType()">
+            <div class="status-content">
+                @if (ShowStatusIcon)
+                {
+                    <div class="status-icon">@GetStatusIcon()</div>
+                }
+                <span class="status-text">@StatusMessage</span>
+            </div>
+        </div>
+    }
 </div>

@@ -1,37 +1,47 @@
 ﻿namespace DropBear.Codex.Blazor.Enums;
 
 /// <summary>
-///     Defines the colors that can be used for badges.
+/// Defines the semantic colors available for badges.
 /// </summary>
 public enum BadgeColor
 {
     /// <summary>
-    ///     Default color.
+    /// Default neutral color.
     /// </summary>
     Default,
 
     /// <summary>
-    ///     Secondary color.
+    /// Primary brand color.
+    /// </summary>
+    Primary,
+
+    /// <summary>
+    /// Secondary color.
     /// </summary>
     Secondary,
 
     /// <summary>
-    ///     Success color.
+    /// Success state color (green).
     /// </summary>
     Success,
 
     /// <summary>
-    ///     Information color.
+    /// Information state color (blue).
     /// </summary>
     Information,
 
     /// <summary>
-    ///     Warning color.
+    /// Warning state color (amber/orange).
     /// </summary>
     Warning,
 
     /// <summary>
-    ///     Error color.
+    /// Error/danger state color (red).
     /// </summary>
-    Error
+    Error,
+
+    /// <summary>
+    /// Neutral gray color.
+    /// </summary>
+    Neutral
 }

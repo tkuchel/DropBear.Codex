@@ -1,9 +1,8 @@
 ﻿#region
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
-using DropBear.Codex.Core.Interfaces;
-using DropBear.Codex.Core.Results.Attributes;
 using DropBear.Codex.Core.Results.Base;
 
 #endregion
@@ -11,203 +10,425 @@ using DropBear.Codex.Core.Results.Base;
 namespace DropBear.Codex.Core.Results.Async;
 
 /// <summary>
-///     Represents a Result that contains an IAsyncEnumerable value.
+///     Represents a result that wraps an asynchronous enumerable.
+///     Optimized for .NET 9 with modern async patterns.
 /// </summary>
-[AsyncEnumerableResult(typeof(IAsyncEnumerable<>))]
-public sealed class AsyncEnumerableResult<T, TError> : Result<IAsyncEnumerable<T>, TError>, IAsyncEnumerableResult<T>
+/// <typeparam name="T">The type of items in the async enumerable.</typeparam>
+/// <typeparam name="TError">The error type.</typeparam>
+[DebuggerDisplay("{DebuggerDisplay,nq}")]
+public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     where TError : ResultError
 {
     private readonly IAsyncEnumerable<T>? _enumerable;
-    private int? _count;
 
+    /// <summary>
+    ///     Initializes a new instance of AsyncEnumerableResult.
+    /// </summary>
     private AsyncEnumerableResult(
-        IAsyncEnumerable<T> enumerable,
+        IAsyncEnumerable<T>? enumerable,
         ResultState state,
         TError? error = null,
         Exception? exception = null)
-        : base(enumerable, state, error, exception)
+        : base(state, error, exception)
     {
         _enumerable = enumerable;
+        Exceptions = exception is not null ? [exception] : [];
     }
 
-    public async ValueTask<int> GetCountAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    ///     Gets the exceptions collection. Required by base class.
+    /// </summary>
+    public new IReadOnlyCollection<Exception> Exceptions { get; }
+
+    #region Debugger Display
+
+    protected override string DebuggerDisplay =>
+        $"State = {State}, IsSuccess = {IsSuccess}, " +
+        $"HasEnumerable = {_enumerable is not null}, " +
+        $"Error = {Error?.Message ?? "null"}";
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates a cancellation error.
+    /// </summary>
+    private static TError CreateCancellationError()
     {
-        if (_count.HasValue)
-        {
-            return _count.Value;
-        }
-
-        var count = 0;
-        await foreach (var _ in _enumerable!.ConfigureAwait(false).WithCancellation(cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            count++;
-        }
-
-        _count = count;
-        return count;
+        return (TError)Activator.CreateInstance(
+            typeof(TError),
+            "Operation was cancelled")!;
     }
 
-    public async ValueTask<bool> HasItemsAsync(CancellationToken cancellationToken = default)
-    {
-        if (_count.HasValue)
-        {
-            return _count.Value > 0;
-        }
-
-        await foreach (var _ in _enumerable!.ConfigureAwait(false).WithCancellation(cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            _count = 1;
-            return true;
-        }
-
-        _count = 0;
-        return false;
-    }
-
-    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
-    {
-        if (!IsSuccess || _enumerable == null)
-        {
-            return EmptyAsyncEnumerator();
-        }
-
-        return EnumerateAsync(cancellationToken);
-    }
-
-    private async IAsyncEnumerator<T> EnumerateAsync(
-        CancellationToken cancellationToken = default)
-    {
-        await foreach (var item in _enumerable!.ConfigureAwait(false).WithCancellation(cancellationToken))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            yield return item;
-        }
-    }
-
-    private static IAsyncEnumerator<T> EmptyAsyncEnumerator()
-    {
-        return Empty().GetAsyncEnumerator();
-    }
-
-    private static async IAsyncEnumerable<T> Empty(
-        [EnumeratorCancellation] CancellationToken cancellationToken = default)
-    {
-        if (cancellationToken.IsCancellationRequested)
-        {
-            yield break;
-        }
-
-        await Task.CompletedTask.ConfigureAwait(false); // Add await to make the method truly async
-    }
+    #endregion
 
     #region Factory Methods
 
     /// <summary>
-    ///     Creates a new successful AsyncEnumerableResult with the specified enumerable.
+    ///     Creates a successful AsyncEnumerableResult.
     /// </summary>
-    /// <param name="value">The async enumerable value.</param>
-    /// <returns>A successful result containing the async enumerable.</returns>
-    public new static AsyncEnumerableResult<T, TError> Success(IAsyncEnumerable<T> value)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static AsyncEnumerableResult<T, TError> Success(IAsyncEnumerable<T> enumerable)
     {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.Success);
+        ArgumentNullException.ThrowIfNull(enumerable);
+        return new AsyncEnumerableResult<T, TError>(enumerable, ResultState.Success);
     }
 
     /// <summary>
-    ///     Creates a new failed AsyncEnumerableResult with the specified error.
+    ///     Creates a failed AsyncEnumerableResult.
     /// </summary>
-    /// <param name="error">The error that caused the failure.</param>
-    /// <param name="exception">Optional exception associated with the failure.</param>
-    /// <returns>A failed result.</returns>
-    public new static AsyncEnumerableResult<T, TError> Failure(TError error, Exception? exception = null)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static new AsyncEnumerableResult<T, TError> Failure(TError error, Exception? exception = null)
     {
-        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Failure, error, exception);
+        ArgumentNullException.ThrowIfNull(error);
+        return new AsyncEnumerableResult<T, TError>(null, ResultState.Failure, error, exception);
     }
 
     /// <summary>
-    ///     Creates a new warning AsyncEnumerableResult with the specified enumerable and error.
+    ///     Creates a cancelled AsyncEnumerableResult.
     /// </summary>
-    /// <param name="value">The async enumerable value.</param>
-    /// <param name="error">The warning information.</param>
-    /// <returns>A result in the warning state.</returns>
-    public new static AsyncEnumerableResult<T, TError> Warning(IAsyncEnumerable<T> value, TError error)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static new AsyncEnumerableResult<T, TError> Cancelled(TError error)
     {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.Warning, error);
+        ArgumentNullException.ThrowIfNull(error);
+        return new AsyncEnumerableResult<T, TError>(null, ResultState.Cancelled, error);
+    }
+
+    #endregion
+
+    #region Enumeration
+
+    /// <summary>
+    ///     Gets the async enumerator for the enumerable.
+    /// </summary>
+    public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
+    {
+        if (!IsSuccess || _enumerable is null)
+        {
+            return EmptyAsyncEnumerator(cancellationToken);
+        }
+
+        return _enumerable.GetAsyncEnumerator(cancellationToken);
     }
 
     /// <summary>
-    ///     Creates a new partial success AsyncEnumerableResult with the specified enumerable and error.
+    ///     Configures the async enumerable with cancellation token.
     /// </summary>
-    /// <param name="value">The async enumerable value.</param>
-    /// <param name="error">Information about the partial success condition.</param>
-    /// <returns>A result in the partial success state.</returns>
-    public new static AsyncEnumerableResult<T, TError> PartialSuccess(IAsyncEnumerable<T> value, TError error)
+    public ConfiguredCancelableAsyncEnumerable<T> WithCancellation(CancellationToken cancellationToken)
     {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.PartialSuccess, error);
+        if (!IsSuccess || _enumerable is null)
+        {
+            return EmptyAsyncEnumerable().ConfigureAwait(false).WithCancellation(cancellationToken);
+        }
+
+        return _enumerable.ConfigureAwait(false).WithCancellation(cancellationToken);
     }
 
     /// <summary>
-    ///     Creates a new cancelled AsyncEnumerableResult with the specified error.
+    ///     Returns an empty async enumerator.
     /// </summary>
-    /// <param name="error">Information about the cancellation.</param>
-    /// <returns>A result in the cancelled state.</returns>
-    public new static AsyncEnumerableResult<T, TError> Cancelled(TError error)
+    private static async IAsyncEnumerator<T> EmptyAsyncEnumerator(CancellationToken cancellationToken)
     {
-        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Cancelled, error);
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield break;
     }
 
     /// <summary>
-    ///     Creates a new cancelled AsyncEnumerableResult with partial results and an error.
+    ///     Returns an empty async enumerable.
     /// </summary>
-    /// <param name="value">The partial async enumerable results before cancellation.</param>
-    /// <param name="error">Information about the cancellation.</param>
-    /// <returns>A result in the cancelled state with partial results.</returns>
-    public new static AsyncEnumerableResult<T, TError> Cancelled(IAsyncEnumerable<T> value, TError error)
+    private static async IAsyncEnumerable<T> EmptyAsyncEnumerable(
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.Cancelled, error);
+        await Task.CompletedTask.ConfigureAwait(false);
+        yield break;
+    }
+
+    #endregion
+
+    #region LINQ-style Operations
+
+    /// <summary>
+    ///     Filters items based on a predicate.
+    /// </summary>
+    public AsyncEnumerableResult<T, TError> Where(Func<T, bool> predicate)
+    {
+        ArgumentNullException.ThrowIfNull(predicate);
+
+        if (!IsSuccess || _enumerable is null)
+        {
+            return this;
+        }
+
+        async IAsyncEnumerable<T> FilteredEnumerable(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (predicate(item))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        return Success(FilteredEnumerable());
     }
 
     /// <summary>
-    ///     Creates a new pending AsyncEnumerableResult with the specified error.
+    ///     Filters items asynchronously based on a predicate.
     /// </summary>
-    /// <param name="error">Information about the pending operation.</param>
-    /// <returns>A result in the pending state.</returns>
-    public new static AsyncEnumerableResult<T, TError> Pending(TError error)
+    public AsyncEnumerableResult<T, TError> WhereAsync(Func<T, ValueTask<bool>> predicateAsync)
     {
-        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.Pending, error);
+        ArgumentNullException.ThrowIfNull(predicateAsync);
+
+        if (!IsSuccess || _enumerable is null)
+        {
+            return this;
+        }
+
+        async IAsyncEnumerable<T> FilteredEnumerableAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (await predicateAsync(item).ConfigureAwait(false))
+                {
+                    yield return item;
+                }
+            }
+        }
+
+        return Success(FilteredEnumerableAsync());
     }
 
     /// <summary>
-    ///     Creates a new pending AsyncEnumerableResult with interim results and an error.
+    ///     Projects each item to a new form.
     /// </summary>
-    /// <param name="value">Interim async enumerable results while the operation is pending.</param>
-    /// <param name="error">Information about the pending operation.</param>
-    /// <returns>A result in the pending state with interim results.</returns>
-    public new static AsyncEnumerableResult<T, TError> Pending(IAsyncEnumerable<T> value, TError error)
+    public AsyncEnumerableResult<TResult, TError> Select<TResult>(Func<T, TResult> selector)
     {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.Pending, error);
+        ArgumentNullException.ThrowIfNull(selector);
+
+        if (!IsSuccess || _enumerable is null)
+        {
+            return AsyncEnumerableResult<TResult, TError>.Failure(Error!);
+        }
+
+        async IAsyncEnumerable<TResult> MappedEnumerable(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return selector(item);
+            }
+        }
+
+        return AsyncEnumerableResult<TResult, TError>.Success(MappedEnumerable());
     }
 
     /// <summary>
-    ///     Creates a new NoOp AsyncEnumerableResult with the specified error.
+    ///     Projects each item to a new form asynchronously.
     /// </summary>
-    /// <param name="error">Information about why no operation was performed.</param>
-    /// <returns>A result in the NoOp state.</returns>
-    public new static AsyncEnumerableResult<T, TError> NoOp(TError error)
+    public AsyncEnumerableResult<TResult, TError> SelectAsync<TResult>(
+        Func<T, ValueTask<TResult>> selectorAsync)
     {
-        return new AsyncEnumerableResult<T, TError>(Empty(), ResultState.NoOp, error);
+        ArgumentNullException.ThrowIfNull(selectorAsync);
+
+        if (!IsSuccess || _enumerable is null)
+        {
+            return AsyncEnumerableResult<TResult, TError>.Failure(Error!);
+        }
+
+        async IAsyncEnumerable<TResult> MappedEnumerableAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                yield return await selectorAsync(item).ConfigureAwait(false);
+            }
+        }
+
+        return AsyncEnumerableResult<TResult, TError>.Success(MappedEnumerableAsync());
     }
 
     /// <summary>
-    ///     Creates a new NoOp AsyncEnumerableResult with context data and an error.
+    ///     Takes the first N items.
     /// </summary>
-    /// <param name="value">Context async enumerable data related to the no-op condition.</param>
-    /// <param name="error">Information about why no operation was performed.</param>
-    /// <returns>A result in the NoOp state with context data.</returns>
-    public new static AsyncEnumerableResult<T, TError> NoOp(IAsyncEnumerable<T> value, TError error)
+    public AsyncEnumerableResult<T, TError> Take(int count)
     {
-        return new AsyncEnumerableResult<T, TError>(value, ResultState.NoOp, error);
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Count must be non-negative");
+        }
+
+        if (!IsSuccess || _enumerable is null)
+        {
+            return this;
+        }
+
+        async IAsyncEnumerable<T> TakenEnumerable(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var taken = 0;
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (taken >= count)
+                {
+                    yield break;
+                }
+
+                yield return item;
+                taken++;
+            }
+        }
+
+        return Success(TakenEnumerable());
+    }
+
+    /// <summary>
+    ///     Skips the first N items.
+    /// </summary>
+    public AsyncEnumerableResult<T, TError> Skip(int count)
+    {
+        if (count < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(count), "Count must be non-negative");
+        }
+
+        if (!IsSuccess || _enumerable is null)
+        {
+            return this;
+        }
+
+        async IAsyncEnumerable<T> SkippedEnumerable(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var skipped = 0;
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (skipped < count)
+                {
+                    skipped++;
+                    continue;
+                }
+
+                yield return item;
+            }
+        }
+
+        return Success(SkippedEnumerable());
+    }
+
+    #endregion
+
+    #region Materialization
+
+    /// <summary>
+    ///     Materializes the async enumerable to a list.
+    /// </summary>
+    public async ValueTask<Result<IReadOnlyList<T>, TError>> ToListAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsSuccess || _enumerable is null)
+        {
+            return Result<IReadOnlyList<T>, TError>.Failure(Error!);
+        }
+
+        try
+        {
+            var list = new List<T>();
+
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                list.Add(item);
+            }
+
+            return Result<IReadOnlyList<T>, TError>.Success(list.AsReadOnly());
+        }
+        catch (OperationCanceledException)
+        {
+            var cancelledError = CreateCancellationError();
+            return Result<IReadOnlyList<T>, TError>.Cancelled(cancelledError);
+        }
+        catch (Exception ex)
+        {
+            var error = (TError)Activator.CreateInstance(
+                typeof(TError),
+                $"Failed to materialize async enumerable: {ex.Message}")!;
+            return Result<IReadOnlyList<T>, TError>.Failure(error, ex);
+        }
+    }
+
+    /// <summary>
+    ///     Materializes the async enumerable to an array.
+    /// </summary>
+    public async ValueTask<Result<T[], TError>> ToArrayAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsSuccess || _enumerable is null)
+        {
+            return Result<T[], TError>.Failure(Error!);
+        }
+
+        try
+        {
+            var list = new List<T>();
+
+            await foreach (var item in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                list.Add(item);
+            }
+
+            return Result<T[], TError>.Success(list.ToArray());
+        }
+        catch (OperationCanceledException)
+        {
+            var cancelledError = CreateCancellationError();
+            return Result<T[], TError>.Cancelled(cancelledError);
+        }
+        catch (Exception ex)
+        {
+            var error = (TError)Activator.CreateInstance(
+                typeof(TError),
+                $"Failed to materialize async enumerable: {ex.Message}")!;
+            return Result<T[], TError>.Failure(error, ex);
+        }
+    }
+
+    /// <summary>
+    ///     Counts the number of items in the async enumerable.
+    /// </summary>
+    public async ValueTask<Result<int, TError>> CountAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsSuccess || _enumerable is null)
+        {
+            return Result<int, TError>.Failure(Error!);
+        }
+
+        try
+        {
+            var count = 0;
+
+            await foreach (var _ in _enumerable.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                count++;
+            }
+
+            return Result<int, TError>.Success(count);
+        }
+        catch (OperationCanceledException)
+        {
+            var cancelledError = CreateCancellationError();
+            return Result<int, TError>.Cancelled(cancelledError);
+        }
+        catch (Exception ex)
+        {
+            var error = (TError)Activator.CreateInstance(
+                typeof(TError),
+                $"Failed to count async enumerable: {ex.Message}")!;
+            return Result<int, TError>.Failure(error, ex);
+        }
     }
 
     #endregion
