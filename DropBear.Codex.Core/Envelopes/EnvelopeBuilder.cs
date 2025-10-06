@@ -89,7 +89,7 @@ public sealed class EnvelopeBuilder<T>
             DateTime.UtcNow,
             null,
             null,
-            _telemetry ?? new DefaultResultTelemetry());
+            _telemetry ?? TelemetryProvider.Current);
     }
 
     /// <summary>
@@ -113,6 +113,6 @@ public sealed class EnvelopeBuilder<T>
             DateTime.UtcNow,
             DateTime.UtcNow,
             signature,
-            _telemetry ?? new DefaultResultTelemetry());
+            _telemetry ?? TelemetryProvider.Current);
     }
 }

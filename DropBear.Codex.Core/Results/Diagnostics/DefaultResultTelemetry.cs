@@ -1,10 +1,10 @@
 ﻿#region
 
-using System.Buffers;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Channels;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
@@ -234,8 +234,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
                 break;
 
             case TelemetryMode.BackgroundChannel:
-                // Try to write to channel, drop if full based on FullMode
-                _channel?.Writer.TryWrite(eventData);
+                EnqueueBackgroundEvent(eventData);
                 break;
 
             default:
@@ -270,6 +269,38 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         {
             // Don't let telemetry errors crash the application
             Debug.WriteLine($"Error processing telemetry event: {ex.Message}");
+        }
+    }
+
+    private void EnqueueBackgroundEvent(TelemetryEvent eventData)
+    {
+        if (_channel is null)
+        {
+            ProcessEventCore(eventData);
+            return;
+        }
+
+        var writer = _channel.Writer;
+
+        if (writer.TryWrite(eventData))
+        {
+            return;
+        }
+
+        var writeTask = writer.WriteAsync(eventData, _cts?.Token ?? CancellationToken.None);
+
+        if (writeTask.IsCompletedSuccessfully)
+        {
+            return;
+        }
+
+        try
+        {
+            writeTask.AsTask().GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation when telemetry is shutting down.
         }
     }
 
@@ -417,190 +448,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
 
     #endregion
 
-    #region Performance-Optimized Event Pooling
-
-// Use ArrayPool instead of ObjectPool for better performance
-    private const int MaxBatchSize = 100;
-
-    /// <summary>
-    ///     Processes events in batches using pooled collections.
-    ///     Reduces allocation pressure in high-throughput scenarios.
-    /// </summary>
-    private async Task ProcessTelemetryEventsBatchedAsync(CancellationToken cancellationToken)
-    {
-        if (_channel is null)
-        {
-            return;
-        }
-
-        try
-        {
-            // Use array from pool for batching
-            var batch = ArrayPool<TelemetryEvent>.Shared.Rent(MaxBatchSize);
-            var batchCount = 0;
-
-            try
-            {
-                await foreach (var eventData in _channel.Reader.ReadAllAsync(cancellationToken)
-                                   .ConfigureAwait(false))
-                {
-                    batch[batchCount++] = eventData;
-
-                    // Process in batches of 100 for better performance
-                    if (batchCount >= MaxBatchSize)
-                    {
-                        ProcessEventBatch(batch.AsSpan(0, batchCount));
-                        batchCount = 0;
-                    }
-                }
-
-                // Process remaining events
-                if (batchCount > 0)
-                {
-                    ProcessEventBatch(batch.AsSpan(0, batchCount));
-                }
-            }
-            finally
-            {
-                ArrayPool<TelemetryEvent>.Shared.Return(batch, true);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            // Expected during shutdown
-        }
-        catch (Exception ex)
-        {
-            Debug.WriteLine($"Error in telemetry background processor: {ex.Message}");
-        }
     }
-
-    /// <summary>
-    ///     Processes a batch of events using span-based operations.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void ProcessEventBatch(ReadOnlySpan<TelemetryEvent> events)
-    {
-        for (var i = 0; i < events.Length; i++)
-        {
-            ProcessEventCore(in events[i]);
-        }
-    }
-
-    /// <summary>
-    ///     Processes a single event using ref readonly for large struct optimization.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ProcessEventCore(ref readonly TelemetryEvent eventData)
-    {
-        switch (eventData.Type)
-        {
-            case TelemetryEventType.ResultCreated:
-                ProcessResultCreatedCore(in eventData);
-                break;
-            case TelemetryEventType.ResultTransformed:
-                ProcessResultTransformedCore(in eventData);
-                break;
-            case TelemetryEventType.Exception:
-                ProcessExceptionCore(in eventData);
-                break;
-        }
-    }
-
-// Rename the existing methods or create new ones that accept ref readonly
-    private void ProcessResultCreatedCore(ref readonly TelemetryEvent eventData)
-    {
-        // Increment counter
-        _resultCreatedCounter.Add(1,
-            new KeyValuePair<string, object?>("state", eventData.State.ToString()),
-            new KeyValuePair<string, object?>("type", eventData.ResultType.Name));
-
-        // Update statistics if enabled
-        if (_statistics is not null)
-        {
-            var key = $"{eventData.ResultType.Name}:{eventData.State}";
-            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
-            stats.IncrementGets();
-        }
-
-        // Create activity for tracing if listeners exist
-        if (ActivitySource.HasListeners())
-        {
-            using var activity = ActivitySource.StartActivity("ResultCreated");
-            activity?.SetTag("result.state", eventData.State.ToString());
-            activity?.SetTag("result.type", eventData.ResultType.Name);
-            activity?.SetTag("caller", eventData.Caller ?? "Unknown");
-        }
-    }
-
-    private void ProcessResultTransformedCore(ref readonly TelemetryEvent eventData)
-    {
-        // Increment counter
-        _resultTransformedCounter.Add(1,
-            new KeyValuePair<string, object?>("original_state", eventData.OriginalState?.ToString() ?? "Unknown"),
-            new KeyValuePair<string, object?>("new_state", eventData.State.ToString()),
-            new KeyValuePair<string, object?>("type", eventData.ResultType.Name));
-
-        // Update statistics if enabled
-        if (_statistics is not null)
-        {
-            var key = $"{eventData.ResultType.Name}:Transform:{eventData.OriginalState}->{eventData.State}";
-            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
-            stats.IncrementGets();
-        }
-
-        // Create activity for tracing
-        if (ActivitySource.HasListeners())
-        {
-            using var activity = ActivitySource.StartActivity("ResultTransformed");
-            activity?.SetTag("result.original_state", eventData.OriginalState?.ToString() ?? "Unknown");
-            activity?.SetTag("result.new_state", eventData.State.ToString());
-            activity?.SetTag("result.type", eventData.ResultType.Name);
-            activity?.SetTag("caller", eventData.Caller ?? "Unknown");
-        }
-    }
-
-    private void ProcessExceptionCore(ref readonly TelemetryEvent eventData)
-    {
-        if (eventData.Exception is null)
-        {
-            return;
-        }
-
-        // Increment counter
-        _exceptionCounter.Add(1,
-            new KeyValuePair<string, object?>("exception_type", eventData.Exception.GetType().Name),
-            new KeyValuePair<string, object?>("result_state", eventData.State.ToString()),
-            new KeyValuePair<string, object?>("result_type", eventData.ResultType.Name));
-
-        // Update statistics if enabled
-        if (_statistics is not null)
-        {
-            var key = $"{eventData.ResultType.Name}:Exception:{eventData.Exception.GetType().Name}";
-            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
-            stats.IncrementGets();
-        }
-
-        // Create activity for tracing
-        if (ActivitySource.HasListeners())
-        {
-            using var activity = ActivitySource.StartActivity("ResultException");
-            activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
-            activity?.SetTag("exception.message", eventData.Exception.Message);
-            activity?.SetTag("result.state", eventData.State.ToString());
-            activity?.SetTag("result.type", eventData.ResultType.Name);
-            activity?.SetTag("caller", eventData.Caller ?? "Unknown");
-
-            // Add stack trace if configured
-            if (_options.CaptureStackTraces)
-            {
-                activity?.SetTag("exception.stacktrace", eventData.Exception.StackTrace);
-            }
-        }
-    }
-
-    #endregion
-}
 
 #region Supporting Types
 

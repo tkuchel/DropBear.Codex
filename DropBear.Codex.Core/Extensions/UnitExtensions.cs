@@ -4,6 +4,7 @@ using System;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Core.Results.Errors;
 
 #endregion
 
@@ -95,14 +96,16 @@ public static class UnitExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<Unit, TError> ForEach<T, TError>(
         this Result<T, TError> result,
-        Action<T> action)
+        Action<T> action,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(action);
 
         if (!result.IsSuccess)
         {
-            return FailureFromResult(result);
+            return FailureFromResult(result, errorFactory);
         }
 
         try
@@ -112,7 +115,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return FailureFromException(result, ex);
+            return FailureFromException(result, ex, errorFactory, exceptionFactory);
         }
     }
 
@@ -121,14 +124,16 @@ public static class UnitExtensions
     /// </summary>
     public static async ValueTask<Result<Unit, TError>> ForEachAsync<T, TError>(
         this Result<T, TError> result,
-        Func<T, ValueTask> asyncAction)
+        Func<T, ValueTask> asyncAction,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(asyncAction);
 
         if (!result.IsSuccess)
         {
-            return FailureFromResult(result);
+            return FailureFromResult(result, errorFactory);
         }
 
         try
@@ -138,7 +143,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return FailureFromException(result, ex);
+            return FailureFromException(result, ex, errorFactory, exceptionFactory);
         }
     }
 
@@ -147,14 +152,16 @@ public static class UnitExtensions
     /// </summary>
     public static async ValueTask<Result<Unit, TError>> ForEachAsync<T, TError>(
         this Result<T, TError> result,
-        Func<T, Task> asyncAction)
+        Func<T, Task> asyncAction,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(asyncAction);
 
         if (!result.IsSuccess)
         {
-            return FailureFromResult(result);
+            return FailureFromResult(result, errorFactory);
         }
 
         try
@@ -164,7 +171,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return FailureFromException(result, ex);
+            return FailureFromException(result, ex, errorFactory, exceptionFactory);
         }
     }
 
@@ -177,12 +184,13 @@ public static class UnitExtensions
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<Unit, TError> ToUnit<T, TError>(
-        this Result<T, TError> result)
+        this Result<T, TError> result,
+        Func<TError>? errorFactory = null)
         where TError : ResultError
     {
         return result.IsSuccess
             ? Result<Unit, TError>.Success(Unit.Value)
-            : FailureFromResult(result);
+            : FailureFromResult(result, errorFactory);
     }
 
     /// <summary>
@@ -191,7 +199,9 @@ public static class UnitExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<Unit, TError> ToUnit<T, TError>(
         this Result<T, TError> result,
-        Action<T> onSuccess)
+        Action<T> onSuccess,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(onSuccess);
@@ -204,11 +214,11 @@ public static class UnitExtensions
             }
             catch (Exception ex)
             {
-                return FailureFromException(result, ex);
+                return FailureFromException(result, ex, errorFactory, exceptionFactory);
             }
         }
 
-        return result.ToUnit();
+        return result.ToUnit(errorFactory);
     }
 
     /// <summary>
@@ -216,7 +226,9 @@ public static class UnitExtensions
     /// </summary>
     public static async ValueTask<Result<Unit, TError>> ToUnitAsync<T, TError>(
         this Result<T, TError> result,
-        Func<T, ValueTask> onSuccess)
+        Func<T, ValueTask> onSuccess,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(onSuccess);
@@ -229,11 +241,11 @@ public static class UnitExtensions
             }
             catch (Exception ex)
             {
-                return FailureFromException(result, ex);
+                return FailureFromException(result, ex, errorFactory, exceptionFactory);
             }
         }
 
-        return result.ToUnit();
+        return result.ToUnit(errorFactory);
     }
 
     #endregion
@@ -245,14 +257,16 @@ public static class UnitExtensions
     /// </summary>
     public static Result<Unit, TError> ForEachItem<T, TError>(
         this Result<IEnumerable<T>, TError> result,
-        Action<T> action)
+        Action<T> action,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(action);
 
         if (!result.IsSuccess)
         {
-            return FailureFromResult(result);
+            return FailureFromResult(result, errorFactory);
         }
 
         try
@@ -266,7 +280,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return FailureFromException(result, ex);
+            return FailureFromException(result, ex, errorFactory, exceptionFactory);
         }
     }
 
@@ -275,14 +289,16 @@ public static class UnitExtensions
     /// </summary>
     public static async ValueTask<Result<Unit, TError>> ForEachItemAsync<T, TError>(
         this Result<IEnumerable<T>, TError> result,
-        Func<T, ValueTask> asyncAction)
+        Func<T, ValueTask> asyncAction,
+        Func<TError>? errorFactory = null,
+        Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(asyncAction);
 
         if (!result.IsSuccess)
         {
-            return FailureFromResult(result);
+            return FailureFromResult(result, errorFactory);
         }
 
         try
@@ -296,7 +312,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return FailureFromException(result, ex);
+            return FailureFromException(result, ex, errorFactory, exceptionFactory);
         }
     }
 
@@ -304,59 +320,56 @@ public static class UnitExtensions
 
     #region Helpers
 
-    private static Result<Unit, TError> FailureFromResult<T, TError>(Result<T, TError> result)
+    private static Result<Unit, TError> FailureFromResult<T, TError>(
+        Result<T, TError> result,
+        Func<TError>? errorFactory)
         where TError : ResultError
     {
-        var error = result.Error ?? CreateDefaultError<TError>();
+        var error = result.Error
+                    ?? errorFactory?.Invoke()
+                    ?? TryCreateSimpleError("Operation failed.", result.Exception, out TError fallback)
+                        ? fallback
+                        : throw new InvalidOperationException(
+                            $"Unable to create an instance of {typeof(TError).FullName}. Provide an errorFactory delegate when calling this method.");
+
         return Result<Unit, TError>.Failure(error, result.Exception);
     }
 
-    private static Result<Unit, TError> FailureFromException<T, TError>(Result<T, TError> result, Exception exception)
+    private static Result<Unit, TError> FailureFromException<T, TError>(
+        Result<T, TError> result,
+        Exception exception,
+        Func<TError>? errorFactory,
+        Func<Exception, TError>? exceptionFactory)
         where TError : ResultError
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        var error = result.Error ?? CreateErrorFromException<TError>(exception);
+        var error = exceptionFactory?.Invoke(exception)
+                    ?? result.Error
+                    ?? errorFactory?.Invoke()
+                    ?? TryCreateSimpleError($"Operation failed: {exception.Message}", exception, out TError fallback)
+                        ? fallback
+                        : throw new InvalidOperationException(
+                            $"Unable to create an instance of {typeof(TError).FullName}. Provide an exceptionFactory delegate when calling this method.");
+
         return Result<Unit, TError>.Failure(error, exception);
     }
 
-    private static TError CreateErrorFromException<TError>(Exception exception)
+    private static bool TryCreateSimpleError<TError>(string message, Exception? exception, out TError error)
         where TError : ResultError
     {
-        try
+        if (typeof(TError).IsAssignableFrom(typeof(SimpleError)))
         {
-            return (TError)Activator.CreateInstance(
-                typeof(TError),
-                $"Operation failed: {exception.Message}")!;
-        }
-        catch
-        {
-            return CreateDefaultError<TError>();
-        }
-    }
+            var fallback = exception is null
+                ? SimpleError.Create(message)
+                : SimpleError.FromException(exception);
 
-    private static TError CreateDefaultError<TError>()
-        where TError : ResultError
-    {
-        var type = typeof(TError);
+            error = (TError)(ResultError)fallback;
+            return true;
+        }
 
-        try
-        {
-            return (TError)Activator.CreateInstance(type, "Operation failed.")!;
-        }
-        catch
-        {
-            try
-            {
-                return (TError)Activator.CreateInstance(type)!;
-            }
-            catch (Exception ex)
-            {
-                throw new InvalidOperationException(
-                    $"Unable to create an instance of {type.FullName}. Ensure it has a parameterless or string constructor.",
-                    ex);
-            }
-        }
+        error = default!;
+        return false;
     }
 
     #endregion
