@@ -496,23 +496,7 @@ public static class ResultExtensions
         }
     }
 
-    /// <summary>
-    ///     Filters out successful results from a collection, returning only errors.
-    /// </summary>
-    public static IEnumerable<TError> Errors<T, TError>(
-        this IEnumerable<Result<T, TError>> results)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(results);
 
-        foreach (var result in results)
-        {
-            if (!result.IsSuccess && result.Error is not null)
-            {
-                yield return result.Error;
-            }
-        }
-    }
 
     /// <summary>
     ///     Partitions results into successful values and errors.
