@@ -18,7 +18,7 @@ namespace DropBear.Codex.Core.Results.Base;
 /// </summary>
 /// <typeparam name="TError">A type inheriting from ResultError.</typeparam>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
-[JsonConverter(typeof(ResultTErrorJsonConverter<>))]
+[JsonConverter(typeof(ResultJsonConverterFactory))]
 public class Result<TError> : ResultBase, IResult<TError>
     where TError : ResultError
 {
