@@ -130,10 +130,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
             }
         }
 
-        // Dispose resources
+        // Dispose resources owned by this instance
         _cts?.Dispose();
-        ActivitySource.Dispose();
-        Meter.Dispose();
     }
 
     #endregion

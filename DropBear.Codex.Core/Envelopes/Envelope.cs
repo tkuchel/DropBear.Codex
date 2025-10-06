@@ -201,8 +201,14 @@ public sealed class Envelope<T>
     /// </summary>
     public EnvelopeBuilder<T> ToBuilder()
     {
-        var builder = new EnvelopeBuilder<T>()
-            .WithPayload(Payload!);
+        var builder = new EnvelopeBuilder<T>();
+
+        if (HasPayload && Payload is { } payload)
+        {
+            builder.WithPayload(payload);
+        }
+
+        builder.WithTelemetry(_telemetry);
 
         foreach (var (key, value) in _headers)
         {

@@ -1,6 +1,8 @@
 ﻿#region
 
+using System;
 using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using DropBear.Codex.Core.Results.Base;
 
 #endregion
@@ -100,7 +102,7 @@ public static class UnitExtensions
 
         if (!result.IsSuccess)
         {
-            return Result<Unit, TError>.Failure(result.Error!);
+            return FailureFromResult(result);
         }
 
         try
@@ -110,7 +112,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return Result<Unit, TError>.Failure(result.Error!, ex);
+            return FailureFromException(result, ex);
         }
     }
 
@@ -126,7 +128,7 @@ public static class UnitExtensions
 
         if (!result.IsSuccess)
         {
-            return Result<Unit, TError>.Failure(result.Error!);
+            return FailureFromResult(result);
         }
 
         try
@@ -136,7 +138,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return Result<Unit, TError>.Failure(result.Error!, ex);
+            return FailureFromException(result, ex);
         }
     }
 
@@ -152,7 +154,7 @@ public static class UnitExtensions
 
         if (!result.IsSuccess)
         {
-            return Result<Unit, TError>.Failure(result.Error!);
+            return FailureFromResult(result);
         }
 
         try
@@ -162,7 +164,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return Result<Unit, TError>.Failure(result.Error!, ex);
+            return FailureFromException(result, ex);
         }
     }
 
@@ -180,7 +182,7 @@ public static class UnitExtensions
     {
         return result.IsSuccess
             ? Result<Unit, TError>.Success(Unit.Value)
-            : Result<Unit, TError>.Failure(result.Error!);
+            : FailureFromResult(result);
     }
 
     /// <summary>
@@ -202,7 +204,7 @@ public static class UnitExtensions
             }
             catch (Exception ex)
             {
-                return Result<Unit, TError>.Failure(result.Error!, ex);
+                return FailureFromException(result, ex);
             }
         }
 
@@ -227,7 +229,7 @@ public static class UnitExtensions
             }
             catch (Exception ex)
             {
-                return Result<Unit, TError>.Failure(result.Error!, ex);
+                return FailureFromException(result, ex);
             }
         }
 
@@ -250,7 +252,7 @@ public static class UnitExtensions
 
         if (!result.IsSuccess)
         {
-            return Result<Unit, TError>.Failure(result.Error!);
+            return FailureFromResult(result);
         }
 
         try
@@ -264,7 +266,7 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return Result<Unit, TError>.Failure(result.Error!, ex);
+            return FailureFromException(result, ex);
         }
     }
 
@@ -280,7 +282,7 @@ public static class UnitExtensions
 
         if (!result.IsSuccess)
         {
-            return Result<Unit, TError>.Failure(result.Error!);
+            return FailureFromResult(result);
         }
 
         try
@@ -294,7 +296,66 @@ public static class UnitExtensions
         }
         catch (Exception ex)
         {
-            return Result<Unit, TError>.Failure(result.Error!, ex);
+            return FailureFromException(result, ex);
+        }
+    }
+
+    #endregion
+
+    #region Helpers
+
+    private static Result<Unit, TError> FailureFromResult<T, TError>(Result<T, TError> result)
+        where TError : ResultError
+    {
+        var error = result.Error ?? CreateDefaultError<TError>();
+        return Result<Unit, TError>.Failure(error, result.Exception);
+    }
+
+    private static Result<Unit, TError> FailureFromException<T, TError>(Result<T, TError> result, Exception exception)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        var error = result.Error ?? CreateErrorFromException<TError>(exception);
+        return Result<Unit, TError>.Failure(error, exception);
+    }
+
+    private static TError CreateErrorFromException<TError>(Exception exception)
+        where TError : ResultError
+    {
+        try
+        {
+            return (TError)Activator.CreateInstance(
+                typeof(TError),
+                $"Operation failed: {exception.Message}")!;
+        }
+        catch
+        {
+            return CreateDefaultError<TError>();
+        }
+    }
+
+    private static TError CreateDefaultError<TError>()
+        where TError : ResultError
+    {
+        var type = typeof(TError);
+
+        try
+        {
+            return (TError)Activator.CreateInstance(type, "Operation failed.")!;
+        }
+        catch
+        {
+            try
+            {
+                return (TError)Activator.CreateInstance(type)!;
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException(
+                    $"Unable to create an instance of {type.FullName}. Ensure it has a parameterless or string constructor.",
+                    ex);
+            }
         }
     }
 

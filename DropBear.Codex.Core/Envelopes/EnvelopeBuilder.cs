@@ -41,9 +41,14 @@ public sealed class EnvelopeBuilder<T>
 
     /// <summary>
     ///     Adds multiple headers to the envelope.
-    ///     Uses params collection for modern syntax.
     /// </summary>
-    public EnvelopeBuilder<T> WithHeaders(params IEnumerable<KeyValuePair<string, object>> headers)
+    public EnvelopeBuilder<T> WithHeaders(params KeyValuePair<string, object>[] headers) =>
+        WithHeaders((IEnumerable<KeyValuePair<string, object>>)headers);
+
+    /// <summary>
+    ///     Adds multiple headers to the envelope from an enumerable source.
+    /// </summary>
+    public EnvelopeBuilder<T> WithHeaders(IEnumerable<KeyValuePair<string, object>> headers)
     {
         ArgumentNullException.ThrowIfNull(headers);
 

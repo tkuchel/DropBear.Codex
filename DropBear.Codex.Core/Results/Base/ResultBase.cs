@@ -23,7 +23,7 @@ namespace DropBear.Codex.Core.Results.Base;
 public abstract class ResultBase : IResult, IResultDiagnostics
 {
     // Static resources shared by all result types
-    private protected static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ResultBase>();
+    private protected static ILogger Logger => LoggerFactory.Logger.ForContext<ResultBase>();
 
     // Frozen set for better performance in .NET 9 - using collection expression
     private static readonly FrozenSet<ResultState> ValidStates =
