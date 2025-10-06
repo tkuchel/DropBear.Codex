@@ -302,6 +302,10 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         {
             // Ignore cancellation when telemetry is shutting down.
         }
+        catch (ChannelClosedException)
+        {
+            // Ignore channel closed when telemetry is shutting down.
+        }
     }
 
     private void ProcessResultCreated(TelemetryEvent eventData)
