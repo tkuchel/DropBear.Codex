@@ -26,7 +26,7 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
         JsonSerializerOptions? options = null,
         IResultTelemetry? telemetry = null)
     {
-        _telemetry = telemetry ?? new DefaultResultTelemetry();
+        _telemetry = telemetry ?? TelemetryProvider.Current;
         _options = options ?? CreateDefaultOptions();
     }
 
@@ -107,6 +107,8 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
                 throw new JsonException("Deserialization returned null DTO.");
             }
 
+            ValidateDto(dto);
+
             return Envelope<T>.FromDto(dto, _telemetry);
         }
         catch (JsonException)
@@ -156,6 +158,8 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
             {
                 throw new JsonException("Deserialization returned null DTO.");
             }
+
+            ValidateDto(dto);
 
             return Envelope<T>.FromDto(dto, _telemetry);
         }

@@ -104,9 +104,13 @@ public static class ConcurrentDictionaryExtensions
 
         while (true)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+
             if (dictionary.TryGetValue(key, out var existingValue))
             {
                 var newValue = await updateFactory(key, existingValue).ConfigureAwait(false);
+
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if (dictionary.TryUpdate(key, newValue, existingValue))
                 {
@@ -118,6 +122,8 @@ public static class ConcurrentDictionaryExtensions
             }
 
             var addedValue = await addFactory(key).ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (dictionary.TryAdd(key, addedValue))
             {

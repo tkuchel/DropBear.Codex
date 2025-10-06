@@ -27,7 +27,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         MessagePackSerializerOptions? options = null,
         IResultTelemetry? telemetry = null)
     {
-        _telemetry = telemetry ?? new DefaultResultTelemetry();
+        _telemetry = telemetry ?? TelemetryProvider.Current;
         _options = options ?? MessagePackConfig.GetOptions();
     }
 

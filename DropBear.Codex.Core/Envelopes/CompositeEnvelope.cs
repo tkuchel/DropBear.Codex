@@ -125,7 +125,7 @@ public sealed class CompositeEnvelope<T>
         CreatedAt = DateTime.UtcNow;
         SealedAt = null;
         Signature = null;
-        _telemetry = telemetry ?? new DefaultResultTelemetry();
+        _telemetry = telemetry ?? TelemetryProvider.Current;
 
         _telemetry.TrackResultCreated(ResultState.Pending, typeof(CompositeEnvelope<T>));
     }
@@ -545,7 +545,7 @@ public sealed class CompositeEnvelopeBuilder<T>
             DateTime.UtcNow,
             null,
             null,
-            _telemetry ?? new DefaultResultTelemetry());
+            _telemetry ?? TelemetryProvider.Current);
     }
 
     /// <summary>
@@ -569,6 +569,6 @@ public sealed class CompositeEnvelopeBuilder<T>
             DateTime.UtcNow,
             DateTime.UtcNow,
             signature,
-            _telemetry ?? new DefaultResultTelemetry());
+            _telemetry ?? TelemetryProvider.Current);
     }
 }

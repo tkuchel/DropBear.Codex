@@ -106,7 +106,7 @@ public sealed class Envelope<T>
         CreatedAt = DateTime.UtcNow;
         SealedAt = null;
         Signature = null;
-        _telemetry = telemetry ?? new DefaultResultTelemetry();
+        _telemetry = telemetry ?? TelemetryProvider.Current;
 
         _telemetry.TrackResultCreated(ResultState.Pending, typeof(Envelope<T>));
     }
@@ -367,7 +367,7 @@ public sealed class Envelope<T>
             dto.CreatedAt,
             dto.SealedAt,
             dto.Signature,
-            telemetry ?? new DefaultResultTelemetry());
+            telemetry ?? TelemetryProvider.Current);
     }
 
     /// <summary>

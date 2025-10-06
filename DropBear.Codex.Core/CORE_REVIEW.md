@@ -1,53 +1,44 @@
-# DropBear.Codex.Core Code Review
+# DropBear.Codex.Core Code Review (2025-02-14)
 
 ## Summary
-This document captures issues observed while reviewing the DropBear.Codex.Core project and suggests remediations tailored for a .NET 9 class library destined for NuGet distribution.
+The DropBear.Codex.Core library already has rich functionality, but several areas hurt reliability and package ergonomics for a .NET 9 class library. The issues below highlight high-impact problems (telemetry lifecycle, error handling, cancellation) alongside documentation/maintenance concerns. Each item includes actionable remediation guidance.
 
 ## Findings
 
-### 1. Builder APIs misuse `params` with enumerable types
-`EnvelopeBuilder.WithHeaders` and `CompositeEnvelopeBuilder.AddPayloads/WithHeaders` declare `params IEnumerable<...>` parameters but iterate as though each element were an individual header or payload. Because `params` wraps the arguments in an array, those loops actually enumerate `IEnumerable<>` instances rather than `KeyValuePair`/`T` items, which will not compile and prevents caller ergonomics. Replace the signatures with strongly-typed params (e.g., `params KeyValuePair<string, object>[] headers`) or accept a single `IEnumerable<T>` without `params`.
+### 1. Telemetry allocations explode per envelope/serializer instance
+`Envelope`, `CompositeEnvelope`, and their builders create a brand-new `DefaultResultTelemetry` whenever the caller does not provide one.【F:DropBear.Codex.Core/Envelopes/Envelope.cs†L95-L112】【F:DropBear.Codex.Core/Envelopes/CompositeEnvelope.cs†L109-L131】【F:DropBear.Codex.Core/Envelopes/EnvelopeBuilder.cs†L75-L117】【F:DropBear.Codex.Core/Envelopes/CompositeEnvelope.cs†L532-L573】 The JSON and MessagePack serializers do the same during construction.【F:DropBear.Codex.Core/Envelopes/Serializers/JsonEnvelopeSerializer.cs†L25-L31】 Each telemetry instance spins up counters, histograms, optional channels, and (for background mode) long-lived tasks.【F:DropBear.Codex.Core/Results/Diagnostics/DefaultResultTelemetry.cs†L49-L97】 In practice every envelope/materialization allocates meters and background infrastructure, which dramatically increases CPU/memory pressure and can trigger duplicate-instrument exceptions when the same meter name is registered repeatedly.
 
-### 2. `Envelope<T>.ToBuilder()` assumes a payload
-`ToBuilder()` calls `.WithPayload(Payload!)` without checking `HasPayload`. If the envelope was created without a payload (permitted by the internal constructor), this dereferences `null`. Guard the call by throwing an informative exception or skipping `WithPayload` when no payload exists.
+**Recommendation:** Treat telemetry as a singleton. Prefer `TelemetryProvider.Current` (or an injected `IResultTelemetry`) when no override is supplied, and expose builder methods for callers that truly need per-envelope telemetry. Ensure the serializers accept an `IResultTelemetry` via DI rather than allocating their own.
 
-### 3. `UnitExtensions` rethrow path dereferences null errors
-`ForEach`/`ForEachAsync`/`ToUnit` and collection helpers return `Result<Unit, TError>.Failure(result.Error!, ex)` when an action throws. For successful results the embedded error is `null`, so the helper throws `NullReferenceException` instead of returning a failure. Capture the exception via an `errorFactory` or fall back to a concrete `ResultError` such as `SimpleError.FromException`.
+### 2. Background telemetry ignores the configured channel semantics
+When `TelemetryMode.BackgroundChannel` is enabled, `ProcessEvent` writes with `_channel?.Writer.TryWrite(eventData)` regardless of the `TelemetryOptions.FullMode` setting.【F:DropBear.Codex.Core/Results/Diagnostics/DefaultResultTelemetry.cs†L221-L239】 This drops events immediately even when `FullMode` requests waiting/backpressure, defeating the purpose of the configuration.
 
-### 4. MessagePack DI extensions mutate global state and expose immutable options
-`AddMessagePackSerialization(Action<MessagePackSerializerOptions>)` passes the cached options instance to callers even though `MessagePackSerializerOptions` is immutable, so configuration lambdas cannot change anything. All overloads also assign `MessagePackSerializer.DefaultOptions`, a process-wide singleton, every time DI is configured. Switch to builder-based configuration that returns a new options instance and avoid mutating global defaults inside the registration helper.
+**Recommendation:** Replace `TryWrite` with `WriteAsync` or a `WaitToWriteAsync` loop that honours `BoundedChannelFullMode`. Propagate the cancellation token from `TelemetryOptions` so shutdown still works cleanly.
 
-### 5. Logger capture prevents runtime reconfiguration
-`ResultBase` caches `LoggerFactory.Logger.ForContext<ResultBase>()` in a static field. Because the value is captured before consumers call `LoggerFactory.SetLogger`, later configuration never reaches result classes. Acquire the logger on demand or update cached fields when the factory is reconfigured.
+### 3. `UnitExtensions` assume error types expose string/parameterless constructors
+`CreateDefaultError` and `CreateErrorFromException` build fallback errors with `Activator.CreateInstance` that expects either a `(string)` or parameterless constructor.【F:DropBear.Codex.Core/Extensions/UnitExtensions.cs†L323-L356】 Errors such as `CodedError` only expose a `(string message, string code)` constructor,【F:DropBear.Codex.Core/Results/Errors/CodedError.cs†L12-L27】 so the helper throws `InvalidOperationException` whenever it needs to synthesize an error (e.g., when an action throws inside `ForEach`).
 
-### 6. Telemetry disposal breaks instrumentation
-`DefaultResultTelemetry.Dispose` disposes static `ActivitySource`/`Meter` instances and `TelemetryProvider.Configure` replaces the telemetry implementation on every call. Once disposed, subsequent instrumentation attempts throw. Treat the source/meter as long-lived singletons and avoid disposing them when swapping telemetry providers.
+**Recommendation:** Add overloads that accept an `errorFactory` delegate, or fall back to a known-safe type like `SimpleError.FromException`. Avoid reflection-based creation that couples every consumer to specific constructors.
 
-## Recommended Next Steps
-1. Fix the builder method signatures and adjust call sites/tests accordingly.
-2. Harden `Envelope<T>.ToBuilder()` against missing payloads.
-3. Introduce safe exception-to-error conversion inside `UnitExtensions` (possibly via an overload that accepts an `errorFactory`).
-4. Redesign MessagePack DI helpers to return new options instances without mutating global state.
-5. Refactor logger caching so `ResultBase` respects runtime logger updates.
-6. Make telemetry instrumentation singletons that survive configuration changes and ensure background processors are the only resources being disposed.
+### 4. `ConcurrentDictionaryExtensions.AddOrUpdateAsync` ignores cancellation
+The retry loop never checks the provided `CancellationToken`, so once contention starts the method spins indefinitely even if the caller cancels the operation.【F:DropBear.Codex.Core/Extensions/ConcurrentDictionaryExtensions.cs†L93-L128】 Any awaited factories continue to run after cancellation as well.
 
+**Recommendation:** Call `cancellationToken.ThrowIfCancellationRequested()` at the start of each loop iteration and immediately after awaiting the add/update factories. Propagate the token into the factories when possible.
 
-## Additional Findings (Second Pass)
+### 5. JSON envelope deserialization skips DTO validation
+`JsonEnvelopeSerializer.ValidateDto` enforces sealed-envelope invariants, but the method is never invoked before `Envelope<T>.FromDto` is called.【F:DropBear.Codex.Core/Envelopes/Serializers/JsonEnvelopeSerializer.cs†L49-L111】 Invalid inputs (sealed envelopes without signatures or timestamps) therefore pass through unchecked.
 
-### 7. Default telemetry instances are recreated per envelope
-`Envelope` and `CompositeEnvelope` default to `new DefaultResultTelemetry()` whenever callers do not supply telemetry. Builders do the same in `Build()`/`BuildAndSeal()`. Because `DefaultResultTelemetry` builds OpenTelemetry instruments inside its constructor, instantiating it repeatedly with the same static `Meter` triggers `InvalidOperationException` after the first instance and allocates unnecessary counters for every envelope. Replace those `new DefaultResultTelemetry()` calls with `TelemetryProvider.Current` (or an injected singleton) so telemetry instruments are created once and shared across envelopes.
+**Recommendation:** Invoke `ValidateDto` (or share the validation logic with the MessagePack serializer) prior to constructing the envelope for both string and binary JSON paths.
 
-### 8. Background-channel telemetry ignores the configured full-mode semantics
-When `TelemetryMode.BackgroundChannel` is enabled, `ProcessEvent` uses `_channel?.Writer.TryWrite(eventData)`. This bypasses `ChannelFullMode.Wait`, so events are silently dropped even though the options requested waiting, and `DropNewest` also devolves into a hard drop because `TryWrite` never waits. Switch to `WriteAsync`/`WaitToWriteAsync` so the chosen `BoundedChannelFullMode` is honored and callers that expect backpressure actually get it.
+### 6. Dead code in telemetry batching helpers increases maintenance risk
+`DefaultResultTelemetry` retains an alternate batched processing pipeline (`ProcessTelemetryEventsBatchedAsync`, `ProcessEventBatch`, `ProcessResult*Core`) that is never called from the active code path.【F:DropBear.Codex.Core/Results/Diagnostics/DefaultResultTelemetry.cs†L420-L518】 The comment `// Rename the existing methods...` indicates the refactor was incomplete, leaving unused methods that may diverge or confuse contributors.
 
-### 9. Cancellation tokens are ignored in `ConcurrentDictionaryExtensions.AddOrUpdateAsync`
-`AddOrUpdateAsync` accepts a `CancellationToken` yet never checks it inside the retry loop. If the operation is cancelled while another writer keeps racing, the loop will spin forever and the awaited factories will continue running. Add `cancellationToken.ThrowIfCancellationRequested()` at the top of the loop (and after awaiting factories) to make the method cancel promptly.
+**Recommendation:** Either wire the batching pipeline through an option and unit tests, or delete it to keep the telemetry implementation single-path and maintainable.
 
-### 10. Dead code in telemetry batching helpers
-`DefaultResultTelemetry` still contains an alternate `ProcessTelemetryEventsBatchedAsync` pipeline that is never invoked, along with `ProcessEventBatch` and the `ref readonly` overloads. These stale paths add maintenance burden and risk diverging behavior (e.g., missing caller tags) if ever hooked up. Consider removing them or wiring them through the options so there is a single tested code path.
-
-## Suggested Remediations
-1. Prefer `TelemetryProvider.Current` (or inject a singleton) instead of creating new `DefaultResultTelemetry` instances in envelope builders/constructors.
-2. Respect `TelemetryOptions.FullMode` by awaiting `ChannelWriter.WriteAsync` (or `WaitToWriteAsync` + `TryWrite`) when background processing is configured.
-3. Observe the cancellation token within `ConcurrentDictionaryExtensions.AddOrUpdateAsync` before each retry and after asynchronous factory invocations.
-4. Delete or integrate the unused telemetry batching helpers so only one processing pipeline remains and metric tagging stays consistent.
+## Next Steps
+1. Centralise telemetry acquisition (via `TelemetryProvider`) and ensure envelopes/serializers don’t allocate `DefaultResultTelemetry` on every call.
+2. Honour channel backpressure semantics in `DefaultResultTelemetry` and cover the behaviour with tests.
+3. Refactor `UnitExtensions` to support caller-provided error factories or safe defaults.
+4. Thread cancellation through `ConcurrentDictionaryExtensions.AddOrUpdateAsync`.
+5. Run DTO validation in the JSON serializer before materialising envelopes.
+6. Remove or finish the unused telemetry batching code path.
