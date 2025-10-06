@@ -1,4 +1,8 @@
-﻿using DropBear.Codex.Core.Results.Base;
+﻿#region
+
+using DropBear.Codex.Core.Results.Base;
+
+#endregion
 
 namespace DropBear.Codex.Core.Results.Errors;
 
@@ -20,8 +24,5 @@ public sealed record CodedError : ResultError
     /// <summary>
     ///     Creates a new CodedError.
     /// </summary>
-    public static CodedError Create(string code, string message)
-    {
-        return new CodedError(message, code);
-    }
+    public static CodedError Create(string code, string message) => new(message, code);
 }

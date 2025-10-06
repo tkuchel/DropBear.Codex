@@ -1,9 +1,8 @@
 ﻿#region
 
 using System.Text.Json;
-using DropBear.Codex.Core.Envelopes;
+using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
-using DropBear.Codex.Core.Extensions;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Diagnostics;
 
@@ -17,8 +16,8 @@ namespace DropBear.Codex.Core.Envelopes.Serializers;
 /// </summary>
 public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 {
-    private readonly IResultTelemetry _telemetry;
     private readonly JsonSerializerOptions _options;
+    private readonly IResultTelemetry _telemetry;
 
     /// <summary>
     ///     Initializes a new instance with optional custom options.
@@ -40,10 +39,40 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
         {
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             WriteIndented = false,
-            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             PropertyNameCaseInsensitive = true
         };
     }
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Validates an envelope DTO before deserialization.
+    /// </summary>
+    private static void ValidateDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    {
+        ArgumentNullException.ThrowIfNull(dto);
+
+        // Validate sealed envelopes have signatures
+        if (dto.IsSealed && string.IsNullOrWhiteSpace(dto.Signature))
+        {
+            throw new JsonException("Sealed envelope must have a signature.");
+        }
+
+        // Validate sealed envelopes have sealed date
+        if (dto.IsSealed && dto.SealedAt is null)
+        {
+            throw new JsonException("Sealed envelope must have a sealed date.");
+        }
+
+        // Validate created date exists
+        if (dto.CreatedAt == default)
+        {
+            throw new JsonException("Envelope must have a creation date.");
+        }
+    }
+
+    #endregion
 
     #region IEnvelopeSerializer Implementation
 
@@ -138,36 +167,6 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
         {
             _telemetry.TrackException(ex, ResultState.Failure, typeof(T), nameof(DeserializeFromBinary));
             throw new InvalidOperationException("Failed to deserialize envelope from binary.", ex);
-        }
-    }
-
-    #endregion
-
-    #region Helper Methods
-
-    /// <summary>
-    ///     Validates an envelope DTO before deserialization.
-    /// </summary>
-    private static void ValidateDto<T>(Envelope<T>.EnvelopeDto<T> dto)
-    {
-        ArgumentNullException.ThrowIfNull(dto);
-
-        // Validate sealed envelopes have signatures
-        if (dto.IsSealed && string.IsNullOrWhiteSpace(dto.Signature))
-        {
-            throw new JsonException("Sealed envelope must have a signature.");
-        }
-
-        // Validate sealed envelopes have sealed date
-        if (dto.IsSealed && dto.SealedAt is null)
-        {
-            throw new JsonException("Sealed envelope must have a sealed date.");
-        }
-
-        // Validate created date exists
-        if (dto.CreatedAt == default)
-        {
-            throw new JsonException("Envelope must have a creation date.");
         }
     }
 

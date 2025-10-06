@@ -87,10 +87,8 @@ public readonly record struct DiagnosticInfo
     ///     Gets a formatted string representation for logging.
     ///     Uses modern string interpolation handler for performance.
     /// </summary>
-    public string ToLogString()
-    {
-        return $"[{State}] {ResultType.Name} (Age: {Age.TotalMilliseconds:F2}ms, TraceId: {TraceId ?? "None"})";
-    }
+    public string ToLogString() =>
+        $"[{State}] {ResultType.Name} (Age: {Age.TotalMilliseconds:F2}ms, TraceId: {TraceId ?? "None"})";
 
     /// <summary>
     ///     Creates a dictionary of diagnostic properties for structured logging.
@@ -107,13 +105,19 @@ public readonly record struct DiagnosticInfo
         };
 
         if (TraceId is not null)
+        {
             dict["TraceId"] = TraceId;
+        }
 
         if (ActivityId is not null)
+        {
             dict["ActivityId"] = ActivityId;
+        }
 
         if (ParentActivityId is not null)
+        {
             dict["ParentActivityId"] = ParentActivityId;
+        }
 
         return dict;
     }

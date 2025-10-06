@@ -1,7 +1,6 @@
 ﻿#region
 
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
@@ -18,14 +17,14 @@ namespace DropBear.Codex.Core.Results.Errors;
 /// </summary>
 public sealed class DefaultResultErrorHandler : IResultErrorHandler
 {
-    private readonly IResultTelemetry _telemetry;
-    private readonly bool _captureStackTraces;
-
     // Cache for error type constructors to avoid reflection overhead
     private static readonly ConcurrentDictionary<Type, Func<string, ResultError>> ErrorFactoryCache = new();
 
     private static readonly ConcurrentDictionary<Type, Func<string, Exception, ResultError>>
         ErrorWithExceptionFactoryCache = new();
+
+    private readonly bool _captureStackTraces;
+    private readonly IResultTelemetry _telemetry;
 
     /// <summary>
     ///     Initializes a new instance of DefaultResultErrorHandler.
@@ -39,6 +38,69 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
         _telemetry = telemetry ?? new DefaultResultTelemetry();
         _captureStackTraces = captureStackTraces;
     }
+
+    #region Error Classification
+
+    /// <summary>
+    ///     Classifies an exception and returns appropriate error information.
+    /// </summary>
+    public ErrorClassification ClassifyException(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        return exception switch
+        {
+            OperationCanceledException => new ErrorClassification(
+                ErrorCategory.Cancelled,
+                ErrorSeverity.Low,
+                false,
+                false),
+
+            TimeoutException => new ErrorClassification(
+                ErrorCategory.Timeout,
+                ErrorSeverity.Medium,
+                true,
+                true),
+
+            UnauthorizedAccessException or SecurityException => new ErrorClassification(
+                ErrorCategory.Authorization,
+                ErrorSeverity.High,
+                false,
+                false),
+
+            ArgumentException or ArgumentNullException => new ErrorClassification(
+                ErrorCategory.Validation,
+                ErrorSeverity.Medium,
+                false,
+                false),
+
+            InvalidOperationException => new ErrorClassification(
+                ErrorCategory.InvalidOperation,
+                ErrorSeverity.Medium,
+                false,
+                false),
+
+            IOException => new ErrorClassification(
+                ErrorCategory.IO,
+                ErrorSeverity.Medium,
+                true,
+                true),
+
+            OutOfMemoryException or StackOverflowException => new ErrorClassification(
+                ErrorCategory.Critical,
+                ErrorSeverity.Critical,
+                false,
+                false),
+
+            _ => new ErrorClassification(
+                ErrorCategory.Unknown,
+                ErrorSeverity.Medium,
+                false,
+                false)
+        };
+    }
+
+    #endregion
 
     #region IResultErrorHandler Implementation
 
@@ -276,69 +338,6 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
     }
 
     #endregion
-
-    #region Error Classification
-
-    /// <summary>
-    ///     Classifies an exception and returns appropriate error information.
-    /// </summary>
-    public ErrorClassification ClassifyException(Exception exception)
-    {
-        ArgumentNullException.ThrowIfNull(exception);
-
-        return exception switch
-        {
-            OperationCanceledException => new ErrorClassification(
-                ErrorCategory.Cancelled,
-                ErrorSeverity.Low,
-                IsTransient: false,
-                IsRetryable: false),
-
-            TimeoutException => new ErrorClassification(
-                ErrorCategory.Timeout,
-                ErrorSeverity.Medium,
-                IsTransient: true,
-                IsRetryable: true),
-
-            UnauthorizedAccessException or SecurityException => new ErrorClassification(
-                ErrorCategory.Authorization,
-                ErrorSeverity.High,
-                IsTransient: false,
-                IsRetryable: false),
-
-            ArgumentException or ArgumentNullException => new ErrorClassification(
-                ErrorCategory.Validation,
-                ErrorSeverity.Medium,
-                IsTransient: false,
-                IsRetryable: false),
-
-            InvalidOperationException => new ErrorClassification(
-                ErrorCategory.InvalidOperation,
-                ErrorSeverity.Medium,
-                IsTransient: false,
-                IsRetryable: false),
-
-            IOException => new ErrorClassification(
-                ErrorCategory.IO,
-                ErrorSeverity.Medium,
-                IsTransient: true,
-                IsRetryable: true),
-
-            OutOfMemoryException or StackOverflowException => new ErrorClassification(
-                ErrorCategory.Critical,
-                ErrorSeverity.Critical,
-                IsTransient: false,
-                IsRetryable: false),
-
-            _ => new ErrorClassification(
-                ErrorCategory.Unknown,
-                ErrorSeverity.Medium,
-                IsTransient: false,
-                IsRetryable: false)
-        };
-    }
-
-    #endregion
 }
 
 #region Supporting Types
@@ -383,7 +382,7 @@ public enum ErrorCategory
 /// <summary>
 ///     SecurityException placeholder for .NET Standard compatibility.
 /// </summary>
-file sealed class SecurityException : Exception
+sealed file class SecurityException : Exception
 {
     public SecurityException(string message) : base(message) { }
 }

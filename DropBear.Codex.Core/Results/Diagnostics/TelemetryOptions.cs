@@ -13,9 +13,9 @@ namespace DropBear.Codex.Core.Results.Diagnostics;
 /// </summary>
 public sealed class TelemetryOptions
 {
-/// <summary>
-///     Gets or sets the telemetry collection mode.
-///     Default: FireAndForget for backward compatibility.
+    /// <summary>
+    ///     Gets or sets the telemetry collection mode.
+    ///     Default: FireAndForget for backward compatibility.
     /// </summary>
     public TelemetryMode Mode { get; set; } = TelemetryMode.FireAndForget;
 
@@ -31,7 +31,7 @@ public sealed class TelemetryOptions
     ///     Disable for maximum performance in production.
     ///     Default: false.
     /// </summary>
-    public bool CollectStatistics { get; set; } = false;
+    public bool CollectStatistics { get; set; }
 
     /// <summary>
     ///     Gets or sets whether to include stack traces in exception telemetry.
@@ -107,8 +107,6 @@ public sealed class TelemetryOptions
     /// </summary>
     public static TelemetryOptions Disabled() => new()
     {
-        Mode = TelemetryMode.Disabled,
-        CollectStatistics = false,
-        CaptureStackTraces = false
+        Mode = TelemetryMode.Disabled, CollectStatistics = false, CaptureStackTraces = false
     };
 }

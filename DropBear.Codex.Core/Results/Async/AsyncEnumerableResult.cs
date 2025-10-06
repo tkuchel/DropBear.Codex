@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
@@ -41,6 +40,29 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// </summary>
     public new IReadOnlyCollection<Exception> Exceptions { get; }
 
+    #region Debugger Display
+
+    protected override string DebuggerDisplay =>
+        $"State = {State}, IsSuccess = {IsSuccess}, " +
+        $"HasEnumerable = {_enumerable is not null}, " +
+        $"Error = {Error?.Message ?? "null"}";
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates a cancellation error.
+    /// </summary>
+    private static TError CreateCancellationError()
+    {
+        return (TError)Activator.CreateInstance(
+            typeof(TError),
+            "Operation was cancelled")!;
+    }
+
+    #endregion
+
     #region Factory Methods
 
     /// <summary>
@@ -57,7 +79,7 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     ///     Creates a failed AsyncEnumerableResult.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static AsyncEnumerableResult<T, TError> Failure(TError error, Exception? exception = null)
+    public static new AsyncEnumerableResult<T, TError> Failure(TError error, Exception? exception = null)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new AsyncEnumerableResult<T, TError>(null, ResultState.Failure, error, exception);
@@ -67,7 +89,7 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     ///     Creates a cancelled AsyncEnumerableResult.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static AsyncEnumerableResult<T, TError> Cancelled(TError error)
+    public static new AsyncEnumerableResult<T, TError> Cancelled(TError error)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new AsyncEnumerableResult<T, TError>(null, ResultState.Cancelled, error);
@@ -408,29 +430,6 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
             return Result<int, TError>.Failure(error, ex);
         }
     }
-
-    #endregion
-
-    #region Helper Methods
-
-    /// <summary>
-    ///     Creates a cancellation error.
-    /// </summary>
-    private static TError CreateCancellationError()
-    {
-        return (TError)Activator.CreateInstance(
-            typeof(TError),
-            "Operation was cancelled")!;
-    }
-
-    #endregion
-
-    #region Debugger Display
-
-    protected override string DebuggerDisplay =>
-        $"State = {State}, IsSuccess = {IsSuccess}, " +
-        $"HasEnumerable = {_enumerable is not null}, " +
-        $"Error = {Error?.Message ?? "null"}";
 
     #endregion
 }

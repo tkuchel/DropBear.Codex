@@ -37,37 +37,14 @@ public abstract class ResultBase : IResult, IResultDiagnostics
         ResultState.NoOp
     ];
 
+    // Time provider for testability (.NET 9 feature)
+    private static TimeProvider _timeProvider = TimeProvider.System;
+
     // Diagnostic info for this result
     private DiagnosticInfo _diagnosticInfo;
 
     // Exception storage - using collection expression for empty array
     private Exception[] _exceptions;
-
-    // Time provider for testability (.NET 9 feature)
-    private static TimeProvider _timeProvider = TimeProvider.System;
-
-    /// <summary>
-    ///     Gets the creation timestamp for this result.
-    /// </summary>
-    public DateTime CreatedAt => _diagnosticInfo.CreatedAt;
-
-    /// <summary>
-    ///     Sets the time provider for testing purposes.
-    ///     Only use this in unit tests.
-    /// </summary>
-    internal static void SetTimeProvider(TimeProvider timeProvider)
-    {
-        ArgumentNullException.ThrowIfNull(timeProvider);
-        _timeProvider = timeProvider;
-    }
-
-    /// <summary>
-    ///     Resets the time provider to the system default.
-    /// </summary>
-    internal static void ResetTimeProvider()
-    {
-        _timeProvider = TimeProvider.System;
-    }
 
     /// <summary>
     ///     Initializes a new instance of <see cref="ResultBase" />.
@@ -86,6 +63,111 @@ public abstract class ResultBase : IResult, IResultDiagnostics
         // Track telemetry for result creation
         TrackTelemetryAsync(state, exception);
     }
+
+    /// <summary>
+    ///     Gets the creation timestamp for this result.
+    /// </summary>
+    public DateTime CreatedAt => _diagnosticInfo.CreatedAt;
+
+    #region Debugger Display
+
+    /// <summary>
+    ///     Gets a string representation for the debugger display.
+    /// </summary>
+    protected virtual string DebuggerDisplay =>
+        $"State = {State}, Success = {IsSuccess}";
+
+    #endregion
+
+    /// <summary>
+    ///     Sets the time provider for testing purposes.
+    ///     Only use this in unit tests.
+    /// </summary>
+    internal static void SetTimeProvider(TimeProvider timeProvider)
+    {
+        ArgumentNullException.ThrowIfNull(timeProvider);
+        _timeProvider = timeProvider;
+    }
+
+    /// <summary>
+    ///     Resets the time provider to the system default.
+    /// </summary>
+    internal static void ResetTimeProvider() => _timeProvider = TimeProvider.System;
+
+    #region Pooling Support
+
+    /// <summary>
+    ///     Re-initializes the result state for pooled instances.
+    ///     This is an internal method used only by the compatibility layer pooling.
+    /// </summary>
+    /// <param name="state">The new result state.</param>
+    /// <param name="exception">Optional exception.</param>
+    protected internal void SetStateInternal(ResultState state, Exception? exception)
+    {
+        ValidateState(state);
+
+        // Update the state
+        State = state;
+
+        // Update exceptions
+        _exceptions = CreateExceptionArray(exception);
+
+        // Update diagnostic info
+        _diagnosticInfo = DiagnosticInfo.Create(state, GetType());
+
+        // Track telemetry
+        TrackTelemetryAsync(state, exception);
+    }
+
+    #endregion
+
+    #region Exception Handling
+
+    /// <summary>
+    ///     Creates an exception array from a single exception (if present).
+    ///     Uses modern collection expressions for optimal allocation.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static Exception[] CreateExceptionArray(Exception? exception)
+    {
+        return exception switch
+        {
+            null => [],
+            AggregateException aggEx => [.. aggEx.Flatten().InnerExceptions],
+            _ => [exception]
+        };
+    }
+
+    #endregion
+
+    #region Telemetry
+
+    /// <summary>
+    ///     Tracks telemetry for this result using the global telemetry provider.
+    ///     Non-blocking operation that respects the configured telemetry mode.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void TrackTelemetryAsync(ResultState state, Exception? exception)
+    {
+        // Only track if telemetry is enabled
+        if (!TelemetryProvider.IsEnabled)
+        {
+            return;
+        }
+
+        var telemetry = TelemetryProvider.Current;
+
+        if (exception is not null)
+        {
+            telemetry.TrackException(exception, state, GetType());
+        }
+        else
+        {
+            telemetry.TrackResultCreated(state, GetType());
+        }
+    }
+
+    #endregion
 
     #region Performance-Optimized Methods
 
@@ -156,33 +238,6 @@ public abstract class ResultBase : IResult, IResultDiagnostics
 
     #endregion
 
-    #region Pooling Support
-
-    /// <summary>
-    ///     Re-initializes the result state for pooled instances.
-    ///     This is an internal method used only by the compatibility layer pooling.
-    /// </summary>
-    /// <param name="state">The new result state.</param>
-    /// <param name="exception">Optional exception.</param>
-    protected internal void SetStateInternal(ResultState state, Exception? exception)
-    {
-        ValidateState(state);
-
-        // Update the state
-        State = state;
-
-        // Update exceptions
-        _exceptions = CreateExceptionArray(exception);
-
-        // Update diagnostic info
-        _diagnosticInfo = DiagnosticInfo.Create(state, GetType());
-
-        // Track telemetry
-        TrackTelemetryAsync(state, exception);
-    }
-
-    #endregion
-
     #region Validation
 
     /// <summary>
@@ -220,62 +275,6 @@ public abstract class ResultBase : IResult, IResultDiagnostics
             Logger.Warning("ResultState {State} does not typically have an error, but one was provided", state);
         }
     }
-
-    #endregion
-
-    #region Exception Handling
-
-    /// <summary>
-    ///     Creates an exception array from a single exception (if present).
-    ///     Uses modern collection expressions for optimal allocation.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static Exception[] CreateExceptionArray(Exception? exception)
-    {
-        return exception switch
-        {
-            null => [],
-            AggregateException aggEx => [.. aggEx.Flatten().InnerExceptions],
-            _ => [exception]
-        };
-    }
-
-    #endregion
-
-    #region Telemetry
-
-    /// <summary>
-    ///     Tracks telemetry for this result using the global telemetry provider.
-    ///     Non-blocking operation that respects the configured telemetry mode.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void TrackTelemetryAsync(ResultState state, Exception? exception)
-    {
-        // Only track if telemetry is enabled
-        if (!TelemetryProvider.IsEnabled)
-            return;
-
-        var telemetry = TelemetryProvider.Current;
-
-        if (exception is not null)
-        {
-            telemetry.TrackException(exception, state, GetType());
-        }
-        else
-        {
-            telemetry.TrackResultCreated(state, GetType());
-        }
-    }
-
-    #endregion
-
-    #region Debugger Display
-
-    /// <summary>
-    ///     Gets a string representation for the debugger display.
-    /// </summary>
-    protected virtual string DebuggerDisplay =>
-        $"State = {State}, Success = {IsSuccess}";
 
     #endregion
 }

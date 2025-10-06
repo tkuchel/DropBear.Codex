@@ -1,7 +1,6 @@
 ﻿#region
 
 using MessagePack;
-using MessagePack.Resolvers;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 

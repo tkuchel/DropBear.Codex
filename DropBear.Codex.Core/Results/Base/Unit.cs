@@ -3,7 +3,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Serialization;
 
 #endregion
 
@@ -34,10 +34,8 @@ public readonly record struct Unit : ISpanFormattable
     ///     Creates a canceled ValueTask of Unit with the specified cancellation token.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ValueTask<Unit> FromCanceled(CancellationToken cancellationToken)
-    {
-        return ValueTask.FromCanceled<Unit>(cancellationToken);
-    }
+    public static ValueTask<Unit> FromCanceled(CancellationToken cancellationToken) =>
+        ValueTask.FromCanceled<Unit>(cancellationToken);
 
     /// <summary>
     ///     Creates a ValueTask of Unit that has completed with the specified exception.
@@ -130,10 +128,7 @@ public readonly record struct Unit : ISpanFormattable
     /// <summary>
     ///     Formats the value of the current instance using the specified format.
     /// </summary>
-    public string ToString(string? format, IFormatProvider? formatProvider)
-    {
-        return "()";
-    }
+    public string ToString(string? format, IFormatProvider? formatProvider) => "()";
 
     /// <summary>
     ///     Tries to format the value of the current instance into the provided span of characters.

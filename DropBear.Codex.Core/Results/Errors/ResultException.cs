@@ -14,14 +14,14 @@ namespace DropBear.Codex.Core.Results.Errors;
 public class ResultException : Exception
 {
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ResultException"/> class.
+    ///     Initializes a new instance of the <see cref="ResultException" /> class.
     /// </summary>
     public ResultException()
     {
     }
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ResultException"/> class with a specified error message.
+    ///     Initializes a new instance of the <see cref="ResultException" /> class with a specified error message.
     /// </summary>
     /// <param name="message">The message that describes the error.</param>
     public ResultException(string message) : base(message)
@@ -29,7 +29,7 @@ public class ResultException : Exception
     }
 
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ResultException"/> class with a specified error message
+    ///     Initializes a new instance of the <see cref="ResultException" /> class with a specified error message
     ///     and a reference to the inner exception that is the cause of this exception.
     /// </summary>
     /// <param name="message">The error message that explains the reason for the exception.</param>
@@ -40,10 +40,10 @@ public class ResultException : Exception
 
 #if NET8_0_OR_GREATER
     /// <summary>
-    ///     Initializes a new instance of the <see cref="ResultException"/> class with serialized data.
+    ///     Initializes a new instance of the <see cref="ResultException" /> class with serialized data.
     /// </summary>
-    /// <param name="info">The <see cref="SerializationInfo"/> that holds the serialized object data.</param>
-    /// <param name="context">The <see cref="StreamingContext"/> that contains contextual information.</param>
+    /// <param name="info">The <see cref="SerializationInfo" /> that holds the serialized object data.</param>
+    /// <param name="context">The <see cref="StreamingContext" /> that contains contextual information.</param>
     [Obsolete("This API supports obsolete formatter-based serialization.", DiagnosticId = "SYSLIB0051")]
 #endif
     protected ResultException(SerializationInfo info, StreamingContext context) : base(info, context)

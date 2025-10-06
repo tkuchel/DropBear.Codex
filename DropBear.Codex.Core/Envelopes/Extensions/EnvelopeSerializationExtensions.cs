@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Buffers;
+using System.IO.Compression;
 using DropBear.Codex.Core.Envelopes.Serializers;
 using DropBear.Codex.Core.Interfaces;
 
@@ -202,9 +203,9 @@ public static class EnvelopeSerializationExtensions
         var binary = envelope.ToSerializedBinary(serializer);
 
         using var outputStream = new MemoryStream();
-        await using (var gzipStream = new System.IO.Compression.GZipStream(
+        await using (var gzipStream = new GZipStream(
                          outputStream,
-                         System.IO.Compression.CompressionLevel.Optimal))
+                         CompressionLevel.Optimal))
         {
             await gzipStream.WriteAsync(binary, cancellationToken).ConfigureAwait(false);
         }
@@ -223,9 +224,9 @@ public static class EnvelopeSerializationExtensions
         ArgumentNullException.ThrowIfNull(compressedData);
 
         using var inputStream = new MemoryStream(compressedData);
-        using var gzipStream = new System.IO.Compression.GZipStream(
+        using var gzipStream = new GZipStream(
             inputStream,
-            System.IO.Compression.CompressionMode.Decompress);
+            CompressionMode.Decompress);
         using var outputStream = new MemoryStream();
 
         await gzipStream.CopyToAsync(outputStream, cancellationToken).ConfigureAwait(false);

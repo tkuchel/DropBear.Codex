@@ -32,4 +32,3 @@ public enum TelemetryMode
     /// </summary>
     Synchronous = 3
 }
-

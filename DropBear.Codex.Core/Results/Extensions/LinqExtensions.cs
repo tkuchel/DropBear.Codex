@@ -194,10 +194,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<IEnumerable<T>, TError> Distinct<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.Distinct());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.Distinct());
 
     /// <summary>
     ///     Returns distinct elements using a custom comparer.
@@ -464,10 +462,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<int, TError> Count<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.Count());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.Count());
 
     /// <summary>
     ///     Checks if any elements in a Result containing a collection match a predicate.
@@ -476,10 +472,8 @@ public static class LinqExtensions
     public static Result<bool, TError> Any<T, TError>(
         this Result<IEnumerable<T>, TError> result,
         Func<T, bool>? predicate = null)
-        where TError : ResultError
-    {
-        return result.Map(items => predicate == null ? items.Any() : items.Any(predicate));
-    }
+        where TError : ResultError =>
+        result.Map(items => predicate == null ? items.Any() : items.Any(predicate));
 
     /// <summary>
     ///     Checks if all elements in a Result containing a collection match a predicate.
@@ -500,10 +494,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<int, TError> Sum<TError>(
         this Result<IEnumerable<int>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.Sum());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.Sum());
 
     /// <summary>
     ///     Computes the sum using a selector function.
@@ -524,10 +516,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<double, TError> Average<TError>(
         this Result<IEnumerable<int>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.Average());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.Average());
 
     /// <summary>
     ///     Computes the average using a selector function.
@@ -548,10 +538,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Min<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.Min()!);
-    }
+        where TError : ResultError =>
+        result.Map(items => items.Min()!);
 
     /// <summary>
     ///     Finds the maximum value in a Result containing a collection.
@@ -559,10 +547,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Max<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.Max()!);
-    }
+        where TError : ResultError =>
+        result.Map(items => items.Max()!);
 
     #endregion
 
@@ -574,10 +560,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<List<T>, TError> ToList<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.ToList());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.ToList());
 
     /// <summary>
     ///     Converts a Result containing a collection to an Array.
@@ -585,10 +569,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T[], TError> ToArray<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.ToArray());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.ToArray());
 
     /// <summary>
     ///     Converts a Result containing a collection to a HashSet.
@@ -596,10 +578,8 @@ public static class LinqExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<HashSet<T>, TError> ToHashSet<T, TError>(
         this Result<IEnumerable<T>, TError> result)
-        where TError : ResultError
-    {
-        return result.Map(items => items.ToHashSet());
-    }
+        where TError : ResultError =>
+        result.Map(items => items.ToHashSet());
 
     /// <summary>
     ///     Converts a Result containing a collection to a Dictionary.
@@ -709,6 +689,159 @@ public static class LinqExtensions
     {
         ArgumentNullException.ThrowIfNull(predicate);
         return result.Map(items => items.SkipWhile(predicate));
+    }
+
+    #endregion
+
+    #region Result Collection Filtering
+
+    /// <summary>
+    ///     Filters to only successful results.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IEnumerable<Result<T, TError>> WhereSuccess<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Where(r => r.IsSuccess);
+    }
+
+    /// <summary>
+    ///     Filters to only failed results.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IEnumerable<Result<T, TError>> WhereFailure<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Where(r => !r.IsSuccess);
+    }
+
+    /// <summary>
+    ///     Extracts all successful values from results.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IEnumerable<T> Values<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        foreach (var result in source)
+        {
+            if (result.IsSuccess && result.Value is not null)
+            {
+                yield return result.Value;
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Extracts all errors from results.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static IEnumerable<TError> Errors<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        foreach (var result in source)
+        {
+            if (!result.IsSuccess && result.Error is not null)
+            {
+                yield return result.Error;
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Partitions results into successes and failures.
+    /// </summary>
+    public static (IReadOnlyList<T> Successes, IReadOnlyList<TError> Failures) Partition<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        var successes = new List<T>();
+        var failures = new List<TError>();
+
+        foreach (var result in source)
+        {
+            if (result.IsSuccess && result.Value is not null)
+            {
+                successes.Add(result.Value);
+            }
+            else if (result.Error is not null)
+            {
+                failures.Add(result.Error);
+            }
+        }
+
+        return (successes, failures);
+    }
+
+    /// <summary>
+    ///     Counts successful results.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CountSuccess<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Count(r => r.IsSuccess);
+    }
+
+    /// <summary>
+    ///     Counts failed results.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int CountFailure<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Count(r => !r.IsSuccess);
+    }
+
+    /// <summary>
+    ///     Checks if all results are successful.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AllSuccess<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.All(r => r.IsSuccess);
+    }
+
+    /// <summary>
+    ///     Checks if any result is successful.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AnySuccess<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Any(r => r.IsSuccess);
+    }
+
+    /// <summary>
+    ///     Checks if any result is a failure.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AnyFailure<T, TError>(
+        this IEnumerable<Result<T, TError>> source)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        return source.Any(r => !r.IsSuccess);
     }
 
     #endregion

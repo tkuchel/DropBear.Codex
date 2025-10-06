@@ -115,8 +115,8 @@ public static class SpanExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReturnPooledArrays<T, TError>(T[] successes, TError[] errors)
     {
-        ArrayPool<T>.Shared.Return(successes, clearArray: true);
-        ArrayPool<TError>.Shared.Return(errors, clearArray: true);
+        ArrayPool<T>.Shared.Return(successes, true);
+        ArrayPool<TError>.Shared.Return(errors, true);
     }
 
     /// <summary>

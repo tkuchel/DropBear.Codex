@@ -22,20 +22,20 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     private static readonly ActivitySource ActivitySource = new("DropBear.Codex.Core.Results", "2.0.0");
     private static readonly Meter Meter = new("DropBear.Codex.Core.Results", "2.0.0");
 
-    // Metrics
-    private readonly Counter<long> _resultCreatedCounter;
-    private readonly Counter<long> _resultTransformedCounter;
+    // Channel-based processing (for BackgroundChannel mode)
+    private readonly Channel<TelemetryEvent>? _channel;
+    private readonly CancellationTokenSource? _cts;
     private readonly Counter<long> _exceptionCounter;
+    private readonly TelemetryMode _mode;
     private readonly Histogram<double> _operationDuration;
 
     // Configuration
     private readonly TelemetryOptions _options;
-    private readonly TelemetryMode _mode;
-
-    // Channel-based processing (for BackgroundChannel mode)
-    private readonly Channel<TelemetryEvent>? _channel;
     private readonly Task? _processorTask;
-    private readonly CancellationTokenSource? _cts;
+
+    // Metrics
+    private readonly Counter<long> _resultCreatedCounter;
+    private readonly Counter<long> _resultTransformedCounter;
 
     // Statistics (optional)
     private readonly ConcurrentDictionary<string, PoolStatistics>? _statistics;
@@ -66,8 +66,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
 
         _operationDuration = Meter.CreateHistogram<double>(
             "results.operation.duration",
-            unit: "ms",
-            description: "Duration of result operations");
+            "ms",
+            "Duration of result operations");
 
         // Initialize statistics if enabled
         if (_options.CollectStatistics)
@@ -97,6 +97,47 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         }
     }
 
+    #region IDisposable
+
+    /// <summary>
+    ///     Disposes the telemetry instance and stops background processing if active.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+
+        // Signal cancellation for background processor
+        _cts?.Cancel();
+
+        // Complete the channel to signal no more writes
+        _channel?.Writer.Complete();
+
+        // Wait for processor to finish (with timeout)
+        if (_processorTask != null)
+        {
+            try
+            {
+                _processorTask.Wait(TimeSpan.FromSeconds(5));
+            }
+            catch (AggregateException)
+            {
+                // Ignore - already cancelled
+            }
+        }
+
+        // Dispose resources
+        _cts?.Dispose();
+        ActivitySource.Dispose();
+        Meter.Dispose();
+    }
+
+    #endregion
+
     #region IResultTelemetry Implementation
 
     /// <inheritdoc />
@@ -104,7 +145,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     public void TrackResultCreated(ResultState state, Type resultType, string? caller = null)
     {
         if (_mode == TelemetryMode.Disabled)
+        {
             return;
+        }
 
         var eventData = new TelemetryEvent
         {
@@ -127,7 +170,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         string? caller = null)
     {
         if (_mode == TelemetryMode.Disabled)
+        {
             return;
+        }
 
         var eventData = new TelemetryEvent
         {
@@ -151,7 +196,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         string? caller = null)
     {
         if (_mode == TelemetryMode.Disabled)
+        {
             return;
+        }
 
         ArgumentNullException.ThrowIfNull(exception);
 
@@ -247,7 +294,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing (if active listener exists)
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultCreated", ActivityKind.Internal);
+            using var activity = ActivitySource.StartActivity("ResultCreated");
             activity?.SetTag("result.state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
             activity?.SetTag("caller", eventData.Caller);
@@ -274,7 +321,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultTransformed", ActivityKind.Internal);
+            using var activity = ActivitySource.StartActivity("ResultTransformed");
             activity?.SetTag("result.original_state", eventData.OriginalState?.ToString());
             activity?.SetTag("result.new_state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
@@ -304,7 +351,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultException", ActivityKind.Internal);
+            using var activity = ActivitySource.StartActivity("ResultException");
             activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
             activity?.SetTag("exception.message", eventData.Exception.Message);
             activity?.SetTag("result.state", eventData.State.ToString());
@@ -325,7 +372,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     private async Task ProcessTelemetryEventsAsync(CancellationToken cancellationToken)
     {
         if (_channel == null)
+        {
             return;
+        }
 
         try
         {
@@ -352,10 +401,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     ///     Gets all collected statistics.
     ///     Returns null if statistics collection is disabled.
     /// </summary>
-    public IReadOnlyDictionary<string, PoolStatistics>? GetStatistics()
-    {
-        return _statistics;
-    }
+    public IReadOnlyDictionary<string, PoolStatistics>? GetStatistics() => _statistics;
 
     /// <summary>
     ///     Clears all collected statistics.
@@ -373,45 +419,6 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
 
     #endregion
 
-    #region IDisposable
-
-    /// <summary>
-    ///     Disposes the telemetry instance and stops background processing if active.
-    /// </summary>
-    public void Dispose()
-    {
-        if (_disposed)
-            return;
-
-        _disposed = true;
-
-        // Signal cancellation for background processor
-        _cts?.Cancel();
-
-        // Complete the channel to signal no more writes
-        _channel?.Writer.Complete();
-
-        // Wait for processor to finish (with timeout)
-        if (_processorTask != null)
-        {
-            try
-            {
-                _processorTask.Wait(TimeSpan.FromSeconds(5));
-            }
-            catch (AggregateException)
-            {
-                // Ignore - already cancelled
-            }
-        }
-
-        // Dispose resources
-        _cts?.Dispose();
-        ActivitySource.Dispose();
-        Meter.Dispose();
-    }
-
-    #endregion
-
     #region Performance-Optimized Event Pooling
 
 // Use ArrayPool instead of ObjectPool for better performance
@@ -424,7 +431,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     private async Task ProcessTelemetryEventsBatchedAsync(CancellationToken cancellationToken)
     {
         if (_channel is null)
+        {
             return;
+        }
 
         try
         {
@@ -455,7 +464,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
             }
             finally
             {
-                ArrayPool<TelemetryEvent>.Shared.Return(batch, clearArray: true);
+                ArrayPool<TelemetryEvent>.Shared.Return(batch, true);
             }
         }
         catch (OperationCanceledException)
@@ -519,7 +528,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing if listeners exist
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultCreated", ActivityKind.Internal);
+            using var activity = ActivitySource.StartActivity("ResultCreated");
             activity?.SetTag("result.state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
             activity?.SetTag("caller", eventData.Caller ?? "Unknown");
@@ -545,7 +554,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultTransformed", ActivityKind.Internal);
+            using var activity = ActivitySource.StartActivity("ResultTransformed");
             activity?.SetTag("result.original_state", eventData.OriginalState?.ToString() ?? "Unknown");
             activity?.SetTag("result.new_state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
@@ -556,7 +565,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     private void ProcessExceptionCore(ref readonly TelemetryEvent eventData)
     {
         if (eventData.Exception is null)
+        {
             return;
+        }
 
         // Increment counter
         _exceptionCounter.Add(1,
@@ -575,7 +586,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultException", ActivityKind.Internal);
+            using var activity = ActivitySource.StartActivity("ResultException");
             activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
             activity?.SetTag("exception.message", eventData.Exception.Message);
             activity?.SetTag("result.state", eventData.State.ToString());

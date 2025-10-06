@@ -57,6 +57,18 @@ internal sealed class ResultErrorDebugView
         }
     }
 
+    private static string FormatAge(TimeSpan age)
+    {
+        return age switch
+        {
+            { TotalMilliseconds: < 1000 } => $"{age.TotalMilliseconds:F0}ms",
+            { TotalSeconds: < 60 } => $"{age.TotalSeconds:F1}s",
+            { TotalMinutes: < 60 } => $"{age.TotalMinutes:F1}m",
+            { TotalHours: < 24 } => $"{age.TotalHours:F1}h",
+            _ => $"{age.TotalDays:F1}d"
+        };
+    }
+
     [DebuggerDisplay("{Value}", Name = "{Key}", Type = "{TypeName}")]
     internal sealed class DebugProperty
     {
@@ -70,17 +82,5 @@ internal sealed class ResultErrorDebugView
         public string Key { get; }
         public string Value { get; }
         public string TypeName { get; }
-    }
-
-    private static string FormatAge(TimeSpan age)
-    {
-        return age switch
-        {
-            { TotalMilliseconds: < 1000 } => $"{age.TotalMilliseconds:F0}ms",
-            { TotalSeconds: < 60 } => $"{age.TotalSeconds:F1}s",
-            { TotalMinutes: < 60 } => $"{age.TotalMinutes:F1}m",
-            { TotalHours: < 24 } => $"{age.TotalHours:F1}h",
-            _ => $"{age.TotalDays:F1}d"
-        };
     }
 }

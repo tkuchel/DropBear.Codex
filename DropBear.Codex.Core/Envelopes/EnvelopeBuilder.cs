@@ -1,6 +1,10 @@
-﻿using System.Collections.Frozen;
+﻿#region
+
+using System.Collections.Frozen;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Diagnostics;
+
+#endregion
 
 namespace DropBear.Codex.Core.Envelopes;
 
@@ -10,8 +14,8 @@ namespace DropBear.Codex.Core.Envelopes;
 /// </summary>
 public sealed class EnvelopeBuilder<T>
 {
-    private T? _payload;
     private readonly Dictionary<string, object> _headers = new(StringComparer.Ordinal);
+    private T? _payload;
     private IResultTelemetry? _telemetry;
 
     /// <summary>
@@ -76,10 +80,10 @@ public sealed class EnvelopeBuilder<T>
         return new Envelope<T>(
             _payload,
             _headers.ToFrozenDictionary(StringComparer.Ordinal),
-            isSealed: false,
+            false,
             DateTime.UtcNow,
-            sealedAt: null,
-            signature: null,
+            null,
+            null,
             _telemetry ?? new DefaultResultTelemetry());
     }
 
@@ -100,7 +104,7 @@ public sealed class EnvelopeBuilder<T>
         return new Envelope<T>(
             _payload,
             _headers.ToFrozenDictionary(StringComparer.Ordinal),
-            isSealed: true,
+            true,
             DateTime.UtcNow,
             DateTime.UtcNow,
             signature,

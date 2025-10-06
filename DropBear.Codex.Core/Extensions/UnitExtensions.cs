@@ -259,6 +259,7 @@ public static class UnitExtensions
             {
                 action(item);
             }
+
             return Result<Unit, TError>.Success(Unit.Value);
         }
         catch (Exception ex)
@@ -288,6 +289,7 @@ public static class UnitExtensions
             {
                 await asyncAction(item).ConfigureAwait(false);
             }
+
             return Result<Unit, TError>.Success(Unit.Value);
         }
         catch (Exception ex)

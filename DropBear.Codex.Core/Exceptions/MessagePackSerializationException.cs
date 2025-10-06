@@ -2,7 +2,6 @@
 
 using System.Diagnostics;
 using System.Runtime.Serialization;
-using DropBear.Codex.Core.Enums;
 
 #endregion
 
@@ -85,11 +84,7 @@ public sealed class MessagePackSerializationException : Exception
     {
         return new MessagePackSerializationException(
             $"Failed to serialize type {typeof(T).Name} to MessagePack",
-            innerException)
-        {
-            TypeBeingSerialized = typeof(T).FullName,
-            Operation = "Serialize"
-        };
+            innerException) { TypeBeingSerialized = typeof(T).FullName, Operation = "Serialize" };
     }
 
     /// <summary>
@@ -99,11 +94,7 @@ public sealed class MessagePackSerializationException : Exception
     {
         return new MessagePackSerializationException(
             $"Failed to deserialize MessagePack data to type {typeof(T).Name}",
-            innerException)
-        {
-            TypeBeingSerialized = typeof(T).FullName,
-            Operation = "Deserialize"
-        };
+            innerException) { TypeBeingSerialized = typeof(T).FullName, Operation = "Deserialize" };
     }
 
 #if NET8_0_OR_GREATER

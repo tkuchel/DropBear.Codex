@@ -2,7 +2,6 @@
 
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Core.Results.Base;
 
 #endregion
 
@@ -53,9 +52,9 @@ public static class BenchmarkHelpers
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        var before = GC.GetTotalMemory(forceFullCollection: true);
+        var before = GC.GetTotalMemory(true);
         operation();
-        var after = GC.GetTotalMemory(forceFullCollection: false);
+        var after = GC.GetTotalMemory(false);
 
         return Math.Max(0, after - before);
     }

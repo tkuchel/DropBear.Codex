@@ -113,10 +113,7 @@ public static class SerilogConfig
     ///     Creates a builder for more complex configurations.
     /// </summary>
     /// <returns>A new SerilogConfigBuilder.</returns>
-    public static SerilogConfigBuilder CreateBuilder()
-    {
-        return new SerilogConfigBuilder();
-    }
+    public static SerilogConfigBuilder CreateBuilder() => new();
 }
 
 /// <summary>
@@ -125,16 +122,16 @@ public static class SerilogConfig
 public sealed class SerilogConfigBuilder
 {
     private readonly LoggerConfiguration _configuration;
-    private LogEventLevel _minimumLevel = LogEventLevel.Information;
     private bool _enableConsole;
     private bool _enableFile;
+    private bool _enrichWithEnvironment;
+    private bool _enrichWithMachineName;
+    private bool _enrichWithProcessId;
+    private bool _enrichWithThreadId = true;
     private string? _filePath;
+    private LogEventLevel _minimumLevel = LogEventLevel.Information;
     private RollingInterval _rollingInterval = RollingInterval.Day;
     private bool _useStructuredLogging;
-    private bool _enrichWithThreadId = true;
-    private bool _enrichWithProcessId;
-    private bool _enrichWithMachineName;
-    private bool _enrichWithEnvironment;
 
     internal SerilogConfigBuilder()
     {

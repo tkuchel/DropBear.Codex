@@ -19,13 +19,61 @@ namespace DropBear.Codex.Core.Envelopes;
 /// <typeparam name="T">Type of the individual payload.</typeparam>
 public sealed class CompositeEnvelope<T>
 {
-    private readonly FrozenSet<T> _payloads;
     private readonly FrozenDictionary<string, object> _headers;
-    private readonly bool _isSealed;
-    private readonly DateTime _createdAt;
-    private readonly DateTime? _sealedAt;
-    private readonly string? _signature;
+    private readonly FrozenSet<T> _payloads;
     private readonly IResultTelemetry _telemetry;
+
+    #region Batch Processing
+
+    /// <summary>
+    ///     Processes payloads in batches with configurable batch size.
+    ///     Uses modern Chunk() method for efficient batching.
+    /// </summary>
+    public async ValueTask<Result<Unit, ValidationError>> ProcessInBatchesAsync(
+        Func<IEnumerable<T>, CancellationToken, ValueTask<Result<Unit, ValidationError>>> batchProcessor,
+        int batchSize = 10,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(batchProcessor);
+
+        if (batchSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be positive");
+        }
+
+        var errors = new List<ValidationError>();
+
+        foreach (var batch in _payloads.Chunk(batchSize))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var result = await batchProcessor(batch, cancellationToken).ConfigureAwait(false);
+            if (!result.IsSuccess && result.Error is not null)
+            {
+                errors.Add(result.Error);
+            }
+        }
+
+        if (errors.Count > 0)
+        {
+            var combinedMessage = string.Join("; ", errors.Select(e => e.Message));
+            return Result<Unit, ValidationError>.Failure(
+                new ValidationError($"Batch processing failed: {combinedMessage}"));
+        }
+
+        return Result<Unit, ValidationError>.Success(Unit.Value);
+    }
+
+    #endregion
+
+    #region Builder Pattern
+
+    /// <summary>
+    ///     Creates a builder for constructing composite envelopes with a fluent API.
+    /// </summary>
+    public static CompositeEnvelopeBuilder<T> CreateBuilder() => new();
+
+    #endregion
 
     #region Constructors
 
@@ -43,10 +91,10 @@ public sealed class CompositeEnvelope<T>
     {
         _payloads = payloads;
         _headers = headers;
-        _isSealed = isSealed;
-        _createdAt = createdAt;
-        _sealedAt = sealedAt;
-        _signature = signature;
+        IsSealed = isSealed;
+        CreatedAt = createdAt;
+        SealedAt = sealedAt;
+        Signature = signature;
         _telemetry = telemetry;
 
         _telemetry.TrackResultCreated(
@@ -72,11 +120,11 @@ public sealed class CompositeEnvelope<T>
         }
 
         _payloads = payloadList.ToFrozenSet();
-        _headers = headers?.ToFrozenDictionary(StringComparer.Ordinal)?? FrozenDictionary<string, object>.Empty;
-        _isSealed = false;
-        _createdAt = DateTime.UtcNow;
-        _sealedAt = null;
-        _signature = null;
+        _headers = headers?.ToFrozenDictionary(StringComparer.Ordinal) ?? FrozenDictionary<string, object>.Empty;
+        IsSealed = false;
+        CreatedAt = DateTime.UtcNow;
+        SealedAt = null;
+        Signature = null;
         _telemetry = telemetry ?? new DefaultResultTelemetry();
 
         _telemetry.TrackResultCreated(ResultState.Pending, typeof(CompositeEnvelope<T>));
@@ -104,27 +152,27 @@ public sealed class CompositeEnvelope<T>
     /// <summary>
     ///     Gets whether this envelope is sealed.
     /// </summary>
-    public bool IsSealed => _isSealed;
+    public bool IsSealed { get; }
 
     /// <summary>
     ///     Gets the creation timestamp.
     /// </summary>
-    public DateTime CreatedAt => _createdAt;
+    public DateTime CreatedAt { get; }
 
     /// <summary>
     ///     Gets the timestamp when this envelope was sealed, if applicable.
     /// </summary>
-    public DateTime? SealedAt => _sealedAt;
+    public DateTime? SealedAt { get; }
 
     /// <summary>
     ///     Gets the digital signature of this envelope, if sealed.
     /// </summary>
-    public string? Signature => _signature;
+    public string? Signature { get; }
 
     /// <summary>
     ///     Gets the age of this envelope.
     /// </summary>
-    public TimeSpan Age => DateTime.UtcNow - _createdAt;
+    public TimeSpan Age => DateTime.UtcNow - CreatedAt;
 
     #endregion
 
@@ -237,8 +285,7 @@ public sealed class CompositeEnvelope<T>
 
         var options = new ParallelOptions
         {
-            MaxDegreeOfParallelism = maxDegreeOfParallelism,
-            CancellationToken = cancellationToken
+            MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken
         };
 
         await Parallel.ForAsync(0, payloadArray.Length, options, async (i, ct) =>
@@ -277,10 +324,10 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<TResult>(
             mappedPayloads,
             _headers,
-            _isSealed,
-            _createdAt,
-            _sealedAt,
-            _signature,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
             _telemetry);
     }
 
@@ -305,10 +352,10 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<TResult>(
             mappedPayloads.ToFrozenSet(),
             _headers,
-            _isSealed,
-            _createdAt,
-            _sealedAt,
-            _signature,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
             _telemetry);
     }
 
@@ -329,54 +376,11 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<T>(
             filteredPayloads,
             _headers,
-            _isSealed,
-            _createdAt,
-            _sealedAt,
-            _signature,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
             _telemetry);
-    }
-
-    #endregion
-
-    #region Batch Processing
-
-    /// <summary>
-    ///     Processes payloads in batches with configurable batch size.
-    ///     Uses modern Chunk() method for efficient batching.
-    /// </summary>
-    public async ValueTask<Result<Unit, ValidationError>> ProcessInBatchesAsync(
-        Func<IEnumerable<T>, CancellationToken, ValueTask<Result<Unit, ValidationError>>> batchProcessor,
-        int batchSize = 10,
-        CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(batchProcessor);
-
-        if (batchSize <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be positive");
-        }
-
-        var errors = new List<ValidationError>();
-
-        foreach (var batch in _payloads.Chunk(batchSize))
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            var result = await batchProcessor(batch, cancellationToken).ConfigureAwait(false);
-            if (!result.IsSuccess && result.Error is not null)
-            {
-                errors.Add(result.Error);
-            }
-        }
-
-        if (errors.Count > 0)
-        {
-            var combinedMessage = string.Join("; ", errors.Select(e => e.Message));
-            return Result<Unit, ValidationError>.Failure(
-                new ValidationError($"Batch processing failed: {combinedMessage}"));
-        }
-
-        return Result<Unit, ValidationError>.Success(Unit.Value);
     }
 
     #endregion
@@ -390,7 +394,7 @@ public sealed class CompositeEnvelope<T>
     {
         ArgumentNullException.ThrowIfNull(signatureGenerator);
 
-        if (_isSealed)
+        if (IsSealed)
         {
             throw new InvalidOperationException("Composite envelope is already sealed");
         }
@@ -400,8 +404,8 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<T>(
             _payloads,
             _headers,
-            isSealed: true,
-            _createdAt,
+            true,
+            CreatedAt,
             DateTime.UtcNow,
             signature,
             _telemetry);
@@ -414,36 +418,24 @@ public sealed class CompositeEnvelope<T>
     {
         ArgumentNullException.ThrowIfNull(verifier);
 
-        if (!_isSealed)
+        if (!IsSealed)
         {
             return Result<Unit, ValidationError>.Failure(
                 new ValidationError("Composite envelope is not sealed"));
         }
 
-        if (_signature is null)
+        if (Signature is null)
         {
             return Result<Unit, ValidationError>.Failure(
                 new ValidationError("Invalid envelope state for verification"));
         }
 
-        var isValid = verifier(_payloads, _signature);
+        var isValid = verifier(_payloads, Signature);
 
         return isValid
             ? Result<Unit, ValidationError>.Success(Unit.Value)
             : Result<Unit, ValidationError>.Failure(
                 new ValidationError("Signature verification failed"));
-    }
-
-    #endregion
-
-    #region Builder Pattern
-
-    /// <summary>
-    ///     Creates a builder for constructing composite envelopes with a fluent API.
-    /// </summary>
-    public static CompositeEnvelopeBuilder<T> CreateBuilder()
-    {
-        return new CompositeEnvelopeBuilder<T>();
     }
 
     #endregion
@@ -455,8 +447,8 @@ public sealed class CompositeEnvelope<T>
 /// </summary>
 public sealed class CompositeEnvelopeBuilder<T>
 {
-    private readonly List<T> _payloads = [];
     private readonly Dictionary<string, object> _headers = new(StringComparer.Ordinal);
+    private readonly List<T> _payloads = [];
     private IResultTelemetry? _telemetry;
 
     /// <summary>
@@ -538,10 +530,10 @@ public sealed class CompositeEnvelopeBuilder<T>
         return new CompositeEnvelope<T>(
             _payloads.ToFrozenSet(),
             _headers.ToFrozenDictionary(StringComparer.Ordinal),
-            isSealed: false,
+            false,
             DateTime.UtcNow,
-            sealedAt: null,
-            signature: null,
+            null,
+            null,
             _telemetry ?? new DefaultResultTelemetry());
     }
 
@@ -562,7 +554,7 @@ public sealed class CompositeEnvelopeBuilder<T>
         return new CompositeEnvelope<T>(
             _payloads.ToFrozenSet(),
             _headers.ToFrozenDictionary(StringComparer.Ordinal),
-            isSealed: true,
+            true,
             DateTime.UtcNow,
             DateTime.UtcNow,
             signature,

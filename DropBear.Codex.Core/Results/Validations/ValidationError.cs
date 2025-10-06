@@ -56,6 +56,37 @@ public sealed record ValidationError : ResultError
     /// </summary>
     public bool IsRuleError => !string.IsNullOrWhiteSpace(ValidationRule);
 
+    #region Display
+
+    private string DebuggerDisplay
+    {
+        get
+        {
+            var parts = new List<string>(4);
+
+            if (PropertyName is not null)
+            {
+                parts.Add($"Property: {PropertyName}");
+            }
+
+            if (ValidationRule is not null)
+            {
+                parts.Add($"Rule: {ValidationRule}");
+            }
+
+            parts.Add($"Message: {Message}");
+
+            if (AttemptedValue is not null)
+            {
+                parts.Add($"Value: {AttemptedValue}");
+            }
+
+            return string.Join(" | ", parts);
+        }
+    }
+
+    #endregion
+
     #region Factory Methods
 
     /// <summary>
@@ -74,11 +105,7 @@ public sealed record ValidationError : ResultError
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        return new ValidationError(message)
-        {
-            PropertyName = propertyName,
-            AttemptedValue = attemptedValue
-        };
+        return new ValidationError(message) { PropertyName = propertyName, AttemptedValue = attemptedValue };
     }
 
     /// <summary>
@@ -105,9 +132,7 @@ public sealed record ValidationError : ResultError
 
         return new ValidationError(message)
         {
-            PropertyName = propertyName,
-            PropertyPath = propertyPath,
-            AttemptedValue = attemptedValue
+            PropertyName = propertyName, PropertyPath = propertyPath, AttemptedValue = attemptedValue
         };
     }
 
@@ -127,11 +152,7 @@ public sealed record ValidationError : ResultError
         ArgumentException.ThrowIfNullOrWhiteSpace(rule);
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
-        return new ValidationError(message)
-        {
-            ValidationRule = rule,
-            AttemptedValue = attemptedValue
-        };
+        return new ValidationError(message) { ValidationRule = rule, AttemptedValue = attemptedValue };
     }
 
     /// <summary>
@@ -155,9 +176,7 @@ public sealed record ValidationError : ResultError
 
         return new ValidationError(message)
         {
-            PropertyName = propertyName,
-            ValidationRule = rule,
-            AttemptedValue = attemptedValue
+            PropertyName = propertyName, ValidationRule = rule, AttemptedValue = attemptedValue
         };
     }
 
@@ -172,8 +191,7 @@ public sealed record ValidationError : ResultError
         return ForPropertyAndRule(
             propertyName,
             "Required",
-            $"{propertyName} is required.",
-            null);
+            $"{propertyName} is required.");
     }
 
     /// <summary>
@@ -279,31 +297,6 @@ public sealed record ValidationError : ResultError
 
     #endregion
 
-    #region Display
-
-    private string DebuggerDisplay
-    {
-        get
-        {
-            var parts = new List<string>(4);
-
-            if (PropertyName is not null)
-                parts.Add($"Property: {PropertyName}");
-
-            if (ValidationRule is not null)
-                parts.Add($"Rule: {ValidationRule}");
-
-            parts.Add($"Message: {Message}");
-
-            if (AttemptedValue is not null)
-                parts.Add($"Value: {AttemptedValue}");
-
-            return string.Join(" | ", parts);
-        }
-    }
-
-    #endregion
-
     #region Performance-Optimized String Operations
 
     /// <summary>
@@ -320,11 +313,7 @@ public sealed record ValidationError : ResultError
         var propNameStr = propertyName.ToString();
         var messageStr = message.ToString();
 
-        return new ValidationError(messageStr)
-        {
-            PropertyName = propNameStr,
-            AttemptedValue = attemptedValue
-        };
+        return new ValidationError(messageStr) { PropertyName = propNameStr, AttemptedValue = attemptedValue };
     }
 
     /// <summary>
@@ -332,10 +321,8 @@ public sealed record ValidationError : ResultError
     ///     Avoids string allocation for comparison.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool PropertyNameEquals(ReadOnlySpan<char> propertyName)
-    {
-        return PropertyName.AsSpan().Equals(propertyName, StringComparison.Ordinal);
-    }
+    public bool PropertyNameEquals(ReadOnlySpan<char> propertyName) =>
+        PropertyName.AsSpan().Equals(propertyName, StringComparison.Ordinal);
 
     /// <summary>
     ///     Gets a formatted error message using DefaultInterpolatedStringHandler.
@@ -345,8 +332,8 @@ public sealed record ValidationError : ResultError
     {
         // Use DefaultInterpolatedStringHandler for better performance
         var handler = new DefaultInterpolatedStringHandler(
-            literalLength: 20,
-            formattedCount: 3);
+            20,
+            3);
 
         if (PropertyName is not null)
         {

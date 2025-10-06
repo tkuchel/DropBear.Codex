@@ -1,7 +1,7 @@
 ﻿#region
 
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Core.Results.Base;
+using System.Text.RegularExpressions;
 using DropBear.Codex.Core.Results.Validations;
 
 #endregion
@@ -69,10 +69,7 @@ public static class ValidationExtensions
     ///     Creates a validation builder for the specified value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static ValidationBuilder<T> Validate<T>(this T value)
-    {
-        return ValidationBuilder<T>.For(value);
-    }
+    public static ValidationBuilder<T> Validate<T>(this T value) => ValidationBuilder<T>.For(value);
 
     /// <summary>
     ///     Validates a value using a fluent builder configuration.
@@ -148,7 +145,7 @@ public static class ValidationExtensions
         if (value is null || value.Length < minLength)
         {
             return ValidationResult.Failed(
-                ValidationError.InvalidLength(propertyName, value ?? string.Empty, minLength, null));
+                ValidationError.InvalidLength(propertyName, value ?? string.Empty, minLength));
         }
 
         return ValidationResult.Success;
@@ -185,7 +182,7 @@ public static class ValidationExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(propertyName);
         ArgumentException.ThrowIfNullOrWhiteSpace(pattern);
 
-        if (value is null || !System.Text.RegularExpressions.Regex.IsMatch(value, pattern))
+        if (value is null || !Regex.IsMatch(value, pattern))
         {
             return ValidationResult.Failed(
                 ValidationError.InvalidFormat(propertyName, value ?? string.Empty, pattern));
@@ -207,7 +204,7 @@ public static class ValidationExtensions
         // Modern email validation pattern
         const string emailPattern = @"^[^@\s]+@[^@\s]+\.[^@\s]+$";
 
-        if (value is null || !System.Text.RegularExpressions.Regex.IsMatch(value, emailPattern))
+        if (value is null || !Regex.IsMatch(value, emailPattern))
         {
             return ValidationResult.Failed(
                 ValidationError.InvalidEmail(propertyName, value ?? string.Empty));
@@ -433,7 +430,7 @@ public sealed class ValidationException : Exception
     public ValidationException(string message, IEnumerable<ValidationError> errors)
         : base(message)
     {
-        Errors = [.. (errors ?? [])];
+        Errors = [.. errors ?? []];
     }
 
     /// <summary>

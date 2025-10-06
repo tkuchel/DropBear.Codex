@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Diagnostics;
-using DropBear.Codex.Core.Results.Errors;
+using DropBear.Codex.Core.Results.Serialization;
 
 #endregion
 
@@ -18,7 +18,7 @@ namespace DropBear.Codex.Core.Results.Base;
 /// </summary>
 /// <typeparam name="TError">A type inheriting from ResultError.</typeparam>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
-[JsonConverter(typeof(ResultJsonConverter<>))]
+[JsonConverter(typeof(ResultTErrorJsonConverter<>))]
 public class Result<TError> : ResultBase, IResult<TError>
     where TError : ResultError
 {
@@ -35,10 +35,48 @@ public class Result<TError> : ResultBase, IResult<TError>
         Error = error;
     }
 
+    #region Debugger Display
+
+    private string DebuggerDisplay =>
+        $"State = {State}, Success = {IsSuccess}, Error = {Error?.Message ?? "null"}";
+
+    #endregion
+
     /// <summary>
     ///     Gets the error object if the result is unsuccessful.
     /// </summary>
     public TError? Error { get; protected set; }
+
+    #region Pooling Support for Compatibility Layer
+
+    /// <summary>
+    ///     Initializes the result instance with new state.
+    ///     Internal method used by the pooling compatibility layer.
+    /// </summary>
+    /// <param name="state">The result state.</param>
+    /// <param name="error">The error object.</param>
+    /// <param name="exception">Optional exception.</param>
+    protected internal void InitializeInternal(ResultState state, TError? error, Exception? exception)
+    {
+        ValidateErrorState(state, error);
+
+        // Update the base state (this reinitializes the diagnostic info)
+        SetStateInternal(state, exception);
+
+        // Update the error
+        Error = error;
+    }
+
+    #endregion
+
+    #region Operators
+
+    /// <summary>
+    ///     Implicit conversion from error to failure result.
+    /// </summary>
+    public static implicit operator Result<TError>(TError error) => Failure(error);
+
+    #endregion
 
     #region Factory Methods
 
@@ -46,10 +84,7 @@ public class Result<TError> : ResultBase, IResult<TError>
     ///     Creates a new Result in the Success state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<TError> Success()
-    {
-        return new Result<TError>(ResultState.Success);
-    }
+    public static Result<TError> Success() => new(ResultState.Success);
 
     /// <summary>
     ///     Creates a new Result in the Failure state.
@@ -109,28 +144,6 @@ public class Result<TError> : ResultBase, IResult<TError>
     {
         ArgumentNullException.ThrowIfNull(error);
         return new Result<TError>(ResultState.NoOp, error);
-    }
-
-    #endregion
-
-    #region Pooling Support for Compatibility Layer
-
-    /// <summary>
-    ///     Initializes the result instance with new state.
-    ///     Internal method used by the pooling compatibility layer.
-    /// </summary>
-    /// <param name="state">The result state.</param>
-    /// <param name="error">The error object.</param>
-    /// <param name="exception">Optional exception.</param>
-    protected internal void InitializeInternal(ResultState state, TError? error, Exception? exception)
-    {
-        ValidateErrorState(state, error);
-
-        // Update the base state (this reinitializes the diagnostic info)
-        SetStateInternal(state, exception);
-
-        // Update the error
-        Error = error;
     }
 
     #endregion
@@ -344,25 +357,6 @@ public class Result<TError> : ResultBase, IResult<TError>
         return (TError)Activator.CreateInstance(
             typeof(TError),
             "Operation failed with unhandled exception")!;
-    }
-
-    #endregion
-
-    #region Debugger Display
-
-    private string DebuggerDisplay =>
-        $"State = {State}, Success = {IsSuccess}, Error = {Error?.Message ?? "null"}";
-
-    #endregion
-
-    #region Operators
-
-    /// <summary>
-    ///     Implicit conversion from error to failure result.
-    /// </summary>
-    public static implicit operator Result<TError>(TError error)
-    {
-        return Failure(error);
     }
 
     #endregion

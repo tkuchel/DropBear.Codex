@@ -192,8 +192,7 @@ public static class ConcurrentDictionaryExtensions
             dictionary,
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = maxDegreeOfParallelism,
-                CancellationToken = cancellationToken
+                MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken
             },
             async (kvp, ct) => await action(kvp.Key, kvp.Value, ct).ConfigureAwait(false)
         ).ConfigureAwait(false);

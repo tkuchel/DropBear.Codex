@@ -20,13 +20,45 @@ namespace DropBear.Codex.Core.Envelopes;
 [DebuggerDisplay("Sealed = {IsSealed}, HasPayload = {HasPayload}")]
 public sealed class Envelope<T>
 {
-    private readonly T? _payload;
     private readonly FrozenDictionary<string, object> _headers;
-    private readonly bool _isSealed;
-    private readonly DateTime _createdAt;
-    private readonly DateTime? _sealedAt;
-    private readonly string? _signature;
     private readonly IResultTelemetry _telemetry;
+
+    #region Validation
+
+    /// <summary>
+    ///     Validates the envelope and its payload.
+    /// </summary>
+    public ValidationResult Validate(Func<T, ValidationResult>? payloadValidator = null)
+    {
+        var errors = new List<ValidationError>();
+
+        // Validate envelope state
+        if (!HasPayload)
+        {
+            errors.Add(ValidationError.Required(nameof(Payload)));
+        }
+
+        if (IsSealed && string.IsNullOrWhiteSpace(Signature))
+        {
+            errors.Add(new ValidationError("Sealed envelope must have a signature"));
+        }
+
+        // Validate payload if validator provided and payload exists
+        if (payloadValidator is not null && Payload is not null)
+        {
+            var payloadResult = payloadValidator(Payload);
+            if (!payloadResult.IsValid)
+            {
+                errors.AddRange(payloadResult.Errors);
+            }
+        }
+
+        return errors.Count == 0
+            ? ValidationResult.Success
+            : ValidationResult.Failed(errors);
+    }
+
+    #endregion
 
     #region Constructors
 
@@ -42,12 +74,12 @@ public sealed class Envelope<T>
         string? signature,
         IResultTelemetry telemetry)
     {
-        _payload = payload;
+        Payload = payload;
         _headers = headers;
-        _isSealed = isSealed;
-        _createdAt = createdAt;
-        _sealedAt = sealedAt;
-        _signature = signature;
+        IsSealed = isSealed;
+        CreatedAt = createdAt;
+        SealedAt = sealedAt;
+        Signature = signature;
         _telemetry = telemetry;
 
         _telemetry.TrackResultCreated(
@@ -66,13 +98,13 @@ public sealed class Envelope<T>
     {
         ArgumentNullException.ThrowIfNull(payload);
 
-        _payload = payload;
+        Payload = payload;
         _headers = headers?.ToFrozenDictionary(StringComparer.Ordinal)
                    ?? FrozenDictionary<string, object>.Empty;
-        _isSealed = false;
-        _createdAt = DateTime.UtcNow;
-        _sealedAt = null;
-        _signature = null;
+        IsSealed = false;
+        CreatedAt = DateTime.UtcNow;
+        SealedAt = null;
+        Signature = null;
         _telemetry = telemetry ?? new DefaultResultTelemetry();
 
         _telemetry.TrackResultCreated(ResultState.Pending, typeof(Envelope<T>));
@@ -85,12 +117,12 @@ public sealed class Envelope<T>
     /// <summary>
     ///     Gets the payload contained in this envelope.
     /// </summary>
-    public T? Payload => _payload;
+    public T? Payload { get; }
 
     /// <summary>
     ///     Gets whether this envelope has a non-null payload.
     /// </summary>
-    public bool HasPayload => _payload is not null;
+    public bool HasPayload => Payload is not null;
 
     /// <summary>
     ///     Gets the headers associated with this envelope.
@@ -100,27 +132,27 @@ public sealed class Envelope<T>
     /// <summary>
     ///     Gets whether this envelope is sealed (immutable and signed).
     /// </summary>
-    public bool IsSealed => _isSealed;
+    public bool IsSealed { get; }
 
     /// <summary>
     ///     Gets the creation timestamp.
     /// </summary>
-    public DateTime CreatedAt => _createdAt;
+    public DateTime CreatedAt { get; }
 
     /// <summary>
     ///     Gets the timestamp when this envelope was sealed, if applicable.
     /// </summary>
-    public DateTime? SealedAt => _sealedAt;
+    public DateTime? SealedAt { get; }
 
     /// <summary>
     ///     Gets the digital signature of this envelope, if sealed.
     /// </summary>
-    public string? Signature => _signature;
+    public string? Signature { get; }
 
     /// <summary>
     ///     Gets the age of this envelope.
     /// </summary>
-    public TimeSpan Age => DateTime.UtcNow - _createdAt;
+    public TimeSpan Age => DateTime.UtcNow - CreatedAt;
 
     #endregion
 
@@ -161,10 +193,7 @@ public sealed class Envelope<T>
     /// <summary>
     ///     Creates a builder for constructing envelopes with a fluent API.
     /// </summary>
-    public static EnvelopeBuilder<T> CreateBuilder()
-    {
-        return new EnvelopeBuilder<T>();
-    }
+    public static EnvelopeBuilder<T> CreateBuilder() => new();
 
     /// <summary>
     ///     Creates a builder initialized with this envelope's data.
@@ -172,7 +201,7 @@ public sealed class Envelope<T>
     public EnvelopeBuilder<T> ToBuilder()
     {
         var builder = new EnvelopeBuilder<T>()
-            .WithPayload(_payload!);
+            .WithPayload(Payload!);
 
         foreach (var (key, value) in _headers)
         {
@@ -180,43 +209,6 @@ public sealed class Envelope<T>
         }
 
         return builder;
-    }
-
-    #endregion
-
-    #region Validation
-
-    /// <summary>
-    ///     Validates the envelope and its payload.
-    /// </summary>
-    public ValidationResult Validate(Func<T, ValidationResult>? payloadValidator = null)
-    {
-        var errors = new List<ValidationError>();
-
-        // Validate envelope state
-        if (!HasPayload)
-        {
-            errors.Add(ValidationError.Required(nameof(Payload)));
-        }
-
-        if (_isSealed && string.IsNullOrWhiteSpace(_signature))
-        {
-            errors.Add(new ValidationError("Sealed envelope must have a signature"));
-        }
-
-        // Validate payload if validator provided and payload exists
-        if (payloadValidator is not null && _payload is not null)
-        {
-            var payloadResult = payloadValidator(_payload);
-            if (!payloadResult.IsValid)
-            {
-                errors.AddRange(payloadResult.Errors);
-            }
-        }
-
-        return errors.Count == 0
-            ? ValidationResult.Success
-            : ValidationResult.Failed(errors);
     }
 
     #endregion
@@ -236,15 +228,15 @@ public sealed class Envelope<T>
             throw new InvalidOperationException("Cannot map an envelope without a payload");
         }
 
-        var newPayload = mapper(_payload!);
+        var newPayload = mapper(Payload!);
 
         return new Envelope<TResult>(
             newPayload,
             _headers,
-            _isSealed,
-            _createdAt,
-            _sealedAt,
-            _signature,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
             _telemetry);
     }
 
@@ -261,15 +253,15 @@ public sealed class Envelope<T>
             throw new InvalidOperationException("Cannot map an envelope without a payload");
         }
 
-        var newPayload = await mapperAsync(_payload!).ConfigureAwait(false);
+        var newPayload = await mapperAsync(Payload!).ConfigureAwait(false);
 
         return new Envelope<TResult>(
             newPayload,
             _headers,
-            _isSealed,
-            _createdAt,
-            _sealedAt,
-            _signature,
+            IsSealed,
+            CreatedAt,
+            SealedAt,
+            Signature,
             _telemetry);
     }
 
@@ -284,7 +276,7 @@ public sealed class Envelope<T>
     {
         ArgumentNullException.ThrowIfNull(signatureGenerator);
 
-        if (_isSealed)
+        if (IsSealed)
         {
             throw new InvalidOperationException("Envelope is already sealed");
         }
@@ -294,13 +286,13 @@ public sealed class Envelope<T>
             throw new InvalidOperationException("Cannot seal an envelope without a payload");
         }
 
-        var signature = signatureGenerator(_payload!);
+        var signature = signatureGenerator(Payload!);
 
         return new Envelope<T>(
-            _payload,
+            Payload,
             _headers,
-            isSealed: true,
-            _createdAt,
+            true,
+            CreatedAt,
             DateTime.UtcNow,
             signature,
             _telemetry);
@@ -313,19 +305,19 @@ public sealed class Envelope<T>
     {
         ArgumentNullException.ThrowIfNull(verifier);
 
-        if (!_isSealed)
+        if (!IsSealed)
         {
             return Result<Unit, ValidationError>.Failure(
                 new ValidationError("Envelope is not sealed"));
         }
 
-        if (!HasPayload || _signature is null)
+        if (!HasPayload || Signature is null)
         {
             return Result<Unit, ValidationError>.Failure(
                 new ValidationError("Invalid envelope state for verification"));
         }
 
-        var isValid = verifier(_payload!, _signature);
+        var isValid = verifier(Payload!, Signature);
 
         return isValid
             ? Result<Unit, ValidationError>.Success(Unit.Value)
@@ -345,12 +337,12 @@ public sealed class Envelope<T>
     {
         return new EnvelopeDto<T>
         {
-            Payload = _payload,
+            Payload = Payload,
             Headers = _headers.ToDictionary(StringComparer.Ordinal),
-            IsSealed = _isSealed,
-            CreatedAt = _createdAt,
-            SealedAt = _sealedAt,
-            Signature = _signature
+            IsSealed = IsSealed,
+            CreatedAt = CreatedAt,
+            SealedAt = SealedAt,
+            Signature = Signature
         };
     }
 

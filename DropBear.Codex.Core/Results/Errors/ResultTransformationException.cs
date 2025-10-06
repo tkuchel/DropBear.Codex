@@ -1,7 +1,6 @@
 ﻿#region
 
 using DropBear.Codex.Core.Enums;
-using DropBear.Codex.Core.Results.Base;
 
 #endregion
 

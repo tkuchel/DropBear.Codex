@@ -139,7 +139,7 @@ public static class TelemetryProvider
 ///     A no-op telemetry implementation with zero overhead.
 ///     Used when telemetry is disabled.
 /// </summary>
-file sealed class DisabledTelemetry : IResultTelemetry
+sealed file class DisabledTelemetry : IResultTelemetry
 {
     public static readonly DisabledTelemetry Instance = new();
 
@@ -147,7 +147,7 @@ file sealed class DisabledTelemetry : IResultTelemetry
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackResultCreated(
-        DropBear.Codex.Core.Enums.ResultState state,
+        ResultState state,
         Type resultType,
         string? caller = null)
     {
@@ -156,8 +156,8 @@ file sealed class DisabledTelemetry : IResultTelemetry
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackResultTransformed(
-        DropBear.Codex.Core.Enums.ResultState originalState,
-        DropBear.Codex.Core.Enums.ResultState newState,
+        ResultState originalState,
+        ResultState newState,
         Type resultType,
         string? caller = null)
     {
@@ -167,7 +167,7 @@ file sealed class DisabledTelemetry : IResultTelemetry
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackException(
         Exception exception,
-        DropBear.Codex.Core.Enums.ResultState state,
+        ResultState state,
         Type resultType,
         string? caller = null)
     {

@@ -1,4 +1,8 @@
-﻿using DropBear.Codex.Core.Results.Base;
+﻿#region
+
+using DropBear.Codex.Core.Results.Base;
+
+#endregion
 
 namespace DropBear.Codex.Core.Results.Errors;
 

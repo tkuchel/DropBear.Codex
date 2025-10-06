@@ -86,17 +86,35 @@ public readonly record struct ResultPerformanceMetrics
             var score = 100;
 
             // Deduct points for execution time
-            if (ExecutionTimeMs > 2000) score -= 50;
-            else if (ExecutionTimeMs > 1000) score -= 30;
-            else if (ExecutionTimeMs > 500) score -= 15;
-            else if (ExecutionTimeMs > 100) score -= 5;
+            if (ExecutionTimeMs > 2000)
+            {
+                score -= 50;
+            }
+            else if (ExecutionTimeMs > 1000)
+            {
+                score -= 30;
+            }
+            else if (ExecutionTimeMs > 500)
+            {
+                score -= 15;
+            }
+            else if (ExecutionTimeMs > 100)
+            {
+                score -= 5;
+            }
 
             // Deduct points for exceptions
             score -= ExceptionCount * 10;
 
             // Deduct points for failure state
-            if (State == ResultState.Failure) score -= 20;
-            else if (State == ResultState.PartialSuccess) score -= 10;
+            if (State == ResultState.Failure)
+            {
+                score -= 20;
+            }
+            else if (State == ResultState.PartialSuccess)
+            {
+                score -= 10;
+            }
 
             return Math.Max(0, Math.Min(100, score));
         }
@@ -114,16 +132,16 @@ public readonly record struct ResultPerformanceMetrics
     /// </summary>
     public string DetailedReport =>
         $"""
-        Performance Metrics for {ResultType}:
-        - Execution Time: {ExecutionTimeMs:F2}ms
-        - Exception Count: {ExceptionCount}
-        - State: {State}
-        - Performance Score: {PerformanceScore}/100
-        - Is Performant: {IsPerformant}
-        - Is Slow: {IsSlow}
-        - Is Very Slow: {IsVerySlow}
-        - Captured At: {Timestamp:yyyy-MM-dd HH:mm:ss.fff}
-        """;
+         Performance Metrics for {ResultType}:
+         - Execution Time: {ExecutionTimeMs:F2}ms
+         - Exception Count: {ExceptionCount}
+         - State: {State}
+         - Performance Score: {PerformanceScore}/100
+         - Is Performant: {IsPerformant}
+         - Is Slow: {IsSlow}
+         - Is Very Slow: {IsVerySlow}
+         - Captured At: {Timestamp:yyyy-MM-dd HH:mm:ss.fff}
+         """;
 
     /// <summary>
     ///     Creates a dictionary of metrics for structured logging.
@@ -147,8 +165,6 @@ public readonly record struct ResultPerformanceMetrics
     /// <summary>
     ///     Checks if this result meets the specified performance threshold.
     /// </summary>
-    public bool MeetsThreshold(TimeSpan maxExecutionTime, int maxExceptions = 1)
-    {
-        return ExecutionTime <= maxExecutionTime && ExceptionCount <= maxExceptions;
-    }
+    public bool MeetsThreshold(TimeSpan maxExecutionTime, int maxExceptions = 1) =>
+        ExecutionTime <= maxExecutionTime && ExceptionCount <= maxExceptions;
 }

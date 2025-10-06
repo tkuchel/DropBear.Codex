@@ -6,10 +6,9 @@ using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
-using DropBear.Codex.Core.Results.Compatibility;
-using DropBear.Codex.Core.Results.Diagnostics;
 using DropBear.Codex.Core.Results.Errors;
 using DropBear.Codex.Core.Results.Extensions;
+using DropBear.Codex.Core.Results.Serialization;
 
 #endregion
 
@@ -39,6 +38,55 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         _valueContainer = new ValueContainer(value, state.IsSuccessState());
     }
 
+    #region Debugger Display
+
+    // Use 'new' keyword to hide the base property
+    private new string DebuggerDisplay =>
+        $"State = {State}, Success = {IsSuccess}, " +
+        $"Value = {(_valueContainer.HasValue ? _valueContainer.Value?.ToString() : "null")}, " +
+        $"Error = {Error?.Message ?? "null"}";
+
+    #endregion
+
+    #region Pooling Support for Compatibility Layer
+
+    /// <summary>
+    ///     Initializes the result instance with a value and state.
+    ///     Internal method used by the pooling compatibility layer.
+    /// </summary>
+    /// <param name="value">The result value.</param>
+    /// <param name="state">The result state.</param>
+    /// <param name="error">The error object.</param>
+    /// <param name="exception">Optional exception.</param>
+    protected internal void InitializeFromValue(T? value, ResultState state, TError? error, Exception? exception)
+    {
+        ValidateErrorState(state, error);
+
+        // Update the base state
+        SetStateInternal(state, exception);
+
+        // Update the error
+        Error = error;
+
+        // Update the value container using Unsafe.AsRef to modify the readonly field
+        // This is safe because we're in a controlled pooling scenario
+        Unsafe.AsRef(in _valueContainer) = new ValueContainer(value, state.IsSuccessState());
+    }
+
+    #endregion
+
+    #region Nested Types
+
+    /// <summary>
+    ///     Modern value container using readonly struct for optimal performance.
+    ///     Optimized for .NET 9 with minimal allocations.
+    ///     Nested as a private type to avoid visibility issues.
+    /// </summary>
+    [StructLayout(LayoutKind.Auto)]
+    private readonly record struct ValueContainer(T? Value, bool HasValue);
+
+    #endregion
+
     #region IResult<T, TError> Implementation
 
     /// <inheritdoc />
@@ -46,10 +94,8 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public T ValueOrDefault(T defaultValue = default!)
-    {
-        return _valueContainer.HasValue ? _valueContainer.Value! : defaultValue;
-    }
+    public T ValueOrDefault(T defaultValue = default!) =>
+        _valueContainer.HasValue ? _valueContainer.Value! : defaultValue;
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -96,16 +142,13 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the Success state with a value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> Success(T value)
-    {
-        return new Result<T, TError>(value, ResultState.Success);
-    }
+    public static Result<T, TError> Success(T value) => new(value, ResultState.Success);
 
     /// <summary>
     ///     Creates a new Result in the Failure state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> Failure(TError error, Exception? exception = null)
+    public static new Result<T, TError> Failure(TError error, Exception? exception = null)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new Result<T, TError>(default, ResultState.Failure, error, exception);
@@ -115,7 +158,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the Warning state without a value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> Warning(TError error)
+    public static new Result<T, TError> Warning(TError error)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new Result<T, TError>(default, ResultState.Warning, error);
@@ -145,7 +188,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the Cancelled state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> Cancelled(TError error)
+    public static new Result<T, TError> Cancelled(TError error)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new Result<T, TError>(default, ResultState.Cancelled, error);
@@ -165,7 +208,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the Pending state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> Pending(TError error)
+    public static new Result<T, TError> Pending(TError error)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new Result<T, TError>(default, ResultState.Pending, error);
@@ -185,7 +228,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     ///     Creates a new Result in the NoOp state.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public new static Result<T, TError> NoOp(TError error)
+    public static new Result<T, TError> NoOp(TError error)
     {
         ArgumentNullException.ThrowIfNull(error);
         return new Result<T, TError>(default, ResultState.NoOp, error);
@@ -203,72 +246,17 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
 
     #endregion
 
-    #region Pooling Support for Compatibility Layer
-
-    /// <summary>
-    ///     Initializes the result instance with a value and state.
-    ///     Internal method used by the pooling compatibility layer.
-    /// </summary>
-    /// <param name="value">The result value.</param>
-    /// <param name="state">The result state.</param>
-    /// <param name="error">The error object.</param>
-    /// <param name="exception">Optional exception.</param>
-    protected internal void InitializeFromValue(T? value, ResultState state, TError? error, Exception? exception)
-    {
-        ValidateErrorState(state, error);
-
-        // Update the base state
-        SetStateInternal(state, exception);
-
-        // Update the error
-        Error = error;
-
-        // Update the value container using Unsafe.AsRef to modify the readonly field
-        // This is safe because we're in a controlled pooling scenario
-        Unsafe.AsRef(in _valueContainer) = new ValueContainer(value, state.IsSuccessState());
-    }
-
-    #endregion
-
-    #region Debugger Display
-
-    // Use 'new' keyword to hide the base property
-    private new string DebuggerDisplay =>
-        $"State = {State}, Success = {IsSuccess}, " +
-        $"Value = {(_valueContainer.HasValue ? _valueContainer.Value?.ToString() : "null")}, " +
-        $"Error = {Error?.Message ?? "null"}";
-
-    #endregion
-
     #region Operators
 
     /// <summary>
     ///     Implicit conversion from value to success result.
     /// </summary>
-    public static implicit operator Result<T, TError>(T value)
-    {
-        return Success(value);
-    }
+    public static implicit operator Result<T, TError>(T value) => Success(value);
 
     /// <summary>
     ///     Implicit conversion from error to failure result.
     /// </summary>
-    public static implicit operator Result<T, TError>(TError error)
-    {
-        return Failure(error);
-    }
-
-    #endregion
-
-    #region Nested Types
-
-    /// <summary>
-    ///     Modern value container using readonly struct for optimal performance.
-    ///     Optimized for .NET 9 with minimal allocations.
-    ///     Nested as a private type to avoid visibility issues.
-    /// </summary>
-    [StructLayout(LayoutKind.Auto)]
-    private readonly record struct ValueContainer(T? Value, bool HasValue);
+    public static implicit operator Result<T, TError>(TError error) => Failure(error);
 
     #endregion
 }

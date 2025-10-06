@@ -14,6 +14,65 @@ namespace DropBear.Codex.Core.Results.Extensions;
 /// </summary>
 public static class UtilityExtensions
 {
+    #region Exception Handling
+
+    /// <summary>
+    ///     Executes an action if the result contains an exception.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, TError> OnException<T, TError>(
+        this Result<T, TError> result,
+        Action<Exception> action)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(action);
+
+        if (result.Exception is not null)
+        {
+            action(result.Exception);
+        }
+
+        return result;
+    }
+
+    #endregion
+
+    #region Result Chaining
+
+    /// <summary>
+    ///     Chains multiple operations, stopping at the first failure.
+    /// </summary>
+    public static Result<T, TError> Chain<T, TError>(
+        this Result<T, TError> result,
+        params Func<T, Result<T, TError>>[] operations)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(operations);
+
+        if (!result.IsSuccess)
+        {
+            return result;
+        }
+
+        var current = result;
+
+        foreach (var operation in operations)
+        {
+            if (!current.IsSuccess)
+            {
+                return current;
+            }
+
+            current = operation(current.Value!);
+        }
+
+        return current;
+    }
+
+    #endregion
+
     #region Timing and Performance
 
     /// <summary>
@@ -223,36 +282,18 @@ public static class UtilityExtensions
 
     #endregion
 
-    #region Exception Handling
-
-    /// <summary>
-    ///     Executes an action if the result contains an exception.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static Result<T, TError> OnException<T, TError>(
-        this Result<T, TError> result,
-        Action<Exception> action)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(result);
-        ArgumentNullException.ThrowIfNull(action);
-
-        if (result.Exception is not null)
-        {
-            action(result.Exception);
-        }
-
-        return result;
-    }
-
-    #endregion
-
     #region Debugging and Diagnostics
 
     /// <summary>
-    ///     Taps into the result for debugging without modifying it.
+    ///     Executes a side effect with the entire RESULT object.
+    ///     The action receives the complete result (including state, error, etc.).
+    ///     Use this when you need access to the full result metadata.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <example>
+    /// <code>
+    /// result.Tap(r => Logger.Log($"Result state: {r.State}"));
+    /// </code>
+    /// </example>
     public static Result<T, TError> Tap<T, TError>(
         this Result<T, TError> result,
         Action<Result<T, TError>> action)
@@ -355,10 +396,8 @@ public static class UtilityExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T? ToNullable<T, TError>(this Result<T, TError> result)
         where TError : ResultError
-        where T : struct
-    {
-        return result.IsSuccess ? result.Value : null;
-    }
+        where T : struct =>
+        result.IsSuccess ? result.Value : null;
 
     /// <summary>
     ///     Converts a nullable value to a Result.
@@ -392,41 +431,6 @@ public static class UtilityExtensions
         return value is not null
             ? Result<T, TError>.Success(value)
             : Result<T, TError>.Failure(error);
-    }
-
-    #endregion
-
-    #region Result Chaining
-
-    /// <summary>
-    ///     Chains multiple operations, stopping at the first failure.
-    /// </summary>
-    public static Result<T, TError> Chain<T, TError>(
-        this Result<T, TError> result,
-        params Func<T, Result<T, TError>>[] operations)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(result);
-        ArgumentNullException.ThrowIfNull(operations);
-
-        if (!result.IsSuccess)
-        {
-            return result;
-        }
-
-        var current = result;
-
-        foreach (var operation in operations)
-        {
-            if (!current.IsSuccess)
-            {
-                return current;
-            }
-
-            current = operation(current.Value!);
-        }
-
-        return current;
     }
 
     #endregion

@@ -83,6 +83,20 @@ public abstract record ResultError
     [JsonIgnore]
     public bool HasMetadata => _metadata?.Count > 0;
 
+    #region Code Helpers
+
+    /// <summary>
+    ///     Creates a new error with the specified error code.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public ResultError WithCode(string code)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(code);
+        return this with { Code = code };
+    }
+
+    #endregion
+
     #region Metadata Management
 
     /// <summary>
@@ -177,10 +191,7 @@ public abstract record ResultError
     ///     Creates a new error with the specified severity.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError WithSeverity(ErrorSeverity severity)
-    {
-        return this with { Severity = severity };
-    }
+    public ResultError WithSeverity(ErrorSeverity severity) => this with { Severity = severity };
 
     /// <summary>
     ///     Creates a new error with Info severity.
@@ -211,20 +222,6 @@ public abstract record ResultError
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ResultError AsCritical() => this with { Severity = ErrorSeverity.Critical };
-
-    #endregion
-
-    #region Code Helpers
-
-    /// <summary>
-    ///     Creates a new error with the specified error code.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError WithCode(string code)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(code);
-        return this with { Code = code };
-    }
 
     #endregion
 

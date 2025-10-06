@@ -2,9 +2,7 @@
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Validations;
 
 #endregion
 
@@ -16,6 +14,57 @@ namespace DropBear.Codex.Core.Results.Extensions;
 /// </summary>
 public static class ResultExtensions
 {
+    #region Retry Logic (Modern .NET 9)
+
+    /// <summary>
+    ///     Retries an operation with exponential backoff.
+    ///     Uses modern TimeProvider for testability.
+    /// </summary>
+    public static async ValueTask<Result<T, TError>> RetryAsync<T, TError>(
+        this Func<CancellationToken, ValueTask<Result<T, TError>>> operation,
+        int maxAttempts = 3,
+        TimeSpan? initialDelay = null,
+        double backoffMultiplier = 2.0,
+        TimeProvider? timeProvider = null,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(operation);
+
+        if (maxAttempts <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxAttempts), "Max attempts must be positive");
+        }
+
+        var delay = initialDelay ?? TimeSpan.FromMilliseconds(100);
+        var provider = timeProvider ?? TimeProvider.System;
+        Result<T, TError>? lastResult = null;
+
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            lastResult = await operation(cancellationToken).ConfigureAwait(false);
+
+            if (lastResult.IsSuccess)
+            {
+                return lastResult;
+            }
+
+            // Don't delay after the last attempt
+            if (attempt < maxAttempts)
+            {
+                var currentDelay =
+                    TimeSpan.FromMilliseconds(delay.TotalMilliseconds * Math.Pow(backoffMultiplier, attempt - 1));
+                await Task.Delay(currentDelay, provider, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        return lastResult!;
+    }
+
+    #endregion
+
     #region Match Operations
 
     /// <summary>
@@ -103,10 +152,15 @@ public static class ResultExtensions
     }
 
     /// <summary>
-    ///     Executes an action on a successful result without changing the result.
-    ///     Useful for side effects like logging.
+    ///     Executes a side effect with the result's VALUE if successful.
+    ///     The action receives the unwrapped value.
+    ///     Use this when you want to operate on the value itself.
     /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    /// <example>
+    ///     <code>
+    /// result.Tap(value => Console.WriteLine($"Got value: {value}"));
+    /// </code>
+    /// </example>
     public static Result<T, TError> Tap<T, TError>(
         this Result<T, TError> result,
         Action<T> action)
@@ -268,57 +322,6 @@ public static class ResultExtensions
 
         return allResults.Combine(errors =>
             (TError)Activator.CreateInstance(typeof(TError), $"{errors.Count()} operations failed")!);
-    }
-
-    #endregion
-
-    #region Retry Logic (Modern .NET 9)
-
-    /// <summary>
-    ///     Retries an operation with exponential backoff.
-    ///     Uses modern TimeProvider for testability.
-    /// </summary>
-    public static async ValueTask<Result<T, TError>> RetryAsync<T, TError>(
-        this Func<CancellationToken, ValueTask<Result<T, TError>>> operation,
-        int maxAttempts = 3,
-        TimeSpan? initialDelay = null,
-        double backoffMultiplier = 2.0,
-        TimeProvider? timeProvider = null,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(operation);
-
-        if (maxAttempts <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(maxAttempts), "Max attempts must be positive");
-        }
-
-        var delay = initialDelay ?? TimeSpan.FromMilliseconds(100);
-        var provider = timeProvider ?? TimeProvider.System;
-        Result<T, TError>? lastResult = null;
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-
-            lastResult = await operation(cancellationToken).ConfigureAwait(false);
-
-            if (lastResult.IsSuccess)
-            {
-                return lastResult;
-            }
-
-            // Don't delay after the last attempt
-            if (attempt < maxAttempts)
-            {
-                var currentDelay =
-                    TimeSpan.FromMilliseconds(delay.TotalMilliseconds * Math.Pow(backoffMultiplier, attempt - 1));
-                await Task.Delay(currentDelay, provider, cancellationToken).ConfigureAwait(false);
-            }
-        }
-
-        return lastResult!;
     }
 
     #endregion
@@ -606,8 +609,8 @@ public static class ResultExtensions
         finally
         {
             // Always return arrays to pool
-            ArrayPool<T>.Shared.Return(successValuesArray, clearArray: true);
-            ArrayPool<TError>.Shared.Return(errorsArray, clearArray: true);
+            ArrayPool<T>.Shared.Return(successValuesArray, true);
+            ArrayPool<TError>.Shared.Return(errorsArray, true);
         }
     }
 
@@ -685,7 +688,7 @@ public static class ResultExtensions
             finally
             {
                 // Return array to pool
-                ArrayPool<ValueTask<Result<TResult, TError>>>.Shared.Return(batchTasks, clearArray: true);
+                ArrayPool<ValueTask<Result<TResult, TError>>>.Shared.Return(batchTasks, true);
             }
         }
 

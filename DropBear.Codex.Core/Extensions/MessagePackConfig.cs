@@ -38,46 +38,31 @@ public static class MessagePackConfig
     ///     Gets the default MessagePack serializer options.
     /// </summary>
     /// <returns>MessagePackSerializerOptions with standard settings.</returns>
-    public static MessagePackSerializerOptions GetOptions()
-    {
-        return DefaultOptions;
-    }
+    public static MessagePackSerializerOptions GetOptions() => DefaultOptions;
 
     /// <summary>
     ///     Gets high-performance options (no compression).
     /// </summary>
     /// <returns>MessagePackSerializerOptions optimized for speed.</returns>
-    public static MessagePackSerializerOptions GetHighPerformanceOptions()
-    {
-        return HighPerformanceOptions;
-    }
+    public static MessagePackSerializerOptions GetHighPerformanceOptions() => HighPerformanceOptions;
 
     /// <summary>
     ///     Gets compact options (maximum compression).
     /// </summary>
     /// <returns>MessagePackSerializerOptions optimized for size.</returns>
-    public static MessagePackSerializerOptions GetCompactOptions()
-    {
-        return CompactOptions;
-    }
+    public static MessagePackSerializerOptions GetCompactOptions() => CompactOptions;
 
     /// <summary>
     ///     Initializes the global default options.
     ///     Call this once at application startup if you want to set global defaults.
     /// </summary>
-    public static void InitializeGlobalDefaults()
-    {
-        MessagePackSerializer.DefaultOptions = DefaultOptions;
-    }
+    public static void InitializeGlobalDefaults() => MessagePackSerializer.DefaultOptions = DefaultOptions;
 
     /// <summary>
     ///     Creates a builder for custom configurations.
     /// </summary>
     /// <returns>A new MessagePackConfigBuilder.</returns>
-    public static MessagePackConfigBuilder CreateBuilder()
-    {
-        return new MessagePackConfigBuilder();
-    }
+    public static MessagePackConfigBuilder CreateBuilder() => new();
 }
 
 /// <summary>
@@ -85,11 +70,11 @@ public static class MessagePackConfig
 /// </summary>
 public sealed class MessagePackConfigBuilder
 {
+    private bool _allowAssemblyVersionMismatch;
     private MessagePackCompression _compression = MessagePackCompression.Lz4BlockArray;
+    private bool _omitAssemblyVersion;
     private IFormatterResolver _resolver = StandardResolverAllowPrivate.Instance;
     private MessagePackSecurity _security = MessagePackSecurity.UntrustedData;
-    private bool _omitAssemblyVersion;
-    private bool _allowAssemblyVersionMismatch;
 
     internal MessagePackConfigBuilder()
     {

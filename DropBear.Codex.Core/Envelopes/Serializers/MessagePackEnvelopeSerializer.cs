@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Collections.Frozen;
 using System.Text.Json;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Extensions;
@@ -18,8 +17,8 @@ namespace DropBear.Codex.Core.Envelopes.Serializers;
 /// </summary>
 public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
 {
-    private readonly IResultTelemetry _telemetry;
     private readonly MessagePackSerializerOptions _options;
+    private readonly IResultTelemetry _telemetry;
 
     /// <summary>
     ///     Initializes a new instance with optional custom options.

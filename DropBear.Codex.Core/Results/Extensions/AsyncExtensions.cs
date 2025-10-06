@@ -14,6 +14,132 @@ namespace DropBear.Codex.Core.Results.Extensions;
 /// </summary>
 public static class AsyncExtensions
 {
+    #region IAsyncEnumerable Extensions
+
+    /// <summary>
+    ///     Converts an IAsyncEnumerable to an AsyncEnumerableResult.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static AsyncEnumerableResult<T, TError> ToResult<T, TError>(
+        this IAsyncEnumerable<T> enumerable)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(enumerable);
+        return AsyncEnumerableResult<T, TError>.Success(enumerable);
+    }
+
+    #endregion
+
+    #region Parallel Async Processing
+
+    /// <summary>
+    ///     Processes items from an async enumerable in parallel with controlled concurrency.
+    ///     Uses modern .NET 9 patterns for optimal performance.
+    /// </summary>
+    public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> ParallelSelectAsync<T, TResult, TError>(
+        this IAsyncEnumerable<T> source,
+        Func<T, CancellationToken, ValueTask<TResult>> selector,
+        int maxDegreeOfParallelism = -1,
+        CancellationToken cancellationToken = default)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(source);
+        ArgumentNullException.ThrowIfNull(selector);
+
+        try
+        {
+            // Materialize to array first
+            var items = new List<T>();
+            await foreach (var item in source.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                items.Add(item);
+            }
+
+            if (items.Count == 0)
+            {
+                return Result<IReadOnlyList<TResult>, TError>.Success(Array.Empty<TResult>());
+            }
+
+            var results = new TResult[items.Count];
+            var options = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken
+            };
+
+            await Parallel.ForAsync(0, items.Count, options, async (i, ct) =>
+            {
+                results[i] = await selector(items[i], ct).ConfigureAwait(false);
+            }).ConfigureAwait(false);
+
+            return Result<IReadOnlyList<TResult>, TError>.Success(results);
+        }
+        catch (OperationCanceledException)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), "Operation was cancelled")!;
+            return Result<IReadOnlyList<TResult>, TError>.Cancelled(errorInstance);
+        }
+        catch (Exception ex)
+        {
+            var errorInstance = (TError)Activator.CreateInstance(
+                typeof(TError), $"Parallel operation failed: {ex.Message}")!;
+            return Result<IReadOnlyList<TResult>, TError>.Failure(errorInstance, ex);
+        }
+    }
+
+    #endregion
+
+    #region Buffering and Batching
+
+    /// <summary>
+    ///     Buffers items from an async enumerable into batches.
+    ///     Uses modern Chunk() method for efficient batching.
+    /// </summary>
+    public static AsyncEnumerableResult<IReadOnlyList<T>, TError> Buffer<T, TError>(
+        this AsyncEnumerableResult<T, TError> result,
+        int bufferSize)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (bufferSize <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be positive");
+        }
+
+        if (!result.IsSuccess)
+        {
+            return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Failure(result.Error!);
+        }
+
+        async IAsyncEnumerable<IReadOnlyList<T>> BufferAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var buffer = new List<T>(bufferSize);
+
+            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                buffer.Add(item);
+
+                if (buffer.Count >= bufferSize)
+                {
+                    yield return buffer.AsReadOnly();
+                    buffer = new List<T>(bufferSize);
+                }
+            }
+
+            // Yield remaining items if any
+            if (buffer.Count > 0)
+            {
+                yield return buffer.AsReadOnly();
+            }
+        }
+
+        return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Success(BufferAsync());
+    }
+
+    #endregion
+
     #region Async Result Extensions
 
     /// <summary>
@@ -133,22 +259,6 @@ public static class AsyncExtensions
                 typeof(TError), $"ValueTask failed: {ex.Message}")!;
             return Result<T, TError>.Failure(errorInstance, ex);
         }
-    }
-
-    #endregion
-
-    #region IAsyncEnumerable Extensions
-
-    /// <summary>
-    ///     Converts an IAsyncEnumerable to an AsyncEnumerableResult.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static AsyncEnumerableResult<T, TError> ToResult<T, TError>(
-        this IAsyncEnumerable<T> enumerable)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(enumerable);
-        return AsyncEnumerableResult<T, TError>.Success(enumerable);
     }
 
     #endregion
@@ -499,116 +609,6 @@ public static class AsyncExtensions
                 typeof(TError), $"ForEach operation failed: {ex.Message}")!;
             return Result<Unit, TError>.Failure(errorInstance, ex);
         }
-    }
-
-    #endregion
-
-    #region Parallel Async Processing
-
-    /// <summary>
-    ///     Processes items from an async enumerable in parallel with controlled concurrency.
-    ///     Uses modern .NET 9 patterns for optimal performance.
-    /// </summary>
-    public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> ParallelSelectAsync<T, TResult, TError>(
-        this IAsyncEnumerable<T> source,
-        Func<T, CancellationToken, ValueTask<TResult>> selector,
-        int maxDegreeOfParallelism = -1,
-        CancellationToken cancellationToken = default)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(source);
-        ArgumentNullException.ThrowIfNull(selector);
-
-        try
-        {
-            // Materialize to array first
-            var items = new List<T>();
-            await foreach (var item in source.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                items.Add(item);
-            }
-
-            if (items.Count == 0)
-            {
-                return Result<IReadOnlyList<TResult>, TError>.Success(Array.Empty<TResult>());
-            }
-
-            var results = new TResult[items.Count];
-            var options = new ParallelOptions
-            {
-                MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = cancellationToken
-            };
-
-            await Parallel.ForAsync(0, items.Count, options, async (i, ct) =>
-            {
-                results[i] = await selector(items[i], ct).ConfigureAwait(false);
-            }).ConfigureAwait(false);
-
-            return Result<IReadOnlyList<TResult>, TError>.Success(results);
-        }
-        catch (OperationCanceledException)
-        {
-            var errorInstance = (TError)Activator.CreateInstance(
-                typeof(TError), "Operation was cancelled")!;
-            return Result<IReadOnlyList<TResult>, TError>.Cancelled(errorInstance);
-        }
-        catch (Exception ex)
-        {
-            var errorInstance = (TError)Activator.CreateInstance(
-                typeof(TError), $"Parallel operation failed: {ex.Message}")!;
-            return Result<IReadOnlyList<TResult>, TError>.Failure(errorInstance, ex);
-        }
-    }
-
-    #endregion
-
-    #region Buffering and Batching
-
-    /// <summary>
-    ///     Buffers items from an async enumerable into batches.
-    ///     Uses modern Chunk() method for efficient batching.
-    /// </summary>
-    public static AsyncEnumerableResult<IReadOnlyList<T>, TError> Buffer<T, TError>(
-        this AsyncEnumerableResult<T, TError> result,
-        int bufferSize)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(result);
-
-        if (bufferSize <= 0)
-        {
-            throw new ArgumentOutOfRangeException(nameof(bufferSize), "Buffer size must be positive");
-        }
-
-        if (!result.IsSuccess)
-        {
-            return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Failure(result.Error!);
-        }
-
-        async IAsyncEnumerable<IReadOnlyList<T>> BufferAsync(
-            [EnumeratorCancellation] CancellationToken cancellationToken = default)
-        {
-            var buffer = new List<T>(bufferSize);
-
-            await foreach (var item in result.WithCancellation(cancellationToken).ConfigureAwait(false))
-            {
-                buffer.Add(item);
-
-                if (buffer.Count >= bufferSize)
-                {
-                    yield return buffer.AsReadOnly();
-                    buffer = new List<T>(bufferSize);
-                }
-            }
-
-            // Yield remaining items if any
-            if (buffer.Count > 0)
-            {
-                yield return buffer.AsReadOnly();
-            }
-        }
-
-        return AsyncEnumerableResult<IReadOnlyList<T>, TError>.Success(BufferAsync());
     }
 
     #endregion

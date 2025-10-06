@@ -6,8 +6,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Core.Results.Extensions;
+using DropBear.Codex.Core.Results.Serialization;
 
 #endregion
 
@@ -19,10 +19,9 @@ namespace DropBear.Codex.Core.Results.Validations;
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ValidationResultJsonConverter))]
-public sealed class ValidationResult : Base.Result<ValidationError>
+public sealed class ValidationResult : Result<ValidationError>
 {
     // Singleton success instance for efficiency
-    private static readonly ValidationResult SuccessInstance = new(ResultState.Success);
 
     // Multiple errors storage (for aggregated validation) - using frozen set for performance
     private readonly FrozenSet<ValidationError>? _errors;
@@ -79,10 +78,63 @@ public sealed class ValidationResult : Base.Result<ValidationError>
     /// <summary>
     ///     Gets a successful validation result (singleton).
     /// </summary>
-    public new static ValidationResult Success => SuccessInstance;
+    public static new ValidationResult Success { get; } = new(ResultState.Success);
 
     private string DebuggerDisplay =>
         $"IsValid = {IsValid}, ErrorCount = {ErrorCount}, Message = {ErrorMessage}";
+
+    #region Factory Methods - Multiple Errors (Modern params collections)
+
+    /// <summary>
+    ///     Creates a failed validation result with multiple errors.
+    ///     Uses params collection for modern syntax (.NET 9).
+    /// </summary>
+    public static ValidationResult Failed(params IEnumerable<ValidationError> errors)
+    {
+        ArgumentNullException.ThrowIfNull(errors);
+
+        var errorList = errors.ToList();
+
+        if (errorList.Count == 0)
+        {
+            throw new ArgumentException("At least one error is required", nameof(errors));
+        }
+
+        if (errorList.Count == 1)
+        {
+            return new ValidationResult(ResultState.Failure, errorList[0]);
+        }
+
+        // Create aggregated error message
+        var aggregatedError = CreateAggregatedError(errorList);
+        return new ValidationResult(ResultState.Failure, aggregatedError, null, errorList);
+    }
+
+    #endregion
+
+    #region Helper Methods
+
+    /// <summary>
+    ///     Creates an aggregated error from multiple validation errors.
+    ///     Uses modern string interpolation handler for better performance.
+    /// </summary>
+    private static ValidationError CreateAggregatedError(List<ValidationError> errors)
+    {
+        var errorCount = errors.Count;
+        var message = $"Validation failed with {errorCount} error(s)";
+
+        var aggregatedError = new ValidationError(message)
+        {
+            ValidationRule = "Aggregate", Severity = errors.Max(e => e.Severity)
+        };
+
+        // Add metadata about the aggregated errors
+        return (ValidationError)aggregatedError
+            .WithMetadata("ErrorCount", errorCount)
+            .WithMetadata("ErrorMessages", errors.Select(e => e.Message).ToArray());
+    }
+
+    #endregion
 
     #region Factory Methods - Single Error
 
@@ -136,35 +188,6 @@ public sealed class ValidationResult : Base.Result<ValidationError>
 
         var error = ValidationError.ForRule(rule, message, attemptedValue);
         return new ValidationResult(ResultState.Failure, error);
-    }
-
-    #endregion
-
-    #region Factory Methods - Multiple Errors (Modern params collections)
-
-    /// <summary>
-    ///     Creates a failed validation result with multiple errors.
-    ///     Uses params collection for modern syntax (.NET 9).
-    /// </summary>
-    public static ValidationResult Failed(params IEnumerable<ValidationError> errors)
-    {
-        ArgumentNullException.ThrowIfNull(errors);
-
-        var errorList = errors.ToList();
-
-        if (errorList.Count == 0)
-        {
-            throw new ArgumentException("At least one error is required", nameof(errors));
-        }
-
-        if (errorList.Count == 1)
-        {
-            return new ValidationResult(ResultState.Failure, errorList[0]);
-        }
-
-        // Create aggregated error message
-        var aggregatedError = CreateAggregatedError(errorList);
-        return new ValidationResult(ResultState.Failure, aggregatedError, null, errorList);
     }
 
     #endregion
@@ -334,30 +357,6 @@ public sealed class ValidationResult : Base.Result<ValidationError>
                 g => g.Key,
                 g => (IReadOnlyList<ValidationError>)g.ToList(),
                 StringComparer.Ordinal);
-    }
-
-    #endregion
-
-    #region Helper Methods
-
-    /// <summary>
-    ///     Creates an aggregated error from multiple validation errors.
-    ///     Uses modern string interpolation handler for better performance.
-    /// </summary>
-    private static ValidationError CreateAggregatedError(List<ValidationError> errors)
-    {
-        var errorCount = errors.Count;
-        var message = $"Validation failed with {errorCount} error(s)";
-
-        var aggregatedError = new ValidationError(message)
-        {
-            ValidationRule = "Aggregate", Severity = errors.Max(e => e.Severity)
-        };
-
-        // Add metadata about the aggregated errors
-        return (ValidationError)aggregatedError
-            .WithMetadata("ErrorCount", errorCount)
-            .WithMetadata("ErrorMessages", errors.Select(e => e.Message).ToArray());
     }
 
     #endregion

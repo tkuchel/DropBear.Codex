@@ -22,10 +22,8 @@ public static class ResultStateExtensions
     ///     otherwise, <c>false</c>.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsSuccessState(this ResultState state)
-    {
-        return state is ResultState.Success or ResultState.PartialSuccess;
-    }
+    public static bool IsSuccessState(this ResultState state) =>
+        state is ResultState.Success or ResultState.PartialSuccess;
 
     /// <summary>
     ///     Determines whether the specified state represents a failure outcome.
@@ -35,10 +33,7 @@ public static class ResultStateExtensions
     ///     <c>true</c> if the state is <see cref="ResultState.Failure" />; otherwise, <c>false</c>.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsFailureState(this ResultState state)
-    {
-        return state is ResultState.Failure;
-    }
+    public static bool IsFailureState(this ResultState state) => state is ResultState.Failure;
 
     /// <summary>
     ///     Determines whether the specified state represents a cancelled outcome.
@@ -48,10 +43,7 @@ public static class ResultStateExtensions
     ///     <c>true</c> if the state is <see cref="ResultState.Cancelled" />; otherwise, <c>false</c>.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsCancelledState(this ResultState state)
-    {
-        return state is ResultState.Cancelled;
-    }
+    public static bool IsCancelledState(this ResultState state) => state is ResultState.Cancelled;
 
     /// <summary>
     ///     Determines whether the specified state represents a pending outcome.
@@ -61,10 +53,7 @@ public static class ResultStateExtensions
     ///     <c>true</c> if the state is <see cref="ResultState.Pending" />; otherwise, <c>false</c>.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsPendingState(this ResultState state)
-    {
-        return state is ResultState.Pending;
-    }
+    public static bool IsPendingState(this ResultState state) => state is ResultState.Pending;
 
     /// <summary>
     ///     Determines whether the specified state represents a warning outcome.
@@ -74,10 +63,7 @@ public static class ResultStateExtensions
     ///     <c>true</c> if the state is <see cref="ResultState.Warning" />; otherwise, <c>false</c>.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsWarningState(this ResultState state)
-    {
-        return state is ResultState.Warning;
-    }
+    public static bool IsWarningState(this ResultState state) => state is ResultState.Warning;
 
     /// <summary>
     ///     Determines whether the specified state represents a no-operation outcome.
@@ -87,10 +73,7 @@ public static class ResultStateExtensions
     ///     <c>true</c> if the state is <see cref="ResultState.NoOp" />; otherwise, <c>false</c>.
     /// </returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsNoOpState(this ResultState state)
-    {
-        return state is ResultState.NoOp;
-    }
+    public static bool IsNoOpState(this ResultState state) => state is ResultState.NoOp;
 
     /// <summary>
     ///     Gets a human-readable description of the result state.
