@@ -18,8 +18,9 @@ public static class SpanExtensions
     ///     Filters successful results using span-based operations.
     ///     Uses ArrayPool to minimize allocations.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int FilterSuccessValues<T, TError>(
-        ReadOnlySpan<Result<T, TError>> results,
+        this ReadOnlySpan<Result<T, TError>> results, 
         Span<T> destination)
         where TError : ResultError
     {
@@ -28,9 +29,32 @@ public static class SpanExtensions
         for (var i = 0; i < results.Length && count < destination.Length; i++)
         {
             ref readonly var result = ref results[i];
-            if (result.IsSuccess)
+            if (result.IsSuccess && result.Value is not null)
             {
-                destination[count++] = result.Value!;
+                destination[count++] = result.Value;
+            }
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    ///     Filters errors from results into a destination span.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int FilterErrors<T, TError>(
+        this ReadOnlySpan<Result<T, TError>> results, // ADD 'this' keyword
+        Span<TError> destination)
+        where TError : ResultError
+    {
+        var count = 0;
+
+        for (var i = 0; i < results.Length && count < destination.Length; i++)
+        {
+            ref readonly var result = ref results[i];
+            if (!result.IsSuccess && result.Error is not null)
+            {
+                destination[count++] = result.Error;
             }
         }
 
@@ -41,7 +65,8 @@ public static class SpanExtensions
     ///     Counts successful results without allocation.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int CountSuccesses<T, TError>(ReadOnlySpan<Result<T, TError>> results)
+    public static int CountSuccesses<T, TError>(
+        this ReadOnlySpan<Result<T, TError>> results) // ADD 'this' keyword
         where TError : ResultError
     {
         var count = 0;
@@ -61,7 +86,8 @@ public static class SpanExtensions
     ///     Counts failures without allocation.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int CountFailures<T, TError>(ReadOnlySpan<Result<T, TError>> results)
+    public static int CountFailures<T, TError>(
+        this ReadOnlySpan<Result<T, TError>> results) // ADD 'this' keyword
         where TError : ResultError
     {
         var count = 0;
@@ -78,11 +104,49 @@ public static class SpanExtensions
     }
 
     /// <summary>
+    ///     Checks if all results are successful.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AllSuccess<T, TError>(
+        this ReadOnlySpan<Result<T, TError>> results)
+        where TError : ResultError
+    {
+        for (var i = 0; i < results.Length; i++)
+        {
+            if (!results[i].IsSuccess)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    ///     Checks if any result is successful.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AnySuccess<T, TError>(
+        this ReadOnlySpan<Result<T, TError>> results)
+        where TError : ResultError
+    {
+        for (var i = 0; i < results.Length; i++)
+        {
+            if (results[i].IsSuccess)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
     ///     Partitions results using rented arrays from ArrayPool.
     ///     Returns rented arrays that must be returned to pool after use.
     /// </summary>
     public static (T[] Successes, int SuccessCount, TError[] Errors, int ErrorCount) PartitionPooled<T, TError>(
-        ReadOnlySpan<Result<T, TError>> results)
+        this ReadOnlySpan<Result<T, TError>> results) // ADD 'this' keyword
         where TError : ResultError
     {
         var successArray = ArrayPool<T>.Shared.Rent(results.Length);
@@ -95,9 +159,9 @@ public static class SpanExtensions
         {
             ref readonly var result = ref results[i];
 
-            if (result.IsSuccess)
+            if (result.IsSuccess && result.Value is not null)
             {
-                successArray[successCount++] = result.Value!;
+                successArray[successCount++] = result.Value;
             }
             else if (result.Error is not null)
             {
@@ -123,7 +187,7 @@ public static class SpanExtensions
     ///     Applies a transformation using pooled intermediate storage.
     /// </summary>
     public static void TransformInPlace<T, TError>(
-        Span<Result<T, TError>> results,
+        Span<Result<T, TError>> results, // This one should NOT have 'this' - it mutates
         Func<T, T> transformer)
         where TError : ResultError
     {
@@ -132,9 +196,9 @@ public static class SpanExtensions
         for (var i = 0; i < results.Length; i++)
         {
             ref var result = ref results[i];
-            if (result.IsSuccess)
+            if (result.IsSuccess && result.Value is not null)
             {
-                var transformed = transformer(result.Value!);
+                var transformed = transformer(result.Value);
                 result = Result<T, TError>.Success(transformed);
             }
         }
