@@ -475,59 +475,6 @@ public static class ResultExtensions
 
     #endregion
 
-    #region Collection Helpers (Modern .NET 9)
-
-    /// <summary>
-    ///     Filters out failed results from a collection, returning only successful values.
-    ///     Optimized with modern enumeration patterns.
-    /// </summary>
-    public static IEnumerable<T> SuccessValues<T, TError>(
-        this IEnumerable<Result<T, TError>> results)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(results);
-
-        foreach (var result in results)
-        {
-            if (result.IsSuccess)
-            {
-                yield return result.Value!;
-            }
-        }
-    }
-
-
-
-    /// <summary>
-    ///     Partitions results into successful values and errors.
-    ///     Uses collection expressions for modern syntax (.NET 9).
-    /// </summary>
-    public static (List<T> Successes, List<TError> Errors) Partition<T, TError>(
-        this IEnumerable<Result<T, TError>> results)
-        where TError : ResultError
-    {
-        ArgumentNullException.ThrowIfNull(results);
-
-        var successes = new List<T>();
-        var errors = new List<TError>();
-
-        foreach (var result in results)
-        {
-            if (result.IsSuccess)
-            {
-                successes.Add(result.Value!);
-            }
-            else if (result.Error is not null)
-            {
-                errors.Add(result.Error);
-            }
-        }
-
-        return (successes, errors);
-    }
-
-    #endregion
-
     #region Performance-Optimized Hot Paths
 
     /// <summary>
