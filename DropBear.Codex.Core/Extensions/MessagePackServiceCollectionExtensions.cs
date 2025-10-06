@@ -1,5 +1,6 @@
 ﻿#region
 
+using System;
 using MessagePack;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -24,7 +25,6 @@ public static class MessagePackServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         var options = MessagePackConfig.GetOptions();
-        MessagePackSerializer.DefaultOptions = options;
 
         services.TryAddSingleton(options);
         return services;
@@ -34,19 +34,18 @@ public static class MessagePackServiceCollectionExtensions
     ///     Adds MessagePack serialization with custom configuration.
     /// </summary>
     /// <param name="services">The service collection.</param>
-    /// <param name="configureOptions">Action to configure MessagePack options.</param>
+    /// <param name="configureOptions">Delegate that returns the configured options instance.</param>
     /// <returns>The service collection for chaining.</returns>
     public static IServiceCollection AddMessagePackSerialization(
         this IServiceCollection services,
-        Action<MessagePackSerializerOptions> configureOptions)
+        Func<MessagePackSerializerOptions, MessagePackSerializerOptions> configureOptions)
     {
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configureOptions);
 
-        var options = MessagePackConfig.GetOptions();
-        configureOptions(options);
+        var options = configureOptions(MessagePackConfig.GetOptions())
+                      ?? throw new InvalidOperationException("configureOptions delegate returned null.");
 
-        MessagePackSerializer.DefaultOptions = options;
         services.TryAddSingleton(options);
 
         return services;
@@ -69,7 +68,6 @@ public static class MessagePackServiceCollectionExtensions
         configureBuilder(builder);
         var options = builder.Build();
 
-        MessagePackSerializer.DefaultOptions = options;
         services.TryAddSingleton(options);
 
         return services;
@@ -86,7 +84,6 @@ public static class MessagePackServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         var options = MessagePackConfig.GetHighPerformanceOptions();
-        MessagePackSerializer.DefaultOptions = options;
 
         services.TryAddSingleton(options);
         return services;
@@ -103,7 +100,6 @@ public static class MessagePackServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         var options = MessagePackConfig.GetCompactOptions();
-        MessagePackSerializer.DefaultOptions = options;
 
         services.TryAddSingleton(options);
         return services;

@@ -463,9 +463,14 @@ public sealed class CompositeEnvelopeBuilder<T>
 
     /// <summary>
     ///     Adds multiple payloads to the composite envelope.
-    ///     Uses params collection for modern syntax.
     /// </summary>
-    public CompositeEnvelopeBuilder<T> AddPayloads(params IEnumerable<T> payloads)
+    public CompositeEnvelopeBuilder<T> AddPayloads(params T[] payloads) =>
+        AddPayloads((IEnumerable<T>)payloads);
+
+    /// <summary>
+    ///     Adds multiple payloads from an enumerable source.
+    /// </summary>
+    public CompositeEnvelopeBuilder<T> AddPayloads(IEnumerable<T> payloads)
     {
         ArgumentNullException.ThrowIfNull(payloads);
 
@@ -493,7 +498,13 @@ public sealed class CompositeEnvelopeBuilder<T>
     /// <summary>
     ///     Adds multiple headers to the composite envelope.
     /// </summary>
-    public CompositeEnvelopeBuilder<T> WithHeaders(params IEnumerable<KeyValuePair<string, object>> headers)
+    public CompositeEnvelopeBuilder<T> WithHeaders(params KeyValuePair<string, object>[] headers) =>
+        WithHeaders((IEnumerable<KeyValuePair<string, object>>)headers);
+
+    /// <summary>
+    ///     Adds multiple headers from an enumerable source.
+    /// </summary>
+    public CompositeEnvelopeBuilder<T> WithHeaders(IEnumerable<KeyValuePair<string, object>> headers)
     {
         ArgumentNullException.ThrowIfNull(headers);
 
