@@ -1,14 +1,12 @@
 ﻿#region
 
-using System;
 using System.Runtime.CompilerServices;
-using System.Threading.Tasks;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Errors;
 
 #endregion
 
-namespace DropBear.Codex.Core.Results.Extensions;
+namespace DropBear.Codex.Core.Extensions;
 
 /// <summary>
 ///     Provides extension methods for integrating the Unit type with the Result pattern.
@@ -327,10 +325,10 @@ public static class UnitExtensions
     {
         var error = result.Error
                     ?? errorFactory?.Invoke()
-                    ?? TryCreateSimpleError("Operation failed.", result.Exception, out TError fallback)
+                    ?? (TryCreateSimpleError("Operation failed.", result.Exception, out TError fallback)
                         ? fallback
                         : throw new InvalidOperationException(
-                            $"Unable to create an instance of {typeof(TError).FullName}. Provide an errorFactory delegate when calling this method.");
+                            $"Unable to create an instance of {typeof(TError).FullName}. Provide an errorFactory delegate when calling this method."));
 
         return Result<Unit, TError>.Failure(error, result.Exception);
     }
@@ -347,10 +345,10 @@ public static class UnitExtensions
         var error = exceptionFactory?.Invoke(exception)
                     ?? result.Error
                     ?? errorFactory?.Invoke()
-                    ?? TryCreateSimpleError($"Operation failed: {exception.Message}", exception, out TError fallback)
+                    ?? (TryCreateSimpleError($"Operation failed: {exception.Message}", exception, out TError fallback)
                         ? fallback
                         : throw new InvalidOperationException(
-                            $"Unable to create an instance of {typeof(TError).FullName}. Provide an exceptionFactory delegate when calling this method.");
+                            $"Unable to create an instance of {typeof(TError).FullName}. Provide an exceptionFactory delegate when calling this method."));
 
         return Result<Unit, TError>.Failure(error, exception);
     }
@@ -368,7 +366,7 @@ public static class UnitExtensions
             return true;
         }
 
-        error = default!;
+        error = null!;
         return false;
     }
 
