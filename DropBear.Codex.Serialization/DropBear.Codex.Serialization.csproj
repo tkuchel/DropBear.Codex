@@ -40,17 +40,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
     <PackageReference Include="MessagePack" Version="3.1.4" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.212">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.224">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="8.0.2" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1"/>
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0"/>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="9.0.9" />
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.7.115</Version>
+      <Version>3.8.118</Version>
     </PackageReference>
   </ItemGroup>
 

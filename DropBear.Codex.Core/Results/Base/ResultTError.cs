@@ -19,7 +19,9 @@ namespace DropBear.Codex.Core.Results.Base;
 /// <typeparam name="TError">A type inheriting from ResultError.</typeparam>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ResultJsonConverterFactory))]
+#pragma warning disable MA0048
 public class Result<TError> : ResultBase, IResult<TError>
+#pragma warning restore MA0048
     where TError : ResultError
 {
     /// <summary>
@@ -37,7 +39,7 @@ public class Result<TError> : ResultBase, IResult<TError>
 
     #region Debugger Display
 
-    private string DebuggerDisplay =>
+    protected override string DebuggerDisplay =>
         $"State = {State}, Success = {IsSuccess}, Error = {Error?.Message ?? "null"}";
 
     #endregion

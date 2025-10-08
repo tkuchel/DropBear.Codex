@@ -47,16 +47,16 @@
     <!-- DropBear.Codex.Core is required since Notifications depends on it -->
     <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
     <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.212">
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.224">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.15" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.15" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="8.0.15" />
-    <PackageReference Include="Polly" Version="8.6.2" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.9" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.9" />
+    <PackageReference Include="Polly" Version="8.6.4" />
 
     <!-- Serilog for logging -->
     <PackageReference Include="Serilog" Version="4.3.0" />
@@ -71,12 +71,12 @@
     </PackageReference>
 
     <!-- For serialization support -->
-    <PackageReference Include="System.Text.Json" Version="8.0.5" />
+    <PackageReference Include="System.Text.Json" Version="9.0.9" />
 
     <!-- Optional: Any additional dependencies for the notification system -->
-    <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.9" />
     <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.7.115</Version>
+      <Version>3.8.118</Version>
     </PackageReference>
   </ItemGroup>
 
