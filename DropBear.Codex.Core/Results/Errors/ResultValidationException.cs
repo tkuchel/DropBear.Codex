@@ -180,11 +180,11 @@ public class ResultValidationException : Exception
     {
         if (ValidationResult.IsValid)
         {
-            return new Dictionary<string, IReadOnlyList<ValidationError>>();
+            return new Dictionary<string, IReadOnlyList<ValidationError>>(StringComparer.OrdinalIgnoreCase);
         }
 
         return ValidationResult.Errors
-            .GroupBy(e => e.PropertyName ?? string.Empty)
+            .GroupBy(e => e.PropertyName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 g => g.Key,
                 g => (IReadOnlyList<ValidationError>)g.ToList(),

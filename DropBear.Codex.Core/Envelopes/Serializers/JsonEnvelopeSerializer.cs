@@ -49,7 +49,7 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
     /// <summary>
     ///     Validates an envelope DTO before deserialization.
     /// </summary>
-    private static void ValidateDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    private static void ValidateDto<T>(EnvelopeDto<T> dto)
     {
         ArgumentNullException.ThrowIfNull(dto);
 
@@ -60,7 +60,7 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
         }
 
         // Validate sealed envelopes have sealed date
-        if (dto.IsSealed && dto.SealedAt is null)
+        if (dto is { IsSealed: true, SealedAt: null })
         {
             throw new JsonException("Sealed envelope must have a sealed date.");
         }
@@ -100,7 +100,7 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = JsonSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
+            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data, _options);
 
             if (dto is null)
             {
@@ -152,7 +152,7 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = JsonSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
+            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data, _options);
 
             if (dto is null)
             {

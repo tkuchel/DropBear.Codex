@@ -203,9 +203,10 @@ public static class EnvelopeSerializationExtensions
         var binary = envelope.ToSerializedBinary(serializer);
 
         using var outputStream = new MemoryStream();
-        await using (var gzipStream = new GZipStream(
-                         outputStream,
-                         CompressionLevel.Optimal))
+        var gzipStream = new GZipStream(
+            outputStream,
+            CompressionLevel.Optimal);
+        await using (gzipStream.ConfigureAwait(false))
         {
             await gzipStream.WriteAsync(binary, cancellationToken).ConfigureAwait(false);
         }
@@ -224,15 +225,18 @@ public static class EnvelopeSerializationExtensions
         ArgumentNullException.ThrowIfNull(compressedData);
 
         using var inputStream = new MemoryStream(compressedData);
-        using var gzipStream = new GZipStream(
+        var gzipStream = new GZipStream(
             inputStream,
             CompressionMode.Decompress);
-        using var outputStream = new MemoryStream();
+        await using (gzipStream.ConfigureAwait(false))
+        {
+            using var outputStream = new MemoryStream();
 
-        await gzipStream.CopyToAsync(outputStream, cancellationToken).ConfigureAwait(false);
-        var binary = outputStream.ToArray();
+            await gzipStream.CopyToAsync(outputStream, cancellationToken).ConfigureAwait(false);
+            var binary = outputStream.ToArray();
 
-        return FromSerializedBinary<T>(binary, serializer);
+            return FromSerializedBinary<T>(binary, serializer);
+        }
     }
 
     #endregion

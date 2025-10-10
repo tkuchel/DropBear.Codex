@@ -48,7 +48,7 @@ public sealed class CompositeEnvelope<T>
             cancellationToken.ThrowIfCancellationRequested();
 
             var result = await batchProcessor(batch, cancellationToken).ConfigureAwait(false);
-            if (!result.IsSuccess && result.Error is not null)
+            if (result is { IsSuccess: false, Error: not null })
             {
                 errors.Add(result.Error);
             }
@@ -223,7 +223,7 @@ public sealed class CompositeEnvelope<T>
         foreach (var payload in _payloads)
         {
             var result = processingFunc(payload);
-            if (!result.IsSuccess && result.Error is not null)
+            if (result is { IsSuccess: false, Error: not null })
             {
                 errors.Add(result.Error);
             }
@@ -253,7 +253,7 @@ public sealed class CompositeEnvelope<T>
         foreach (var payload in _payloads)
         {
             var result = await processingFunc(payload, cancellationToken).ConfigureAwait(false);
-            if (!result.IsSuccess && result.Error is not null)
+            if (result is { IsSuccess: false, Error: not null })
             {
                 errors.Add(result.Error);
             }
@@ -294,7 +294,7 @@ public sealed class CompositeEnvelope<T>
         }).ConfigureAwait(false);
 
         var errors = results
-            .Where(r => !r.IsSuccess && r.Error is not null)
+            .Where(r => r is { IsSuccess: false, Error: not null })
             .Select(r => r.Error!)
             .ToList();
 
@@ -439,136 +439,4 @@ public sealed class CompositeEnvelope<T>
     }
 
     #endregion
-}
-
-/// <summary>
-///     Fluent builder for constructing composite envelopes.
-///     Optimized for .NET 9 with modern builder patterns.
-/// </summary>
-public sealed class CompositeEnvelopeBuilder<T>
-{
-    private readonly Dictionary<string, object> _headers = new(StringComparer.Ordinal);
-    private readonly List<T> _payloads = [];
-    private IResultTelemetry? _telemetry;
-
-    /// <summary>
-    ///     Adds a single payload to the composite envelope.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> AddPayload(T payload)
-    {
-        ArgumentNullException.ThrowIfNull(payload);
-        _payloads.Add(payload);
-        return this;
-    }
-
-    /// <summary>
-    ///     Adds multiple payloads to the composite envelope.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> AddPayloads(params T[] payloads) =>
-        AddPayloads((IEnumerable<T>)payloads);
-
-    /// <summary>
-    ///     Adds multiple payloads from an enumerable source.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> AddPayloads(IEnumerable<T> payloads)
-    {
-        ArgumentNullException.ThrowIfNull(payloads);
-
-        foreach (var payload in payloads)
-        {
-            ArgumentNullException.ThrowIfNull(payload);
-            _payloads.Add(payload);
-        }
-
-        return this;
-    }
-
-    /// <summary>
-    ///     Adds a header to the composite envelope.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> WithHeader(string key, object value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentNullException.ThrowIfNull(value);
-
-        _headers[key] = value;
-        return this;
-    }
-
-    /// <summary>
-    ///     Adds multiple headers to the composite envelope.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> WithHeaders(params KeyValuePair<string, object>[] headers) =>
-        WithHeaders((IEnumerable<KeyValuePair<string, object>>)headers);
-
-    /// <summary>
-    ///     Adds multiple headers from an enumerable source.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> WithHeaders(IEnumerable<KeyValuePair<string, object>> headers)
-    {
-        ArgumentNullException.ThrowIfNull(headers);
-
-        foreach (var (key, value) in headers)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(key);
-            ArgumentNullException.ThrowIfNull(value);
-            _headers[key] = value;
-        }
-
-        return this;
-    }
-
-    /// <summary>
-    ///     Sets the telemetry instance for the composite envelope.
-    /// </summary>
-    public CompositeEnvelopeBuilder<T> WithTelemetry(IResultTelemetry telemetry)
-    {
-        ArgumentNullException.ThrowIfNull(telemetry);
-        _telemetry = telemetry;
-        return this;
-    }
-
-    /// <summary>
-    ///     Builds the composite envelope.
-    /// </summary>
-    public CompositeEnvelope<T> Build()
-    {
-        if (_payloads.Count == 0)
-        {
-            throw new InvalidOperationException("At least one payload is required");
-        }
-
-        return new CompositeEnvelope<T>(
-            _payloads.ToFrozenSet(),
-            _headers.ToFrozenDictionary(StringComparer.Ordinal),
-            false,
-            DateTime.UtcNow,
-            null,
-            null,
-            _telemetry ?? TelemetryProvider.Current);
-    }
-
-    /// <summary>
-    ///     Builds and seals the composite envelope with a signature.
-    /// </summary>
-    public CompositeEnvelope<T> BuildAndSeal(Func<IEnumerable<T>, string> signatureGenerator)
-    {
-        ArgumentNullException.ThrowIfNull(signatureGenerator);
-
-        if (_payloads.Count == 0)
-        {
-            throw new InvalidOperationException("At least one payload is required");
-        }
-
-        var signature = signatureGenerator(_payloads);
-
-        return new CompositeEnvelope<T>(
-            _payloads.ToFrozenSet(),
-            _headers.ToFrozenDictionary(StringComparer.Ordinal),
-            true,
-            DateTime.UtcNow,
-            DateTime.UtcNow,
-            signature,
-            _telemetry ?? TelemetryProvider.Current);
-    }
 }

@@ -1,31 +1,36 @@
 ﻿#region
 
 using Serilog;
+#pragma warning disable CS1580 // Invalid type for parameter in XML comment cref attribute
 
 #endregion
 
 namespace DropBear.Codex.Core.Logging;
 
 /// <summary>
-///     A simple factory class to manage the global Serilog <see cref="ILogger" /> instance.
-///     By default, it uses a <see cref="NoOpLogger" /> until a real logger is provided.
-///     Thread-safe via volatile reads/writes of the internal logger reference.
+///     A simple factory that manages the global Serilog <see cref="ILogger" /> instance.
+///     Defaults to <see cref="NoOpLogger" /> until a real logger is supplied.
 /// </summary>
+/// <remarks>
+///     Thread-safety is achieved via <see cref="Volatile.Read{T}(ref T)" /> and
+///     <see cref="Volatile.Write{T}(ref T, T)" /> on the backing field, ensuring visibility
+///     of updates across threads without locks.
+/// </remarks>
 public static class LoggerFactory
 {
     /// <summary>
-    ///     Holds the current logger instance in a volatile field so that all threads
-    ///     immediately see updates made by <see cref="SetLogger" />.
+    ///     Backing field for the current logger.
+    ///     Initialized with a <see cref="NoOpLogger" /> to avoid null checks at call sites.
     /// </summary>
     private static ILogger _logger = new NoOpLogger();
 
     /// <summary>
     ///     Gets the current global <see cref="ILogger" /> instance.
-    ///     Defaults to <see cref="NoOpLogger" /> if not set via <see cref="SetLogger" />.
+    ///     If not set explicitly, this returns a <see cref="NoOpLogger" />.
     /// </summary>
     /// <remarks>
-    ///     Uses <see cref="Volatile.Read(ref ILogger)" /> to ensure that changes made by
-    ///     <see cref="SetLogger" /> are immediately visible to all threads.
+    ///     Uses <see cref="Volatile.Read{T}(ref T)" /> to ensure that changes made by
+    ///     <see cref="SetLogger(ILogger)" /> are immediately visible to all threads.
     /// </remarks>
     public static ILogger Logger
     {
@@ -35,21 +40,14 @@ public static class LoggerFactory
 
     /// <summary>
     ///     Sets the global logger to the specified <paramref name="logger" /> instance.
-    ///     Thread-safe; subsequent calls override the previous logger globally.
+    ///     Subsequent reads via <see cref="Logger" /> will observe this value.
     /// </summary>
     /// <param name="logger">The logger instance to set.</param>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="logger" /> is <c>null</c>.</exception>
+    /// <exception cref="ArgumentNullException">Thrown when <paramref name="logger" /> is <c>null</c>.</exception>
     /// <remarks>
-    ///     Uses <see cref="Volatile.Write(ref ILogger, ILogger)" /> to ensure that the update
-    ///     is immediately published to all threads.
+    ///     Uses <see cref="Volatile.Write{T}(ref T, T)" /> so the update is immediately
+    ///     published to all threads.
     /// </remarks>
-    public static void SetLogger(ILogger logger)
-    {
-        if (logger == null)
-        {
-            throw new ArgumentNullException(nameof(logger), "Logger instance cannot be null.");
-        }
-
-        Logger = logger;
-    }
+    public static void SetLogger(ILogger logger) => Logger =
+        logger ?? throw new ArgumentNullException(nameof(logger), "Logger instance cannot be null.");
 }

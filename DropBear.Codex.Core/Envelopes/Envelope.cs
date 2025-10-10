@@ -7,7 +7,6 @@ using DropBear.Codex.Core.Interfaces;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Diagnostics;
 using DropBear.Codex.Core.Results.Validations;
-using MessagePack;
 
 #endregion
 
@@ -368,25 +367,6 @@ public sealed class Envelope<T>
             dto.SealedAt,
             dto.Signature,
             telemetry ?? TelemetryProvider.Current);
-    }
-
-    /// <summary>
-    ///     DTO for envelope serialization.
-    /// </summary>
-    [MessagePackObject]
-    public record EnvelopeDto<TPayload>
-    {
-        [Key(0)] public TPayload? Payload { get; init; }
-
-        [Key(1)] public Dictionary<string, object>? Headers { get; init; }
-
-        [Key(2)] public bool IsSealed { get; init; }
-
-        [Key(3)] public DateTime CreatedAt { get; init; }
-
-        [Key(4)] public DateTime? SealedAt { get; init; }
-
-        [Key(5)] public string? Signature { get; init; }
     }
 
     #endregion

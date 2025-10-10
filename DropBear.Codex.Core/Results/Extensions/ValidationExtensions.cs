@@ -131,9 +131,9 @@ public static class ValidationExtensions
             : ValidationResult.Success;
     }
 
-    /// <summary>
+    /// <summary>  
     ///     Validates that a string has a minimum length.
-    ///     Uses Span<char> for better performance.
+    ///     Uses Span&lt;char&gt; for better performance.
     /// </summary>
     public static ValidationResult MinLength(
         this string? value,

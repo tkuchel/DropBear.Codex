@@ -3,6 +3,7 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Core.Results.Factories;
 
 #endregion
 
@@ -285,7 +286,7 @@ public static class ResultExtensions
         }).ConfigureAwait(false);
 
         return results.Combine(errors =>
-            (TError)Activator.CreateInstance(typeof(TError), $"{errors.Count()} operations failed")!);
+            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed")!);
     }
 
     /// <summary>
@@ -321,7 +322,7 @@ public static class ResultExtensions
         }
 
         return allResults.Combine(errors =>
-            (TError)Activator.CreateInstance(typeof(TError), $"{errors.Count()} operations failed")!);
+            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed")!);
     }
 
     #endregion
@@ -624,7 +625,7 @@ public static class ResultExtensions
         }
 
         return allResults.Combine(errors =>
-            (TError)Activator.CreateInstance(typeof(TError), $"{errors.Count()} operations failed")!);
+            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed")!);
     }
 
     #endregion

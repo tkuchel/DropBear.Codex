@@ -11,7 +11,7 @@ namespace DropBear.Codex.Core.Results.Diagnostics;
 ///     Contains diagnostic information about a result operation.
 ///     Immutable record struct optimized for .NET 9 with minimal allocations.
 /// </summary>
-[DebuggerDisplay("State = {State}, Type = {ResultType.Name}, Age = {Age.TotalMilliseconds}ms")]
+[DebuggerDisplay("{GetDebuggerDisplay(),nq}")]
 public readonly record struct DiagnosticInfo
 {
     /// <summary>
@@ -74,6 +74,9 @@ public readonly record struct DiagnosticInfo
     /// <summary>
     ///     Creates diagnostic info with the current activity context.
     /// </summary>
+    /// <param name="state">The result state.</param>
+    /// <param name="resultType">The type of the result.</param>
+    /// <returns>A new DiagnosticInfo instance with current activity context.</returns>
     public static DiagnosticInfo Create(ResultState state, Type resultType)
     {
         return new DiagnosticInfo(
@@ -87,14 +90,21 @@ public readonly record struct DiagnosticInfo
     ///     Gets a formatted string representation for logging.
     ///     Uses modern string interpolation handler for performance.
     /// </summary>
+    /// <returns>A formatted log string containing state, type, age, and trace ID.</returns>
     public string ToLogString() =>
         $"[{State}] {ResultType.Name} (Age: {Age.TotalMilliseconds:F2}ms, TraceId: {TraceId ?? "None"})";
 
     /// <summary>
     ///     Creates a dictionary of diagnostic properties for structured logging.
-    ///     Uses collection expressions for modern syntax.
     /// </summary>
-    public Dictionary<string, object> ToDictionary()
+    /// <returns>
+    ///     A read-only dictionary containing diagnostic properties suitable for structured logging frameworks.
+    /// </returns>
+    /// <remarks>
+    ///     The dictionary includes: State, ResultType, CreatedAt, Age, and optional TraceId, ActivityId, ParentActivityId.
+    ///     Properties with null values are excluded from the dictionary.
+    /// </remarks>
+    public IReadOnlyDictionary<string, object> ToDictionary()
     {
         var dict = new Dictionary<string, object>(StringComparer.Ordinal)
         {
@@ -120,5 +130,20 @@ public readonly record struct DiagnosticInfo
         }
 
         return dict;
+    }
+
+    /// <summary>
+    ///     Gets the debugger display string.
+    /// </summary>
+    /// <returns>A formatted string for debugger display.</returns>
+    /// <remarks>
+    ///     This method is used by the DebuggerDisplay attribute and should not be called directly.
+    ///     It handles null checks to prevent debugger exceptions.
+    /// </remarks>
+    private string GetDebuggerDisplay()
+    {
+        var typeName = ResultType?.Name ?? "Unknown";
+        var ageMs = Age.TotalMilliseconds;
+        return $"State = {State}, Type = {typeName}, Age = {ageMs:F2}ms";
     }
 }

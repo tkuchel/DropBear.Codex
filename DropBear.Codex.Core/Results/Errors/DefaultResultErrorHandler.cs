@@ -198,7 +198,7 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
         var error = CreateErrorFromException<TError>(aggregateException);
         error = (TError)error.WithMetadata("ErrorCount", exceptionList.Count);
         error = (TError)error.WithMetadata("ErrorTypes",
-            string.Join(", ", exceptionList.Select(e => e.GetType().Name).Distinct()));
+            string.Join(", ", exceptionList.Select(e => e.GetType().Name).Distinct(StringComparer.OrdinalIgnoreCase)));
 
         return Result<T, TError>.Failure(error, aggregateException);
     }
@@ -341,43 +341,6 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
 }
 
 #region Supporting Types
-
-/// <summary>
-///     Represents classification information for an error.
-/// </summary>
-public readonly record struct ErrorClassification(
-    ErrorCategory Category,
-    ErrorSeverity Severity,
-    bool IsTransient,
-    bool IsRetryable)
-{
-    /// <summary>
-    ///     Gets a value indicating whether this error should be logged.
-    /// </summary>
-    public bool ShouldLog => Severity >= ErrorSeverity.Medium;
-
-    /// <summary>
-    ///     Gets a value indicating whether this error should alert operations.
-    /// </summary>
-    public bool ShouldAlert => Severity >= ErrorSeverity.High;
-}
-
-/// <summary>
-///     Represents error categories for classification.
-/// </summary>
-public enum ErrorCategory
-{
-    Unknown,
-    Validation,
-    Authorization,
-    Timeout,
-    Cancelled,
-    InvalidOperation,
-    IO,
-    Network,
-    Critical,
-    General
-}
 
 /// <summary>
 ///     SecurityException placeholder for .NET Standard compatibility.

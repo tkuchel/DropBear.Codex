@@ -6,7 +6,10 @@ using Serilog;
 
 namespace DropBear.Codex.Core.Logging;
 
-public static class LoggerExtensions
+/// <summary>
+///   Provides extension methods for <see cref="ILogger" /> to enhance logging capabilities.
+/// </summary>
+public static class LoggerExtensions   
 {
     /// <summary>
     ///     Allows specifying a static class as the context for logging.

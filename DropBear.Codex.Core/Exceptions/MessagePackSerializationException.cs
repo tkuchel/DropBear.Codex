@@ -98,6 +98,8 @@ public sealed class MessagePackSerializationException : Exception
     }
 
 #if NET8_0_OR_GREATER
+
+    /// <inheritdoc />
     [Obsolete("This API supports obsolete formatter-based serialization.", DiagnosticId = "SYSLIB0051")]
 #endif
     public override void GetObjectData(SerializationInfo info, StreamingContext context)

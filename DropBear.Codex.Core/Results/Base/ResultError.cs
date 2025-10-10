@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Errors;
+using DropBear.Codex.Core.Results.Factories;
 
 #endregion
 
@@ -101,11 +102,48 @@ public abstract record ResultError
 
     /// <summary>
     ///     Adds a single metadata entry to this error.
-    ///     Uses modern 'with' expression for immutability.
+    ///     Creates a new error instance with the metadata added.
     /// </summary>
-    /// <param name="key">The metadata key.</param>
-    /// <param name="value">The metadata value.</param>
+    /// <param name="key">The metadata key. Cannot be null or whitespace.</param>
+    /// <param name="value">The metadata value. Cannot be null.</param>
     /// <returns>A new error instance with the metadata added.</returns>
+    /// <remarks>
+    ///     <para>
+    ///         This method uses immutable FrozenDictionary internally for optimal read performance.
+    ///         Each call creates a new error instance with updated metadata.
+    ///     </para>
+    ///     <para>
+    ///         <strong>Performance Note:</strong> For adding multiple metadata items, use the
+    ///         <see cref="WithMetadata(IReadOnlyDictionary{string, object})" /> overload instead
+    ///         of chaining multiple calls to this method.
+    ///     </para>
+    /// </remarks>
+    /// <example>
+    ///     <strong>Single item:</strong>
+    ///     <code>
+    ///     var error = new ValidationError("Invalid input")
+    ///         .WithMetadata("field", "email");
+    ///     </code>
+    ///     <strong>Multiple items (preferred):</strong>
+    ///     <code>
+    ///     var metadata = new Dictionary&lt;string, object&gt;
+    ///     {
+    ///         ["field"] = "email",
+    ///         ["value"] = userInput,
+    ///         ["constraint"] = "must be valid email format"
+    ///     };
+    ///     var error = new ValidationError("Invalid input")
+    ///         .WithMetadata(metadata);
+    ///     </code>
+    ///     <strong>Avoid chaining (less efficient):</strong>
+    ///     <code>
+    ///     // ❌ Less efficient - creates intermediate dictionaries
+    ///     var error = new ValidationError("Invalid input")
+    ///         .WithMetadata("field", "email")
+    ///         .WithMetadata("value", userInput)
+    ///         .WithMetadata("constraint", "must be valid email format");
+    ///     </code>
+    /// </example>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public ResultError WithMetadata(string key, object value)
     {
@@ -122,8 +160,26 @@ public abstract record ResultError
 
     /// <summary>
     ///     Adds multiple metadata entries to this error.
-    ///     Uses collection expressions for modern syntax.
+    ///     This is the preferred method for adding multiple items.
     /// </summary>
+    /// <remarks>
+    ///     <strong>Performance Note:</strong> This method is optimized for adding
+    ///     multiple items at once. It is more efficient than calling
+    ///     WithMetadata(key, value) multiple times.
+    /// </remarks>
+    /// <example>
+    ///     Preferred pattern for multiple items:
+    ///     <code>
+    ///     var metadata = new Dictionary&lt;string, object&gt;
+    ///     {
+    ///         ["field"] = "email",
+    ///         ["value"] = userInput,
+    ///         ["code"] = "VAL001"
+    ///     };
+    ///     var error = new ValidationError("Invalid input")
+    ///         .WithMetadata(metadata);
+    ///     </code>
+    /// </example>
     /// <param name="items">The metadata items to add.</param>
     /// <returns>A new error instance with the metadata added.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -257,7 +313,7 @@ public abstract record ResultError
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
         // Create the concrete error instance
-        var error = (TError)Activator.CreateInstance(typeof(TError), message)!;
+        var error = ResultErrorFactory<TError>.Create(message);
 
         if (metadata.IsEmpty)
         {
@@ -269,9 +325,9 @@ public abstract record ResultError
             ? new Dictionary<string, object>(metadata.Length, StringComparer.Ordinal)
             : new Dictionary<string, object>(StringComparer.Ordinal);
 
-        for (var i = 0; i < metadata.Length; i++)
+        foreach (var t in metadata)
         {
-            ref readonly var kvp = ref metadata[i];
+            ref readonly var kvp = ref t;
             builder[kvp.Key] = kvp.Value;
         }
 

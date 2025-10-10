@@ -14,6 +14,11 @@ namespace DropBear.Codex.Core.Results.Serialization;
 /// </summary>
 public sealed class ResultJsonConverterFactory : JsonConverterFactory
 {
+    /// <summary>
+    ///  Determines if the given type can be converted by this factory.
+    /// </summary>
+    /// <param name="typeToConvert">The type to try and convert.</param>
+    /// <returns>A bool representing if the given type can be converted by this factory.</returns>
     public override bool CanConvert(Type typeToConvert)
     {
         if (!typeToConvert.IsGenericType)
@@ -27,6 +32,12 @@ public sealed class ResultJsonConverterFactory : JsonConverterFactory
         return genericType == typeof(Result<,>) || genericType == typeof(Result<>);
     }
 
+    /// <summary>
+    ///  Creates a converter for the given type.
+    /// </summary>
+    /// <param name="typeToConvert">The type to convert.</param>
+    /// <param name="options">The Json serializer options to be used during the conversion.</param>
+    /// <returns>A Json converter for the specified type using the specified Json serializer options.</returns>
     public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
     {
         var genericArgs = typeToConvert.GetGenericArguments();

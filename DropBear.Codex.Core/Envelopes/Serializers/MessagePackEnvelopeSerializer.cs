@@ -58,7 +58,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = JsonSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data);
+            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data);
             if (dto is null)
             {
                 throw new MessagePackSerializationException("Deserialization returned null DTO.");
@@ -106,7 +106,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = MessagePackSerializer.Deserialize<Envelope<T>.EnvelopeDto<T>>(data, _options);
+            var dto = MessagePackSerializer.Deserialize<EnvelopeDto<T>>(data, _options);
             if (dto is null)
             {
                 throw new MessagePackSerializationException("Deserialization returned null DTO.");
@@ -132,7 +132,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
     /// <summary>
     ///     Creates an envelope from a DTO with validation.
     /// </summary>
-    private Envelope<T> CreateEnvelopeFromDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    private Envelope<T> CreateEnvelopeFromDto<T>(EnvelopeDto<T> dto)
     {
         ArgumentNullException.ThrowIfNull(dto);
 
@@ -146,7 +146,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
     /// <summary>
     ///     Validates an envelope DTO before deserialization.
     /// </summary>
-    private static void ValidateDto<T>(Envelope<T>.EnvelopeDto<T> dto)
+    private static void ValidateDto<T>(EnvelopeDto<T> dto)
     {
         ArgumentNullException.ThrowIfNull(dto);
 
@@ -157,7 +157,7 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
         }
 
         // Validate sealed envelopes have sealed date
-        if (dto.IsSealed && dto.SealedAt is null)
+        if (dto is { IsSealed: true, SealedAt: null })
         {
             throw new MessagePackSerializationException("Sealed envelope must have a sealed date.");
         }

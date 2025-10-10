@@ -42,6 +42,7 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
 
     #region Debugger Display
 
+    /// <inheritdoc />
     protected override string DebuggerDisplay =>
         $"State = {State}, IsSuccess = {IsSuccess}, " +
         $"HasEnumerable = {_enumerable is not null}, " +
@@ -102,6 +103,8 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Gets the async enumerator for the enumerable.
     /// </summary>
+    /// <param name="cancellationToken">Optional cancellation token for the enumeration.</param>
+    /// <returns>An async enumerator for the enumerable, or an empty enumerator if the result is not successful.</returns>
     public IAsyncEnumerator<T> GetAsyncEnumerator(CancellationToken cancellationToken = default)
     {
         if (!IsSuccess || _enumerable is null)
@@ -115,6 +118,8 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Configures the async enumerable with cancellation token.
     /// </summary>
+    /// <param name="cancellationToken">The cancellation token to observe.</param>
+    /// <returns>A configured cancelable async enumerable.</returns>
     public ConfiguredCancelableAsyncEnumerable<T> WithCancellation(CancellationToken cancellationToken)
     {
         if (!IsSuccess || _enumerable is null)
@@ -126,20 +131,36 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     }
 
     /// <summary>
-    ///     Returns an empty async enumerator.
+    ///     Returns an empty async enumerator that respects cancellation.
     /// </summary>
+    /// <param name="cancellationToken">The cancellation token to observe.</param>
+    /// <returns>An empty async enumerator.</returns>
+    /// <remarks>
+    ///     This method checks cancellation before yielding nothing, ensuring proper cancellation behavior.
+    /// </remarks>
     private static async IAsyncEnumerator<T> EmptyAsyncEnumerator(CancellationToken cancellationToken)
     {
+        // Check cancellation even though we're yielding nothing - this ensures
+        // proper cancellation semantics if the token was already cancelled
+        cancellationToken.ThrowIfCancellationRequested();
         await Task.CompletedTask.ConfigureAwait(false);
         yield break;
     }
 
     /// <summary>
-    ///     Returns an empty async enumerable.
+    ///     Returns an empty async enumerable that respects cancellation.
     /// </summary>
+    /// <param name="cancellationToken">The cancellation token to observe.</param>
+    /// <returns>An empty async enumerable.</returns>
+    /// <remarks>
+    ///     This method checks cancellation before yielding nothing, ensuring proper cancellation behavior.
+    /// </remarks>
     private static async IAsyncEnumerable<T> EmptyAsyncEnumerable(
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        // Check cancellation even though we're yielding nothing - this ensures
+        // proper cancellation semantics if the token was already cancelled
+        cancellationToken.ThrowIfCancellationRequested();
         await Task.CompletedTask.ConfigureAwait(false);
         yield break;
     }
@@ -151,6 +172,9 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Filters items based on a predicate.
     /// </summary>
+    /// <param name="predicate">The predicate to filter items.</param>
+    /// <returns>A new AsyncEnumerableResult containing only items that match the predicate.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when predicate is null.</exception>
     public AsyncEnumerableResult<T, TError> Where(Func<T, bool> predicate)
     {
         ArgumentNullException.ThrowIfNull(predicate);
@@ -178,6 +202,9 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Filters items asynchronously based on a predicate.
     /// </summary>
+    /// <param name="predicateAsync">The async predicate to filter items.</param>
+    /// <returns>A new AsyncEnumerableResult containing only items that match the predicate.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when predicateAsync is null.</exception>
     public AsyncEnumerableResult<T, TError> WhereAsync(Func<T, ValueTask<bool>> predicateAsync)
     {
         ArgumentNullException.ThrowIfNull(predicateAsync);
@@ -205,6 +232,10 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Projects each item to a new form.
     /// </summary>
+    /// <typeparam name="TResult">The type of the result items.</typeparam>
+    /// <param name="selector">The transformation function.</param>
+    /// <returns>A new AsyncEnumerableResult containing the transformed items.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when selector is null.</exception>
     public AsyncEnumerableResult<TResult, TError> Select<TResult>(Func<T, TResult> selector)
     {
         ArgumentNullException.ThrowIfNull(selector);
@@ -229,6 +260,10 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Projects each item to a new form asynchronously.
     /// </summary>
+    /// <typeparam name="TResult">The type of the result items.</typeparam>
+    /// <param name="selectorAsync">The async transformation function.</param>
+    /// <returns>A new AsyncEnumerableResult containing the transformed items.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when selectorAsync is null.</exception>
     public AsyncEnumerableResult<TResult, TError> SelectAsync<TResult>(
         Func<T, ValueTask<TResult>> selectorAsync)
     {
@@ -254,6 +289,9 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Takes the first N items.
     /// </summary>
+    /// <param name="count">The number of items to take.</param>
+    /// <returns>A new AsyncEnumerableResult containing at most the first N items.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when count is negative.</exception>
     public AsyncEnumerableResult<T, TError> Take(int count)
     {
         if (count < 0)
@@ -288,6 +326,9 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Skips the first N items.
     /// </summary>
+    /// <param name="count">The number of items to skip.</param>
+    /// <returns>A new AsyncEnumerableResult containing all items after the first N.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when count is negative.</exception>
     public AsyncEnumerableResult<T, TError> Skip(int count)
     {
         if (count < 0)
@@ -324,8 +365,16 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     #region Materialization
 
     /// <summary>
-    ///     Materializes the async enumerable to a list.
+    ///     Materializes the async enumerable to a read-only list.
     /// </summary>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>
+    ///     A Result containing a read-only list of all items, or a failure/cancelled result.
+    /// </returns>
+    /// <remarks>
+    ///     This method enumerates the entire async enumerable and stores all items in memory.
+    ///     For large sequences, consider using streaming operations instead.
+    /// </remarks>
     public async ValueTask<Result<IReadOnlyList<T>, TError>> ToListAsync(
         CancellationToken cancellationToken = default)
     {
@@ -362,6 +411,14 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Materializes the async enumerable to an array.
     /// </summary>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>
+    ///     A Result containing an array of all items, or a failure/cancelled result.
+    /// </returns>
+    /// <remarks>
+    ///     This method enumerates the entire async enumerable and stores all items in memory.
+    ///     For large sequences, consider using streaming operations instead.
+    /// </remarks>
     public async ValueTask<Result<T[], TError>> ToArrayAsync(
         CancellationToken cancellationToken = default)
     {
@@ -398,6 +455,14 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     /// <summary>
     ///     Counts the number of items in the async enumerable.
     /// </summary>
+    /// <param name="cancellationToken">Optional cancellation token.</param>
+    /// <returns>
+    ///     A Result containing the count of items, or a failure/cancelled result.
+    /// </returns>
+    /// <remarks>
+    ///     This method enumerates the entire async enumerable to count items.
+    ///     The enumeration stops if cancellation is requested.
+    /// </remarks>
     public async ValueTask<Result<int, TError>> CountAsync(
         CancellationToken cancellationToken = default)
     {

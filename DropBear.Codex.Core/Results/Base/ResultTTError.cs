@@ -22,11 +22,16 @@ namespace DropBear.Codex.Core.Results.Base;
 /// <typeparam name="TError">A type inheriting from <see cref="ResultError" />.</typeparam>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ResultJsonConverterFactory))]
+#pragma warning disable MA0048
 public class Result<T, TError> : Result<TError>, IResult<T, TError>
+#pragma warning restore MA0048
     where TError : ResultError
 {
-    // Use modern struct container for better performance
-    private readonly ValueContainer _valueContainer;
+    /// <summary>
+    ///     Value container for the result.
+    ///     Not readonly to support pooling/reinitialization scenarios.
+    /// </summary>
+    private ValueContainer _valueContainer;
 
     /// <summary>
     ///     Initializes a new instance of Result{T, TError}.
@@ -68,9 +73,7 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
         // Update the error
         Error = error;
 
-        // Update the value container using Unsafe.AsRef to modify the readonly field
-        // This is safe because we're in a controlled pooling scenario
-        Unsafe.AsRef(in _valueContainer) = new ValueContainer(value, state.IsSuccessState());
+        _valueContainer = new ValueContainer(value, state.IsSuccessState());
     }
 
     #endregion

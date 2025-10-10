@@ -17,6 +17,10 @@ public readonly record struct ResultPerformanceMetrics
     /// <summary>
     ///     Initializes a new instance of ResultPerformanceMetrics.
     /// </summary>
+    /// <param name="executionTime">The time elapsed during result execution.</param>
+    /// <param name="exceptionCount">The number of exceptions that occurred.</param>
+    /// <param name="state">The state of the result.</param>
+    /// <param name="resultType">The type name of the result.</param>
     public ResultPerformanceMetrics(
         TimeSpan executionTime,
         int exceptionCount,
@@ -79,6 +83,15 @@ public readonly record struct ResultPerformanceMetrics
     /// <summary>
     ///     Gets a performance rating from 0-100 (100 = excellent, 0 = poor).
     /// </summary>
+    /// <remarks>
+    ///     The score is calculated by starting at 100 and deducting points for:
+    ///     <list type="bullet">
+    ///         <item>Execution time: 5-50 points based on duration</item>
+    ///         <item>Exceptions: 10 points per exception</item>
+    ///         <item>Failure state: 20 points</item>
+    ///         <item>Partial success: 10 points</item>
+    ///     </list>
+    /// </remarks>
     public int PerformanceScore
     {
         get
@@ -144,9 +157,16 @@ public readonly record struct ResultPerformanceMetrics
          """;
 
     /// <summary>
-    ///     Creates a dictionary of metrics for structured logging.
+    ///     Creates a read-only dictionary of metrics for structured logging.
     /// </summary>
-    public Dictionary<string, object> ToDictionary()
+    /// <returns>
+    ///     A read-only dictionary containing all performance metrics suitable for structured logging frameworks.
+    /// </returns>
+    /// <remarks>
+    ///     The dictionary includes execution time, exception count, state, result type, performance score,
+    ///     and boolean performance indicators (IsPerformant, IsSlow, IsVerySlow).
+    /// </remarks>
+    public IReadOnlyDictionary<string, object> ToDictionary()
     {
         return new Dictionary<string, object>(StringComparer.Ordinal)
         {
@@ -165,6 +185,11 @@ public readonly record struct ResultPerformanceMetrics
     /// <summary>
     ///     Checks if this result meets the specified performance threshold.
     /// </summary>
+    /// <param name="maxExecutionTime">The maximum acceptable execution time.</param>
+    /// <param name="maxExceptions">The maximum acceptable number of exceptions (default: 1).</param>
+    /// <returns>
+    ///     <c>true</c> if the result meets both the execution time and exception count thresholds; otherwise, <c>false</c>.
+    /// </returns>
     public bool MeetsThreshold(TimeSpan maxExecutionTime, int maxExceptions = 1) =>
         ExecutionTime <= maxExecutionTime && ExceptionCount <= maxExceptions;
 }

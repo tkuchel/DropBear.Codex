@@ -39,6 +39,7 @@ public class Result<TError> : ResultBase, IResult<TError>
 
     #region Debugger Display
 
+    /// <inheritdoc />
     protected override string DebuggerDisplay =>
         $"State = {State}, Success = {IsSuccess}, Error = {Error?.Message ?? "null"}";
 

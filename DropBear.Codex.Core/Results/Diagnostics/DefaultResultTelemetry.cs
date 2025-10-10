@@ -4,7 +4,6 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Runtime.CompilerServices;
-using System.Threading;
 using System.Threading.Channels;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
@@ -238,7 +237,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
                 break;
 
             default:
+#pragma warning disable MA0015
                 throw new ArgumentOutOfRangeException(nameof(_mode), _mode, "Invalid telemetry mode");
+#pragma warning restore MA0015
         }
     }
 
@@ -261,7 +262,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
                     break;
 
                 default:
-                    throw new ArgumentOutOfRangeException(nameof(eventData.Type), eventData.Type,
+                    throw new ArgumentOutOfRangeException(
+                        nameof(eventData),
+                        eventData.Type,
                         "Unknown telemetry event type");
             }
         }
@@ -327,7 +330,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing (if active listener exists)
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultCreated");
+            // ReSharper disable once ExplicitCallerInfoArgument
+            using var activity = ActivitySource.StartActivity(name: "ResultCreated");
             activity?.SetTag("result.state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
             activity?.SetTag("caller", eventData.Caller);
@@ -354,7 +358,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultTransformed");
+            // ReSharper disable once ExplicitCallerInfoArgument
+            using var activity = ActivitySource.StartActivity(name: "ResultTransformed");
             activity?.SetTag("result.original_state", eventData.OriginalState?.ToString());
             activity?.SetTag("result.new_state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
@@ -364,7 +369,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
 
     private void ProcessException(TelemetryEvent eventData)
     {
-        ArgumentNullException.ThrowIfNull(eventData.Exception);
+        ArgumentNullException.ThrowIfNull(eventData.Exception, nameof(eventData));
 
         // Record metric
         _exceptionCounter.Add(1,
@@ -384,7 +389,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
         // Create activity for tracing
         if (ActivitySource.HasListeners())
         {
-            using var activity = ActivitySource.StartActivity("ResultException");
+            // ReSharper disable once ExplicitCallerInfoArgument
+            using var activity = ActivitySource.StartActivity(name: "ResultException");
             activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
             activity?.SetTag("exception.message", eventData.Exception.Message);
             activity?.SetTag("result.state", eventData.State.ToString());
@@ -428,6 +434,110 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
 
     #endregion
 
+    #region Operation Duration Tracking
+
+    /// <summary>
+    ///     Records the duration of an operation.
+    /// </summary>
+    /// <param name="operationName">The name of the operation.</param>
+    /// <param name="durationMs">The duration in milliseconds.</param>
+    /// <param name="resultType">The result type involved in the operation.</param>
+    /// <param name="caller">The caller member name.</param>
+    /// <remarks>
+    ///     This method is available for future use to track operation durations.
+    ///     Currently not called internally but provides the infrastructure for timing-based metrics.
+    /// </remarks>
+    public void RecordOperationDuration(
+        string operationName,
+        double durationMs,
+        Type resultType,
+        [CallerMemberName] string? caller = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationName, nameof(operationName));
+        ArgumentNullException.ThrowIfNull(resultType, nameof(resultType));
+
+        if (_mode == TelemetryMode.Disabled)
+        {
+            return;
+        }
+
+        _operationDuration.Record(durationMs,
+            new KeyValuePair<string, object?>("operation", operationName),
+            new KeyValuePair<string, object?>("type", resultType.Name),
+            new KeyValuePair<string, object?>("caller", caller ?? "Unknown"));
+    }
+
+    /// <summary>
+    ///     Creates a disposable operation timer that automatically records duration when disposed.
+    /// </summary>
+    /// <param name="operationName">The name of the operation.</param>
+    /// <param name="resultType">The result type involved in the operation.</param>
+    /// <param name="caller">The caller member name.</param>
+    /// <returns>A disposable that will record the operation duration when disposed.</returns>
+    /// <remarks>
+    ///     Usage example:
+    ///     <code>
+    ///     using (telemetry.StartOperation("Serialize", typeof(MyType)))
+    ///     {
+    ///         // Operation code here
+    ///     } // Duration automatically recorded on dispose
+    ///     </code>
+    /// </remarks>
+    public IDisposable StartOperation(
+        string operationName,
+        Type resultType,
+        [CallerMemberName] string? caller = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operationName, nameof(operationName));
+        ArgumentNullException.ThrowIfNull(resultType, nameof(resultType));
+
+        return new OperationTimer(this, operationName, resultType, caller);
+    }
+
+    /// <summary>
+    ///     Internal timer for tracking operation duration.
+    /// </summary>
+    private sealed class OperationTimer : IDisposable
+    {
+        private readonly string? _caller;
+        private readonly string _operationName;
+        private readonly Type _resultType;
+        private readonly Stopwatch _stopwatch;
+        private readonly DefaultResultTelemetry _telemetry;
+        private bool _disposed;
+
+        public OperationTimer(
+            DefaultResultTelemetry telemetry,
+            string operationName,
+            Type resultType,
+            string? caller)
+        {
+            _telemetry = telemetry;
+            _operationName = operationName;
+            _resultType = resultType;
+            _caller = caller;
+            _stopwatch = Stopwatch.StartNew();
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _stopwatch.Stop();
+            _telemetry.RecordOperationDuration(
+                _operationName,
+                _stopwatch.Elapsed.TotalMilliseconds,
+                _resultType,
+                _caller);
+        }
+    }
+
+    #endregion
+
     #region Statistics
 
     /// <summary>
@@ -451,69 +561,4 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IDisposable
     }
 
     #endregion
-
-    }
-
-#region Supporting Types
-
-/// <summary>
-///     Represents a telemetry event to be processed.
-/// </summary>
-internal readonly record struct TelemetryEvent
-{
-    public required TelemetryEventType Type { get; init; }
-    public required ResultState State { get; init; }
-    public ResultState? OriginalState { get; init; }
-    public required Type ResultType { get; init; }
-    public Exception? Exception { get; init; }
-    public string? Caller { get; init; }
-    public DateTimeOffset Timestamp { get; init; }
 }
-
-/// <summary>
-///     Defines the type of telemetry event.
-/// </summary>
-internal enum TelemetryEventType
-{
-    ResultCreated,
-    ResultTransformed,
-    Exception
-}
-
-/// <summary>
-///     Tracks statistics for telemetry operations.
-///     Reused from ObjectPoolManager for consistency.
-/// </summary>
-public sealed class PoolStatistics
-{
-    private long _totalGets;
-    private long _totalReturns;
-
-    public PoolStatistics(string typeName)
-    {
-        TypeName = typeName;
-    }
-
-    public string TypeName { get; }
-    public long TotalGets => Interlocked.Read(ref _totalGets);
-    public long TotalReturns => Interlocked.Read(ref _totalReturns);
-    public double ReturnRate => TotalGets > 0 ? (double)TotalReturns / TotalGets : 1.0;
-    public long OutstandingObjects => TotalGets - TotalReturns;
-
-    internal void IncrementGets() => Interlocked.Increment(ref _totalGets);
-    internal void IncrementReturns() => Interlocked.Increment(ref _totalReturns);
-
-    internal void Reset()
-    {
-        Interlocked.Exchange(ref _totalGets, 0);
-        Interlocked.Exchange(ref _totalReturns, 0);
-    }
-
-    public override string ToString()
-    {
-        return $"{TypeName}: Gets={TotalGets}, Returns={TotalReturns}, " +
-               $"Rate={ReturnRate:P0}, Outstanding={OutstandingObjects}";
-    }
-}
-
-#endregion

@@ -16,7 +16,7 @@ public static class TelemetryProvider
 {
     private static IResultTelemetry? _current;
     private static TelemetryOptions? _options;
-    private static readonly object ConfigLock = new();
+    private static readonly Lock ConfigLock = new();
 
     /// <summary>
     ///     Gets the current telemetry instance.
@@ -46,7 +46,7 @@ public static class TelemetryProvider
     /// <exception cref="InvalidOperationException">Thrown when validation fails.</exception>
     public static void Configure(TelemetryOptions options)
     {
-        ArgumentNullException.ThrowIfNull(options);
+        ArgumentNullException.ThrowIfNull(options, nameof(options));
 
         var validationErrors = options.Validate().ToList();
         if (validationErrors.Count > 0)
@@ -72,9 +72,10 @@ public static class TelemetryProvider
     ///     Configures telemetry using a builder pattern.
     /// </summary>
     /// <param name="configure">Action to configure the options.</param>
+    /// <exception cref="ArgumentNullException">Thrown when configure is null.</exception>
     public static void Configure(Action<TelemetryOptions> configure)
     {
-        ArgumentNullException.ThrowIfNull(configure);
+        ArgumentNullException.ThrowIfNull(configure, nameof(configure));
 
         var options = new TelemetryOptions();
         configure(options);
@@ -103,9 +104,10 @@ public static class TelemetryProvider
     ///     Use this for testing or custom telemetry backends.
     /// </summary>
     /// <param name="telemetry">The custom telemetry instance.</param>
+    /// <exception cref="ArgumentNullException">Thrown when telemetry is null.</exception>
     public static void SetCustom(IResultTelemetry telemetry)
     {
-        ArgumentNullException.ThrowIfNull(telemetry);
+        ArgumentNullException.ThrowIfNull(telemetry, nameof(telemetry));
 
         lock (ConfigLock)
         {
@@ -122,6 +124,9 @@ public static class TelemetryProvider
     /// <summary>
     ///     Creates a telemetry instance based on the provided options.
     /// </summary>
+    /// <param name="options">The telemetry options.</param>
+    /// <returns>An instance of <see cref="IResultTelemetry" /> based on the specified mode.</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when an invalid telemetry mode is specified.</exception>
     private static IResultTelemetry CreateTelemetry(TelemetryOptions options)
     {
         return options.Mode switch
@@ -130,7 +135,7 @@ public static class TelemetryProvider
             TelemetryMode.FireAndForget => new DefaultResultTelemetry(options),
             TelemetryMode.BackgroundChannel => new DefaultResultTelemetry(options),
             TelemetryMode.Synchronous => new DefaultResultTelemetry(options),
-            _ => throw new ArgumentOutOfRangeException(nameof(options.Mode), options.Mode, "Invalid telemetry mode")
+            _ => throw new ArgumentOutOfRangeException(nameof(options), options.Mode, "Invalid telemetry mode")
         };
     }
 }
@@ -139,12 +144,20 @@ public static class TelemetryProvider
 ///     A no-op telemetry implementation with zero overhead.
 ///     Used when telemetry is disabled.
 /// </summary>
+/// <remarks>
+///     This implementation uses the file-scoped sealed class pattern for optimal performance.
+///     All methods are inlined and perform no operations, resulting in zero runtime overhead.
+/// </remarks>
 sealed file class DisabledTelemetry : IResultTelemetry
 {
+    /// <summary>
+    ///     Gets the singleton instance of the disabled telemetry implementation.
+    /// </summary>
     public static readonly DisabledTelemetry Instance = new();
 
     private DisabledTelemetry() { }
 
+    /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackResultCreated(
         ResultState state,
@@ -154,6 +167,7 @@ sealed file class DisabledTelemetry : IResultTelemetry
         // No operation - zero overhead
     }
 
+    /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackResultTransformed(
         ResultState originalState,
@@ -164,6 +178,7 @@ sealed file class DisabledTelemetry : IResultTelemetry
         // No operation - zero overhead
     }
 
+    /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TrackException(
         Exception exception,

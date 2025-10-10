@@ -1,6 +1,5 @@
 ﻿#region
 
-using System;
 using MessagePack;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

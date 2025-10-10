@@ -80,7 +80,7 @@ public sealed class ValidationResult : Result<ValidationError>
     /// </summary>
     public static new ValidationResult Success { get; } = new(ResultState.Success);
 
-    private string DebuggerDisplay =>
+    protected override string DebuggerDisplay =>
         $"IsValid = {IsValid}, ErrorCount = {ErrorCount}, Message = {ErrorMessage}";
 
     #region Factory Methods - Multiple Errors (Modern params collections)

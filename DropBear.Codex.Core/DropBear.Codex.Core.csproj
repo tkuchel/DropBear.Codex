@@ -35,11 +35,12 @@
         <Optimize>true</Optimize>
         <Deterministic>true</Deterministic>
         <!-- FIXED: Enable for release builds -->
-        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+<!--        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>-->
+        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
         <!-- FIXED: Specific warnings to treat as errors -->
         <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
         <!-- FIXED: Only suppress if absolutely necessary, document why -->
-        <!--<NoWarn>CS1591</NoWarn>--> <!-- Re-enable and fix documentation -->
+        <NoWarn>CS1591;CS1580;</NoWarn>  <!--  Re-enable and fix documentation -->
 
         <!-- Output Options -->
         <OutputType>Library</OutputType>
