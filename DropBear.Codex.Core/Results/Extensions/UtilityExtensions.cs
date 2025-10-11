@@ -214,7 +214,7 @@ public static class UtilityExtensions
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(action);
 
-        if (result.IsSuccess && result.Value is not null)
+        if (result is { IsSuccess: true, Value: not null })
         {
             action(result.Value);
         }
@@ -233,7 +233,7 @@ public static class UtilityExtensions
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(actionAsync);
 
-        if (result.IsSuccess && result.Value is not null)
+        if (result is { IsSuccess: true, Value: not null })
         {
             await actionAsync(result.Value).ConfigureAwait(false);
         }
@@ -253,7 +253,7 @@ public static class UtilityExtensions
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(action);
 
-        if (!result.IsSuccess && result.Error is not null)
+        if (result is { IsSuccess: false, Error: not null })
         {
             action(result.Error);
         }
@@ -272,7 +272,7 @@ public static class UtilityExtensions
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(actionAsync);
 
-        if (!result.IsSuccess && result.Error is not null)
+        if (result is { IsSuccess: false, Error: not null })
         {
             await actionAsync(result.Error).ConfigureAwait(false);
         }
@@ -365,7 +365,7 @@ public static class UtilityExtensions
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(fallback);
 
-        return result.IsSuccess && result.Value is not null
+        return result is { IsSuccess: true, Value: not null }
             ? result.Value
             : fallback(result.Error!);
     }
@@ -381,7 +381,7 @@ public static class UtilityExtensions
         ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(fallbackAsync);
 
-        return result.IsSuccess && result.Value is not null
+        return result is { IsSuccess: true, Value: not null }
             ? result.Value
             : await fallbackAsync(result.Error!).ConfigureAwait(false);
     }

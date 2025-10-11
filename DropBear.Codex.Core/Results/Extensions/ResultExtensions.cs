@@ -270,7 +270,7 @@ public static class ResultExtensions
         var sourceArray = source as T[] ?? source.ToArray();
         if (sourceArray.Length == 0)
         {
-            return Result<IReadOnlyList<TResult>, TError>.Success(Array.Empty<TResult>());
+            return Result<IReadOnlyList<TResult>, TError>.Success([]);
         }
 
         var options = new ParallelOptions
@@ -286,7 +286,7 @@ public static class ResultExtensions
         }).ConfigureAwait(false);
 
         return results.Combine(errors =>
-            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed")!);
+            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed"));
     }
 
     /// <summary>
@@ -322,7 +322,7 @@ public static class ResultExtensions
         }
 
         return allResults.Combine(errors =>
-            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed")!);
+            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed"));
     }
 
     #endregion
@@ -395,7 +395,7 @@ public static class ResultExtensions
 
         if (resultArray.Length == 0)
         {
-            return Result<IReadOnlyList<T>, TError>.Success(Array.Empty<T>());
+            return Result<IReadOnlyList<T>, TError>.Success([]);
         }
 
         // Use ArrayPool for temporary storage to reduce allocations
@@ -441,7 +441,7 @@ public static class ResultExtensions
         var resultArray = results.ToArray();
         if (resultArray.Length == 0)
         {
-            return Result<IReadOnlyList<T>, TError>.Success(Array.Empty<T>());
+            return Result<IReadOnlyList<T>, TError>.Success([]);
         }
 
         var completedResults = new Result<T, TError>[resultArray.Length];
@@ -504,10 +504,8 @@ public static class ResultExtensions
             var errorCount = 0;
 
             // Single pass through results
-            for (var i = 0; i < results.Length; i++)
+            foreach (var result in results)
             {
-                var result = results[i];
-
                 if (result.IsSuccess)
                 {
                     successValuesArray[successCount++] = result.Value!;
@@ -625,7 +623,7 @@ public static class ResultExtensions
         }
 
         return allResults.Combine(errors =>
-            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed")!);
+            ResultErrorFactory<TError>.Create($"{errors.Count()} operations failed"));
     }
 
     #endregion

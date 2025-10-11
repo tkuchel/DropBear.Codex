@@ -29,7 +29,7 @@ public static class SpanExtensions
         for (var i = 0; i < results.Length && count < destination.Length; i++)
         {
             ref readonly var result = ref results[i];
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 destination[count++] = result.Value;
             }
@@ -52,7 +52,7 @@ public static class SpanExtensions
         for (var i = 0; i < results.Length && count < destination.Length; i++)
         {
             ref readonly var result = ref results[i];
-            if (!result.IsSuccess && result.Error is not null)
+            if (result is { IsSuccess: false, Error: not null })
             {
                 destination[count++] = result.Error;
             }
@@ -71,9 +71,9 @@ public static class SpanExtensions
     {
         var count = 0;
 
-        for (var i = 0; i < results.Length; i++)
+        foreach (var t in results)
         {
-            if (results[i].IsSuccess)
+            if (t.IsSuccess)
             {
                 count++;
             }
@@ -92,9 +92,9 @@ public static class SpanExtensions
     {
         var count = 0;
 
-        for (var i = 0; i < results.Length; i++)
+        foreach (var t in results)
         {
-            if (!results[i].IsSuccess)
+            if (!t.IsSuccess)
             {
                 count++;
             }
@@ -111,9 +111,9 @@ public static class SpanExtensions
         this ReadOnlySpan<Result<T, TError>> results)
         where TError : ResultError
     {
-        for (var i = 0; i < results.Length; i++)
+        foreach (var t in results)
         {
-            if (!results[i].IsSuccess)
+            if (!t.IsSuccess)
             {
                 return false;
             }
@@ -130,9 +130,9 @@ public static class SpanExtensions
         this ReadOnlySpan<Result<T, TError>> results)
         where TError : ResultError
     {
-        for (var i = 0; i < results.Length; i++)
+        foreach (var t in results)
         {
-            if (results[i].IsSuccess)
+            if (t.IsSuccess)
             {
                 return true;
             }
@@ -155,11 +155,11 @@ public static class SpanExtensions
         var successCount = 0;
         var errorCount = 0;
 
-        for (var i = 0; i < results.Length; i++)
+        foreach (var t in results)
         {
-            ref readonly var result = ref results[i];
+            ref readonly var result = ref t;
 
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 successArray[successCount++] = result.Value;
             }
@@ -196,7 +196,7 @@ public static class SpanExtensions
         for (var i = 0; i < results.Length; i++)
         {
             ref var result = ref results[i];
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 var transformed = transformer(result.Value);
                 result = Result<T, TError>.Success(transformed);

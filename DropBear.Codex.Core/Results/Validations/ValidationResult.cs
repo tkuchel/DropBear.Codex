@@ -6,7 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Extensions;
+using DropBear.Codex.Core.Results.Errors;
 using DropBear.Codex.Core.Results.Serialization;
 
 #endregion
@@ -16,16 +16,22 @@ namespace DropBear.Codex.Core.Results.Validations;
 /// <summary>
 ///     Represents the result of a validation operation with enhanced error aggregation.
 ///     Optimized for .NET 9 with modern C# features and collection expressions.
+///     Thread-safe and immutable by design.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ValidationResultJsonConverter))]
 public sealed class ValidationResult : Result<ValidationError>
 {
-    // Singleton success instance for efficiency
-
     // Multiple errors storage (for aggregated validation) - using frozen set for performance
     private readonly FrozenSet<ValidationError>? _errors;
 
+    /// <summary>
+    ///     Initializes a new instance of ValidationResult.
+    /// </summary>
+    /// <param name="state">The result state.</param>
+    /// <param name="error">The primary validation error, if any.</param>
+    /// <param name="exception">The exception that caused the failure, if any.</param>
+    /// <param name="errors">Multiple validation errors for aggregated failures.</param>
     private ValidationResult(
         ResultState state,
         ValidationError? error = null,
@@ -38,6 +44,7 @@ public sealed class ValidationResult : Result<ValidationError>
             var errorList = errors.ToList();
             if (errorList.Count > 0)
             {
+                // Use FrozenSet for immutable, high-performance lookups
                 _errors = errorList.ToFrozenSet();
             }
         }
@@ -51,6 +58,7 @@ public sealed class ValidationResult : Result<ValidationError>
 
     /// <summary>
     ///     Gets the error message if validation failed.
+    ///     Returns an empty string if validation succeeded.
     /// </summary>
     [JsonIgnore]
     public string ErrorMessage => Error?.Message ?? string.Empty;
@@ -58,6 +66,7 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Gets all validation errors (if multiple).
     ///     Uses collection expressions for modern syntax.
+    ///     Returns an empty collection if validation succeeded.
     /// </summary>
     [JsonIgnore]
     public IReadOnlyCollection<ValidationError> Errors =>
@@ -65,6 +74,7 @@ public sealed class ValidationResult : Result<ValidationError>
 
     /// <summary>
     ///     Gets the number of validation errors.
+    ///     Returns 0 if validation succeeded.
     /// </summary>
     [JsonIgnore]
     public int ErrorCount => _errors?.Count ?? (Error is not null ? 1 : 0);
@@ -76,19 +86,26 @@ public sealed class ValidationResult : Result<ValidationError>
     public bool HasMultipleErrors => ErrorCount > 1;
 
     /// <summary>
-    ///     Gets a successful validation result (singleton).
+    ///     Gets a successful validation result (singleton for efficiency).
     /// </summary>
     public static new ValidationResult Success { get; } = new(ResultState.Success);
 
+    /// <summary>
+    ///     Gets the debugger display string.
+    /// </summary>
     protected override string DebuggerDisplay =>
         $"IsValid = {IsValid}, ErrorCount = {ErrorCount}, Message = {ErrorMessage}";
 
-    #region Factory Methods - Multiple Errors (Modern params collections)
+    #region Factory Methods - Multiple Errors
 
     /// <summary>
     ///     Creates a failed validation result with multiple errors.
     ///     Uses params collection for modern syntax (.NET 9).
     /// </summary>
+    /// <param name="errors">The collection of validation errors.</param>
+    /// <returns>A failed ValidationResult containing all errors.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when errors is null.</exception>
+    /// <exception cref="ArgumentException">Thrown when errors collection is empty.</exception>
     public static ValidationResult Failed(params IEnumerable<ValidationError> errors)
     {
         ArgumentNullException.ThrowIfNull(errors);
@@ -118,6 +135,8 @@ public sealed class ValidationResult : Result<ValidationError>
     ///     Creates an aggregated error from multiple validation errors.
     ///     Uses modern string interpolation handler for better performance.
     /// </summary>
+    /// <param name="errors">The list of validation errors to aggregate.</param>
+    /// <returns>A single ValidationError representing all errors.</returns>
     private static ValidationError CreateAggregatedError(List<ValidationError> errors)
     {
         var errorCount = errors.Count;
@@ -141,6 +160,9 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Creates a failed validation result with the specified error message.
     /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <returns>A failed ValidationResult.</returns>
+    /// <exception cref="ArgumentException">Thrown when message is null or whitespace.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ValidationResult Failed(string message)
     {
@@ -151,6 +173,9 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Creates a failed validation result with the specified error.
     /// </summary>
+    /// <param name="error">The validation error.</param>
+    /// <returns>A failed ValidationResult.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when error is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ValidationResult Failed(ValidationError error)
     {
@@ -161,6 +186,11 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Creates a failed validation result for a specific property.
     /// </summary>
+    /// <param name="propertyName">The name of the property that failed validation.</param>
+    /// <param name="message">The error message.</param>
+    /// <param name="attemptedValue">The value that failed validation.</param>
+    /// <returns>A failed ValidationResult for the property.</returns>
+    /// <exception cref="ArgumentException">Thrown when propertyName or message is null or whitespace.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ValidationResult PropertyFailed(
         string propertyName,
@@ -177,6 +207,11 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Creates a failed validation result for a specific validation rule.
     /// </summary>
+    /// <param name="rule">The validation rule that failed.</param>
+    /// <param name="message">The error message.</param>
+    /// <param name="attemptedValue">The value that failed validation.</param>
+    /// <returns>A failed ValidationResult for the rule.</returns>
+    /// <exception cref="ArgumentException">Thrown when rule or message is null or whitespace.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static ValidationResult RuleFailed(
         string rule,
@@ -199,6 +234,9 @@ public sealed class ValidationResult : Result<ValidationError>
     ///     All errors are aggregated if any validation failed.
     ///     Uses params collection for modern syntax.
     /// </summary>
+    /// <param name="results">The validation results to combine.</param>
+    /// <returns>A single ValidationResult representing all validations.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when results is null.</exception>
     public static ValidationResult Combine(params IEnumerable<ValidationResult> results)
     {
         ArgumentNullException.ThrowIfNull(results);
@@ -241,6 +279,10 @@ public sealed class ValidationResult : Result<ValidationError>
     ///     Combines multiple validation results asynchronously.
     ///     Uses modern async patterns with ValueTask.
     /// </summary>
+    /// <param name="results">The async validation results to combine.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A ValueTask that resolves to a combined ValidationResult.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when results is null.</exception>
     public static async ValueTask<ValidationResult> CombineAsync(
         IEnumerable<ValueTask<ValidationResult>> results,
         CancellationToken cancellationToken = default)
@@ -267,6 +309,10 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Combines Task-based validation results.
     /// </summary>
+    /// <param name="results">The task-based validation results to combine.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>A ValueTask that resolves to a combined ValidationResult.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when results is null.</exception>
     public static async ValueTask<ValidationResult> CombineAsync(
         IEnumerable<Task<ValidationResult>> results,
         CancellationToken cancellationToken = default)
@@ -287,6 +333,9 @@ public sealed class ValidationResult : Result<ValidationError>
     ///     Gets all errors for a specific property.
     ///     Uses Span-based comparison for better performance.
     /// </summary>
+    /// <param name="propertyName">The property name to filter by.</param>
+    /// <returns>All errors associated with the specified property.</returns>
+    /// <exception cref="ArgumentException">Thrown when propertyName is empty.</exception>
     public IEnumerable<ValidationError> GetErrorsForProperty(ReadOnlySpan<char> propertyName)
     {
         if (propertyName.IsEmpty)
@@ -303,6 +352,9 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Gets all errors for a specific validation rule.
     /// </summary>
+    /// <param name="rule">The rule name to filter by.</param>
+    /// <returns>All errors associated with the specified rule.</returns>
+    /// <exception cref="ArgumentException">Thrown when rule is empty.</exception>
     public IEnumerable<ValidationError> GetErrorsForRule(ReadOnlySpan<char> rule)
     {
         if (rule.IsEmpty)
@@ -318,6 +370,9 @@ public sealed class ValidationResult : Result<ValidationError>
     /// <summary>
     ///     Checks if there are errors for a specific property.
     /// </summary>
+    /// <param name="propertyName">The property name to check.</param>
+    /// <returns>True if errors exist for the property; otherwise, false.</returns>
+    /// <exception cref="ArgumentException">Thrown when propertyName is empty.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool HasErrorsForProperty(ReadOnlySpan<char> propertyName)
     {
@@ -333,12 +388,15 @@ public sealed class ValidationResult : Result<ValidationError>
 
     /// <summary>
     ///     Gets errors grouped by property name.
+    ///     Uses FrozenDictionary for optimal read performance.
     /// </summary>
+    /// <returns>A dictionary of property names to their associated errors.</returns>
     public IReadOnlyDictionary<string, IReadOnlyList<ValidationError>> GetErrorsByProperty()
     {
+        // FIXED: Added explicit comparer parameter
         return Errors
             .Where(e => e.PropertyName is not null)
-            .GroupBy(e => e.PropertyName!)
+            .GroupBy(e => e.PropertyName!, StringComparer.Ordinal)
             .ToFrozenDictionary(
                 g => g.Key,
                 g => (IReadOnlyList<ValidationError>)g.ToList(),
@@ -347,12 +405,15 @@ public sealed class ValidationResult : Result<ValidationError>
 
     /// <summary>
     ///     Gets errors grouped by validation rule.
+    ///     Uses FrozenDictionary for optimal read performance.
     /// </summary>
+    /// <returns>A dictionary of validation rules to their associated errors.</returns>
     public IReadOnlyDictionary<string, IReadOnlyList<ValidationError>> GetErrorsByRule()
     {
+        // FIXED: Added explicit comparer parameter
         return Errors
             .Where(e => e.ValidationRule is not null)
-            .GroupBy(e => e.ValidationRule!)
+            .GroupBy(e => e.ValidationRule!, StringComparer.Ordinal)
             .ToFrozenDictionary(
                 g => g.Key,
                 g => (IReadOnlyList<ValidationError>)g.ToList(),
@@ -364,24 +425,48 @@ public sealed class ValidationResult : Result<ValidationError>
     #region Conversion Methods
 
     /// <summary>
-    ///     Throws a ValidationException if this result is not valid.
+    ///     Throws a ResultValidationException if this result is not valid.
     /// </summary>
+    /// <exception cref="ResultValidationException">Thrown when the validation result is invalid.</exception>
     public void ThrowIfInvalid()
     {
         if (!IsValid)
         {
-            throw new ValidationException(this);
+            throw new ResultValidationException(this);
         }
     }
 
     /// <summary>
     ///     Converts this ValidationResult to a Result{T, ValidationError} with a value.
     /// </summary>
+    /// <typeparam name="T">The type of the value to associate with the result.</typeparam>
+    /// <param name="value">The value to include if validation succeeded.</param>
+    /// <returns>A Result containing either the value (if valid) or the error (if invalid).</returns>
     public Result<T, ValidationError> WithValue<T>(T value)
     {
         return IsValid
             ? Result<T, ValidationError>.Success(value)
             : Result<T, ValidationError>.Failure(Error!);
+    }
+
+    /// <summary>
+    ///     Gets a formatted string representation of all errors.
+    /// </summary>
+    /// <returns>A formatted error summary string.</returns>
+    public string GetErrorSummary()
+    {
+        if (IsValid)
+        {
+            return "No validation errors";
+        }
+
+        if (ErrorCount == 1)
+        {
+            return Error!.Message;
+        }
+
+        return string.Join(Environment.NewLine,
+            Errors.Select((e, i) => $"{i + 1}. {e.Message}"));
     }
 
     #endregion

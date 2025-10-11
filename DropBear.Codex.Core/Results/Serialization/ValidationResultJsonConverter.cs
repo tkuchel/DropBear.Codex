@@ -87,7 +87,7 @@ public sealed class ValidationResultJsonConverter : JsonConverter<ValidationResu
         writer.WriteBooleanValue(value.IsValid);
 
         // Write errors if present
-        if (!value.IsValid && value.Errors.Count > 0)
+        if (value is { IsValid: false, Errors.Count: > 0 })
         {
             writer.WritePropertyName("errors");
             JsonSerializer.Serialize(writer, value.Errors, options);

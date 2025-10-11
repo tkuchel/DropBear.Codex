@@ -18,7 +18,7 @@ public static class ResultErrorFactory<TError> where TError : ResultError
 
     private static Func<string, TError> CreateFactory()
     {
-        var ctor = typeof(TError).GetConstructor(new[] { typeof(string) });
+        var ctor = typeof(TError).GetConstructor([typeof(string)]);
         if (ctor == null)
         {
             throw new InvalidOperationException(

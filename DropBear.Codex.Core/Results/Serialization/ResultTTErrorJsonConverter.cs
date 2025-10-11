@@ -28,7 +28,7 @@ public sealed class ResultTTErrorJsonConverter<T, TError> : JsonConverter<Result
 
         ResultState? state = null;
         T? value = default;
-        TError? error = default;
+        TError? error = null;
 
         while (reader.Read())
         {
@@ -97,7 +97,7 @@ public sealed class ResultTTErrorJsonConverter<T, TError> : JsonConverter<Result
         JsonSerializer.Serialize(writer, value.State, options);
 
         // Write value if present
-        if (value.IsSuccess && value.Value is not null)
+        if (value is { IsSuccess: true, Value: not null })
         {
             writer.WritePropertyName("value");
             JsonSerializer.Serialize(writer, value.Value, options);

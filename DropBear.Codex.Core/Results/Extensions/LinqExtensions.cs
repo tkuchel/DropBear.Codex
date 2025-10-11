@@ -232,7 +232,7 @@ public static class LinqExtensions
 
         foreach (var result in materialized)
         {
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 successes.Add((result, keySelector(result.Value)));
             }
@@ -270,7 +270,7 @@ public static class LinqExtensions
 
         foreach (var result in materialized)
         {
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 successes.Add((result, keySelector(result.Value)));
             }
@@ -307,7 +307,7 @@ public static class LinqExtensions
 
         foreach (var result in materialized)
         {
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 successes.Add((result, keySelector(result.Value)));
             }
@@ -345,7 +345,7 @@ public static class LinqExtensions
 
         foreach (var result in materialized)
         {
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 successes.Add((result, keySelector(result.Value)));
             }
@@ -731,7 +731,7 @@ public static class LinqExtensions
 
         foreach (var result in source)
         {
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 yield return result.Value;
             }
@@ -762,7 +762,7 @@ public static class LinqExtensions
 
         foreach (var result in source)
         {
-            if (!result.IsSuccess && result.Error is not null)
+            if (result is { IsSuccess: false, Error: not null })
             {
                 yield return result.Error;
             }
@@ -783,7 +783,7 @@ public static class LinqExtensions
 
         foreach (var result in source)
         {
-            if (result.IsSuccess && result.Value is not null)
+            if (result is { IsSuccess: true, Value: not null })
             {
                 successes.Add(result.Value);
             }
