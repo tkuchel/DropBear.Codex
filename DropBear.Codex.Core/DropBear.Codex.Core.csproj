@@ -12,14 +12,13 @@
 
         <!-- Package Information -->
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <!-- FIXED: Use single version -->
-        <Version>2025.9.0</Version>
+        <Version>2025.10.0</Version>
         <PackageId>DropBear.Codex.Core</PackageId>
         <Title>DropBear Codex Core</Title>
-        <Description>The core set of classes used throughout the DropBear.Codex.* libraries</Description>
+        <Description>The core library for DropBear.Codex providing Result pattern, error handling, and telemetry infrastructure for .NET 9+ applications. Features type-safe error handling, functional extensions, and OpenTelemetry integration.</Description>
         <Authors>Terrence Kuchel</Authors>
         <Company>DropBear</Company>
-        <PackageTags>DropBear, Codex, Core, Result Pattern, Functional Programming</PackageTags>
+        <PackageTags>result-pattern, railway-oriented-programming, functional-programming, error-handling, monad, either, option, maybe, async, dotnet9, csharp12, telemetry, opentelemetry, dropbear, codex</PackageTags>
         <PackageLicenseExpression>MIT</PackageLicenseExpression>
         <Copyright>2025 Terrence Kuchel (DropBear)</Copyright>
         <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
@@ -27,20 +26,34 @@
         <RepositoryType>git</RepositoryType>
         <PackageIcon>icon.png</PackageIcon>
         <PackageReleaseNotes>See https://github.com/tkuchel/DropBear.Codex/blob/master/CHANGELOG.md</PackageReleaseNotes>
-        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageReadmeFile>PACKAGE_README.md</PackageReadmeFile>
 
         <!-- Build Options -->
         <AssemblyName>DropBear.Codex.Core</AssemblyName>
         <RootNamespace>DropBear.Codex.Core</RootNamespace>
         <Optimize>true</Optimize>
         <Deterministic>true</Deterministic>
-        <!-- FIXED: Enable for release builds -->
-<!--        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>-->
-        <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-        <!-- FIXED: Specific warnings to treat as errors -->
+
+        <!-- FIXED: Enable ContinuousIntegrationBuild in CI environments -->
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+
+        <!-- Quality Settings -->
+        <!-- FIXED: Only enable TreatWarningsAsErrors in Release builds -->
+        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+
+        <!-- FIXED: Specific nullable warnings as errors -->
         <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-        <!-- FIXED: Only suppress if absolutely necessary, document why -->
-        <NoWarn>CS1591;CS1580;</NoWarn>  <!--  Re-enable and fix documentation -->
+
+        <!-- FIXED: Only suppress CS1591 in Debug builds while documentation is being completed -->
+        <NoWarn Condition="'$(Configuration)' == 'Debug'">CS1591</NoWarn>
+        <!-- In Release, all XML documentation must be present -->
+
+        <!-- Code Analysis -->
+        <!-- FIXED: Enable comprehensive code analysis -->
+        <EnableNETAnalyzers>true</EnableNETAnalyzers>
+        <AnalysisLevel>latest-all</AnalysisLevel>
+        <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
 
         <!-- Output Options -->
         <OutputType>Library</OutputType>
@@ -52,20 +65,22 @@
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+        <!-- FIXED: Enable NuGet Package Validation -->
+        <EnablePackageValidation>true</EnablePackageValidation>
+        <PackageValidationEnabled>true</PackageValidationEnabled>
+        <GenerateCompatibilitySuppressionFile>true</GenerateCompatibilitySuppressionFile>
+        <EnableStrictModeForCompatibleFrameworksInPackage>true</EnableStrictModeForCompatibleFrameworksInPackage>
     </PropertyGroup>
 
-    <!-- Item Group for Source Files -->
+    <!-- Item Group for Dependencies -->
     <ItemGroup>
-        
-        <PackageReference Include="JetBrains.Annotations" Version="2025.2.0"/>
+        <!-- Core Dependencies -->
         <PackageReference Include="MessagePack" Version="3.1.4"/>
-        <PackageReference Include="Meziantou.Analyzer" Version="2.0.212">
-            <PrivateAssets>all</PrivateAssets>
-            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
-        
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0"/>
         <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="9.0.0"/>
+
+        <!-- Logging Dependencies -->
         <PackageReference Include="Serilog" Version="4.3.0"/>
         <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1"/>
         <PackageReference Include="Serilog.Enrichers.Process" Version="3.0.0"/>
@@ -73,16 +88,31 @@
         <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0"/>
         <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0"/>
         <PackageReference Include="Serilog.Sinks.File" Version="7.0.0"/>
-        <!-- ADDED: SourceLink support -->
+
+        <!-- Development Dependencies (Private) -->
+        <!-- FIXED: Mark JetBrains.Annotations as private asset -->
+        <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" PrivateAssets="all"/>
+
+        <!-- Analyzers (Private) -->
+        <PackageReference Include="Meziantou.Analyzer" Version="2.0.212">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+
+        <!-- FIXED: Add Roslynator for additional code quality analysis -->
+        <PackageReference Include="Roslynator.Analyzers" Version="4.12.0">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+        </PackageReference>
+
+        <!-- SourceLink -->
         <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All"/>
     </ItemGroup>
 
-    
+    <!-- Files to Include in Package -->
     <ItemGroup>
-        <None Include="README.md" Pack="true" PackagePath=""/>
-        <None Include="..\..\assets\icon.png" Pack="true" PackagePath=""/>
+        <None Include="PACKAGE_README.md" Pack="true" PackagePath=""/>
+        <None Include="icon.png" Pack="true" PackagePath=""/>
     </ItemGroup>
-
-   
 
 </Project>

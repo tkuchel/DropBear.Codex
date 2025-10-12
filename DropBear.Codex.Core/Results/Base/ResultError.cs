@@ -3,10 +3,10 @@
 using System.Collections.Frozen;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Errors;
-using DropBear.Codex.Core.Results.Factories;
 
 #endregion
 
@@ -66,6 +66,36 @@ public abstract record ResultError
     public string ErrorId { get; init; } = Guid.NewGuid().ToString("N");
 
     /// <summary>
+    ///     Gets the source exception if this error was created from an exception.
+    ///     This property is useful for debugging and detailed error reporting while
+    ///     maintaining separation between domain errors and technical exceptions.
+    /// </summary>
+    /// <remarks>
+    ///     This property is marked with [JsonIgnore] to prevent serialization issues
+    ///     with exceptions that may not be serializable. Stack trace information is
+    ///     captured separately in the <see cref="StackTrace" /> property.
+    /// </remarks>
+    [JsonIgnore]
+    public Exception? SourceException { get; init; }
+
+    /// <summary>
+    ///     Gets the stack trace captured when this error was created.
+    ///     This is particularly useful when <see cref="SourceException" /> is not serialized.
+    /// </summary>
+    /// <remarks>
+    ///     For errors created from exceptions, this will contain the exception's stack trace.
+    ///     For manually created errors, this may be null or contain the creation call stack
+    ///     if explicitly captured.
+    /// </remarks>
+    public string? StackTrace { get; init; }
+
+    /// <summary>
+    ///     Gets the inner exception message if the source exception has an inner exception.
+    /// </summary>
+    [JsonIgnore]
+    public string? InnerExceptionMessage => SourceException?.InnerException?.Message;
+
+    /// <summary>
     ///     Gets the age of this error (time since creation).
     /// </summary>
     public TimeSpan Age => DateTimeOffset.UtcNow - Timestamp;
@@ -84,6 +114,21 @@ public abstract record ResultError
     [JsonIgnore]
     public bool HasMetadata => _metadata?.Count > 0;
 
+    /// <summary>
+    ///     Gets whether this error has a source exception.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasException => SourceException != null;
+
+    #region Debugger Support
+
+    private string DebuggerDisplay =>
+        $"{GetType().Name}: {Message}" +
+        (Code != null ? $" [{Code}]" : "") +
+        (HasException ? $" (Exception: {SourceException!.GetType().Name})" : "");
+
+    #endregion
+
     #region Code Helpers
 
     /// <summary>
@@ -96,153 +141,6 @@ public abstract record ResultError
         return this with { Code = code };
     }
 
-    #endregion
-
-    #region Metadata Management
-
-    /// <summary>
-    ///     Adds a single metadata entry to this error.
-    ///     Creates a new error instance with the metadata added.
-    /// </summary>
-    /// <param name="key">The metadata key. Cannot be null or whitespace.</param>
-    /// <param name="value">The metadata value. Cannot be null.</param>
-    /// <returns>A new error instance with the metadata added.</returns>
-    /// <remarks>
-    ///     <para>
-    ///         This method uses immutable FrozenDictionary internally for optimal read performance.
-    ///         Each call creates a new error instance with updated metadata.
-    ///     </para>
-    ///     <para>
-    ///         <strong>Performance Note:</strong> For adding multiple metadata items, use the
-    ///         <see cref="WithMetadata(IReadOnlyDictionary{string, object})" /> overload instead
-    ///         of chaining multiple calls to this method.
-    ///     </para>
-    /// </remarks>
-    /// <example>
-    ///     <strong>Single item:</strong>
-    ///     <code>
-    ///     var error = new ValidationError("Invalid input")
-    ///         .WithMetadata("field", "email");
-    ///     </code>
-    ///     <strong>Multiple items (preferred):</strong>
-    ///     <code>
-    ///     var metadata = new Dictionary&lt;string, object&gt;
-    ///     {
-    ///         ["field"] = "email",
-    ///         ["value"] = userInput,
-    ///         ["constraint"] = "must be valid email format"
-    ///     };
-    ///     var error = new ValidationError("Invalid input")
-    ///         .WithMetadata(metadata);
-    ///     </code>
-    ///     <strong>Avoid chaining (less efficient):</strong>
-    ///     <code>
-    ///     // ❌ Less efficient - creates intermediate dictionaries
-    ///     var error = new ValidationError("Invalid input")
-    ///         .WithMetadata("field", "email")
-    ///         .WithMetadata("value", userInput)
-    ///         .WithMetadata("constraint", "must be valid email format");
-    ///     </code>
-    /// </example>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError WithMetadata(string key, object value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-        ArgumentNullException.ThrowIfNull(value);
-
-        var builder = _metadata?.ToDictionary(StringComparer.Ordinal)
-                      ?? new Dictionary<string, object>(StringComparer.Ordinal);
-
-        builder[key] = value;
-
-        return this with { _metadata = builder.ToFrozenDictionary(StringComparer.Ordinal) };
-    }
-
-    /// <summary>
-    ///     Adds multiple metadata entries to this error.
-    ///     This is the preferred method for adding multiple items.
-    /// </summary>
-    /// <remarks>
-    ///     <strong>Performance Note:</strong> This method is optimized for adding
-    ///     multiple items at once. It is more efficient than calling
-    ///     WithMetadata(key, value) multiple times.
-    /// </remarks>
-    /// <example>
-    ///     Preferred pattern for multiple items:
-    ///     <code>
-    ///     var metadata = new Dictionary&lt;string, object&gt;
-    ///     {
-    ///         ["field"] = "email",
-    ///         ["value"] = userInput,
-    ///         ["code"] = "VAL001"
-    ///     };
-    ///     var error = new ValidationError("Invalid input")
-    ///         .WithMetadata(metadata);
-    ///     </code>
-    /// </example>
-    /// <param name="items">The metadata items to add.</param>
-    /// <returns>A new error instance with the metadata added.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError WithMetadata(IReadOnlyDictionary<string, object> items)
-    {
-        ArgumentNullException.ThrowIfNull(items);
-
-        if (items.Count == 0)
-        {
-            return this;
-        }
-
-        var builder = _metadata?.ToDictionary(StringComparer.Ordinal)
-                      ?? new Dictionary<string, object>(items.Count, StringComparer.Ordinal);
-
-        foreach (var (key, value) in items)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(key);
-            ArgumentNullException.ThrowIfNull(value);
-            builder[key] = value;
-        }
-
-        return this with { _metadata = builder.ToFrozenDictionary(StringComparer.Ordinal) };
-    }
-
-    /// <summary>
-    ///     Gets a metadata value by key.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public T? GetMetadata<T>(string key)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-
-        if (_metadata?.TryGetValue(key, out var value) == true && value is T typed)
-        {
-            return typed;
-        }
-
-        return default;
-    }
-
-    /// <summary>
-    ///     Tries to get a metadata value by key.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetMetadata<T>(string key, out T? value)
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(key);
-
-        if (_metadata?.TryGetValue(key, out var obj) == true && obj is T typed)
-        {
-            value = typed;
-            return true;
-        }
-
-        value = default;
-        return false;
-    }
-
-    #endregion
-
-    #region Severity Helpers
-
     /// <summary>
     ///     Creates a new error with the specified severity.
     /// </summary>
@@ -250,107 +148,63 @@ public abstract record ResultError
     public ResultError WithSeverity(ErrorSeverity severity) => this with { Severity = severity };
 
     /// <summary>
-    ///     Creates a new error with Info severity.
+    ///     Creates a new error with the specified category.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError AsInfo() => this with { Severity = ErrorSeverity.Info };
-
-    /// <summary>
-    ///     Creates a new error with Low severity.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError AsLow() => this with { Severity = ErrorSeverity.Low };
-
-    /// <summary>
-    ///     Creates a new error with Medium severity.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError AsMedium() => this with { Severity = ErrorSeverity.Medium };
-
-    /// <summary>
-    ///     Creates a new error with High severity.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError AsHigh() => this with { Severity = ErrorSeverity.High };
-
-    /// <summary>
-    ///     Creates a new error with Critical severity.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public ResultError AsCritical() => this with { Severity = ErrorSeverity.Critical };
+    public ResultError WithCategory(ErrorCategory category) => this with { Category = category };
 
     #endregion
 
-    #region Display
-
-    private string DebuggerDisplay => $"[{Severity}] {Code ?? "NO_CODE"}: {Message}";
+    #region Metadata Management
 
     /// <summary>
-    ///     Returns a string representation of this error.
+    ///     Creates a new error with additional metadata.
+    ///     This method is optimized for .NET 9 using frozen collections.
     /// </summary>
-    public override string ToString()
+    public ResultError WithMetadata(string key, object value)
     {
-        return Code is not null
-            ? $"[{Code}] {Message}"
-            : Message;
-    }
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
 
-    #endregion
+        var newMetadata = _metadata != null
+            ? new Dictionary<string, object>(_metadata, StringComparer.OrdinalIgnoreCase) { [key] = value }
+            : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase) { [key] = value };
 
-    #region Performance-Optimized Metadata
-
-    /// <summary>
-    ///     Optimized metadata initialization using frozen dictionary builder.
-    ///     Reduces allocations for metadata-heavy scenarios.
-    ///     NOTE: This is a helper method - concrete error types should use their own factory methods.
-    /// </summary>
-    /// <typeparam name="TError">The concrete error type to create.</typeparam>
-    public static TError CreateWithMetadata<TError>(
-        string message,
-        ReadOnlySpan<KeyValuePair<string, object>> metadata)
-        where TError : ResultError
-    {
-        ArgumentException.ThrowIfNullOrWhiteSpace(message);
-
-        // Create the concrete error instance
-        var error = ResultErrorFactory<TError>.Create(message);
-
-        if (metadata.IsEmpty)
-        {
-            return error;
-        }
-
-        // Use frozen dictionary builder for optimal performance
-        var builder = metadata.Length <= 4
-            ? new Dictionary<string, object>(metadata.Length, StringComparer.Ordinal)
-            : new Dictionary<string, object>(StringComparer.Ordinal);
-
-        foreach (var t in metadata)
-        {
-            ref readonly var kvp = ref t;
-            builder[kvp.Key] = kvp.Value;
-        }
-
-        return error with { _metadata = builder.ToFrozenDictionary(StringComparer.Ordinal) };
+        return this with { _metadata = newMetadata.ToFrozenDictionary() };
     }
 
     /// <summary>
-    ///     Fast metadata lookup using TryGetValue with aggressive inlining.
+    ///     Creates a new error with multiple metadata entries.
+    /// </summary>
+    public ResultError WithMetadata(IEnumerable<KeyValuePair<string, object>> metadata)
+    {
+        ArgumentNullException.ThrowIfNull(metadata);
+
+        var newMetadata = _metadata != null
+            ? new Dictionary<string, object>(_metadata, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (key, value) in metadata)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
+            ArgumentNullException.ThrowIfNull(value);
+            newMetadata[key] = value;
+        }
+
+        return this with { _metadata = newMetadata.ToFrozenDictionary() };
+    }
+
+    /// <summary>
+    ///     Attempts to get a metadata value.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public bool TryGetMetadataFast<T>(ReadOnlySpan<char> key, out T? value)
+    public bool TryGetMetadata<T>(string key, out T? value)
     {
-        // Convert span to string only if metadata exists
-        if (_metadata is null || _metadata.Count == 0)
-        {
-            value = default;
-            return false;
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
-        var keyStr = key.ToString();
-        if (_metadata.TryGetValue(keyStr, out var obj) && obj is T typed)
+        if (_metadata?.TryGetValue(key, out var objValue) == true && objValue is T typedValue)
         {
-            value = typed;
+            value = typedValue;
             return true;
         }
 
@@ -359,4 +213,146 @@ public abstract record ResultError
     }
 
     #endregion
+
+    #region Exception Helpers
+
+    /// <summary>
+    ///     Creates a new error with exception information.
+    ///     This is typically used when converting an exception to a domain error.
+    /// </summary>
+    public ResultError WithException(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        return this with
+        {
+            SourceException = exception,
+            StackTrace = exception.StackTrace ?? Environment.StackTrace,
+            Message = string.IsNullOrWhiteSpace(Message) ? exception.Message : Message
+        };
+    }
+
+    /// <summary>
+    ///     Gets the full exception message including inner exceptions.
+    /// </summary>
+    public string GetFullExceptionMessage()
+    {
+        if (SourceException == null)
+        {
+            return Message;
+        }
+
+        var messages = new List<string> { Message };
+        var current = SourceException;
+
+        while (current != null)
+        {
+            if (!string.IsNullOrWhiteSpace(current.Message))
+            {
+                messages.Add(current.Message);
+            }
+
+            current = current.InnerException;
+        }
+
+        return string.Join(" -> ", messages.Distinct(StringComparer.OrdinalIgnoreCase));
+    }
+
+    #endregion
+
+    #region Formatting
+
+    /// <summary>
+    ///     Returns a string representation of this error.
+    /// </summary>
+    public override string ToString()
+    {
+        var parts = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(Code))
+        {
+            parts.Add($"[{Code}]");
+        }
+
+        parts.Add(Message);
+
+        if (HasException)
+        {
+            parts.Add($"Exception: {SourceException!.GetType().Name}");
+        }
+
+        if (HasMetadata)
+        {
+            var metadataStr = string.Join(", ", _metadata!.Select(kvp => $"{kvp.Key}={kvp.Value}"));
+            parts.Add($"Metadata: [{metadataStr}]");
+        }
+
+        return string.Join(" | ", parts);
+    }
+
+    /// <summary>
+    ///     Gets a detailed string representation including stack trace.
+    /// </summary>
+    public string ToDetailedString()
+    {
+        var builder = new StringBuilder();
+        builder.AppendLine(ToString());
+
+        if (!string.IsNullOrWhiteSpace(StackTrace))
+        {
+            builder.AppendLine("Stack Trace:");
+            builder.AppendLine(StackTrace);
+        }
+
+        if (SourceException?.InnerException != null)
+        {
+            builder.AppendLine($"Inner Exception: {SourceException.InnerException.Message}");
+        }
+
+        return builder.ToString();
+    }
+
+    #endregion
+
+    #region Factory Methods
+
+    /// <summary>
+    ///     Creates an error from an exception, preserving all exception information.
+    /// </summary>
+    public static TError FromException<TError>(Exception exception)
+        where TError : ResultError, new()
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        var error = new TError();
+        return (TError)error.WithException(exception)
+                .WithCode(exception.GetType().Name)
+                .WithCategory(ErrorCategory.Technical)
+                .WithSeverity(ErrorSeverity.High) with
+            {
+                Message = exception.Message
+            };
+    }
+
+    /// <summary>
+    ///     Creates an error from an exception with a custom message.
+    /// </summary>
+    public static TError FromException<TError>(Exception exception, string customMessage)
+        where TError : ResultError, new()
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        ArgumentException.ThrowIfNullOrWhiteSpace(customMessage);
+
+        var error = new TError();
+        return (TError)error.WithException(exception)
+                .WithCode(exception.GetType().Name)
+                .WithCategory(ErrorCategory.Technical)
+                .WithSeverity(ErrorSeverity.High) with
+            {
+                Message = customMessage
+            };
+    }
+
+    #endregion
 }
+

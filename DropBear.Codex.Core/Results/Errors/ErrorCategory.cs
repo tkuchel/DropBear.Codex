@@ -86,5 +86,10 @@ public enum ErrorCategory
     ///     A general, non-specific failure used when a known error occurs but does not fit
     ///     a more precise category. Prefer more specific categories when possible.
     /// </summary>
-    General
+    General,
+
+    /// <summary>
+    ///     An error related to technical issues, such as system failures or bugs.
+    /// </summary>
+    Technical
 }
