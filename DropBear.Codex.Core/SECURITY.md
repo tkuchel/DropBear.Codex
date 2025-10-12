@@ -18,7 +18,7 @@ We take the security of DropBear.Codex.Core seriously. If you have discovered a 
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **[your-security-email@example.com]**
+Instead, please report them via email to: **[security@dropbearcodexcore.org]**
 
 You can also use GitHub's private security vulnerability reporting feature:
 1. Navigate to the repository
