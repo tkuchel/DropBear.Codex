@@ -18,7 +18,7 @@ We take the security of DropBear.Codex.Core seriously. If you have discovered a 
 
 **Please do NOT report security vulnerabilities through public GitHub issues.**
 
-Instead, please report them via email to: **[your-security-email@example.com]**
+Instead, please report them via email to: **dropbear.noreply@pm.me**
 
 You can also use GitHub's private security vulnerability reporting feature:
 1. Navigate to the repository
@@ -172,8 +172,24 @@ We follow a coordinated vulnerability disclosure process:
 ## Contact
 
 For security-related questions or concerns:
-- **Email**: [your-security-email@example.com]
-- **PGP Key**: [Link to PGP key if applicable]
+- **Email**: dropbear.noreply@pm.me
+- **PGP Key**: 
+
+-----BEGIN PGP PUBLIC KEY BLOCK-----
+
+xjMEZFId+RYJKwYBBAHaRw8BAQdALhrv6/Hw/180WBSSSQFfc8nHhIAJqsAI
+TDUGw3B1RbLNL2Ryb3BiZWFyLm5vcmVwbHlAcG0ubWUgPGRyb3BiZWFyLm5v
+cmVwbHlAcG0ubWU+wowEEBYKAD4FgmRSHfkECwkHCAmQ8g4eGDcvLhkDFQgK
+BBYAAgECGQECmwMCHgEWIQT7u4BN+tCt9zKQytHyDh4YNy8uGQAAbIoA/0tb
+uuPZA+ImQpGqOuO4bLLCiXAZ3qeltIKvySX20eDrAQDuCikp1nb9tQVjhLiv
+Vldji2LE1gb4RV5rf9eT8sUGAM44BGRSHfkSCisGAQQBl1UBBQEBB0D1sj1c
+xqlsJ7OWysZfKBtXFGScIJY1heAVME/yhIRPYAMBCAfCeAQYFggAKgWCZFId
++QmQ8g4eGDcvLhkCmwwWIQT7u4BN+tCt9zKQytHyDh4YNy8uGQAAvbwA/1oj
+qjd8wq4q13hJTdWdWpBxoGbTJ6REIeSv/lPFprevAP9DV/LtJwu0nFpwzcTU
++QxUvH4LrrL/004PZ64CKxb0DA==
+=3Ggr
+
+-----END PGP PUBLIC KEY BLOCK-----
 
 ## Acknowledgments
 

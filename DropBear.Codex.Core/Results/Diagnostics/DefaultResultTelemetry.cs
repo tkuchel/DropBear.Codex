@@ -97,7 +97,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
 
             _channel = Channel.CreateBounded<TelemetryEvent>(channelOptions);
             _cts = _options.CancellationTokenSource ?? new CancellationTokenSource();
-            _processorTask = Task.Run(() => ProcessTelemetryEventsAsync(_cts.Token), _cts.Token);
+            _processorTask = Task.Run(async () => await ProcessTelemetryEventsAsync(_cts.Token).ConfigureAwait(false),
+                _cts.Token);
         }
     }
 
@@ -132,9 +133,9 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
             {
                 // Expected during shutdown
             }
-            catch (Exception ex)
+            catch (ObjectDisposedException)
             {
-                Debug.WriteLine($"Error waiting for telemetry processor: {ex.Message}");
+                // Expected if already disposed
             }
         }
 
@@ -171,15 +172,19 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
         {
             try
             {
-                var completed = _processorTask.Wait(TimeSpan.FromSeconds(5));
+                bool completed = _processorTask.Wait(TimeSpan.FromSeconds(5));
                 if (!completed)
                 {
                     Debug.WriteLine("Warning: Telemetry processor did not complete within timeout");
                 }
             }
-            catch (AggregateException)
+            catch (AggregateException ex) when (ex.InnerExceptions.All(e => e is OperationCanceledException))
             {
-                // Expected - ignore cancellation exceptions
+                // Expected - all inner exceptions are cancellation
+            }
+            catch (ObjectDisposedException)
+            {
+                // Expected if already disposed
             }
         }
 
@@ -253,7 +258,7 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
             return;
         }
 
-        ArgumentNullException.ThrowIfNull(exception);
+        ArgumentNullException.ThrowIfNull(exception, nameof(exception));
 
         var eventData = new TelemetryEvent
         {
@@ -298,9 +303,11 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
                 break;
 
             default:
+#pragma warning disable CA2208
 #pragma warning disable MA0015
                 throw new ArgumentOutOfRangeException(nameof(_mode), _mode, "Invalid telemetry mode");
 #pragma warning restore MA0015
+#pragma warning restore CA2208
         }
     }
 
@@ -328,22 +335,26 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
                     break;
 
                 default:
+#pragma warning disable CA2208
                     throw new ArgumentOutOfRangeException(
-                        nameof(eventData),
+#pragma warning disable MA0015
+                        nameof(eventData.Type),
+#pragma warning restore MA0015
                         eventData.Type,
                         "Unknown telemetry event type");
+#pragma warning restore CA2208
             }
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            // Don't let telemetry errors crash the application
-            Debug.WriteLine($"Error processing telemetry event: {ex.Message}");
+            // Specific exception for operational issues
+            Debug.WriteLine($"Telemetry operational error: {ex.Message}");
         }
     }
 
     /// <summary>
-    ///     Enqueues an event to the background channel, respecting the configured FullMode.
-    ///     FIXED: Now properly honors BoundedChannelFullMode.Wait configuration.
+    ///     Enqueues an event to the background channel, properly respecting the configured FullMode.
+    ///     For Wait mode, this method blocks the caller to provide backpressure.
     /// </summary>
     private void EnqueueBackgroundEvent(TelemetryEvent eventData)
     {
@@ -354,39 +365,54 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
             return;
         }
 
-        var writer = _channel.Writer;
+        ChannelWriter<TelemetryEvent> writer = _channel.Writer;
 
-        // FIXED: Check the configured FullMode to determine write behavior
-        if (_options.FullMode == ChannelFullMode.Wait)
+        // Handle based on the configured FullMode
+        switch (_options.FullMode)
         {
-            // For Wait mode, use WriteAsync to respect backpressure
-            // Fire and forget the write task, but handle completion
-            _ = Task.Run(async () =>
-            {
+            case ChannelFullMode.Wait:
+                // CRITICAL: For Wait mode, we MUST block the caller to provide backpressure
+                // This is the whole point of Wait mode - to prevent unbounded growth
                 try
                 {
-                    await writer.WriteAsync(eventData, _cts?.Token ?? CancellationToken.None)
-                        .ConfigureAwait(false);
+                    // Synchronously block until space is available
+                    // This provides the backpressure that prevents memory issues
+                    ValueTask writeTask = writer.WriteAsync(eventData, _cts?.Token ?? CancellationToken.None);
+
+                    if (!writeTask.IsCompleted)
+                    {
+                        // Block the calling thread until write completes
+                        // This is intentional and correct for Wait mode
+                        writeTask.AsTask().GetAwaiter().GetResult();
+                    }
                 }
                 catch (OperationCanceledException)
                 {
-                    // Expected during shutdown
+                    // Expected during shutdown - silently ignore
                 }
                 catch (ChannelClosedException)
                 {
-                    // Expected if disposed
+                    // Channel closed during disposal - silently ignore
                 }
-            });
-        }
-        else
-        {
-            // For DropOldest and DropNewest, TryWrite is appropriate
-            // This allows dropping events when channel is full
-            if (!writer.TryWrite(eventData))
-            {
-                // Event was dropped due to full channel
-                Debug.WriteLine($"Telemetry event dropped: {eventData.Type}");
-            }
+
+                break;
+
+            case ChannelFullMode.DropOldest:
+            case ChannelFullMode.DropNewest:
+                // For drop modes, use TryWrite to avoid blocking
+                // Events may be dropped, which is expected behavior
+                if (!writer.TryWrite(eventData))
+                {
+                    // Event was dropped - log for visibility in Debug builds
+                    Debug.WriteLine($"Telemetry event dropped (mode: {_options.FullMode}): {eventData.Type}");
+                }
+
+                break;
+
+            default:
+                // Fallback to TryWrite for unknown modes
+                _ = writer.TryWrite(eventData);
+                break;
         }
     }
 
@@ -402,7 +428,8 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
 
         try
         {
-            await foreach (var eventData in _channel.Reader.ReadAllAsync(cancellationToken).ConfigureAwait(false))
+            await foreach (TelemetryEvent eventData in _channel.Reader.ReadAllAsync(cancellationToken)
+                               .ConfigureAwait(false))
             {
                 ProcessEventCore(eventData);
             }
@@ -411,9 +438,13 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
         {
             // Expected during shutdown
         }
-        catch (Exception ex)
+        catch (ChannelClosedException)
         {
-            Debug.WriteLine($"Error in telemetry background processor: {ex.Message}");
+            // Expected when channel is completed
+        }
+        catch (ObjectDisposedException)
+        {
+            // Expected if disposed during processing
         }
     }
 
@@ -432,15 +463,15 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
         // Update statistics if enabled
         if (_statistics != null)
         {
-            var key = $"{eventData.ResultType.Name}:{eventData.State}";
-            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            string key = $"{eventData.ResultType.Name}:{eventData.State}";
+            PoolStatistics stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
             stats.IncrementGets();
         }
 
         // Create activity for tracing (if active listener exists)
         if (_activitySource.HasListeners())
         {
-            using var activity = _activitySource.StartActivity("ResultCreated");
+            using Activity? activity = _activitySource.StartActivity("ResultCreated");
             activity?.SetTag("result.state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
             activity?.SetTag("caller", eventData.Caller);
@@ -459,15 +490,15 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
         // Update statistics if enabled
         if (_statistics != null)
         {
-            var key = $"{eventData.ResultType.Name}:Transform";
-            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            string key = $"{eventData.ResultType.Name}:Transform";
+            PoolStatistics stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
             stats.IncrementGets();
         }
 
         // Create activity for tracing
         if (_activitySource.HasListeners())
         {
-            using var activity = _activitySource.StartActivity("ResultTransformed");
+            using Activity? activity = _activitySource.StartActivity("ResultTransformed");
             activity?.SetTag("original.state", eventData.OriginalState?.ToString());
             activity?.SetTag("new.state", eventData.State.ToString());
             activity?.SetTag("result.type", eventData.ResultType.Name);
@@ -492,15 +523,15 @@ public sealed class DefaultResultTelemetry : IResultTelemetry, IAsyncDisposable,
         // Update statistics if enabled
         if (_statistics != null)
         {
-            var key = $"{eventData.ResultType.Name}:Exception";
-            var stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
+            string key = $"{eventData.ResultType.Name}:Exception";
+            PoolStatistics stats = _statistics.GetOrAdd(key, _ => new PoolStatistics(key));
             stats.IncrementGets();
         }
 
         // Create activity for tracing with exception details
         if (_activitySource.HasListeners())
         {
-            using var activity = _activitySource.StartActivity("ResultException");
+            using Activity? activity = _activitySource.StartActivity("ResultException");
             activity?.SetTag("exception.type", eventData.Exception.GetType().Name);
             activity?.SetTag("exception.message", eventData.Exception.Message);
             activity?.SetTag("result.state", eventData.State.ToString());
