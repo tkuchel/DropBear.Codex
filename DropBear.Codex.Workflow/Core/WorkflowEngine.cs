@@ -1,34 +1,51 @@
+#region
+
 using System.Diagnostics;
-using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Configuration;
 using DropBear.Codex.Workflow.Interfaces;
-using DropBear.Codex.Workflow.Results;
 using DropBear.Codex.Workflow.Metrics;
+using DropBear.Codex.Workflow.Results;
+using Serilog;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-/// FIXED: WorkflowEngine that properly processes NextNodes from successful step executions
-/// and correctly propagates error messages from failed steps.
+///     Main workflow execution engine that processes workflow definitions and manages step execution.
 /// </summary>
-public sealed class WorkflowEngine : IWorkflowEngine
+public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 {
+    private readonly ILogger _logger;
     private readonly IServiceProvider _serviceProvider;
-    private readonly Serilog.ILogger _logger;
+    private bool _disposed;
 
-    public WorkflowEngine(IServiceProvider serviceProvider)
+    public WorkflowEngine(IServiceProvider serviceProvider, ILogger logger)
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
-        _logger = LoggerFactory.Logger.ForContext<WorkflowEngine>() ?? throw new ArgumentNullException(nameof(_logger));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _logger.Debug("Disposing WorkflowEngine");
+        await Task.CompletedTask.ConfigureAwait(false);
+
+        _disposed = true;
+        GC.SuppressFinalize(this);
     }
 
     public ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
-        CancellationToken cancellationToken = default) where TContext : class
-    {
-        return ExecuteAsync(definition, context, WorkflowExecutionOptions.Default, cancellationToken);
-    }
+        CancellationToken cancellationToken = default) where TContext : class =>
+        ExecuteAsync(definition, context, WorkflowExecutionOptions.Default, cancellationToken);
 
     public async ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
@@ -36,410 +53,259 @@ public sealed class WorkflowEngine : IWorkflowEngine
         WorkflowExecutionOptions options,
         CancellationToken cancellationToken = default) where TContext : class
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(options);
 
-        var correlationId = Activity.Current?.Id ?? Guid.NewGuid().ToString();
+        string correlationId = Guid.NewGuid().ToString();
         var stopwatch = Stopwatch.StartNew();
         var executionTrace = new List<StepExecutionTrace>();
 
-        using var activity = CreateActivity(definition.WorkflowId, correlationId);
+        using Activity? activity = CreateActivity(definition.WorkflowId, correlationId);
 
-        _logger.Information("Starting workflow execution: {WorkflowId} (Correlation: {CorrelationId})",
-            definition.WorkflowId, correlationId);
+        _logger.Information(
+            "Starting workflow {WorkflowId} (Correlation: {CorrelationId})",
+            definition.WorkflowId,
+            correlationId);
 
         try
         {
-            using var workflowCts = definition.WorkflowTimeout.HasValue
-                ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
-                : null;
-
-            if (workflowCts is not null)
-            {
-                workflowCts.CancelAfter(definition.WorkflowTimeout.Value);
-            }
-
-            var effectiveCancellationToken = workflowCts?.Token ?? cancellationToken;
-
-            var rootNode = definition.BuildWorkflow();
-            if (rootNode is null)
-            {
-                throw new InvalidOperationException($"Workflow '{definition.WorkflowId}' returned null root node");
-            }
-
-            var executionContext = new WorkflowExecutionContext<TContext>
-            {
-                Options = options,
-                CorrelationId = correlationId,
-                ExecutionTrace = executionTrace,
-                ServiceProvider = _serviceProvider,
-                Logger = _logger
-            };
-
-            // CRITICAL FIX: Use the corrected workflow graph execution with proper error handling
-            var executionResult = await ExecuteWorkflowGraphFixed<TContext>(
+            IWorkflowNode<TContext> rootNode = definition.BuildWorkflow();
+            NodeExecutionResult nodeResult = await ExecuteNodeAsync(
                 rootNode,
                 context,
-                executionContext,
-                effectiveCancellationToken);
+                options,
+                executionTrace,
+                cancellationToken).ConfigureAwait(false);
 
             stopwatch.Stop();
 
-            var finalMetrics = new WorkflowExecutionMetrics
+            if (!nodeResult.IsSuccess || nodeResult.IsSuspension)
             {
-                TotalExecutionTime = stopwatch.Elapsed,
-                StepsExecuted = executionTrace.Count(t => t.Result.IsSuccess),
-                StepsFailed = executionTrace.Count(t => !t.Result.IsSuccess),
-                RetryAttempts = executionTrace.Sum(t => t.RetryAttempts),
-                PeakMemoryUsage = options.EnableMemoryMetrics ? GC.GetTotalMemory(false) : null,
-                CustomMetrics = options.CustomOptions
-            };
+                WorkflowMetrics metrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
 
-            // FIXED: Handle suspension signals properly
-            if (executionResult.suspensionInfo.HasValue)
-            {
-                _logger.Information("Workflow suspended for signal: {WorkflowId} (Signal: {SignalName})",
-                    definition.WorkflowId, executionResult.suspensionInfo.Value.SignalName);
-
-                return new WorkflowResult<TContext>
+                if (nodeResult is { IsSuspension: true, SuspensionInfo: not null })
                 {
-                    IsSuccess = false,
-                    Context = context,
-                    ErrorMessage = $"WAITING_FOR_SIGNAL:{executionResult.suspensionInfo.Value.SignalName}",
-                    Metrics = finalMetrics,
-                    ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
-                };
+                    SuspensionInfo suspensionInfo = nodeResult.SuspensionInfo.Value;
+                    _logger.Information(
+                        "Workflow {WorkflowId} suspended, waiting for signal: {SignalName} (Correlation: {CorrelationId})",
+                        definition.WorkflowId,
+                        suspensionInfo.SignalName,
+                        correlationId);
+
+                    return WorkflowResult<TContext>.Suspended(
+                        context,
+                        suspensionInfo.SignalName,
+                        suspensionInfo.Metadata,
+                        metrics,
+                        executionTrace,
+                        correlationId);
+                }
+
+                // Run compensation if workflow failed
+                if (!nodeResult.IsSuccess)
+                {
+                    await RunCompensationAsync(executionTrace, context, cancellationToken).ConfigureAwait(false);
+                }
+
+                _logger.Warning(
+                    "Workflow {WorkflowId} failed: {ErrorMessage} (Correlation: {CorrelationId})",
+                    definition.WorkflowId,
+                    nodeResult.ErrorMessage,
+                    correlationId);
+
+                activity?.SetTag("workflow.status", "failed");
+
+                return nodeResult.Exception != null
+                    ? WorkflowResult<TContext>.Failure(context, nodeResult.Exception, metrics, executionTrace,
+                        correlationId)
+                    : WorkflowResult<TContext>.Failure(context, nodeResult.ErrorMessage ?? "Workflow execution failed",
+                        metrics, executionTrace, correlationId);
             }
 
-            // FIXED: Properly handle failures with error message propagation
-            if (!executionResult.success)
-            {
-                _logger.Warning("Workflow execution failed: {WorkflowId} (Error: {ErrorMessage})",
-                    definition.WorkflowId, executionResult.errorMessage);
+            _logger.Information(
+                "Workflow {WorkflowId} completed successfully in {Duration}ms (Correlation: {CorrelationId})",
+                definition.WorkflowId,
+                stopwatch.ElapsedMilliseconds,
+                correlationId);
 
-                return new WorkflowResult<TContext>
-                {
-                    IsSuccess = false,
-                    Context = context,
-                    ErrorMessage = executionResult.errorMessage ?? "Workflow execution failed",
-                    Exception = executionResult.exception,
-                    Metrics = finalMetrics,
-                    ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
-                };
-            }
+            activity?.SetTag("workflow.status", "completed");
+            activity?.SetTag("workflow.duration_ms", stopwatch.ElapsedMilliseconds);
 
-            _logger.Information("Workflow execution completed: {WorkflowId} (Success: {Success}, Duration: {Duration})",
-                definition.WorkflowId, executionResult.success, stopwatch.Elapsed);
-
-            return new WorkflowResult<TContext>
-            {
-                IsSuccess = true,
-                Context = context,
-                Metrics = finalMetrics,
-                ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
-            };
+            WorkflowMetrics finalMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+            return WorkflowResult<TContext>.Success(context, finalMetrics, executionTrace, correlationId);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException ex)
         {
-            _logger.Warning("Workflow execution cancelled: {WorkflowId}", definition.WorkflowId);
+            stopwatch.Stop();
+            _logger.Warning(
+                ex,
+                "Workflow {WorkflowId} was cancelled (Correlation: {CorrelationId})",
+                definition.WorkflowId,
+                correlationId);
 
-            return new WorkflowResult<TContext>
-            {
-                IsSuccess = false,
-                Context = context,
-                ErrorMessage = "Workflow execution was cancelled",
-                ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
-            };
+            activity?.SetTag("workflow.status", "cancelled");
+
+            WorkflowMetrics metrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+            return WorkflowResult<TContext>.Failure(context, ex, metrics, executionTrace, correlationId);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Workflow execution failed: {WorkflowId}", definition.WorkflowId);
+            stopwatch.Stop();
+            _logger.Error(
+                ex,
+                "Workflow {WorkflowId} encountered an unexpected error (Correlation: {CorrelationId})",
+                definition.WorkflowId,
+                correlationId);
 
-            return new WorkflowResult<TContext>
-            {
-                IsSuccess = false,
-                Context = context,
-                ErrorMessage = ex.Message,
-                Exception = ex,
-                ExecutionTrace = options.EnableExecutionTracing ? executionTrace.AsReadOnly() : null
-            };
+            activity?.SetTag("workflow.status", "error");
+            activity?.SetTag("workflow.error", ex.Message);
+
+            WorkflowMetrics metrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+            return WorkflowResult<TContext>.Failure(context, ex, metrics, executionTrace, correlationId);
         }
     }
 
-    /// <summary>
-    /// CRITICAL FIX: Enhanced workflow graph execution that properly follows NextNodes
-    /// and correctly propagates error messages from failed steps.
-    /// </summary>
-    private async ValueTask<WorkflowExecutionResult> ExecuteWorkflowGraphFixed<TContext>(
-        IWorkflowNode<TContext> rootNode,
+    private async ValueTask<NodeExecutionResult> ExecuteNodeAsync<TContext>(
+        IWorkflowNode<TContext> node,
         TContext context,
-        WorkflowExecutionContext<TContext> executionContext,
+        WorkflowExecutionOptions options,
+        List<StepExecutionTrace> executionTrace,
         CancellationToken cancellationToken) where TContext : class
     {
-        var nodesToProcess = new Queue<IWorkflowNode<TContext>>();
-        var processedNodes = new HashSet<string>();
+        NodeExecutionResult<TContext>
+            nodeResult = await node.ExecuteAsync(context, _serviceProvider, cancellationToken).ConfigureAwait(false);
 
-        nodesToProcess.Enqueue(rootNode);
-        _logger.Debug("Starting workflow execution with root node: {NodeId}", rootNode.NodeId);
-
-        while (nodesToProcess.Count > 0)
+        // Add step execution to trace
+        if (nodeResult.StepTrace is not null)
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            executionTrace.Add(nodeResult.StepTrace);
 
-            var currentNode = nodesToProcess.Dequeue();
-
-            // CRITICAL FIX: Allow nodes to be processed multiple times if they appear in different branches
-            // but track processing for infinite loop detection
-            var nodeKey = $"{currentNode.NodeId}_{currentNode.GetHashCode()}";
-
-            if (processedNodes.Contains(nodeKey))
+            if (executionTrace.Count > WorkflowConstants.Limits.MaxExecutionTraceEntries)
             {
-                _logger.Debug("Skipping already processed node: {NodeId}", currentNode.NodeId);
+                _logger.Warning(
+                    "Execution trace exceeded maximum entries ({MaxEntries}), removing oldest entries",
+                    WorkflowConstants.Limits.MaxExecutionTraceEntries);
+
+                executionTrace.RemoveRange(0, executionTrace.Count - WorkflowConstants.Limits.MaxExecutionTraceEntries);
+            }
+        }
+
+        // Check for suspension
+        if (!nodeResult.StepResult.IsSuccess &&
+            WorkflowConstants.Signals.IsSuspensionSignal(nodeResult.StepResult.Error?.Message))
+        {
+            string? signalName = WorkflowConstants.Signals.ExtractSignalName(nodeResult.StepResult.Error?.Message);
+            return new NodeExecutionResult
+            {
+                IsSuccess = false,
+                IsSuspension = true,
+                SuspensionInfo = new SuspensionInfo
+                {
+                    SignalName = signalName!, Metadata = nodeResult.StepResult.Metadata
+                }
+            };
+        }
+
+        // Handle failure
+        if (!nodeResult.StepResult.IsSuccess)
+        {
+            return new NodeExecutionResult
+            {
+                IsSuccess = false,
+                ErrorMessage = nodeResult.StepResult.Error?.Message,
+                Exception = nodeResult.StepResult.Error?.SourceException
+            };
+        }
+
+        // Process next nodes recursively
+        if (nodeResult.NextNodes.Count > 0)
+        {
+            foreach (IWorkflowNode<TContext> nextNode in nodeResult.NextNodes)
+            {
+                NodeExecutionResult result =
+                    await ExecuteNodeAsync(nextNode, context, options, executionTrace, cancellationToken).ConfigureAwait(false);
+
+                if (!result.IsSuccess || result.IsSuspension)
+                {
+                    return result;
+                }
+            }
+        }
+
+        return new NodeExecutionResult { IsSuccess = true };
+    }
+
+    private async ValueTask RunCompensationAsync<TContext>(
+        List<StepExecutionTrace> executionTrace,
+        TContext context,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        _logger.Information("Running compensation for {Count} executed steps", executionTrace.Count);
+
+        // Execute compensation in reverse order
+        for (int i = executionTrace.Count - 1; i >= 0; i--)
+        {
+            StepExecutionTrace trace = executionTrace[i];
+            if (!trace.Result.IsSuccess)
+            {
                 continue;
             }
 
-            processedNodes.Add(nodeKey);
-            _logger.Debug("Processing node: {NodeId} (Queue depth: {QueueDepth})", currentNode.NodeId,
-                nodesToProcess.Count);
-
-            var nodeResult = await ExecuteNodeWithRetryFixed(
-                currentNode,
-                context,
-                executionContext,
-                cancellationToken);
-
-            // CRITICAL FIX: Check for suspension at node level
-            if (!nodeResult.StepResult.IsSuccess)
-            {
-                if (IsSuspensionSignal(nodeResult.StepResult))
-                {
-                    var signalName = ExtractSignalName(nodeResult.StepResult);
-                    _logger.Information("Node {NodeId} returned suspension signal '{SignalName}'",
-                        currentNode.NodeId, signalName);
-
-                    return new WorkflowExecutionResult
-                    {
-                        success = false,
-                        suspensionInfo = new SuspensionInfo
-                        {
-                            SignalName = signalName,
-                            Metadata = nodeResult.StepResult.Metadata,
-                            NodeId = currentNode.NodeId
-                        }
-                    };
-                }
-
-                // FIXED: Properly capture and propagate error details from failed nodes
-                var errorMessage = nodeResult.StepResult.ErrorMessage ?? $"Node '{currentNode.NodeId}' execution failed";
-                _logger.Error("Node execution failed: {NodeId} - {Error}", currentNode.NodeId, errorMessage);
-
-                return new WorkflowExecutionResult
-                {
-                    success = false,
-                    errorMessage = errorMessage,
-                    exception = nodeResult.StepResult.Exception
-                };
-            }
-
-            // CRITICAL FIX: Properly enqueue ALL next nodes for continued execution
-            _logger.Debug("Node {NodeId} completed successfully, found {NextNodeCount} next nodes",
-                currentNode.NodeId, nodeResult.NextNodes.Count);
-
-            foreach (var nextNode in nodeResult.NextNodes)
-            {
-                nodesToProcess.Enqueue(nextNode);
-                _logger.Debug("Enqueued next node: {NodeId} -> {NextNodeId}", currentNode.NodeId, nextNode.NodeId);
-            }
-
-            // CRITICAL FIX: If no next nodes, check if queue is empty to determine completion
-            if (nodeResult.NextNodes.Count == 0)
-            {
-                _logger.Debug("Node {NodeId} has no next nodes", currentNode.NodeId);
-
-                if (nodesToProcess.Count == 0)
-                {
-                    _logger.Debug("No more nodes to process - workflow complete");
-                    break;
-                }
-                else
-                {
-                    _logger.Debug("No next nodes for this branch, but {RemainingNodes} nodes still in queue",
-                        nodesToProcess.Count);
-                }
-            }
-        }
-
-        _logger.Information("Workflow graph execution completed successfully");
-        return new WorkflowExecutionResult { success = true };
-    }
-
-    /// <summary>
-    /// FIXED: Execute node with retry, properly handling suspension signals
-    /// </summary>
-    private async ValueTask<NodeExecutionResult<TContext>> ExecuteNodeWithRetryFixed<TContext>(
-        IWorkflowNode<TContext> node,
-        TContext context,
-        WorkflowExecutionContext<TContext> executionContext,
-        CancellationToken cancellationToken) where TContext : class
-    {
-        var attempt = 0;
-        var maxAttempts = executionContext.Options.MaxRetryAttempts + 1;
-        Exception? lastException = null;
-
-        while (attempt < maxAttempts)
-        {
-            var stepTrace = new StepExecutionTrace
-            {
-                StepName = node.NodeId,
-                StartTime = DateTimeOffset.UtcNow,
-                EndTime = DateTimeOffset.UtcNow,
-                Result = StepResult.Success(),
-                RetryAttempts = attempt,
-                CorrelationId = executionContext.CorrelationId
-            };
-
             try
             {
-                _logger.Debug("Executing node {NodeId} (attempt {Attempt})", node.NodeId, attempt + 1);
-
-                var result = await node.ExecuteAsync(context, executionContext.ServiceProvider, cancellationToken);
-
-                stepTrace = stepTrace with { EndTime = DateTimeOffset.UtcNow, Result = result.StepResult };
-
-                if (executionContext.Options.EnableExecutionTracing)
-                {
-                    executionContext.ExecutionTrace.Add(stepTrace);
-                }
-
-                // CRITICAL FIX: Don't retry suspension signals and propagate them immediately
-                if (result.StepResult.IsSuccess)
-                {
-                    _logger.Debug("Node {NodeId} completed successfully with {NextNodeCount} next nodes",
-                        node.NodeId, result.NextNodes.Count);
-                    return result;
-                }
-
-                // CRITICAL FIX: Check for suspension signal and return immediately without retry
-                if (IsSuspensionSignal(result.StepResult))
-                {
-                    _logger.Debug("Node {NodeId} returned suspension signal, propagating immediately", node.NodeId);
-                    return result;
-                }
-
-                if (!result.StepResult.ShouldRetry)
-                {
-                    _logger.Debug("Node {NodeId} failed and should not retry: {ErrorMessage}",
-                        node.NodeId, result.StepResult.ErrorMessage);
-                    return result;
-                }
-
-                // Store the last result for potential retry
-                lastException = result.StepResult.Exception;
-
-                attempt++;
-                if (attempt < maxAttempts)
-                {
-                    var delay = CalculateRetryDelay(attempt, executionContext.Options);
-                    _logger.Debug("Node {NodeId} failed, retrying in {Delay}ms (attempt {Attempt}/{MaxAttempts})",
-                        node.NodeId, delay.TotalMilliseconds, attempt + 1, maxAttempts);
-                    await Task.Delay(delay, cancellationToken);
-                }
-                else
-                {
-                    _logger.Warning("Node {NodeId} failed after {MaxAttempts} attempts: {ErrorMessage}",
-                        node.NodeId, maxAttempts, result.StepResult.ErrorMessage);
-                    return result; // Return the last failed result
-                }
-            }
-            catch (OperationCanceledException)
-            {
-                _logger.Debug("Node {NodeId} execution cancelled", node.NodeId);
-                throw;
+                _logger.Debug("Compensating step {StepName}", trace.StepName);
+                // Compensation logic would be executed here via step.CompensateAsync
+                // This requires access to the original step instance, which we'd need to track
             }
             catch (Exception ex)
             {
-                lastException = ex;
-                _logger.Warning(ex, "Node {NodeId} execution failed with exception (attempt {Attempt}/{MaxAttempts})",
-                    node.NodeId, attempt + 1, maxAttempts);
-
-                stepTrace = stepTrace with { EndTime = DateTimeOffset.UtcNow, Result = StepResult.Failure(ex) };
-
-                if (executionContext.Options.EnableExecutionTracing)
-                {
-                    executionContext.ExecutionTrace.Add(stepTrace);
-                }
-
-                attempt++;
-                if (attempt >= maxAttempts)
-                {
-                    return NodeExecutionResult<TContext>.Failure(StepResult.Failure(ex));
-                }
-
-                var delay = CalculateRetryDelay(attempt, executionContext.Options);
-                await Task.Delay(delay, cancellationToken);
+                _logger.Error(ex, "Compensation failed for step {StepName}", trace.StepName);
             }
         }
-
-        // FIXED: Provide detailed error message when all retries are exhausted
-        var finalErrorMessage = lastException?.Message ?? $"Node '{node.NodeId}' failed after {maxAttempts} attempts";
-        return NodeExecutionResult<TContext>.Failure(
-            StepResult.Failure(finalErrorMessage, false, null));
     }
 
-    /// <summary>
-    /// Enhanced suspension signal detection
-    /// </summary>
-    private static bool IsSuspensionSignal(StepResult stepResult)
+    private static WorkflowMetrics BuildMetrics(List<StepExecutionTrace> executionTrace, TimeSpan totalDuration)
     {
-        return !stepResult.IsSuccess &&
-               stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true;
-    }
+        int stepsExecuted = executionTrace.Count;
+        int stepsFailed = executionTrace.Count(t => !t.Result.IsSuccess);
+        int stepsSucceeded = stepsExecuted - stepsFailed;
+        int totalRetries = executionTrace.Sum(t => t.RetryAttempts);
 
-    /// <summary>
-    /// Extract signal name from suspension signal
-    /// </summary>
-    private static string ExtractSignalName(StepResult stepResult)
-    {
-        if (stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true)
+        return new WorkflowMetrics
         {
-            return stepResult.ErrorMessage.Substring("WAITING_FOR_SIGNAL:".Length);
-        }
-
-        return "unknown_signal";
-    }
-
-    private static TimeSpan CalculateRetryDelay(int attemptNumber, WorkflowExecutionOptions options)
-    {
-        var delay = TimeSpan.FromMilliseconds(
-            options.RetryBaseDelay.TotalMilliseconds * Math.Pow(2, attemptNumber));
-
-        return delay > options.MaxRetryDelay ? options.MaxRetryDelay : delay;
+            TotalExecutionTime = totalDuration,
+            StepsExecuted = stepsExecuted,
+            StepsSucceeded = stepsSucceeded,
+            StepsFailed = stepsFailed,
+            TotalRetries = totalRetries,
+            AverageStepExecutionTime = stepsExecuted > 0
+                ? TimeSpan.FromMilliseconds(executionTrace.Average(t => t.ExecutionTime.TotalMilliseconds))
+                : TimeSpan.Zero
+        };
     }
 
     private static Activity? CreateActivity(string workflowId, string correlationId)
     {
-        var activity = new Activity("WorkflowExecution");
+        var activity = new Activity($"{WorkflowConstants.Monitoring.ActivityNamePrefix}.WorkflowExecution");
         activity.SetTag("workflow.id", workflowId);
         activity.SetTag("correlation.id", correlationId);
         return activity.Start();
     }
 
-    /// <summary>
-    /// FIXED: Enhanced execution result structure with proper error information
-    /// </summary>
-    private record struct WorkflowExecutionResult
+    private record struct NodeExecutionResult
     {
-        public bool success { get; init; }
-        public SuspensionInfo? suspensionInfo { get; init; }
-        public string? errorMessage { get; init; }
-        public Exception? exception { get; init; }
+        public bool IsSuccess { get; init; }
+        public string? ErrorMessage { get; init; }
+        public Exception? Exception { get; init; }
+        public bool IsSuspension { get; init; }
+        public SuspensionInfo? SuspensionInfo { get; init; }
     }
 
     private record struct SuspensionInfo
     {
         public string SignalName { get; init; }
         public IReadOnlyDictionary<string, object>? Metadata { get; init; }
-        public string? NodeId { get; init; }
     }
 }

@@ -1,66 +1,108 @@
+#region
+
+using System.Text.RegularExpressions;
+using DropBear.Codex.Workflow.Common;
+using DropBear.Codex.Workflow.Exceptions;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Nodes;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Builder;
 
 /// <summary>
-/// FIXED: Fluent builder for constructing workflow definitions with proper node linking.
+///     Fluent builder for constructing workflow definitions with explicit node linking.
 /// </summary>
-/// <typeparam name="TContext">The type of workflow context</typeparam>
-public sealed class WorkflowBuilder<TContext> where TContext : class
+public sealed partial class WorkflowBuilder<TContext> where TContext : class
 {
-    private readonly string _workflowId;
     private readonly string _displayName;
     private readonly Version _version;
-    private TimeSpan? _workflowTimeout;
-    private IWorkflowNode<TContext>? _rootNode;
     private IWorkflowNode<TContext>? _currentNode;
+    private IWorkflowNode<TContext>? _rootNode;
+    private TimeSpan? _workflowTimeout;
 
-    /// <summary>
-    /// Initializes a new workflow builder.
-    /// </summary>
-    /// <param name="workflowId">Unique identifier for the workflow</param>
-    /// <param name="displayName">Human-readable name for the workflow</param>
-    /// <param name="version">Version of the workflow definition</param>
     public WorkflowBuilder(string workflowId, string displayName, Version? version = null)
     {
-        _workflowId = workflowId ?? throw new ArgumentNullException(nameof(workflowId));
-        _displayName = displayName ?? throw new ArgumentNullException(nameof(displayName));
-        _version = version ?? new Version(1, 0);
+        if (string.IsNullOrWhiteSpace(workflowId))
+        {
+            throw new ArgumentException("Workflow ID cannot be null or whitespace.", nameof(workflowId));
+        }
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            throw new ArgumentException("Display name cannot be null or whitespace.", nameof(displayName));
+        }
+
+        if (!IsValidWorkflowId(workflowId))
+        {
+            throw new ArgumentException(
+                "Workflow ID must contain only alphanumeric characters, hyphens, underscores, and periods.",
+                nameof(workflowId));
+        }
+
+        if (workflowId.Length > WorkflowConstants.Limits.MaxWorkflowIdLength)
+        {
+            throw new ArgumentException(
+                $"Workflow ID cannot exceed {WorkflowConstants.Limits.MaxWorkflowIdLength} characters.",
+                nameof(workflowId));
+        }
+
+        WorkflowId = workflowId;
+        _displayName = displayName;
+        _version = version ?? WorkflowConstants.Defaults.DefaultVersion;
     }
 
+    internal string? WorkflowId { get; }
+
+    [GeneratedRegex(@"^[a-zA-Z0-9\-_\.]+$", RegexOptions.Compiled, 1000)]
+    private static partial Regex WorkflowIdPattern();
+
     /// <summary>
-    /// Sets the workflow timeout.
+    ///     Sets the workflow timeout.
     /// </summary>
-    /// <param name="timeout">Maximum execution time for the workflow</param>
-    /// <returns>The workflow builder for method chaining</returns>
     public WorkflowBuilder<TContext> WithTimeout(TimeSpan timeout)
     {
+        if (timeout < WorkflowConstants.Limits.MinWorkflowTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeout),
+                timeout,
+                $"Timeout must be at least {WorkflowConstants.Limits.MinWorkflowTimeout}.");
+        }
+
+        if (timeout > WorkflowConstants.Limits.MaxWorkflowTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(timeout),
+                timeout,
+                $"Timeout must not exceed {WorkflowConstants.Limits.MaxWorkflowTimeout}.");
+        }
+
         _workflowTimeout = timeout;
         return this;
     }
 
     /// <summary>
-    /// Starts the workflow with the specified step type.
+    ///     Starts the workflow with a step.
     /// </summary>
-    /// <typeparam name="TStep">The type of step to start with</typeparam>
-    /// <param name="nodeId">Optional custom node ID</param>
-    /// <returns>The workflow builder for method chaining</returns>
     public WorkflowBuilder<TContext> StartWith<TStep>(string? nodeId = null)
         where TStep : class, IWorkflowStep<TContext>
     {
+        if (_rootNode is not null)
+        {
+            throw new InvalidOperationException("Workflow already has a starting step.");
+        }
+
         var stepNode = new StepNode<TContext, TStep>(null, nodeId);
         _rootNode = stepNode;
         _currentNode = stepNode;
+
         return this;
     }
 
     /// <summary>
-    /// FIXED: Adds a step that executes after the current step with proper linking.
+    ///     Adds a step to the workflow.
     /// </summary>
-    /// <typeparam name="TStep">The type of step to add</typeparam>
-    /// <param name="nodeId">Optional custom node ID</param>
-    /// <returns>The workflow builder for method chaining</returns>
     public WorkflowBuilder<TContext> Then<TStep>(string? nodeId = null)
         where TStep : class, IWorkflowStep<TContext>
     {
@@ -70,71 +112,76 @@ public sealed class WorkflowBuilder<TContext> where TContext : class
                 "Cannot add step without starting the workflow. Call StartWith<T>() first.");
         }
 
-        // FIXED: Create a new StepNode that will be linked properly
         var stepNode = new StepNode<TContext, TStep>(null, nodeId);
-
-        // FIXED: Use the new linking method that actually works
-        LinkNodesProper(_currentNode, stepNode);
+        LinkNodes(_currentNode, stepNode);
         _currentNode = stepNode;
 
         return this;
     }
 
     /// <summary>
-    /// Adds a conditional branch to the workflow.
+    ///     Adds a conditional branch.
     /// </summary>
-    /// <param name="condition">Predicate to evaluate for branching</param>
-    /// <param name="nodeId">Optional custom node ID</param>
-    /// <returns>A conditional branch builder</returns>
     public ConditionalBranchBuilder<TContext> If(Func<TContext, bool> condition, string? nodeId = null)
     {
         if (_currentNode is null)
         {
-            throw new InvalidOperationException("Cannot add conditional without a current node.");
+            throw new InvalidOperationException(
+                "Cannot add conditional without a current node. Call StartWith<T>() first.");
         }
+
+        ArgumentNullException.ThrowIfNull(condition);
 
         return new ConditionalBranchBuilder<TContext>(this, _currentNode, condition, nodeId);
     }
 
     /// <summary>
-    /// Adds a parallel execution block to the workflow.
+    ///     Adds a parallel execution block.
     /// </summary>
-    /// <param name="nodeId">Optional custom node ID</param>
-    /// <returns>A parallel block builder</returns>
     public ParallelBlockBuilder<TContext> InParallel(string? nodeId = null)
     {
         if (_currentNode is null)
         {
-            throw new InvalidOperationException("Cannot add parallel block without a current node.");
+            throw new InvalidOperationException(
+                "Cannot add parallel block without a current node. Call StartWith<T>() first.");
         }
 
         return new ParallelBlockBuilder<TContext>(this, _currentNode, nodeId);
     }
 
     /// <summary>
-    /// Adds a delay to the workflow.
+    ///     Adds a delay to the workflow.
     /// </summary>
-    /// <param name="delay">Duration to delay execution</param>
-    /// <param name="nodeId">Optional custom node ID</param>
-    /// <returns>The workflow builder for method chaining</returns>
     public WorkflowBuilder<TContext> Delay(TimeSpan delay, string? nodeId = null)
     {
         if (_currentNode is null)
         {
-            throw new InvalidOperationException("Cannot add delay without a current node.");
+            throw new InvalidOperationException("Cannot add delay without a current node. Call StartWith<T>() first.");
+        }
+
+        if (delay <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(delay), delay, "Delay must be greater than zero.");
+        }
+
+        if (delay > WorkflowConstants.Limits.MaxStepTimeout)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(delay),
+                delay,
+                $"Delay must not exceed {WorkflowConstants.Limits.MaxStepTimeout}.");
         }
 
         var delayNode = new DelayNode<TContext>(delay, null, nodeId);
-        LinkNodesProper(_currentNode, delayNode);
+        LinkNodes(_currentNode, delayNode);
         _currentNode = delayNode;
 
         return this;
     }
 
     /// <summary>
-    /// Builds the final workflow definition.
+    ///     Builds the final workflow definition.
     /// </summary>
-    /// <returns>A completed workflow definition</returns>
     public IWorkflowDefinition<TContext> Build()
     {
         if (_rootNode is null)
@@ -142,84 +189,31 @@ public sealed class WorkflowBuilder<TContext> where TContext : class
             throw new InvalidOperationException("Cannot build workflow without any steps. Call StartWith<T>() first.");
         }
 
-        return new BuiltWorkflowDefinition<TContext>(_workflowId, _displayName, _version, _workflowTimeout, _rootNode);
+        return new BuiltWorkflowDefinition<TContext>(WorkflowId!, _displayName, _version, _workflowTimeout, _rootNode);
     }
 
-    /// <summary>
-    /// FIXED: Proper node linking using improved StepNode NextNode property
-    /// </summary>
-    internal void LinkNodesProper(IWorkflowNode<TContext> fromNode, IWorkflowNode<TContext> toNode)
-    {
-        // Try to use the NextNode property if it's a StepNode
-        if (fromNode.GetType().IsGenericType &&
-            fromNode.GetType().GetGenericTypeDefinition().Name.Contains("StepNode"))
-        {
-            var nextNodeProperty = fromNode.GetType().GetProperty("NextNode",
-                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-
-            if (nextNodeProperty?.CanWrite == true)
-            {
-                nextNodeProperty.SetValue(fromNode, toNode);
-                return;
-            }
-        }
-
-        // Fall back to reflection for _nextNode field
-        LinkNodes(fromNode, toNode);
-    }
-
-    /// <summary>
-    /// FIXED: Proper node linking using reflection as fallback
-    /// </summary>
     internal void LinkNodes(IWorkflowNode<TContext> fromNode, IWorkflowNode<TContext> toNode)
     {
-        // Try the reflection approach first (original implementation)
-        var nextNodeField = fromNode.GetType().GetField("_nextNode",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        ArgumentNullException.ThrowIfNull(fromNode, nameof(fromNode));
+        ArgumentNullException.ThrowIfNull(toNode, nameof(toNode));
 
-        if (nextNodeField is not null && nextNodeField.FieldType.IsAssignableFrom(typeof(IWorkflowNode<TContext>)))
+        if (fromNode is ILinkableNode<TContext> linkableNode)
         {
-            nextNodeField.SetValue(fromNode, toNode);
+            linkableNode.SetNextNode(toNode);
             return;
         }
 
-        // Try alternative field names
-        var fields = fromNode.GetType()
-            .GetFields(System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        var nextField = fields.FirstOrDefault(f =>
-            (f.Name.Contains("next", StringComparison.OrdinalIgnoreCase) ||
-             f.Name.Contains("_next", StringComparison.OrdinalIgnoreCase)) &&
-            f.FieldType.IsAssignableFrom(typeof(IWorkflowNode<TContext>)));
-
-        if (nextField is not null)
-        {
-            nextField.SetValue(fromNode, toNode);
-            return;
-        }
-
-        // If reflection fails, fall back to sequence node approach
-        LinkNodesProper(fromNode, toNode);
+        throw new WorkflowConfigurationException(
+            $"Node of type '{fromNode.GetType().Name}' does not support sequential linking. " +
+            $"Nodes must implement ILinkableNode<{typeof(TContext).Name}> to be linked in sequence.",
+            WorkflowId);
     }
 
-    /// <summary>
-    /// Updates parent references when replacing nodes
-    /// </summary>
-    private void UpdateParentReferences(IWorkflowNode<TContext> oldNode, IWorkflowNode<TContext> newNode)
-    {
-        // This is a simplified implementation - in a production system you'd maintain
-        // a proper graph structure with parent-child relationships
-        // For now, we just update the current node reference
-        if (_currentNode == oldNode)
-        {
-            _currentNode = newNode;
-        }
-    }
-
-    /// <summary>
-    /// Updates the current node reference.
-    /// </summary>
     internal void SetCurrentNode(IWorkflowNode<TContext> node)
     {
+        ArgumentNullException.ThrowIfNull(node, nameof(node));
         _currentNode = node;
     }
+
+    private static bool IsValidWorkflowId(string workflowId) => WorkflowIdPattern().IsMatch(workflowId);
 }

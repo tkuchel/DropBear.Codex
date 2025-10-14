@@ -1,74 +1,157 @@
+#region
+
+using DropBear.Codex.Core.Enums;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Core.Results.Errors;
+using DropBear.Codex.Workflow.Common;
+
+#endregion
+
 namespace DropBear.Codex.Workflow.Results;
 
 /// <summary>
-/// Represents the result of a single step execution.
-/// Uses discriminated union pattern for type-safe error handling.
+///     Represents the result of a workflow step execution.
 /// </summary>
-public readonly record struct StepResult
+public sealed class StepResult : Result<Unit, ResultError>
 {
-    /// <summary>
-    /// Indicates whether the step executed successfully.
-    /// </summary>
-    public bool IsSuccess { get; init; }
+    private StepResult(
+        ResultState state,
+        Unit value,
+        ResultError? error,
+        bool shouldRetry,
+        IReadOnlyDictionary<string, object>? metadata)
+        : base(value, state, error)
+    {
+        ShouldRetry = shouldRetry;
+        Metadata = metadata;
+
+        if (state == ResultState.Success)
+        {
+            Value = value;
+        }
+        else if (error != null)
+        {
+            Error = error;
+        }
+    }
 
     /// <summary>
-    /// Error message when step execution fails.
-    /// </summary>
-    public string? ErrorMessage { get; init; }
-
-    /// <summary>
-    /// Exception that caused the failure, if any.
-    /// </summary>
-    public Exception? Exception { get; init; }
-
-    /// <summary>
-    /// Additional metadata about the step execution.
-    /// </summary>
-    public IReadOnlyDictionary<string, object>? Metadata { get; init; }
-
-    /// <summary>
-    /// Indicates whether this step should be retried on failure.
+    ///     Gets a value indicating whether this step should be retried on failure.
     /// </summary>
     public bool ShouldRetry { get; init; }
 
     /// <summary>
-    /// Creates a successful step result.
+    ///     Gets optional metadata associated with this step execution.
     /// </summary>
-    /// <param name="metadata">Optional metadata to include</param>
-    /// <returns>A successful step result</returns>
-    public static StepResult Success(IReadOnlyDictionary<string, object>? metadata = null) =>
-        new() { IsSuccess = true, Metadata = metadata };
+    public IReadOnlyDictionary<string, object>? Metadata { get; init; }
 
     /// <summary>
-    /// Creates a failed step result with an error message.
+    ///     Creates a successful step result.
     /// </summary>
-    /// <param name="message">The error message</param>
-    /// <param name="shouldRetry">Whether this step should be retried</param>
-    /// <param name="metadata">Optional metadata to include</param>
-    /// <returns>A failed step result</returns>
-    public static StepResult Failure(string message, bool shouldRetry = false, IReadOnlyDictionary<string, object>? metadata = null) =>
-        new() 
-        { 
-            IsSuccess = false, 
-            ErrorMessage = message, 
-            ShouldRetry = shouldRetry,
-            Metadata = metadata 
-        };
+    public static StepResult Success(IReadOnlyDictionary<string, object>? metadata = null)
+    {
+        return new StepResult(
+            ResultState.Success,
+            Unit.Value,
+            null,
+            false,
+            metadata);
+    }
 
     /// <summary>
-    /// Creates a failed step result with an exception.
+    ///     Creates a failed step result with an error message.
     /// </summary>
-    /// <param name="exception">The exception that caused the failure</param>
-    /// <param name="shouldRetry">Whether this step should be retried</param>
-    /// <param name="metadata">Optional metadata to include</param>
-    /// <returns>A failed step result</returns>
-    public static StepResult Failure(Exception exception, bool shouldRetry = false, IReadOnlyDictionary<string, object>? metadata = null) =>
-        new() 
-        { 
-            IsSuccess = false, 
-            ErrorMessage = exception.Message, 
-            Exception = exception,
-            ShouldRetry = shouldRetry,
-            Metadata = metadata 
-        };
+    public static StepResult Failure(
+        string errorMessage,
+        bool shouldRetry = false,
+        IReadOnlyDictionary<string, object>? metadata = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        if (errorMessage.Length > WorkflowConstants.Limits.MaxErrorMessageLength)
+        {
+            errorMessage = errorMessage[..WorkflowConstants.Limits.MaxErrorMessageLength];
+        }
+
+        var error = new SimpleError(errorMessage);
+
+        return new StepResult(
+            ResultState.Failure,
+            default,
+            error,
+            shouldRetry,
+            metadata);
+    }
+
+    /// <summary>
+    ///     Creates a failed step result from an exception with full exception preservation.
+    /// </summary>
+    public static StepResult Failure(
+        Exception exception,
+        bool shouldRetry = false,
+        IReadOnlyDictionary<string, object>? metadata = null)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+
+        var error = SimpleError.FromException(exception);
+
+        return new StepResult(
+            ResultState.Failure,
+            default,
+            error,
+            shouldRetry,
+            metadata);
+    }
+
+    /// <summary>
+    ///     Creates a failed step result from a ResultError.
+    /// </summary>
+    public static StepResult FromError(
+        ResultError error,
+        bool shouldRetry = false,
+        IReadOnlyDictionary<string, object>? metadata = null)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+
+        return new StepResult(
+            ResultState.Failure,
+            default,
+            error,
+            shouldRetry,
+            metadata);
+    }
+
+    /// <summary>
+    ///     Creates a suspension result that instructs the workflow to pause and wait for an external signal.
+    /// </summary>
+    public static StepResult Suspend(
+        string signalName,
+        IReadOnlyDictionary<string, object>? metadata = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(signalName);
+
+        if (signalName.Length > WorkflowConstants.Limits.MaxSignalNameLength)
+        {
+            throw new ArgumentException(
+                $"Signal name cannot exceed {WorkflowConstants.Limits.MaxSignalNameLength} characters.",
+                nameof(signalName));
+        }
+
+        string suspensionMessage = WorkflowConstants.Signals.CreateSuspensionMessage(signalName);
+        var error = new SimpleError(suspensionMessage);
+
+        Dictionary<string, object> suspensionMetadata = metadata != null
+            ? new Dictionary<string, object>(metadata, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        suspensionMetadata[WorkflowConstants.MetadataKeys.Suspension] = true;
+        suspensionMetadata[WorkflowConstants.MetadataKeys.SignalName] = signalName;
+
+        return new StepResult(
+            ResultState.Failure,
+            default,
+            error,
+            false,
+            suspensionMetadata);
+    }
 }

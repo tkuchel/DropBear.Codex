@@ -1,5 +1,6 @@
 #region
 
+using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Results;
 
@@ -10,74 +11,116 @@ namespace DropBear.Codex.Workflow.Nodes;
 /// <summary>
 ///     Workflow node that executes multiple child nodes in parallel.
 /// </summary>
-/// <typeparam name="TContext">The type of workflow context</typeparam>
-public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext> where TContext : class
+public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkableNode<TContext>
+    where TContext : class
 {
-    private readonly IWorkflowNode<TContext>? _nextNode;
-    private readonly IReadOnlyList<IWorkflowNode<TContext>> _parallelNodes;
+    private IWorkflowNode<TContext>? _nextNode;
 
-    /// <summary>
-    ///     Initializes a new parallel execution node.
-    /// </summary>
-    /// <param name="parallelNodes">Nodes to execute in parallel</param>
-    /// <param name="nextNode">Node to execute after all parallel nodes complete</param>
-    /// <param name="nodeId">Optional custom node ID</param>
     public ParallelNode(
         IReadOnlyList<IWorkflowNode<TContext>> parallelNodes,
         IWorkflowNode<TContext>? nextNode = null,
         string? nodeId = null)
     {
-        _parallelNodes = parallelNodes ?? throw new ArgumentNullException(nameof(parallelNodes));
+        ArgumentNullException.ThrowIfNull(parallelNodes);
+
+        if (parallelNodes.Count == 0)
+        {
+            throw new ArgumentException("Parallel node must have at least one child node.", nameof(parallelNodes));
+        }
+
+        if (parallelNodes.Count > WorkflowConstants.Limits.MaxParallelBranches)
+        {
+            throw new ArgumentException(
+                $"Parallel node cannot exceed {WorkflowConstants.Limits.MaxParallelBranches} branches. Found {parallelNodes.Count} branches.",
+                nameof(parallelNodes));
+        }
+
+        ParallelNodes = parallelNodes;
         _nextNode = nextNode;
         NodeId = nodeId ?? CreateNodeId();
     }
 
-    /// <inheritdoc />
     public override string NodeId { get; }
 
-    /// <inheritdoc />
+    public int BranchCount => ParallelNodes.Count;
+
+    public IReadOnlyList<IWorkflowNode<TContext>> ParallelNodes { get; }
+
+    public void SetNextNode(IWorkflowNode<TContext>? nextNode) => _nextNode = nextNode;
+
+    public IWorkflowNode<TContext>? GetNextNode() => _nextNode;
+
     public override async ValueTask<NodeExecutionResult<TContext>> ExecuteAsync(
         TContext context,
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
     {
-        if (_parallelNodes.Count == 0)
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (ParallelNodes.Count == 0)
         {
-            // No parallel nodes to execute, proceed to next
-            var nextNodes = _nextNode is not null ? new[] { _nextNode } : Array.Empty<IWorkflowNode<TContext>>();
+            IWorkflowNode<TContext>[] nextNodes =
+                _nextNode is not null ? [_nextNode] : [];
             return NodeExecutionResult<TContext>.Success(nextNodes);
         }
 
-        // Execute all parallel nodes concurrently
-        var tasks = _parallelNodes.Select(node => ExecuteNodeAsync(node, context, serviceProvider, cancellationToken));
-        var results = await Task.WhenAll(tasks);
+        DateTimeOffset startTime = DateTimeOffset.UtcNow;
 
-        // FIXED: Check if any parallel execution failed - properly handle struct default values
-        var failedResults = results.Where(r => !r.StepResult.IsSuccess).ToList();
-        if (failedResults.Any())
+        try
         {
-            // Return the first failure
-            var firstFailure = failedResults.First();
-            return NodeExecutionResult<TContext>.Failure(firstFailure.StepResult);
+            Task<NodeExecutionResult<TContext>>[] tasks = ParallelNodes
+                .Select(node => ExecuteNodeAsync(node, context, serviceProvider, cancellationToken))
+                .ToArray();
+
+            NodeExecutionResult<TContext>[] results = await Task.WhenAll(tasks).ConfigureAwait(false);
+            DateTimeOffset endTime = DateTimeOffset.UtcNow;
+
+            NodeExecutionResult<TContext>[] failedResults = results.Where(r => !r.StepResult.IsSuccess).ToArray();
+            if (failedResults.Length > 0)
+            {
+                NodeExecutionResult<TContext> firstFailure = failedResults[0];
+                int failedCount = failedResults.Length;
+
+                string? errorMessage = failedCount == 1
+                    ? firstFailure.StepResult.Error?.Message
+                    : $"{failedCount} parallel branches failed. First error: {firstFailure.StepResult.Error?.Message}";
+
+                var aggregatedResult = StepResult.Failure(
+                    errorMessage ?? "Parallel execution failed",
+                    firstFailure.StepResult.ShouldRetry);
+
+                return NodeExecutionResult<TContext>.Failure(aggregatedResult);
+            }
+
+            var allNextNodes = results.SelectMany(r => r.NextNodes).ToList();
+
+            if (_nextNode is not null)
+            {
+                allNextNodes.Add(_nextNode);
+            }
+
+            var metadata = new Dictionary<string, object>
+                (StringComparer.OrdinalIgnoreCase)
+                {
+                    ["ParallelBranches"] = ParallelNodes.Count,
+                    ["SuccessfulBranches"] = ParallelNodes.Count,
+                    ["FailedBranches"] = 0,
+                    ["ExecutionTime"] = (endTime - startTime).TotalMilliseconds
+                };
+
+            return NodeExecutionResult<TContext>.Success(allNextNodes, metadata);
         }
-
-        // All parallel executions succeeded, collect next nodes
-        var allNextNodes = results
-            .SelectMany(r => r.NextNodes)
-            .ToList();
-
-        // Add our own next node if specified
-        if (_nextNode is not null)
+        catch (OperationCanceledException)
         {
-            allNextNodes.Add(_nextNode);
+            throw;
         }
-
-        return NodeExecutionResult<TContext>.Success(allNextNodes);
+        catch (Exception ex)
+        {
+            var stepResult = StepResult.Failure($"Parallel node execution failed: {ex.Message}");
+            return NodeExecutionResult<TContext>.Failure(stepResult);
+        }
     }
 
-    /// <summary>
-    ///     Executes a single node asynchronously.
-    /// </summary>
     private static async Task<NodeExecutionResult<TContext>> ExecuteNodeAsync(
         IWorkflowNode<TContext> node,
         TContext context,
@@ -86,7 +129,11 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext> where TC
     {
         try
         {
-            return await node.ExecuteAsync(context, serviceProvider, cancellationToken);
+            return await node.ExecuteAsync(context, serviceProvider, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {

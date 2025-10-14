@@ -1,17 +1,22 @@
+#region
+
 using DropBear.Codex.Workflow.Builder;
 using DropBear.Codex.Workflow.Interfaces;
-using DropBear.Codex.Workflow.Results;
 using DropBear.Codex.Workflow.Metrics;
+using DropBear.Codex.Workflow.Results;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Extensions;
 
 /// <summary>
-/// Extension methods for working with workflow results and operations.
+///     Extension methods for working with workflow results and operations.
+///     Optimized for performance with minimal LINQ overhead.
 /// </summary>
 public static class WorkflowExtensions
 {
     /// <summary>
-    /// Executes a workflow with a factory-created context.
+    ///     Executes a workflow with a factory-created context.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="engine">The workflow engine</param>
@@ -19,6 +24,7 @@ public static class WorkflowExtensions
     /// <param name="contextFactory">Factory function to create the initial context</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>The workflow execution result</returns>
+    /// <exception cref="ArgumentNullException">Thrown when any parameter is null</exception>
     public static ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         this IWorkflowEngine engine,
         IWorkflowDefinition<TContext> definition,
@@ -29,12 +35,12 @@ public static class WorkflowExtensions
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(contextFactory);
 
-        var context = contextFactory();
+        TContext context = contextFactory();
         return engine.ExecuteAsync(definition, context, cancellationToken);
     }
 
     /// <summary>
-    /// Executes a workflow and returns only the success status.
+    ///     Executes a workflow and returns only the success status.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="engine">The workflow engine</param>
@@ -48,12 +54,13 @@ public static class WorkflowExtensions
         TContext context,
         CancellationToken cancellationToken = default) where TContext : class
     {
-        var result = await engine.ExecuteAsync(definition, context, cancellationToken);
+        WorkflowResult<TContext> result =
+            await engine.ExecuteAsync(definition, context, cancellationToken).ConfigureAwait(false);
         return result.IsSuccess;
     }
 
     /// <summary>
-    /// Creates a workflow builder with the specified ID and display name.
+    ///     Creates a workflow builder with the specified ID and display name.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="workflowId">Unique workflow identifier</param>
@@ -63,164 +70,308 @@ public static class WorkflowExtensions
     public static WorkflowBuilder<TContext> CreateWorkflow<TContext>(
         string workflowId,
         string displayName,
-        Version? version = null) where TContext : class
-    {
-        return new WorkflowBuilder<TContext>(workflowId, displayName, version);
-    }
+        Version? version = null) where TContext : class =>
+        new(workflowId, displayName, version);
 
     /// <summary>
-    /// Adds metadata to a step result.
+    ///     Adds metadata to a step result (creates a new instance).
     /// </summary>
     /// <param name="result">The step result</param>
     /// <param name="key">Metadata key</param>
     /// <param name="value">Metadata value</param>
     /// <returns>A new step result with the added metadata</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result, key, or value is null</exception>
     public static StepResult WithMetadata(this StepResult result, string key, object value)
     {
-        var metadata = result.Metadata?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value) 
-                      ?? new Dictionary<string, object>();
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentException.ThrowIfNullOrWhiteSpace(key);
+        ArgumentNullException.ThrowIfNull(value);
+
+        Dictionary<string, object> metadata = result.Metadata?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value)
+                                              ?? new Dictionary<string, object>();
         metadata[key] = value;
 
         return result with { Metadata = metadata };
     }
 
     /// <summary>
-    /// Checks if a workflow result contains execution traces.
+    ///     Checks if a workflow result contains execution traces.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>True if execution traces are available</returns>
     public static bool HasExecutionTrace<TContext>(this WorkflowResult<TContext> result) where TContext : class
     {
+        ArgumentNullException.ThrowIfNull(result);
         return result.ExecutionTrace is not null && result.ExecutionTrace.Count > 0;
     }
 
     /// <summary>
-    /// Gets the total execution time from workflow metrics.
+    ///     Gets the total execution time from workflow metrics.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>The total execution time, or TimeSpan.Zero if metrics are not available</returns>
     public static TimeSpan GetExecutionTime<TContext>(this WorkflowResult<TContext> result) where TContext : class
     {
+        ArgumentNullException.ThrowIfNull(result);
         return result.Metrics?.TotalExecutionTime ?? TimeSpan.Zero;
     }
 
     /// <summary>
-    /// Gets failed steps from the execution trace.
+    ///     Gets failed steps from the execution trace.
+    ///     OPTIMIZED: Returns early if no trace available.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>Collection of failed step execution traces</returns>
-    public static IEnumerable<StepExecutionTrace> GetFailedSteps<TContext>(this WorkflowResult<TContext> result) 
+    public static IEnumerable<StepExecutionTrace> GetFailedSteps<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
-        return result.ExecutionTrace?.Where(trace => !trace.Result.IsSuccess) ?? Enumerable.Empty<StepExecutionTrace>();
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.ExecutionTrace is null)
+        {
+            return [];
+        }
+
+        return result.ExecutionTrace.Where(trace => !trace.Result.IsSuccess);
     }
 
     /// <summary>
-    /// Gets successful steps from the execution trace.
+    ///     Gets successful steps from the execution trace.
+    ///     OPTIMIZED: Returns early if no trace available.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>Collection of successful step execution traces</returns>
-    public static IEnumerable<StepExecutionTrace> GetSuccessfulSteps<TContext>(this WorkflowResult<TContext> result) 
+    public static IEnumerable<StepExecutionTrace> GetSuccessfulSteps<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
-        return result.ExecutionTrace?.Where(trace => trace.Result.IsSuccess) ?? Enumerable.Empty<StepExecutionTrace>();
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.ExecutionTrace is null)
+        {
+            return [];
+        }
+
+        return result.ExecutionTrace.Where(trace => trace.Result.IsSuccess);
     }
 
     /// <summary>
-    /// Gets steps that were retried from the execution trace.
+    ///     Gets steps that were retried from the execution trace.
+    ///     OPTIMIZED: Returns early if no trace available.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>Collection of step execution traces for steps that were retried</returns>
-    public static IEnumerable<StepExecutionTrace> GetRetriedSteps<TContext>(this WorkflowResult<TContext> result) 
+    public static IEnumerable<StepExecutionTrace> GetRetriedSteps<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
-        return result.ExecutionTrace?.Where(trace => trace.RetryAttempts > 0) ?? Enumerable.Empty<StepExecutionTrace>();
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.ExecutionTrace is null)
+        {
+            return [];
+        }
+
+        return result.ExecutionTrace.Where(trace => trace.RetryAttempts > 0);
     }
 
     /// <summary>
-    /// Gets the longest running step from the execution trace.
+    ///     Gets the longest running step from the execution trace.
+    ///     OPTIMIZED: Single-pass algorithm.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>The step execution trace with the longest duration, or null if no traces available</returns>
-    public static StepExecutionTrace? GetLongestRunningStep<TContext>(this WorkflowResult<TContext> result) 
+    public static StepExecutionTrace? GetLongestRunningStep<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
-        return result.ExecutionTrace?
-            .OrderByDescending(trace => trace.EndTime - trace.StartTime)
-            .FirstOrDefault();
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.ExecutionTrace is null || result.ExecutionTrace.Count == 0)
+        {
+            return null;
+        }
+
+        StepExecutionTrace? longest = null;
+        TimeSpan longestDuration = TimeSpan.Zero;
+
+        foreach (StepExecutionTrace trace in result.ExecutionTrace)
+        {
+            TimeSpan duration = trace.ExecutionTime;
+            if (duration > longestDuration)
+            {
+                longestDuration = duration;
+                longest = trace;
+            }
+        }
+
+        return longest;
     }
 
     /// <summary>
-    /// Gets the shortest running step from the execution trace.
+    ///     Gets the shortest running step from the execution trace.
+    ///     OPTIMIZED: Single-pass algorithm.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>The step execution trace with the shortest duration, or null if no traces available</returns>
-    public static StepExecutionTrace? GetShortestRunningStep<TContext>(this WorkflowResult<TContext> result) 
+    public static StepExecutionTrace? GetShortestRunningStep<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
-        return result.ExecutionTrace?
-            .OrderBy(trace => trace.EndTime - trace.StartTime)
-            .FirstOrDefault();
+        ArgumentNullException.ThrowIfNull(result);
+
+        if (result.ExecutionTrace is null || result.ExecutionTrace.Count == 0)
+        {
+            return null;
+        }
+
+        StepExecutionTrace? shortest = null;
+        TimeSpan shortestDuration = TimeSpan.MaxValue;
+
+        foreach (StepExecutionTrace trace in result.ExecutionTrace)
+        {
+            TimeSpan duration = trace.ExecutionTime;
+            if (duration < shortestDuration)
+            {
+                shortestDuration = duration;
+                shortest = trace;
+            }
+        }
+
+        return shortest;
     }
 
     /// <summary>
-    /// Calculates the average step execution time.
+    ///     Calculates the average step execution time.
+    ///     OPTIMIZED: Single-pass algorithm.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>The average step execution time, or TimeSpan.Zero if no traces available</returns>
-    public static TimeSpan GetAverageStepExecutionTime<TContext>(this WorkflowResult<TContext> result) 
+    public static TimeSpan GetAverageStepExecutionTime<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
+        ArgumentNullException.ThrowIfNull(result);
+
         if (result.ExecutionTrace is null || result.ExecutionTrace.Count == 0)
+        {
             return TimeSpan.Zero;
+        }
 
-        var totalTicks = result.ExecutionTrace
-            .Select(trace => (trace.EndTime - trace.StartTime).Ticks)
-            .Sum();
+        long totalTicks = 0;
+        foreach (StepExecutionTrace trace in result.ExecutionTrace)
+        {
+            totalTicks += trace.ExecutionTime.Ticks;
+        }
 
-        var averageTicks = totalTicks / result.ExecutionTrace.Count;
+        long averageTicks = totalTicks / result.ExecutionTrace.Count;
         return new TimeSpan(averageTicks);
     }
 
     /// <summary>
-    /// Creates a summary of workflow execution performance.
+    ///     Creates a summary of workflow execution performance.
+    ///     OPTIMIZED: Single-pass algorithm to gather all statistics.
     /// </summary>
     /// <typeparam name="TContext">The workflow context type</typeparam>
     /// <param name="result">The workflow result</param>
     /// <returns>A dictionary containing performance summary metrics</returns>
-    public static Dictionary<string, object> GetPerformanceSummary<TContext>(this WorkflowResult<TContext> result) 
+    public static IDictionary<string, object> GetPerformanceSummary<TContext>(this WorkflowResult<TContext> result)
         where TContext : class
     {
+        ArgumentNullException.ThrowIfNull(result);
+
         var summary = new Dictionary<string, object>
         {
             ["WorkflowSuccess"] = result.IsSuccess,
             ["TotalExecutionTime"] = result.GetExecutionTime(),
             ["StepsExecuted"] = result.Metrics?.StepsExecuted ?? 0,
             ["StepsFailed"] = result.Metrics?.StepsFailed ?? 0,
-            ["RetryAttempts"] = result.Metrics?.RetryAttempts ?? 0
+            ["TotalRetries"] = result.Metrics?.TotalRetries ?? 0
         };
 
-        if (result.HasExecutionTrace())
+        // OPTIMIZED: Single pass through traces to collect all statistics
+        if (result.ExecutionTrace is not null && result.ExecutionTrace.Count > 0)
         {
-            summary["AverageStepTime"] = result.GetAverageStepExecutionTime();
-            summary["LongestStepTime"] = result.GetLongestRunningStep()?.EndTime - result.GetLongestRunningStep()?.StartTime ?? TimeSpan.Zero;
-            summary["ShortestStepTime"] = result.GetShortestRunningStep()?.EndTime - result.GetShortestRunningStep()?.StartTime ?? TimeSpan.Zero;
-            summary["StepsWithRetries"] = result.GetRetriedSteps().Count();
+            long totalTicks = 0;
+            TimeSpan longestDuration = TimeSpan.Zero;
+            TimeSpan shortestDuration = TimeSpan.MaxValue;
+            int retriedCount = 0;
+
+            foreach (StepExecutionTrace trace in result.ExecutionTrace)
+            {
+                TimeSpan duration = trace.ExecutionTime;
+                totalTicks += duration.Ticks;
+
+                if (duration > longestDuration)
+                {
+                    longestDuration = duration;
+                }
+
+                if (duration < shortestDuration)
+                {
+                    shortestDuration = duration;
+                }
+
+                if (trace.RetryAttempts > 0)
+                {
+                    retriedCount++;
+                }
+            }
+
+            long averageTicks = totalTicks / result.ExecutionTrace.Count;
+            summary["AverageStepTime"] = new TimeSpan(averageTicks);
+            summary["LongestStepTime"] = longestDuration;
+            summary["ShortestStepTime"] = shortestDuration == TimeSpan.MaxValue ? TimeSpan.Zero : shortestDuration;
+            summary["StepsWithRetries"] = retriedCount;
         }
 
         if (result.Metrics?.PeakMemoryUsage.HasValue == true)
         {
-            summary["PeakMemoryUsageMB"] = result.Metrics.PeakMemoryUsage.Value / (1024 * 1024);
+            summary["PeakMemoryUsageMB"] = result.Metrics.PeakMemoryUsage.Value / (1024.0 * 1024.0);
         }
 
         return summary;
+    }
+
+    /// <summary>
+    ///     Gets the total number of retries across all steps.
+    /// </summary>
+    /// <typeparam name="TContext">The workflow context type</typeparam>
+    /// <param name="result">The workflow result</param>
+    /// <returns>The total number of retry attempts</returns>
+    public static int GetTotalRetries<TContext>(this WorkflowResult<TContext> result)
+        where TContext : class
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Metrics?.TotalRetries ?? 0;
+    }
+
+    /// <summary>
+    ///     Gets the success rate as a percentage (0-100).
+    /// </summary>
+    /// <typeparam name="TContext">The workflow context type</typeparam>
+    /// <param name="result">The workflow result</param>
+    /// <returns>Success rate percentage, or 0 if no steps were executed</returns>
+    public static double GetSuccessRate<TContext>(this WorkflowResult<TContext> result)
+        where TContext : class
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Metrics?.SuccessRate ?? 0;
+    }
+
+    /// <summary>
+    ///     Gets the failure rate as a percentage (0-100).
+    /// </summary>
+    /// <typeparam name="TContext">The workflow context type</typeparam>
+    /// <param name="result">The workflow result</param>
+    /// <returns>Failure rate percentage, or 0 if no steps were executed</returns>
+    public static double GetFailureRate<TContext>(this WorkflowResult<TContext> result)
+        where TContext : class
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Metrics?.FailureRate ?? 0;
     }
 }

@@ -1,58 +1,86 @@
+#region
+
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Results;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-/// Abstract base class for implementing workflow steps with common functionality.
+///     Abstract base class for implementing workflow steps with common functionality.
 /// </summary>
-/// <typeparam name="TContext">The type of workflow context</typeparam>
 public abstract class WorkflowStepBase<TContext> : IWorkflowStep<TContext> where TContext : class
 {
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets the name of this step. Defaults to the class name.
+    /// </summary>
     public virtual string StepName => GetType().Name;
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets a value indicating whether this step can be retried on failure.
+    /// </summary>
     public virtual bool CanRetry => true;
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets the maximum execution timeout for this step.
+    /// </summary>
     public virtual TimeSpan? Timeout => null;
 
-    /// <inheritdoc />
-    public abstract ValueTask<StepResult> ExecuteAsync(TContext context, CancellationToken cancellationToken = default);
-
-    /// <inheritdoc />
-    public virtual ValueTask<StepResult> CompensateAsync(TContext context, CancellationToken cancellationToken = default)
-    {
-        // Default implementation - no compensation required
-        return ValueTask.FromResult(StepResult.Success());
-    }
+    /// <summary>
+    ///     Executes this workflow step with the provided context.
+    /// </summary>
+    public abstract ValueTask<StepResult> ExecuteAsync(
+        TContext context,
+        CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Helper method to create successful results with optional metadata.
+    ///     Compensates (rolls back) this step's actions if the workflow fails.
     /// </summary>
-    /// <param name="metadata">Optional metadata to include</param>
-    /// <returns>A successful step result</returns>
+    public virtual ValueTask<StepResult> CompensateAsync(
+        TContext context,
+        CancellationToken cancellationToken = default) =>
+        ValueTask.FromResult(StepResult.Success());
+
+    /// <summary>
+    ///     Creates a successful step result with optional metadata.
+    /// </summary>
     protected static StepResult Success(IReadOnlyDictionary<string, object>? metadata = null) =>
         StepResult.Success(metadata);
 
     /// <summary>
-    /// Helper method to create failure results.
+    ///     Creates a failed step result with an error message.
     /// </summary>
-    /// <param name="message">Error message</param>
-    /// <param name="shouldRetry">Whether this step should be retried</param>
-    /// <param name="metadata">Optional metadata to include</param>
-    /// <returns>A failed step result</returns>
-    protected static StepResult Failure(string message, bool shouldRetry = false, IReadOnlyDictionary<string, object>? metadata = null) =>
+    protected static StepResult Failure(
+        string message,
+        bool shouldRetry = false,
+        IReadOnlyDictionary<string, object>? metadata = null) =>
         StepResult.Failure(message, shouldRetry, metadata);
 
     /// <summary>
-    /// Helper method to create failure results from exceptions.
+    ///     Creates a failed step result from an exception with full exception preservation.
     /// </summary>
-    /// <param name="exception">The exception that caused the failure</param>
-    /// <param name="shouldRetry">Whether this step should be retried</param>
-    /// <param name="metadata">Optional metadata to include</param>
-    /// <returns>A failed step result</returns>
-    protected static StepResult Failure(Exception exception, bool shouldRetry = false, IReadOnlyDictionary<string, object>? metadata = null) =>
+    protected static StepResult Failure(
+        Exception exception,
+        bool shouldRetry = false,
+        IReadOnlyDictionary<string, object>? metadata = null) =>
         StepResult.Failure(exception, shouldRetry, metadata);
+
+    /// <summary>
+    ///     Creates a failed step result from a DropBear.Codex.Core ResultError.
+    /// </summary>
+    protected static StepResult Failure(
+        ResultError error,
+        bool shouldRetry = false,
+        IReadOnlyDictionary<string, object>? metadata = null) =>
+        StepResult.FromError(error, shouldRetry, metadata);
+
+    /// <summary>
+    ///     Creates a suspension result that instructs the workflow to pause and wait for an external signal.
+    /// </summary>
+    protected static StepResult Suspend(
+        string signalName,
+        IReadOnlyDictionary<string, object>? metadata = null) =>
+        StepResult.Suspend(signalName, metadata);
 }

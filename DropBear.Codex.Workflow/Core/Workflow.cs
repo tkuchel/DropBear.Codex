@@ -1,10 +1,14 @@
+#region
+
 using DropBear.Codex.Workflow.Builder;
 using DropBear.Codex.Workflow.Interfaces;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-/// Abstract base class for implementing workflow definitions with a fluent interface.
+///     Abstract base class for implementing workflow definitions with a fluent interface.
 /// </summary>
 /// <typeparam name="TContext">The type of workflow context</typeparam>
 public abstract class Workflow<TContext> : IWorkflowDefinition<TContext> where TContext : class
@@ -12,7 +16,7 @@ public abstract class Workflow<TContext> : IWorkflowDefinition<TContext> where T
     private readonly Lazy<IWorkflowNode<TContext>> _workflowGraph;
 
     /// <summary>
-    /// Initializes a new workflow definition.
+    ///     Initializes a new workflow definition.
     /// </summary>
     protected Workflow()
     {
@@ -36,25 +40,25 @@ public abstract class Workflow<TContext> : IWorkflowDefinition<TContext> where T
     public IWorkflowNode<TContext> BuildWorkflow() => _workflowGraph.Value;
 
     /// <summary>
-    /// Override this method to configure the workflow structure using the fluent builder.
+    ///     Override this method to configure the workflow structure using the fluent builder.
     /// </summary>
     /// <param name="builder">The workflow builder instance</param>
     protected abstract void Configure(WorkflowBuilder<TContext> builder);
 
     /// <summary>
-    /// Internal method to build the workflow graph.
+    ///     Internal method to build the workflow graph.
     /// </summary>
     private IWorkflowNode<TContext> BuildWorkflowInternal()
     {
         var builder = new WorkflowBuilder<TContext>(WorkflowId, DisplayName, Version);
-        
+
         if (WorkflowTimeout.HasValue)
         {
             builder.WithTimeout(WorkflowTimeout.Value);
         }
 
         Configure(builder);
-        var definition = builder.Build();
+        IWorkflowDefinition<TContext> definition = builder.Build();
         return definition.BuildWorkflow();
     }
 }

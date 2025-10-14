@@ -1,38 +1,255 @@
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Core.Results.Errors;
+using DropBear.Codex.Workflow.Metrics;
+
 namespace DropBear.Codex.Workflow.Results;
 
 /// <summary>
-/// Represents the final result of workflow execution.
+/// Represents the final result of a workflow execution with comprehensive diagnostics and metrics.
 /// </summary>
 /// <typeparam name="TContext">The type of workflow context</typeparam>
 public sealed record WorkflowResult<TContext> where TContext : class
 {
     /// <summary>
-    /// Indicates whether the workflow completed successfully.
+    /// Gets a value indicating whether the workflow executed successfully.
     /// </summary>
-    public required bool IsSuccess { get; init; }
+    public bool IsSuccess { get; init; }
 
     /// <summary>
-    /// The final state of the workflow context.
+    /// Gets the final workflow context after execution.
     /// </summary>
-    public required TContext Context { get; init; }
+    public TContext Context { get; init; } = default!;
 
     /// <summary>
-    /// Error message if the workflow failed.
+    /// Gets the error message if the workflow failed.
     /// </summary>
     public string? ErrorMessage { get; init; }
 
     /// <summary>
-    /// Exception that caused the workflow failure, if any.
+    /// Gets the source exception that caused the failure, if any.
     /// </summary>
-    public Exception? Exception { get; init; }
+    public Exception? SourceException { get; init; }
 
     /// <summary>
-    /// Execution metrics and metadata.
+    /// Gets a value indicating whether a source exception is present.
     /// </summary>
-    public Metrics.WorkflowExecutionMetrics? Metrics { get; init; }
+    public bool HasException => SourceException is not null;
 
     /// <summary>
-    /// Detailed execution trace for debugging and monitoring.
+    /// Gets the execution metrics for this workflow run.
     /// </summary>
-    public IReadOnlyList<Metrics.StepExecutionTrace>? ExecutionTrace { get; init; }
+    public WorkflowMetrics? Metrics { get; init; }
+
+    /// <summary>
+    /// Gets the detailed execution trace of all steps.
+    /// </summary>
+    public IReadOnlyList<StepExecutionTrace>? ExecutionTrace { get; init; }
+
+    /// <summary>
+    /// Gets the correlation ID for this workflow execution.
+    /// </summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether the workflow was suspended (for persistent workflows).
+    /// </summary>
+    public bool IsSuspended { get; init; }
+
+    /// <summary>
+    /// Gets the signal name if the workflow was suspended waiting for a signal.
+    /// </summary>
+    public string? SuspendedSignalName { get; init; }
+
+    /// <summary>
+    /// Gets additional metadata about the suspension, if applicable.
+    /// </summary>
+    public IReadOnlyDictionary<string, object>? SuspensionMetadata { get; init; }
+
+    /// <summary>
+    /// Gets the full exception message including inner exceptions.
+    /// </summary>
+    public string GetFullExceptionMessage()
+    {
+        if (SourceException is null)
+            return ErrorMessage ?? string.Empty;
+
+        var messages = new List<string>();
+        var currentException = SourceException;
+
+        while (currentException is not null)
+        {
+            messages.Add(currentException.Message);
+            currentException = currentException.InnerException;
+        }
+
+        return string.Join(" -> ", messages);
+    }
+
+    /// <summary>
+    /// Creates a successful workflow result.
+    /// </summary>
+    /// <param name="context">The final workflow context</param>
+    /// <param name="metrics">Optional execution metrics</param>
+    /// <param name="executionTrace">Optional execution trace</param>
+    /// <param name="correlationId">Optional correlation ID</param>
+    /// <returns>A successful workflow result</returns>
+    public static WorkflowResult<TContext> Success(
+        TContext context,
+        WorkflowMetrics? metrics = null,
+        IReadOnlyList<StepExecutionTrace>? executionTrace = null,
+        string? correlationId = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        return new WorkflowResult<TContext>
+        {
+            IsSuccess = true,
+            Context = context,
+            Metrics = metrics,
+            ExecutionTrace = executionTrace,
+            CorrelationId = correlationId
+        };
+    }
+
+    /// <summary>
+    /// Creates a failed workflow result.
+    /// </summary>
+    /// <param name="context">The final workflow context</param>
+    /// <param name="errorMessage">The error message</param>
+    /// <param name="metrics">Optional execution metrics</param>
+    /// <param name="executionTrace">Optional execution trace</param>
+    /// <param name="correlationId">Optional correlation ID</param>
+    /// <returns>A failed workflow result</returns>
+    public static WorkflowResult<TContext> Failure(
+        TContext context,
+        string errorMessage,
+        WorkflowMetrics? metrics = null,
+        IReadOnlyList<StepExecutionTrace>? executionTrace = null,
+        string? correlationId = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
+
+        return new WorkflowResult<TContext>
+        {
+            IsSuccess = false,
+            Context = context,
+            ErrorMessage = errorMessage,
+            Metrics = metrics,
+            ExecutionTrace = executionTrace,
+            CorrelationId = correlationId
+        };
+    }
+
+    /// <summary>
+    /// Creates a failed workflow result from an exception with full exception preservation.
+    /// </summary>
+    /// <param name="context">The final workflow context</param>
+    /// <param name="exception">The exception that caused the failure</param>
+    /// <param name="metrics">Optional execution metrics</param>
+    /// <param name="executionTrace">Optional execution trace</param>
+    /// <param name="correlationId">Optional correlation ID</param>
+    /// <returns>A failed workflow result with exception details</returns>
+    public static WorkflowResult<TContext> Failure(
+        TContext context,
+        Exception exception,
+        WorkflowMetrics? metrics = null,
+        IReadOnlyList<StepExecutionTrace>? executionTrace = null,
+        string? correlationId = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(exception);
+
+        return new WorkflowResult<TContext>
+        {
+            IsSuccess = false,
+            Context = context,
+            ErrorMessage = exception.Message,
+            SourceException = exception,
+            Metrics = metrics,
+            ExecutionTrace = executionTrace,
+            CorrelationId = correlationId
+        };
+    }
+
+    /// <summary>
+    /// Creates a failed workflow result from a ResultError (integration with DropBear.Codex.Core).
+    /// </summary>
+    /// <param name="context">The final workflow context</param>
+    /// <param name="error">The result error from DropBear.Codex.Core</param>
+    /// <param name="metrics">Optional execution metrics</param>
+    /// <param name="executionTrace">Optional execution trace</param>
+    /// <param name="correlationId">Optional correlation ID</param>
+    /// <returns>A failed workflow result with error details</returns>
+    public static WorkflowResult<TContext> FromError(
+        TContext context,
+        ResultError error,
+        WorkflowMetrics? metrics = null,
+        IReadOnlyList<StepExecutionTrace>? executionTrace = null,
+        string? correlationId = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(error);
+
+        return new WorkflowResult<TContext>
+        {
+            IsSuccess = false,
+            Context = context,
+            ErrorMessage = error.Message,
+            SourceException = error.SourceException,
+            Metrics = metrics,
+            ExecutionTrace = executionTrace,
+            CorrelationId = correlationId
+        };
+    }
+
+    /// <summary>
+    /// Creates a suspended workflow result for persistent workflows.
+    /// </summary>
+    /// <param name="context">The current workflow context</param>
+    /// <param name="signalName">The signal name the workflow is waiting for</param>
+    /// <param name="suspensionMetadata">Optional metadata about the suspension</param>
+    /// <param name="metrics">Optional execution metrics</param>
+    /// <param name="executionTrace">Optional execution trace</param>
+    /// <param name="correlationId">Optional correlation ID</param>
+    /// <returns>A suspended workflow result</returns>
+    public static WorkflowResult<TContext> Suspended(
+        TContext context,
+        string signalName,
+        IReadOnlyDictionary<string, object>? suspensionMetadata = null,
+        WorkflowMetrics? metrics = null,
+        IReadOnlyList<StepExecutionTrace>? executionTrace = null,
+        string? correlationId = null)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(signalName);
+
+        return new WorkflowResult<TContext>
+        {
+            IsSuccess = false,
+            Context = context,
+            IsSuspended = true,
+            SuspendedSignalName = signalName,
+            SuspensionMetadata = suspensionMetadata,
+            ErrorMessage = $"Workflow suspended, waiting for signal: {signalName}",
+            Metrics = metrics,
+            ExecutionTrace = executionTrace,
+            CorrelationId = correlationId
+        };
+    }
+
+    /// <summary>
+    /// Adds exception information to this result.
+    /// </summary>
+    /// <param name="exception">The exception to attach</param>
+    /// <returns>A new workflow result with the exception attached</returns>
+    public WorkflowResult<TContext> WithException(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return this with
+        {
+            SourceException = exception,
+            ErrorMessage = ErrorMessage ?? exception.Message
+        };
+    }
 }

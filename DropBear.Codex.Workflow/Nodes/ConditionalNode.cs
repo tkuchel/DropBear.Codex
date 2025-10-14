@@ -1,26 +1,20 @@
+#region
+
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Results;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Nodes;
 
 /// <summary>
-/// Workflow node that provides conditional branching based on context state.
+///     Workflow node that provides conditional branching based on context state.
 /// </summary>
-/// <typeparam name="TContext">The type of workflow context</typeparam>
-public sealed class ConditionalNode<TContext> : WorkflowNodeBase<TContext> where TContext : class
+public sealed class ConditionalNode<TContext> : WorkflowNodeBase<TContext>
+    where TContext : class
 {
     private readonly Func<TContext, bool> _condition;
-    private readonly IWorkflowNode<TContext>? _trueNode;
-    private readonly IWorkflowNode<TContext>? _falseNode;
-    private readonly string _nodeId;
 
-    /// <summary>
-    /// Initializes a new conditional branching node.
-    /// </summary>
-    /// <param name="condition">Predicate to evaluate the condition</param>
-    /// <param name="trueNode">Node to execute when condition is true</param>
-    /// <param name="falseNode">Node to execute when condition is false</param>
-    /// <param name="nodeId">Optional custom node ID</param>
     public ConditionalNode(
         Func<TContext, bool> condition,
         IWorkflowNode<TContext>? trueNode = null,
@@ -28,42 +22,44 @@ public sealed class ConditionalNode<TContext> : WorkflowNodeBase<TContext> where
         string? nodeId = null)
     {
         _condition = condition ?? throw new ArgumentNullException(nameof(condition));
-        _trueNode = trueNode;
-        _falseNode = falseNode;
-        _nodeId = nodeId ?? CreateNodeId();
+        TrueNode = trueNode;
+        FalseNode = falseNode;
+        NodeId = nodeId ?? CreateNodeId();
     }
 
-    /// <inheritdoc />
-    public override string NodeId => _nodeId;
+    public override string NodeId { get; }
 
-    /// <inheritdoc />
+    public IWorkflowNode<TContext>? TrueNode { get; }
+
+    public IWorkflowNode<TContext>? FalseNode { get; }
+
     public override ValueTask<NodeExecutionResult<TContext>> ExecuteAsync(
         TContext context,
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(context);
+
         try
         {
-            // Evaluate the condition
-            var conditionResult = _condition(context);
-            
-            // Select the appropriate next node
-            var nextNode = conditionResult ? _trueNode : _falseNode;
-            var nextNodes = nextNode is not null ? new[] { nextNode } : Array.Empty<IWorkflowNode<TContext>>();
+            bool conditionResult = _condition(context);
 
-            // Create metadata about the branching decision
+            IWorkflowNode<TContext>? nextNode = conditionResult ? TrueNode : FalseNode;
+            IWorkflowNode<TContext>[] nextNodes = nextNode is not null
+                ? new[] { nextNode }
+                : Array.Empty<IWorkflowNode<TContext>>();
+
             var metadata = new Dictionary<string, object>
             {
-                ["ConditionResult"] = conditionResult,
-                ["BranchTaken"] = conditionResult ? "True" : "False"
+                ["ConditionResult"] = conditionResult, ["BranchTaken"] = conditionResult ? "True" : "False"
             };
 
-            return ValueTask.FromResult(NodeExecutionResult<TContext>.Success(nextNodes, metadata));
+            return ValueTask.FromResult(
+                NodeExecutionResult<TContext>.Success(nextNodes, metadata));
         }
         catch (Exception ex)
         {
-            // Condition evaluation failed
-            var stepResult = StepResult.Failure($"Condition evaluation failed: {ex.Message}", false);
+            var stepResult = StepResult.Failure($"Conditional evaluation failed: {ex.Message}");
             return ValueTask.FromResult(NodeExecutionResult<TContext>.Failure(stepResult));
         }
     }

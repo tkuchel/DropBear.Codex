@@ -1,29 +1,119 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <AssemblyVersion>2025.7.0</AssemblyVersion>
-        <FileVersion>2025.7.0</FileVersion>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.9.0</Version>
-    </PropertyGroup>
+  <!-- Basic Project Configuration -->
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
 
-    <ItemGroup>
-      <PackageReference Include="Meziantou.Analyzer" Version="2.0.224">
-        <PrivateAssets>all</PrivateAssets>
-        <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      </PackageReference>
-      <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.9" />
-      <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.9" />
-      <PackageReference Update="Nerdbank.GitVersioning">
-        <Version>3.8.118</Version>
-      </PackageReference>
-    </ItemGroup>
+    <!-- Version Information - Using Nerdbank.GitVersioning -->
+    <AssemblyVersion>2025.10.0</AssemblyVersion>
+    <FileVersion>2025.10.0</FileVersion>
+    <Version>2025.10.0</Version>
 
-    <ItemGroup>
-      <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
-    </ItemGroup>
+    <!-- NuGet Package Configuration -->
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>DropBear.Codex.Workflow</PackageId>
+    <Title>DropBear Codex Workflow Engine</Title>
+    <Description>A comprehensive, production-ready workflow engine for .NET 9 applications with support for persistence, human approvals, external signals, parallel execution, and robust error handling. Integrates seamlessly with DropBear.Codex.Core for enhanced error handling and telemetry.</Description>
+    <Authors>Terrence Kuchel (DropBear)</Authors>
+    <Company>DropBear</Company>
+    <Product>DropBear.Codex.Workflow</Product>
+    <Copyright>Copyright © 2025 Terrence Kuchel (DropBear)</Copyright>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex.Workflow</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex.Workflow</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageTags>workflow;engine;orchestration;dotnet;netstandard;dropbear;codex;state-machine;business-process;workflow-engine</PackageTags>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>PACKAGE_README.md</PackageReadmeFile>
+    <PackageReleaseNotes>
+      Version 2025.10.0:
+      - Full integration with DropBear.Codex.Core v2025.10.0
+      - Enhanced error handling with exception preservation
+      - Added IAsyncDisposable support for proper resource cleanup
+      - Improved telemetry integration
+      - Added comprehensive XML documentation
+      - Memory optimization improvements
+      - Added WorkflowConstants for magic number elimination
+      - Enhanced security validation
+      - Complete package metadata and documentation
+    </PackageReleaseNotes>
+
+    <!-- Documentation -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\$(AssemblyName).xml</DocumentationFile>
+
+    <!-- Suppress CS1591 only in Debug while documentation is being completed -->
+    <NoWarn Condition="'$(Configuration)' == 'Debug'">CS1591</NoWarn>
+
+    <!-- Code Analysis -->
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-all</AnalysisLevel>
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+
+    <!-- Output Options -->
+    <OutputType>Library</OutputType>
+    <DebugType>embedded</DebugType>
+
+    <!-- SourceLink -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+
+    <!-- NuGet Package Validation -->
+    <EnablePackageValidation>true</EnablePackageValidation>
+    <PackageValidationEnabled>true</PackageValidationEnabled>
+    <GenerateCompatibilitySuppressionFile>true</GenerateCompatibilitySuppressionFile>
+    <EnableStrictModeForCompatibleFrameworksInPackage>true</EnableStrictModeForCompatibleFrameworksInPackage>
+  </PropertyGroup>
+
+  <!-- Package Dependencies -->
+  <ItemGroup>
+    <!-- Core Dependencies -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+
+    <!-- Development Dependencies (Private) -->
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" PrivateAssets="all" />
+
+    <!-- Analyzers (Private) -->
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.224">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <PackageReference Include="Roslynator.Analyzers" Version="4.12.9">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <!-- SourceLink -->
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+
+    <!-- Nerdbank.GitVersioning for automatic versioning -->
+    <PackageReference Include="Nerdbank.GitVersioning" Version="3.8.118">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <!-- Project References -->
+  <ItemGroup>
+    <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Files to Include in Package -->
+  <ItemGroup>
+    <None Include="icon.png" Pack="true" PackagePath="" Condition="Exists('icon.png')" />
+    <None Include="PACKAGE_README.md" Pack="true" PackagePath="" Condition="Exists('PACKAGE_README.md')" />
+    <None Include="SECURITY.md" Pack="true" PackagePath="" Condition="Exists('SECURITY.md')" />
+    <None Include="LICENSE" Pack="true" PackagePath="" Condition="Exists('LICENSE')" />
+  </ItemGroup>
 
 </Project>

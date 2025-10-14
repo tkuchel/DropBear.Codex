@@ -1,93 +1,119 @@
-using Microsoft.Extensions.DependencyInjection;
+#region
+
+using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Interfaces;
+using DropBear.Codex.Workflow.Metrics;
 using DropBear.Codex.Workflow.Results;
+using Microsoft.Extensions.DependencyInjection;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Nodes;
 
 /// <summary>
-/// IMPROVED: Workflow node that executes a single step with proper next node handling.
+///     Workflow node that executes a single step with retry logic and timeout support.
 /// </summary>
-/// <typeparam name="TContext">The type of workflow context</typeparam>
-/// <typeparam name="TStep">The type of step to execute</typeparam>
-public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>
+public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILinkableNode<TContext>
     where TContext : class
     where TStep : class, IWorkflowStep<TContext>
 {
     private IWorkflowNode<TContext>? _nextNode;
-    private readonly string _nodeId;
 
-    /// <summary>
-    /// Initializes a new step node.
-    /// </summary>
-    /// <param name="nextNode">The next node to execute after this step</param>
-    /// <param name="nodeId">Optional custom node ID</param>
     public StepNode(IWorkflowNode<TContext>? nextNode = null, string? nodeId = null)
     {
         _nextNode = nextNode;
-        _nodeId = nodeId ?? CreateNodeId();
+        NodeId = nodeId ?? CreateNodeId();
     }
 
-    /// <inheritdoc />
-    public override string NodeId => _nodeId;
+    public override string NodeId { get; }
 
-    /// <summary>
-    /// IMPROVED: Property to access and set the next node (used by WorkflowBuilder).
-    /// </summary>
-    internal IWorkflowNode<TContext>? NextNode
-    {
-        get => _nextNode;
-        set => _nextNode = value;
-    }
+    public string StepTypeName => typeof(TStep).Name;
 
-    /// <inheritdoc />
+    public void SetNextNode(IWorkflowNode<TContext>? nextNode) => _nextNode = nextNode;
+
+    public IWorkflowNode<TContext>? GetNextNode() => _nextNode;
+
     public override async ValueTask<NodeExecutionResult<TContext>> ExecuteAsync(
         TContext context,
         IServiceProvider serviceProvider,
         CancellationToken cancellationToken = default)
     {
-        // Resolve the step from DI container
-        var step = serviceProvider.GetRequiredService<TStep>();
+        TStep step = serviceProvider.GetRequiredService<TStep>();
+        DateTimeOffset startTime = DateTimeOffset.UtcNow;
+        int retryAttempts = 0;
+        StepResult? lastResult = null;
 
         try
         {
-            // Execute the step with timeout if specified
-            var stepResult = step.Timeout.HasValue
-                ? await ExecuteWithTimeout(step, context, step.Timeout.Value, cancellationToken)
-                : await step.ExecuteAsync(context, cancellationToken);
-
-            // CRITICAL: Check for suspension signals first - these should NOT proceed to next nodes
-            if (!stepResult.IsSuccess && IsSuspensionSignal(stepResult))
+            // Execute with retry logic
+            for (int attempt = 0; attempt <= 3; attempt++)
             {
-                // Return suspension signal immediately without next nodes
-                return NodeExecutionResult<TContext>.Failure(stepResult);
+                if (attempt > 0)
+                {
+                    retryAttempts = attempt;
+                    var delay = TimeSpan.FromMilliseconds(100 * Math.Pow(2, attempt - 1));
+                    await Task.Delay(delay, cancellationToken).ConfigureAwait(false);
+                }
+
+                lastResult = step.Timeout.HasValue
+                    ? await ExecuteWithTimeoutAsync(step, context, step.Timeout.Value, cancellationToken)
+                        .ConfigureAwait(false)
+                    : await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+
+                if (lastResult.IsSuccess || !lastResult.ShouldRetry || !step.CanRetry)
+                {
+                    break;
+                }
             }
 
-            // Determine next nodes based on execution result
-            var nextNodes = stepResult.IsSuccess && _nextNode is not null
-                ? new[] { _nextNode }
-                : Array.Empty<IWorkflowNode<TContext>>();
+            DateTimeOffset endTime = DateTimeOffset.UtcNow;
+            var trace = new StepExecutionTrace
+            {
+                StepName = step.StepName,
+                NodeId = NodeId,
+                StartTime = startTime,
+                EndTime = endTime,
+                Result = lastResult,
+                RetryAttempts = retryAttempts
+            };
 
-            return stepResult.IsSuccess
-                ? NodeExecutionResult<TContext>.Success(nextNodes, stepResult.Metadata)
-                : NodeExecutionResult<TContext>.Failure(stepResult);
+            // Check for suspension
+            if (!lastResult.IsSuccess && WorkflowConstants.Signals.IsSuspensionSignal(lastResult.Error?.Message))
+            {
+                return NodeExecutionResult<TContext>.Failure(lastResult, trace);
+            }
+
+            IWorkflowNode<TContext>[] nextNodes = lastResult.IsSuccess && _nextNode is not null
+                ? [_nextNode]
+                : [];
+
+            return lastResult.IsSuccess
+                ? NodeExecutionResult<TContext>.Success(nextNodes, lastResult.Metadata, trace)
+                : NodeExecutionResult<TContext>.Failure(lastResult, trace);
         }
         catch (OperationCanceledException)
         {
-            // Cancellation is not considered a failure
             throw;
         }
         catch (Exception ex)
         {
-            // Wrap unexpected exceptions
+            DateTimeOffset endTime = DateTimeOffset.UtcNow;
             var stepResult = StepResult.Failure(ex, step.CanRetry);
-            return NodeExecutionResult<TContext>.Failure(stepResult);
+            var trace = new StepExecutionTrace
+            {
+                StepName = step.StepName,
+                NodeId = NodeId,
+                StartTime = startTime,
+                EndTime = endTime,
+                Result = stepResult,
+                RetryAttempts = retryAttempts
+            };
+
+            return NodeExecutionResult<TContext>.Failure(stepResult, trace);
         }
     }
 
-    /// <summary>
-    /// Executes a step with the specified timeout.
-    /// </summary>
-    private static async ValueTask<StepResult> ExecuteWithTimeout(
+    private static async ValueTask<StepResult> ExecuteWithTimeoutAsync(
         IWorkflowStep<TContext> step,
         TContext context,
         TimeSpan timeout,
@@ -98,26 +124,12 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>
 
         try
         {
-            return await step.ExecuteAsync(context, timeoutCts.Token);
+            return await step.ExecuteAsync(context, timeoutCts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested &&
                                                  !cancellationToken.IsCancellationRequested)
         {
-            // Timeout occurred
             return StepResult.Failure($"Step '{step.StepName}' timed out after {timeout}", step.CanRetry);
         }
     }
-
-    /// <summary>
-    /// Checks if a step result represents a suspension signal.
-    /// </summary>
-    private static bool IsSuspensionSignal(StepResult stepResult)
-    {
-        return stepResult.ErrorMessage?.StartsWith("WAITING_FOR_SIGNAL:", StringComparison.OrdinalIgnoreCase) == true;
-    }
-
-    /// <summary>
-    /// Gets the step type name for debugging.
-    /// </summary>
-    public string StepTypeName => typeof(TStep).Name;
 }
