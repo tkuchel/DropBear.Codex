@@ -18,21 +18,13 @@ public sealed class StepResult : Result<Unit, ResultError>
         ResultState state,
         Unit value,
         ResultError? error,
+        Exception? exception,
         bool shouldRetry,
         IReadOnlyDictionary<string, object>? metadata)
-        : base(value, state, error)
+        : base(value, state, error, exception)
     {
         ShouldRetry = shouldRetry;
         Metadata = metadata;
-
-        if (state == ResultState.Success)
-        {
-            Value = value;
-        }
-        else if (error != null)
-        {
-            Error = error;
-        }
     }
 
     /// <summary>
@@ -54,6 +46,7 @@ public sealed class StepResult : Result<Unit, ResultError>
             ResultState.Success,
             Unit.Value,
             null,
+            null,
             false,
             metadata);
     }
@@ -73,12 +66,13 @@ public sealed class StepResult : Result<Unit, ResultError>
             errorMessage = errorMessage[..WorkflowConstants.Limits.MaxErrorMessageLength];
         }
 
-        var error = new SimpleError(errorMessage);
+        ResultError error = new SimpleError(errorMessage);
 
         return new StepResult(
             ResultState.Failure,
             default,
             error,
+            null,
             shouldRetry,
             metadata);
     }
@@ -93,12 +87,14 @@ public sealed class StepResult : Result<Unit, ResultError>
     {
         ArgumentNullException.ThrowIfNull(exception);
 
-        var error = SimpleError.FromException(exception);
+        ResultError error = new SimpleError(exception.Message);
+        ResultError errorWithException = error.WithException(exception);
 
         return new StepResult(
             ResultState.Failure,
             default,
-            error,
+            errorWithException,
+            exception,
             shouldRetry,
             metadata);
     }
@@ -117,6 +113,7 @@ public sealed class StepResult : Result<Unit, ResultError>
             ResultState.Failure,
             default,
             error,
+            error.SourceException,
             shouldRetry,
             metadata);
     }
@@ -138,11 +135,11 @@ public sealed class StepResult : Result<Unit, ResultError>
         }
 
         string suspensionMessage = WorkflowConstants.Signals.CreateSuspensionMessage(signalName);
-        var error = new SimpleError(suspensionMessage);
+        ResultError error = new SimpleError(suspensionMessage);
 
         Dictionary<string, object> suspensionMetadata = metadata != null
-            ? new Dictionary<string, object>(metadata, StringComparer.OrdinalIgnoreCase)
-            : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            ? new Dictionary<string, object>(metadata, StringComparer.Ordinal)
+            : new Dictionary<string, object>(StringComparer.Ordinal);
 
         suspensionMetadata[WorkflowConstants.MetadataKeys.Suspension] = true;
         suspensionMetadata[WorkflowConstants.MetadataKeys.SignalName] = signalName;
@@ -151,6 +148,7 @@ public sealed class StepResult : Result<Unit, ResultError>
             ResultState.Failure,
             default,
             error,
+            null,
             false,
             suspensionMetadata);
     }
