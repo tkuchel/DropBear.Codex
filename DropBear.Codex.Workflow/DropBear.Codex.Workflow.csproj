@@ -26,7 +26,7 @@
     <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex.Workflow</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>workflow;engine;orchestration;dotnet;netstandard;dropbear;codex;state-machine;business-process;workflow-engine</PackageTags>
-    <PackageIcon>icon.png</PackageIcon>
+    <!--    <PackageIcon>icon.png</PackageIcon>-->
     <PackageReadmeFile>PACKAGE_README.md</PackageReadmeFile>
     <PackageReleaseNotes>
       Version 2025.10.0:
@@ -75,26 +75,26 @@
   <!-- Package Dependencies -->
   <ItemGroup>
     <!-- Core Dependencies -->
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.0" />
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
 
     <!-- Development Dependencies (Private) -->
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" PrivateAssets="all" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" PrivateAssets="all"/>
 
     <!-- Analyzers (Private) -->
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.224">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.226">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
-    <PackageReference Include="Roslynator.Analyzers" Version="4.12.9">
+    <PackageReference Include="Roslynator.Analyzers" Version="4.14.1">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
 
     <!-- SourceLink -->
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All"/>
 
     <!-- Nerdbank.GitVersioning for automatic versioning -->
     <PackageReference Include="Nerdbank.GitVersioning" Version="3.8.118">
@@ -105,15 +105,15 @@
 
   <!-- Project References -->
   <ItemGroup>
-    <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
+    <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj"/>
   </ItemGroup>
 
   <!-- Files to Include in Package -->
   <ItemGroup>
-    <None Include="icon.png" Pack="true" PackagePath="" Condition="Exists('icon.png')" />
-    <None Include="PACKAGE_README.md" Pack="true" PackagePath="" Condition="Exists('PACKAGE_README.md')" />
-    <None Include="SECURITY.md" Pack="true" PackagePath="" Condition="Exists('SECURITY.md')" />
-    <None Include="LICENSE" Pack="true" PackagePath="" Condition="Exists('LICENSE')" />
+    <!--    <None Include="icon.png" Pack="true" PackagePath="" Condition="Exists('icon.png')" />-->
+    <None Include="PACKAGE_README.md" Pack="true" PackagePath="" Condition="Exists('PACKAGE_README.md')"/>
+    <None Include="SECURITY.md" Pack="true" PackagePath="" Condition="Exists('SECURITY.md')"/>
+    <None Include="LICENSE" Pack="true" PackagePath="" Condition="Exists('LICENSE')"/>
   </ItemGroup>
 
 </Project>

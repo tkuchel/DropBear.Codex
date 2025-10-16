@@ -1,40 +1,39 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
 namespace DropBear.Codex.Workflow.Persistence.Repositories;
 
 /// <summary>
-///     Thread-safe in-memory implementation of workflow state repository.
+///     In-memory implementation of workflow state repository for testing and development.
+///     WARNING: This implementation does not persist state across application restarts.
 /// </summary>
-public sealed class InMemoryWorkflowStateRepository : IWorkflowStateRepository, IDisposable
+public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepository, IDisposable
 {
-    private readonly ReaderWriterLockSlim _lock = new(LockRecursionPolicy.NoRecursion);
-    private readonly ILogger _logger;
+    private readonly ILogger<InMemoryWorkflowStateRepository> _logger;
     private readonly ConcurrentDictionary<string, WorkflowStateWrapper> _states;
     private bool _disposed;
 
-    public InMemoryWorkflowStateRepository(ILogger logger)
+    /// <summary>
+    ///     Initializes a new in-memory workflow state repository.
+    /// </summary>
+    /// <param name="logger">Logger instance</param>
+    /// <exception cref="ArgumentNullException">Thrown when logger is null</exception>
+    public InMemoryWorkflowStateRepository(ILogger<InMemoryWorkflowStateRepository> logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _states = new ConcurrentDictionary<string, WorkflowStateWrapper>(StringComparer.Ordinal);
-        _logger.Information("InMemoryWorkflowStateRepository initialized");
+        _states = new ConcurrentDictionary<string, WorkflowStateWrapper>(StringComparer.OrdinalIgnoreCase);
+
+        LogUsingInMemoryRepository();
     }
 
-    public int Count
-    {
-        get
-        {
-            ThrowIfDisposed();
-            return _states.Count;
-        }
-    }
-
+    /// <inheritdoc />
     public void Dispose()
     {
         if (_disposed)
@@ -42,46 +41,12 @@ public sealed class InMemoryWorkflowStateRepository : IWorkflowStateRepository, 
             return;
         }
 
-        _lock.Dispose();
+        LogDisposing(_states.Count);
         _states.Clear();
         _disposed = true;
-        _logger.Information("InMemoryWorkflowStateRepository disposed");
     }
 
-    public ValueTask<string> SaveWorkflowStateAsync<TContext>(
-        WorkflowInstanceState<TContext> state,
-        CancellationToken cancellationToken = default) where TContext : class
-    {
-        ThrowIfDisposed();
-        ArgumentNullException.ThrowIfNull(state);
-
-        var wrapper = new WorkflowStateWrapper
-        {
-            ContextTypeName = typeof(TContext).FullName ?? typeof(TContext).Name, State = state
-        };
-
-        _lock.EnterWriteLock();
-        try
-        {
-            if (!_states.TryAdd(state.WorkflowInstanceId, wrapper))
-            {
-                throw new InvalidOperationException(
-                    $"Workflow instance {state.WorkflowInstanceId} already exists");
-            }
-
-            _logger.Debug(
-                "Saved workflow state {InstanceId} for context type {ContextType}",
-                state.WorkflowInstanceId,
-                wrapper.ContextTypeName);
-
-            return ValueTask.FromResult(state.WorkflowInstanceId);
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-        }
-    }
-
+    /// <inheritdoc />
     public ValueTask<WorkflowInstanceState<TContext>?> GetWorkflowStateAsync<TContext>(
         string workflowInstanceId,
         CancellationToken cancellationToken = default) where TContext : class
@@ -89,99 +54,95 @@ public sealed class InMemoryWorkflowStateRepository : IWorkflowStateRepository, 
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
 
-        string requestedTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
-
-        _lock.EnterReadLock();
-        try
+        if (_states.TryGetValue(workflowInstanceId, out WorkflowStateWrapper? wrapper))
         {
-            if (!_states.TryGetValue(workflowInstanceId, out WorkflowStateWrapper? wrapper))
-            {
-                _logger.Debug("Workflow state {InstanceId} not found", workflowInstanceId);
-                return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(null);
-            }
+            string requestedTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
 
-            if (wrapper.ContextTypeName != requestedTypeName)
+            if (string.Equals(wrapper.ContextTypeName, requestedTypeName, StringComparison.OrdinalIgnoreCase))
             {
-                _logger.Warning(
-                    "Type mismatch for workflow {InstanceId}: expected {ExpectedType}, found {ActualType}",
-                    workflowInstanceId,
-                    requestedTypeName,
-                    wrapper.ContextTypeName);
-                return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(null);
-            }
+                if (wrapper.State is WorkflowInstanceState<TContext> typedState)
+                {
+                    LogRetrievedWorkflowState(workflowInstanceId);
+                    return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(typedState);
+                }
 
-            if (wrapper.State is WorkflowInstanceState<TContext> typedState)
+                LogCouldNotCastState(workflowInstanceId, requestedTypeName);
+            }
+            else
             {
-                _logger.Debug("Retrieved workflow state {InstanceId}", workflowInstanceId);
-                return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(typedState);
+                LogTypeMismatch(workflowInstanceId, wrapper.ContextTypeName, requestedTypeName);
             }
-
-            _logger.Warning(
-                "Failed to cast workflow state {InstanceId} to type {ContextType}",
-                workflowInstanceId,
-                requestedTypeName);
-            return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(null);
         }
-        finally
-        {
-            _lock.ExitReadLock();
-        }
+
+        LogWorkflowStateNotFound(workflowInstanceId);
+        return ValueTask.FromResult<WorkflowInstanceState<TContext>?>(null);
     }
 
+    /// <inheritdoc />
+    public ValueTask<string> SaveWorkflowStateAsync<TContext>(
+        WorkflowInstanceState<TContext> state,
+        CancellationToken cancellationToken = default) where TContext : class
+    {
+        ThrowIfDisposed();
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentException.ThrowIfNullOrWhiteSpace(state.WorkflowInstanceId);
+
+        string typeName = typeof(TContext).FullName ?? typeof(TContext).Name;
+        var wrapper = new WorkflowStateWrapper { ContextTypeName = typeName, State = state };
+
+        _states.AddOrUpdate(
+            state.WorkflowInstanceId,
+            wrapper,
+            (_, _) => wrapper);
+
+        LogSavedWorkflowState(state.WorkflowInstanceId, state.Status);
+
+        return ValueTask.FromResult(state.WorkflowInstanceId);
+    }
+
+    /// <inheritdoc />
     public ValueTask UpdateWorkflowStateAsync<TContext>(
         WorkflowInstanceState<TContext> state,
         CancellationToken cancellationToken = default) where TContext : class
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(state);
+        ArgumentException.ThrowIfNullOrWhiteSpace(state.WorkflowInstanceId);
 
         string typeName = typeof(TContext).FullName ?? typeof(TContext).Name;
-
         var wrapper = new WorkflowStateWrapper { ContextTypeName = typeName, State = state };
 
-        _lock.EnterWriteLock();
-        try
-        {
-            _states[state.WorkflowInstanceId] = wrapper;
+        _states.AddOrUpdate(
+            state.WorkflowInstanceId,
+            wrapper,
+            (_, _) => wrapper);
 
-            _logger.Debug(
-                "Updated workflow state {InstanceId} with status {Status}",
-                state.WorkflowInstanceId,
-                state.Status);
+        LogUpdatedWorkflowState(state.WorkflowInstanceId, state.Status);
 
-            return ValueTask.CompletedTask;
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-        }
+        return ValueTask.CompletedTask;
     }
 
-    public ValueTask DeleteWorkflowStateAsync(string workflowInstanceId, CancellationToken cancellationToken = default)
+    /// <inheritdoc />
+    public ValueTask DeleteWorkflowStateAsync(
+        string workflowInstanceId,
+        CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
 
-        _lock.EnterWriteLock();
-        try
+        if (_states.TryRemove(workflowInstanceId, out _))
         {
-            if (_states.TryRemove(workflowInstanceId, out _))
-            {
-                _logger.Information("Deleted workflow state {InstanceId}", workflowInstanceId);
-            }
-            else
-            {
-                _logger.Debug("Workflow state {InstanceId} not found for deletion", workflowInstanceId);
-            }
+            LogDeletedWorkflowState(workflowInstanceId);
+        }
+        else
+        {
+            LogWorkflowStateNotFoundForDeletion(workflowInstanceId);
+        }
 
-            return ValueTask.CompletedTask;
-        }
-        finally
-        {
-            _lock.ExitWriteLock();
-        }
+        return ValueTask.CompletedTask;
     }
 
+    /// <inheritdoc />
     public ValueTask<IEnumerable<WorkflowInstanceState<TContext>>> GetWaitingWorkflowsAsync<TContext>(
         string? signalName = null,
         CancellationToken cancellationToken = default) where TContext : class
@@ -191,42 +152,93 @@ public sealed class InMemoryWorkflowStateRepository : IWorkflowStateRepository, 
         string requestedTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
         var waitingWorkflows = new List<WorkflowInstanceState<TContext>>();
 
-        _lock.EnterReadLock();
-        try
+        foreach (KeyValuePair<string, WorkflowStateWrapper> kvp in _states)
         {
-            foreach (KeyValuePair<string, WorkflowStateWrapper> kvp in _states)
+            if (string.Equals(kvp.Value.ContextTypeName, requestedTypeName, StringComparison.OrdinalIgnoreCase) &&
+                kvp.Value.State is WorkflowInstanceState<TContext> typedState)
             {
-                if (kvp.Value.ContextTypeName == requestedTypeName &&
-                    kvp.Value.State is WorkflowInstanceState<TContext> typedState)
+                if ((typedState.Status == WorkflowStatus.WaitingForSignal ||
+                     typedState.Status == WorkflowStatus.WaitingForApproval) &&
+                    (signalName == null ||
+                     string.Equals(typedState.WaitingForSignal, signalName, StringComparison.OrdinalIgnoreCase)))
                 {
-                    if ((typedState.Status == WorkflowStatus.WaitingForSignal ||
-                         typedState.Status == WorkflowStatus.WaitingForApproval) &&
-                        (signalName == null || typedState.WaitingForSignal == signalName))
-                    {
-                        waitingWorkflows.Add(typedState);
-                    }
+                    waitingWorkflows.Add(typedState);
                 }
             }
-
-            _logger.Debug(
-                "Found {Count} waiting workflows for type {ContextType}" +
-                (signalName != null ? $" and signal '{signalName}'" : ""),
-                waitingWorkflows.Count,
-                requestedTypeName);
-
-            return ValueTask.FromResult<IEnumerable<WorkflowInstanceState<TContext>>>(waitingWorkflows);
         }
-        finally
-        {
-            _lock.ExitReadLock();
-        }
+
+        LogFoundWaitingWorkflows(waitingWorkflows.Count, requestedTypeName, signalName ?? string.Empty);
+
+        return ValueTask.FromResult<IEnumerable<WorkflowInstanceState<TContext>>>(waitingWorkflows);
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 
+    /// <summary>
+    ///     Internal wrapper to store workflow state with its context type information.
+    /// </summary>
     private sealed class WorkflowStateWrapper
     {
         public required string ContextTypeName { get; init; }
         public required object State { get; init; }
     }
+
+    #region LoggerMessage Delegates
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Using InMemoryWorkflowStateRepository - state will not persist across application restarts")]
+    private partial void LogUsingInMemoryRepository();
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Disposing InMemoryWorkflowStateRepository with {Count} stored states")]
+    private partial void LogDisposing(int count);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Retrieved workflow state {InstanceId}")]
+    private partial void LogRetrievedWorkflowState(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow state {InstanceId} found but could not be cast to {TypeName}")]
+    private partial void LogCouldNotCastState(string instanceId, string typeName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow state {InstanceId} has type {ActualType} but {RequestedType} was requested")]
+    private partial void LogTypeMismatch(string instanceId, string actualType, string requestedType);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Workflow state {InstanceId} not found")]
+    private partial void LogWorkflowStateNotFound(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Saved workflow state {InstanceId} with status {Status}")]
+    private partial void LogSavedWorkflowState(string instanceId, WorkflowStatus status);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Updated workflow state {InstanceId} with status {Status}")]
+    private partial void LogUpdatedWorkflowState(string instanceId, WorkflowStatus status);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Deleted workflow state {InstanceId}")]
+    private partial void LogDeletedWorkflowState(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Workflow state {InstanceId} not found for deletion")]
+    private partial void LogWorkflowStateNotFoundForDeletion(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Found {Count} waiting workflows for type {ContextType}{SignalFilter}")]
+    private partial void LogFoundWaitingWorkflows(int count, string contextType, string signalFilter);
+
+    #endregion
 }

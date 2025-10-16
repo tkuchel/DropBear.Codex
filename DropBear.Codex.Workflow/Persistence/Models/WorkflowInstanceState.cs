@@ -1,51 +1,91 @@
+#region
+
+using DropBear.Codex.Workflow.Common;
+using DropBear.Codex.Workflow.Metrics;
+
+#endregion
+
 namespace DropBear.Codex.Workflow.Persistence.Models;
 
 /// <summary>
-/// Represents the persistent state of a workflow instance
+///     Represents the persisted state of a workflow instance.
 /// </summary>
+/// <typeparam name="TContext">The type of workflow context</typeparam>
 public sealed record WorkflowInstanceState<TContext> where TContext : class
 {
+    /// <summary>
+    ///     Gets or sets the unique identifier for this workflow instance.
+    /// </summary>
     public required string WorkflowInstanceId { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the workflow definition identifier.
+    /// </summary>
     public required string WorkflowId { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the display name of the workflow.
+    /// </summary>
     public required string WorkflowDisplayName { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the current workflow context.
+    /// </summary>
     public required TContext Context { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the current status of the workflow.
+    /// </summary>
     public required WorkflowStatus Status { get; init; }
+
+    /// <summary>
+    ///     Gets or sets when the workflow instance was created.
+    /// </summary>
     public required DateTimeOffset CreatedAt { get; init; }
+
+    /// <summary>
+    ///     Gets or sets when the workflow instance was last updated.
+    /// </summary>
     public required DateTimeOffset LastUpdatedAt { get; init; }
-    public string? CurrentStepId { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the signal name the workflow is waiting for (if suspended).
+    /// </summary>
     public string? WaitingForSignal { get; init; }
+
+    /// <summary>
+    ///     Gets or sets when the signal timeout occurs (if waiting for a signal).
+    /// </summary>
     public DateTimeOffset? SignalTimeoutAt { get; init; }
-    public string? CreatedBy { get; init; }
-    public Dictionary<string, object> Metadata { get; init; } = new();
-    public List<WorkflowExecutionCheckpoint> ExecutionHistory { get; init; } = new();
-    public Dictionary<string, object> PendingChanges { get; init; } = new();
+
+    /// <summary>
+    ///     Gets or sets the serialized workflow definition for resumption.
+    /// </summary>
     public string? SerializedWorkflowDefinition { get; init; }
-}
 
-/// <summary>
-/// Status of a workflow instance
-/// </summary>
-public enum WorkflowStatus
-{
-    Running,
-    Suspended,
-    WaitingForSignal,
-    WaitingForApproval,
-    Completed,
-    Failed,
-    Cancelled,
-    TimedOut
-}
+    /// <summary>
+    ///     Gets or sets the execution history of the workflow.
+    /// </summary>
+    public IList<StepExecutionTrace> ExecutionHistory { get; init; } = [];
 
-/// <summary>
-/// Represents a checkpoint in workflow execution
-/// </summary>
-public sealed record WorkflowExecutionCheckpoint
-{
-    public required string StepId { get; init; }
-    public required string StepName { get; init; }
-    public required DateTimeOffset ExecutedAt { get; init; }
-    public required bool IsSuccess { get; init; }
+    /// <summary>
+    ///     Gets or sets additional metadata about the workflow instance.
+    /// </summary>
+    public IDictionary<string, object> Metadata { get; init; } =
+        new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    ///     Gets or sets the correlation ID for tracking related operations.
+    /// </summary>
+    public string? CorrelationId { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the completion time (if completed).
+    /// </summary>
+    public DateTimeOffset? CompletedAt { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the error message (if failed).
+    /// </summary>
     public string? ErrorMessage { get; init; }
-    public Dictionary<string, object> StepMetadata { get; init; } = new();
 }

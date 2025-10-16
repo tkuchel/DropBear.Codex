@@ -123,10 +123,29 @@ public static class WorkflowConstants
     /// </summary>
     public static class NodeTypes
     {
+        /// <summary>
+        ///     Step node type identifier.
+        /// </summary>
         public const string Step = "Step";
+
+        /// <summary>
+        ///     Conditional node type identifier.
+        /// </summary>
         public const string Conditional = "Conditional";
+
+        /// <summary>
+        ///     Parallel node type identifier.
+        /// </summary>
         public const string Parallel = "Parallel";
+
+        /// <summary>
+        ///     Delay node type identifier.
+        /// </summary>
         public const string Delay = "Delay";
+
+        /// <summary>
+        ///     Sequence node type identifier.
+        /// </summary>
         public const string Sequence = "Sequence";
     }
 
@@ -135,19 +154,34 @@ public static class WorkflowConstants
     /// </summary>
     public static class Signals
     {
+        /// <summary>
+        ///     Prefix for suspension signal messages.
+        /// </summary>
         public const string SuspensionPrefix = "__SUSPEND__:";
+
+        /// <summary>
+        ///     Signal name for approval required.
+        /// </summary>
         public const string ApprovalRequired = "__SUSPEND__:APPROVAL_REQUIRED";
+
+        /// <summary>
+        ///     Signal name for external signal required.
+        /// </summary>
         public const string ExternalSignalRequired = "__SUSPEND__:EXTERNAL_SIGNAL";
 
         /// <summary>
         ///     Checks if an error message represents a suspension signal.
         /// </summary>
+        /// <param name="message">The message to check</param>
+        /// <returns>True if the message is a suspension signal</returns>
         public static bool IsSuspensionSignal(string? message) =>
             !string.IsNullOrEmpty(message) && message.StartsWith(SuspensionPrefix, StringComparison.Ordinal);
 
         /// <summary>
         ///     Extracts the signal name from a suspension message.
         /// </summary>
+        /// <param name="message">The suspension message</param>
+        /// <returns>The signal name, or null if not a valid suspension message</returns>
         public static string? ExtractSignalName(string? message)
         {
             if (string.IsNullOrEmpty(message) || !IsSuspensionSignal(message))
@@ -161,6 +195,8 @@ public static class WorkflowConstants
         /// <summary>
         ///     Creates a suspension message for a given signal name.
         /// </summary>
+        /// <param name="signalName">The signal name</param>
+        /// <returns>The formatted suspension message</returns>
         public static string CreateSuspensionMessage(string signalName)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(signalName);
@@ -169,38 +205,130 @@ public static class WorkflowConstants
     }
 
     /// <summary>
+    ///     Metadata keys used in workflow execution.
+    /// </summary>
+    public static class MetadataKeys
+    {
+        /// <summary>
+        ///     Metadata key for suspension flag.
+        /// </summary>
+        public const string Suspension = "IsSuspension";
+
+        /// <summary>
+        ///     Metadata key for signal name.
+        /// </summary>
+        public const string SignalName = "SignalName";
+
+        /// <summary>
+        ///     Metadata key for step execution time.
+        /// </summary>
+        public const string ExecutionTime = "ExecutionTime";
+
+        /// <summary>
+        ///     Metadata key for retry attempt count.
+        /// </summary>
+        public const string RetryAttempt = "RetryAttempt";
+
+        /// <summary>
+        ///     Metadata key for condition result.
+        /// </summary>
+        public const string ConditionResult = "ConditionResult";
+
+        /// <summary>
+        ///     Metadata key for branch taken.
+        /// </summary>
+        public const string BranchTaken = "BranchTaken";
+
+        /// <summary>
+        ///     Metadata key for delay duration.
+        /// </summary>
+        public const string DelayDuration = "DelayDuration";
+
+        /// <summary>
+        ///     Metadata key for parallel branch count.
+        /// </summary>
+        public const string ParallelBranchCount = "ParallelBranchCount";
+
+        /// <summary>
+        ///     Metadata key for sequence completion flag.
+        /// </summary>
+        public const string SequenceCompleted = "SequenceCompleted";
+
+        /// <summary>
+        ///     Metadata key for nodes executed count.
+        /// </summary>
+        public const string NodesExecuted = "NodesExecuted";
+
+        /// <summary>
+        ///     Metadata key for total nodes count.
+        /// </summary>
+        public const string TotalNodes = "TotalNodes";
+    }
+
+    /// <summary>
     ///     Monitoring and telemetry constants.
     /// </summary>
     public static class Monitoring
     {
+        /// <summary>
+        ///     Activity name prefix for distributed tracing.
+        /// </summary>
         public const string ActivityNamePrefix = "DropBear.Codex.Workflow";
+
+        /// <summary>
+        ///     Meter name for metrics.
+        /// </summary>
         public const string MeterName = "DropBear.Codex.Workflow";
-    }
 
-    /// <summary>
-    ///     Metadata keys for workflow execution context.
-    /// </summary>
-    public static class MetadataKeys
-    {
-        public const string WorkflowId = "WorkflowId";
-        public const string WorkflowInstanceId = "WorkflowInstanceId";
-        public const string StepName = "StepName";
-        public const string RetryAttempt = "RetryAttempt";
-        public const string Suspension = "__Suspension__";
-        public const string SignalName = "__SignalName__";
-    }
+        /// <summary>
+        ///     Instrumentation version.
+        /// </summary>
+        public const string InstrumentationVersion = "2025.1.0";
 
-    /// <summary>
-    ///     Validation error codes.
-    /// </summary>
-    public static class ErrorCodes
-    {
-        public const string InvalidConfiguration = "WORKFLOW_INVALID_CONFIG";
-        public const string ExecutionTimeout = "WORKFLOW_TIMEOUT";
-        public const string Cancelled = "WORKFLOW_CANCELLED";
-        public const string StepFailed = "WORKFLOW_STEP_FAILED";
-        public const string Suspended = "WORKFLOW_SUSPENDED";
-        public const string InvalidSignal = "WORKFLOW_INVALID_SIGNAL";
+        /// <summary>
+        ///     Tag name for workflow ID.
+        /// </summary>
+        public const string TagWorkflowId = "workflow.id";
+
+        /// <summary>
+        ///     Tag name for workflow instance ID.
+        /// </summary>
+        public const string TagWorkflowInstanceId = "workflow.instance_id";
+
+        /// <summary>
+        ///     Tag name for step name.
+        /// </summary>
+        public const string TagStepName = "workflow.step_name";
+
+        /// <summary>
+        ///     Tag name for workflow status.
+        /// </summary>
+        public const string TagWorkflowStatus = "workflow.status";
+
+        /// <summary>
+        ///     Tag name for correlation ID.
+        /// </summary>
+        public const string TagCorrelationId = "correlation.id";
+
+        /// <summary>
+        ///     Metric name for workflow execution duration.
+        /// </summary>
+        public const string MetricWorkflowDuration = "workflow.execution.duration";
+
+        /// <summary>
+        ///     Metric name for step execution duration.
+        /// </summary>
+        public const string MetricStepDuration = "workflow.step.duration";
+
+        /// <summary>
+        ///     Metric name for workflow failures.
+        /// </summary>
+        public const string MetricWorkflowFailures = "workflow.failures";
+
+        /// <summary>
+        ///     Metric name for step retries.
+        /// </summary>
+        public const string MetricStepRetries = "workflow.step.retries";
     }
 #pragma warning restore CA1034
 }

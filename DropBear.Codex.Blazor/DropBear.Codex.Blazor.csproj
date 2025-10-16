@@ -66,11 +66,11 @@
 
   <ItemGroup>
     <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.224">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.226">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.9" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
     <PackageReference Update="Nerdbank.GitVersioning">
       <Version>3.8.118</Version>
     </PackageReference>

@@ -1,49 +1,48 @@
 namespace DropBear.Codex.Workflow.Configuration;
 
 /// <summary>
-///     Configuration options for workflow execution.
+///     Options for controlling workflow execution behavior.
 /// </summary>
-public sealed record WorkflowExecutionOptions
+public sealed class WorkflowExecutionOptions
 {
     /// <summary>
-    ///     Maximum number of retry attempts for failed steps.
+    ///     Gets or sets the correlation ID for tracking related operations.
     /// </summary>
-    public int MaxRetryAttempts { get; init; } = 3;
+    public string? CorrelationId { get; set; }
 
     /// <summary>
-    ///     Base delay for exponential backoff retry strategy.
+    ///     Gets or sets a value indicating whether compensation should be executed on failure.
     /// </summary>
-    public TimeSpan RetryBaseDelay { get; init; } = TimeSpan.FromMilliseconds(100);
+    public bool EnableCompensation { get; set; }
 
     /// <summary>
-    ///     Maximum delay between retry attempts.
+    ///     Gets or sets the retry policy for workflow steps.
     /// </summary>
-    public TimeSpan MaxRetryDelay { get; init; } = TimeSpan.FromMinutes(1);
+    public RetryPolicy RetryPolicy { get; set; } = RetryPolicy.Default;
 
     /// <summary>
-    ///     Whether to collect detailed execution traces.
-    ///     Disable for performance in production scenarios.
+    ///     Gets or sets the maximum workflow execution timeout.
+    ///     If not set, uses the workflow definition's timeout.
     /// </summary>
-    public bool EnableExecutionTracing { get; init; } = true;
+    public TimeSpan? WorkflowTimeout { get; set; }
 
     /// <summary>
-    ///     Whether to collect memory usage metrics.
-    ///     May impact performance.
+    ///     Gets or sets a value indicating whether to collect detailed metrics.
     /// </summary>
-    public bool EnableMemoryMetrics { get; init; }
+    public bool EnableDetailedMetrics { get; set; } = true;
 
     /// <summary>
-    ///     Maximum degree of parallelism for parallel steps.
+    ///     Gets or sets a value indicating whether to enable distributed tracing.
     /// </summary>
-    public int MaxDegreeOfParallelism { get; init; } = Environment.ProcessorCount;
+    public bool EnableTracing { get; set; } = true;
 
     /// <summary>
-    ///     Custom execution context for advanced scenarios.
+    ///     Gets or sets additional metadata for the workflow execution.
     /// </summary>
-    public IReadOnlyDictionary<string, object>? CustomOptions { get; init; }
+    public IDictionary<string, object> Metadata { get; } = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    ///     Gets the default execution options.
+    ///     Gets or sets the maximum degree of parallelism for parallel nodes.
     /// </summary>
-    public static WorkflowExecutionOptions Default { get; } = new();
+    public int? MaxDegreeOfParallelism { get; set; }
 }

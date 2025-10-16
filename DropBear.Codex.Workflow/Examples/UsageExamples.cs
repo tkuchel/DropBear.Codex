@@ -1,15 +1,20 @@
+#region
+
+using DropBear.Codex.Workflow.Metrics;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Persistence.Examples;
 
 /// <summary>
-/// Usage examples for persistent workflows
+///     Usage examples for persistent workflows
 /// </summary>
 public static class PersistentWorkflowUsageExamples
 {
     /// <summary>
-    /// Example: Starting a document approval workflow
+    ///     Example: Starting a document approval workflow
     /// </summary>
     public static async Task<string> StartDocumentApprovalWorkflow(
         IPersistentWorkflowEngine workflowEngine,
@@ -26,11 +31,12 @@ public static class PersistentWorkflowUsageExamples
             ApproverIds = approverIds
         };
 
-        var result = await workflowEngine.StartPersistentWorkflowAsync(workflow, context);
-        
+        PersistentWorkflowResult<DocumentApprovalContext> result =
+            await workflowEngine.StartPersistentWorkflowAsync(workflow, context);
+
         Console.WriteLine($"Started workflow {result.WorkflowInstanceId}");
         Console.WriteLine($"Status: {result.Status}");
-        
+
         if (result.IsWaiting)
         {
             Console.WriteLine($"Waiting for: {result.WaitingForSignal}");
@@ -44,7 +50,7 @@ public static class PersistentWorkflowUsageExamples
     }
 
     /// <summary>
-    /// Example: Approving a document
+    ///     Example: Approving a document
     /// </summary>
     public static async Task<bool> ApproveDocument(
         IPersistentWorkflowEngine workflowEngine,
@@ -63,13 +69,13 @@ public static class PersistentWorkflowUsageExamples
         };
 
         // The signal name would need to match what the workflow is waiting for
-        var signalName = $"approval_RequestDocumentApprovalStep_{workflowInstanceId.GetHashCode()}";
-        
+        string signalName = $"approval_RequestDocumentApprovalStep_{workflowInstanceId.GetHashCode()}";
+
         return await workflowEngine.SignalWorkflowAsync(workflowInstanceId, signalName, approvalResponse);
     }
 
     /// <summary>
-    /// Example: Starting a user profile update workflow
+    ///     Example: Starting a user profile update workflow
     /// </summary>
     public static async Task<string> StartUserProfileUpdateWorkflow(
         IPersistentWorkflowEngine workflowEngine,
@@ -77,43 +83,41 @@ public static class PersistentWorkflowUsageExamples
         string requestedByUserId)
     {
         var workflow = new UserProfileUpdateWorkflow();
-        var context = new UserProfileUpdateContext
-        {
-            UserId = userId,
-            RequestedByUserId = requestedByUserId
-        };
+        var context = new UserProfileUpdateContext { UserId = userId, RequestedByUserId = requestedByUserId };
 
-        var result = await workflowEngine.StartPersistentWorkflowAsync(workflow, context);
-        
+        PersistentWorkflowResult<UserProfileUpdateContext> result =
+            await workflowEngine.StartPersistentWorkflowAsync(workflow, context);
+
         Console.WriteLine($"Started profile update workflow {result.WorkflowInstanceId}");
         Console.WriteLine($"Status: {result.Status}");
-        Console.WriteLine($"User can now modify their profile data");
+        Console.WriteLine("User can now modify their profile data");
 
         return result.WorkflowInstanceId;
     }
 
     /// <summary>
-    /// Example: User submits profile modifications
+    ///     Example: User submits profile modifications
     /// </summary>
     public static async Task<bool> SubmitProfileModifications(
         IPersistentWorkflowEngine workflowEngine,
         string workflowInstanceId,
         ProfileModificationData modifications)
     {
-        var signalName = $"user_modification_UserProfileModificationStep_{workflowInstanceId.GetHashCode()}";
-        
+        string signalName = $"user_modification_UserProfileModificationStep_{workflowInstanceId.GetHashCode()}";
+
         return await workflowEngine.SignalWorkflowAsync(workflowInstanceId, signalName, modifications);
     }
 
     /// <summary>
-    /// Example: Monitoring workflow progress
+    ///     Example: Monitoring workflow progress
     /// </summary>
     public static async Task MonitorWorkflowProgress<TContext>(
         IPersistentWorkflowEngine workflowEngine,
         string workflowInstanceId) where TContext : class
     {
-        var state = await workflowEngine.GetWorkflowStateAsync<TContext>(workflowInstanceId);
-        
+        WorkflowInstanceState<TContext>? state =
+            await workflowEngine.GetWorkflowStateAsync<TContext>(workflowInstanceId);
+
         if (state == null)
         {
             Console.WriteLine("Workflow not found");
@@ -124,27 +128,27 @@ public static class PersistentWorkflowUsageExamples
         Console.WriteLine($"  Status: {state.Status}");
         Console.WriteLine($"  Created: {state.CreatedAt}");
         Console.WriteLine($"  Last Updated: {state.LastUpdatedAt}");
-        
+
         if (!string.IsNullOrEmpty(state.WaitingForSignal))
         {
             Console.WriteLine($"  Waiting for: {state.WaitingForSignal}");
         }
-        
+
         if (state.SignalTimeoutAt.HasValue)
         {
             Console.WriteLine($"  Timeout: {state.SignalTimeoutAt}");
         }
 
         Console.WriteLine($"  Execution History: {state.ExecutionHistory.Count} steps");
-        foreach (var checkpoint in state.ExecutionHistory)
+        foreach (StepExecutionTrace checkpoint in state.ExecutionHistory)
         {
-            var status = checkpoint.IsSuccess ? "✅" : "❌";
-            Console.WriteLine($"    {status} {checkpoint.StepName} at {checkpoint.ExecutedAt}");
+            string status = checkpoint.Succeeded ? "✅" : "❌";
+            Console.WriteLine($"    {status} {checkpoint.StepName} at {checkpoint.EndTime}");
         }
     }
 
     /// <summary>
-    /// Example: Complete document approval flow
+    ///     Example: Complete document approval flow
     /// </summary>
     public static async Task RunCompleteDocumentApprovalExample(IPersistentWorkflowEngine workflowEngine)
     {
@@ -154,7 +158,7 @@ public static class PersistentWorkflowUsageExamples
         try
         {
             // Step 1: Start the workflow
-            var workflowId = await StartDocumentApprovalWorkflow(
+            string workflowId = await StartDocumentApprovalWorkflow(
                 workflowEngine,
                 "DOC-12345",
                 "john.author",
@@ -162,7 +166,7 @@ public static class PersistentWorkflowUsageExamples
             );
 
             Console.WriteLine($"\n📝 Document workflow started: {workflowId}");
-            
+
             // Step 2: Monitor initial state
             await MonitorWorkflowProgress<DocumentApprovalContext>(workflowEngine, workflowId);
 
@@ -171,7 +175,7 @@ public static class PersistentWorkflowUsageExamples
             await Task.Delay(2000);
 
             // Step 4: Approve the document
-            var approved = await ApproveDocument(
+            bool approved = await ApproveDocument(
                 workflowEngine,
                 workflowId,
                 "jane.manager",
@@ -187,7 +191,6 @@ public static class PersistentWorkflowUsageExamples
             // Step 6: Check final state
             Console.WriteLine("\n📊 Final workflow state:");
             await MonitorWorkflowProgress<DocumentApprovalContext>(workflowEngine, workflowId);
-
         }
         catch (Exception ex)
         {
@@ -196,7 +199,7 @@ public static class PersistentWorkflowUsageExamples
     }
 
     /// <summary>
-    /// Example: Complete user profile update flow
+    ///     Example: Complete user profile update flow
     /// </summary>
     public static async Task RunCompleteUserProfileUpdateExample(IPersistentWorkflowEngine workflowEngine)
     {
@@ -206,7 +209,7 @@ public static class PersistentWorkflowUsageExamples
         try
         {
             // Step 1: Start the workflow
-            var workflowId = await StartUserProfileUpdateWorkflow(
+            string workflowId = await StartUserProfileUpdateWorkflow(
                 workflowEngine,
                 "user123",
                 "user123"
@@ -227,7 +230,7 @@ public static class PersistentWorkflowUsageExamples
                 JobTitle = "Senior Developer"
             };
 
-            var modificationsSubmitted = await SubmitProfileModifications(
+            bool modificationsSubmitted = await SubmitProfileModifications(
                 workflowEngine,
                 workflowId,
                 modifications
@@ -253,8 +256,8 @@ public static class PersistentWorkflowUsageExamples
                 Comments = "Profile changes approved"
             };
 
-            var approvalSignalName = $"approval_ProfileChangeApprovalStep_{workflowId.GetHashCode()}";
-            var approvalSubmitted = await workflowEngine.SignalWorkflowAsync(
+            string approvalSignalName = $"approval_ProfileChangeApprovalStep_{workflowId.GetHashCode()}";
+            bool approvalSubmitted = await workflowEngine.SignalWorkflowAsync(
                 workflowId,
                 approvalSignalName,
                 approvalResponse
@@ -268,7 +271,6 @@ public static class PersistentWorkflowUsageExamples
             // Step 6: Check final state
             Console.WriteLine("\n📊 Final workflow state:");
             await MonitorWorkflowProgress<UserProfileUpdateContext>(workflowEngine, workflowId);
-
         }
         catch (Exception ex)
         {

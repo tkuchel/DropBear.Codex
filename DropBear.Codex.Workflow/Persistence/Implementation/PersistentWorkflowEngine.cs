@@ -1,5 +1,6 @@
 #region
 
+using System.Collections.Concurrent;
 using System.Reflection;
 using System.Text.Json;
 using DropBear.Codex.Workflow.Common;
@@ -9,30 +10,39 @@ using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
 using DropBear.Codex.Workflow.Results;
 using Microsoft.Extensions.DependencyInjection;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
 namespace DropBear.Codex.Workflow.Persistence.Implementation;
 
 /// <summary>
-///     Persistent workflow engine with improved type discovery and signal handling.
+///     Persistent workflow engine that supports long-running workflows with state persistence and signals.
 /// </summary>
-public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
+public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
 {
     private readonly IWorkflowEngine _baseEngine;
-    private readonly Lazy<HashSet<Type>> _knownWorkflowContextTypes;
-    private readonly ILogger _logger;
+    private readonly Lazy<ConcurrentDictionary<string, Type>> _knownWorkflowContextTypes;
+    private readonly ILogger<PersistentWorkflowEngine> _logger;
     private readonly IWorkflowNotificationService _notificationService;
     private readonly IServiceProvider _serviceProvider;
     private readonly IWorkflowStateRepository _stateRepository;
 
+    /// <summary>
+    ///     Initializes a new persistent workflow engine.
+    /// </summary>
+    /// <param name="baseEngine">Base workflow engine for execution</param>
+    /// <param name="stateRepository">Repository for workflow state persistence</param>
+    /// <param name="notificationService">Service for workflow notifications</param>
+    /// <param name="serviceProvider">Service provider for dependency resolution</param>
+    /// <param name="logger">Logger instance</param>
+    /// <exception cref="ArgumentNullException">Thrown when any required parameter is null</exception>
     public PersistentWorkflowEngine(
         IWorkflowEngine baseEngine,
         IWorkflowStateRepository stateRepository,
         IWorkflowNotificationService notificationService,
         IServiceProvider serviceProvider,
-        ILogger logger)
+        ILogger<PersistentWorkflowEngine> logger)
     {
         _baseEngine = baseEngine ?? throw new ArgumentNullException(nameof(baseEngine));
         _stateRepository = stateRepository ?? throw new ArgumentNullException(nameof(stateRepository));
@@ -40,28 +50,31 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
-        _knownWorkflowContextTypes = new Lazy<HashSet<Type>>(GetRegisteredWorkflowContextTypes);
+        _knownWorkflowContextTypes = new Lazy<ConcurrentDictionary<string, Type>>(DiscoverWorkflowContextTypes);
     }
 
     public async ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
-        CancellationToken cancellationToken = default) where TContext : class =>
-        await _baseEngine.ExecuteAsync(definition, context, cancellationToken);
+        CancellationToken cancellationToken) where TContext : class =>
+        await _baseEngine.ExecuteAsync(definition, context, cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
         WorkflowExecutionOptions options,
-        CancellationToken cancellationToken = default) where TContext : class =>
-        await _baseEngine.ExecuteAsync(definition, context, options, cancellationToken);
+        CancellationToken cancellationToken) where TContext : class =>
+        await _baseEngine.ExecuteAsync(definition, context, options, cancellationToken).ConfigureAwait(false);
 
     public async ValueTask<PersistentWorkflowResult<TContext>> StartPersistentWorkflowAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
-        CancellationToken cancellationToken = default) where TContext : class
+        CancellationToken cancellationToken) where TContext : class
     {
-        string workflowInstanceId = Guid.NewGuid().ToString();
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(context);
+
+        string workflowInstanceId = Guid.NewGuid().ToString("N");
 
         var workflowState = new WorkflowInstanceState<TContext>
         {
@@ -75,205 +88,140 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
             SerializedWorkflowDefinition = SerializeWorkflowDefinition(definition)
         };
 
-        await _stateRepository.SaveWorkflowStateAsync(workflowState, cancellationToken);
+        await _stateRepository.SaveWorkflowStateAsync(workflowState, cancellationToken).ConfigureAwait(false);
 
-        _logger.Information(
-            "Started persistent workflow {WorkflowId} with instance {InstanceId}",
-            definition.WorkflowId,
-            workflowInstanceId);
+        LogWorkflowStarted(definition.WorkflowId, workflowInstanceId);
 
-        return await ContinueWorkflowExecutionAsync(workflowState, definition, cancellationToken);
+        return await ContinueWorkflowExecutionAsync(workflowState, definition, cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask<PersistentWorkflowResult<TContext>> ResumeWorkflowAsync<TContext>(
         string workflowInstanceId,
-        CancellationToken cancellationToken = default) where TContext : class
+        CancellationToken cancellationToken) where TContext : class
     {
-        WorkflowInstanceState<TContext>? workflowState =
-            await _stateRepository.GetWorkflowStateAsync<TContext>(workflowInstanceId, cancellationToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
 
-        if (workflowState is null)
+        WorkflowInstanceState<TContext>? state =
+            await _stateRepository.GetWorkflowStateAsync<TContext>(workflowInstanceId, cancellationToken)
+                .ConfigureAwait(false);
+
+        if (state is null)
         {
-            _logger.Warning("Workflow instance {InstanceId} not found", workflowInstanceId);
+            LogWorkflowNotFound(workflowInstanceId);
             throw new InvalidOperationException($"Workflow instance {workflowInstanceId} not found");
         }
 
-        IWorkflowDefinition<TContext>? definition =
-            DeserializeWorkflowDefinition<TContext>(workflowState.SerializedWorkflowDefinition);
+        LogWorkflowResuming(workflowInstanceId);
+
+        IWorkflowDefinition<TContext>? definition = DeserializeWorkflowDefinition<TContext>(
+            state.SerializedWorkflowDefinition);
+
         if (definition is null)
         {
-            throw new InvalidOperationException($"Failed to deserialize workflow definition for {workflowInstanceId}");
+            LogWorkflowDefinitionDeserializationFailed(workflowInstanceId);
+            throw new InvalidOperationException(
+                $"Failed to deserialize workflow definition for instance {workflowInstanceId}");
         }
 
-        return await ContinueWorkflowExecutionAsync(workflowState, definition, cancellationToken);
+        return await ContinueWorkflowExecutionAsync(state, definition, cancellationToken).ConfigureAwait(false);
+    }
+
+    public async ValueTask<bool> CancelWorkflowAsync(
+        string workflowInstanceId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+
+        LogWorkflowCancelling(workflowInstanceId, reason);
+
+        (WorkflowStateInfo? stateInfo, Type? contextType) =
+            await FindWorkflowStateInfoAsync(workflowInstanceId, cancellationToken).ConfigureAwait(false);
+
+        if (stateInfo is null || contextType is null)
+        {
+            LogWorkflowNotFoundForCancellation(workflowInstanceId);
+            return false;
+        }
+
+        // Update state to Cancelled using reflection
+        bool updated = await UpdateWorkflowStatusToCancelledAsync(
+            workflowInstanceId,
+            reason,
+            contextType,
+            cancellationToken).ConfigureAwait(false);
+
+        return updated;
     }
 
     public async ValueTask<bool> SignalWorkflowAsync<TData>(
         string workflowInstanceId,
         string signalName,
-        TData? signalData = default,
-        CancellationToken cancellationToken = default)
+        TData? signalData,
+        CancellationToken cancellationToken)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
         ArgumentException.ThrowIfNullOrWhiteSpace(signalName);
 
+        LogWorkflowSignaling(workflowInstanceId, signalName);
+
         (WorkflowStateInfo? stateInfo, Type? contextType) =
-            await FindWorkflowStateInfoAsync(workflowInstanceId, cancellationToken);
+            await FindWorkflowStateInfoAsync(workflowInstanceId, cancellationToken).ConfigureAwait(false);
 
         if (stateInfo is null || contextType is null)
         {
-            _logger.Warning("Workflow instance {InstanceId} not found for signaling", workflowInstanceId);
+            LogWorkflowNotFoundForSignaling(workflowInstanceId);
             return false;
         }
 
-        if (stateInfo.WaitingForSignal != signalName)
+        if (!IsValidStateForSignaling(stateInfo, signalName, workflowInstanceId))
         {
-            _logger.Warning(
-                "Workflow {InstanceId} is waiting for signal '{ExpectedSignal}', but received '{ReceivedSignal}'",
-                workflowInstanceId,
-                stateInfo.WaitingForSignal,
-                signalName);
             return false;
         }
 
-        MethodInfo? resumeMethod = typeof(PersistentWorkflowEngine)
-            .GetMethod(nameof(ResumeWorkflowAsync), BindingFlags.Public | BindingFlags.Instance)
-            ?.MakeGenericMethod(contextType);
-
-        if (resumeMethod is null)
-        {
-            _logger.Error("Failed to get ResumeWorkflowAsync method for type {ContextType}", contextType.Name);
-            return false;
-        }
-
-        try
-        {
-            var resumeTask =
-                (ValueTask<object>)resumeMethod.Invoke(this, new object[] { workflowInstanceId, cancellationToken })!;
-            await resumeTask;
-
-            _logger.Information(
-                "Successfully signaled and resumed workflow {InstanceId} with signal {SignalName}",
-                workflowInstanceId,
-                signalName);
-
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to resume workflow {InstanceId} after signal {SignalName}", workflowInstanceId,
-                signalName);
-            return false;
-        }
+        return await ResumeWorkflowWithSignalAsync(workflowInstanceId, contextType, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async ValueTask<WorkflowInstanceState<TContext>?> GetWorkflowStateAsync<TContext>(
         string workflowInstanceId,
-        CancellationToken cancellationToken = default) where TContext : class =>
-        await _stateRepository.GetWorkflowStateAsync<TContext>(workflowInstanceId, cancellationToken);
-
-    public async ValueTask<bool> CancelWorkflowAsync(
-        string workflowInstanceId,
-        string reason,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken) where TContext : class
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
-
-        (WorkflowStateInfo? stateInfo, Type? contextType) =
-            await FindWorkflowStateInfoAsync(workflowInstanceId, cancellationToken);
-
-        if (stateInfo is null || contextType is null)
-        {
-            _logger.Warning("Workflow instance {InstanceId} not found for cancellation", workflowInstanceId);
-            return false;
-        }
-
-        MethodInfo? getStateMethod = _stateRepository.GetType()
-            .GetMethod(nameof(IWorkflowStateRepository.GetWorkflowStateAsync))
-            ?.MakeGenericMethod(contextType);
-
-        if (getStateMethod is null)
-        {
-            return false;
-        }
-
-        dynamic? stateTask =
-            getStateMethod.Invoke(_stateRepository, new object[] { workflowInstanceId, cancellationToken });
-        if (stateTask is null)
-        {
-            return false;
-        }
-
-        dynamic? workflowState = await stateTask;
-        if (workflowState is null)
-        {
-            return false;
-        }
-
-        workflowState.Status = WorkflowStatus.Cancelled;
-        workflowState.LastUpdatedAt = DateTimeOffset.UtcNow;
-        workflowState.Metadata["CancellationReason"] = reason;
-
-        MethodInfo? updateStateMethod = _stateRepository.GetType()
-            .GetMethod(nameof(IWorkflowStateRepository.UpdateWorkflowStateAsync))
-            ?.MakeGenericMethod(contextType);
-
-        if (updateStateMethod is not null)
-        {
-            await (dynamic)updateStateMethod.Invoke(_stateRepository, new object[] { workflowState, cancellationToken })
-                !;
-        }
-
-        _logger.Information("Cancelled workflow {InstanceId}: {Reason}", workflowInstanceId, reason);
-        return true;
+        return await _stateRepository.GetWorkflowStateAsync<TContext>(workflowInstanceId, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private async ValueTask<PersistentWorkflowResult<TContext>> ContinueWorkflowExecutionAsync<TContext>(
-        WorkflowInstanceState<TContext> workflowState,
+        WorkflowInstanceState<TContext> state,
         IWorkflowDefinition<TContext> definition,
         CancellationToken cancellationToken) where TContext : class
     {
-        try
-        {
-            WorkflowResult<TContext> result =
-                await _baseEngine.ExecuteAsync(definition, workflowState.Context, cancellationToken);
+        WorkflowResult<TContext> result =
+            await _baseEngine.ExecuteAsync(definition, state.Context, cancellationToken).ConfigureAwait(false);
 
-            if (result.IsSuspended)
-            {
-                return await HandleWorkflowSuspensionAsync(workflowState, result, cancellationToken);
-            }
-
-            if (result.IsSuccess)
-            {
-                return await HandleWorkflowCompletionAsync(workflowState, result, cancellationToken);
-            }
-
-            return await HandleWorkflowFailureAsync(workflowState, result, cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Unexpected error executing persistent workflow {InstanceId}",
-                workflowState.WorkflowInstanceId);
-            return await HandleWorkflowExceptionAsync(workflowState, ex, cancellationToken);
-        }
+        return result.IsSuspended
+            ? await HandleSuspendedWorkflowAsync(state, result, cancellationToken).ConfigureAwait(false)
+            : await HandleCompletedWorkflowAsync(state, result, cancellationToken).ConfigureAwait(false);
     }
 
-    private async ValueTask<PersistentWorkflowResult<TContext>> HandleWorkflowSuspensionAsync<TContext>(
-        WorkflowInstanceState<TContext> workflowState,
+    private async ValueTask<PersistentWorkflowResult<TContext>> HandleSuspendedWorkflowAsync<TContext>(
+        WorkflowInstanceState<TContext> state,
         WorkflowResult<TContext> result,
         CancellationToken cancellationToken) where TContext : class
     {
-        WorkflowInstanceState<TContext> updatedState = workflowState with
+        WorkflowInstanceState<TContext> updatedState = state with
         {
             Status = WorkflowStatus.WaitingForSignal,
-            Context = result.Context,
             WaitingForSignal = result.SuspendedSignalName,
             SignalTimeoutAt = DateTimeOffset.UtcNow.Add(WorkflowConstants.Defaults.DefaultSignalTimeout),
             LastUpdatedAt = DateTimeOffset.UtcNow
         };
 
-        await _stateRepository.UpdateWorkflowStateAsync(updatedState, cancellationToken);
+        await _stateRepository.UpdateWorkflowStateAsync(updatedState, cancellationToken).ConfigureAwait(false);
+
+        LogWorkflowSuspended(state.WorkflowInstanceId, result.SuspendedSignalName);
 
         return new PersistentWorkflowResult<TContext>
         {
@@ -285,144 +233,135 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         };
     }
 
-    private async ValueTask<PersistentWorkflowResult<TContext>> HandleWorkflowCompletionAsync<TContext>(
-        WorkflowInstanceState<TContext> workflowState,
+    private async ValueTask<PersistentWorkflowResult<TContext>> HandleCompletedWorkflowAsync<TContext>(
+        WorkflowInstanceState<TContext> state,
         WorkflowResult<TContext> result,
         CancellationToken cancellationToken) where TContext : class
     {
-        WorkflowInstanceState<TContext> updatedState = workflowState with
+        WorkflowStatus finalStatus = result.IsSuccess ? WorkflowStatus.Completed : WorkflowStatus.Failed;
+
+        WorkflowInstanceState<TContext> updatedState = state with
         {
-            Status = WorkflowStatus.Completed, Context = result.Context, LastUpdatedAt = DateTimeOffset.UtcNow
+            Status = finalStatus, CompletedAt = DateTimeOffset.UtcNow, LastUpdatedAt = DateTimeOffset.UtcNow
         };
 
-        await _stateRepository.UpdateWorkflowStateAsync(updatedState, cancellationToken);
-        await _notificationService.SendWorkflowCompletionNotificationAsync(updatedState, result, cancellationToken);
+        await _stateRepository.UpdateWorkflowStateAsync(updatedState, cancellationToken).ConfigureAwait(false);
+
+        if (result.IsSuccess)
+        {
+            await _notificationService.SendWorkflowCompletionNotificationAsync(
+                updatedState,
+                result,
+                cancellationToken).ConfigureAwait(false);
+        }
+        else
+        {
+            await _notificationService.SendWorkflowErrorNotificationAsync(
+                updatedState,
+                result.ErrorMessage ?? "Workflow execution failed",
+                result.SourceException,
+                cancellationToken).ConfigureAwait(false);
+        }
 
         return new PersistentWorkflowResult<TContext>
         {
             WorkflowInstanceId = updatedState.WorkflowInstanceId,
-            Status = WorkflowStatus.Completed,
+            Status = finalStatus,
             Context = updatedState.Context,
             CompletionResult = result
         };
     }
 
-    private async ValueTask<PersistentWorkflowResult<TContext>> HandleWorkflowFailureAsync<TContext>(
-        WorkflowInstanceState<TContext> workflowState,
-        WorkflowResult<TContext> result,
-        CancellationToken cancellationToken) where TContext : class
+    private static string SerializeWorkflowDefinition<TContext>(IWorkflowDefinition<TContext> definition)
+        where TContext : class
     {
-        var metadata = new Dictionary<string, object>(workflowState.Metadata)
+        var metadata = new
         {
-            ["FailureReason"] = result.ErrorMessage ?? "Unknown error"
+            definition.WorkflowId,
+            definition.DisplayName,
+            Version = definition.Version.ToString(),
+            definition.WorkflowTimeout,
+            ContextType = typeof(TContext).AssemblyQualifiedName
         };
 
-        WorkflowInstanceState<TContext> updatedState = workflowState with
-        {
-            Status = WorkflowStatus.Failed, LastUpdatedAt = DateTimeOffset.UtcNow, Metadata = metadata
-        };
-
-        await _stateRepository.UpdateWorkflowStateAsync(updatedState, cancellationToken);
-        await _notificationService.SendWorkflowErrorNotificationAsync(
-            updatedState,
-            result.ErrorMessage ?? "Unknown error",
-            result.SourceException,
-            cancellationToken);
-
-        return new PersistentWorkflowResult<TContext>
-        {
-            WorkflowInstanceId = updatedState.WorkflowInstanceId,
-            Status = WorkflowStatus.Failed,
-            Context = updatedState.Context,
-            ErrorMessage = result.ErrorMessage,
-            Exception = result.SourceException
-        };
+        return JsonSerializer.Serialize(metadata);
     }
 
-    private async ValueTask<PersistentWorkflowResult<TContext>> HandleWorkflowExceptionAsync<TContext>(
-        WorkflowInstanceState<TContext> workflowState,
-        Exception exception,
-        CancellationToken cancellationToken) where TContext : class
+    private IWorkflowDefinition<TContext>? DeserializeWorkflowDefinition<TContext>(string? serializedDefinition)
+        where TContext : class
     {
-        var metadata = new Dictionary<string, object>(workflowState.Metadata) { ["FailureReason"] = exception.Message };
-
-        WorkflowInstanceState<TContext> updatedState = workflowState with
+        if (string.IsNullOrWhiteSpace(serializedDefinition))
         {
-            Status = WorkflowStatus.Failed, LastUpdatedAt = DateTimeOffset.UtcNow, Metadata = metadata
-        };
-
-        await _stateRepository.UpdateWorkflowStateAsync(updatedState, cancellationToken);
-
-        return new PersistentWorkflowResult<TContext>
-        {
-            WorkflowInstanceId = updatedState.WorkflowInstanceId,
-            Status = WorkflowStatus.Failed,
-            Context = updatedState.Context,
-            ErrorMessage = exception.Message,
-            Exception = exception
-        };
-    }
-
-    private HashSet<Type> GetRegisteredWorkflowContextTypes()
-    {
-        var contextTypes = new HashSet<Type>();
+            return null;
+        }
 
         try
         {
-            IEnumerable<Assembly> assemblies = AppDomain.CurrentDomain.GetAssemblies()
-                .Where(a => !IsSystemAssembly(a));
+            // Attempt to resolve the workflow definition from the service provider
+            using IServiceScope scope = _serviceProvider.CreateScope();
+            return scope.ServiceProvider.GetService<IWorkflowDefinition<TContext>>();
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogWorkflowDefinitionResolutionFailed(ex);
+            return null;
+        }
+    }
+
+    private ConcurrentDictionary<string, Type> DiscoverWorkflowContextTypes()
+    {
+        var contextTypes = new ConcurrentDictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            LogDiscoveringWorkflowContextTypes();
+
+            Assembly[] assemblies =
+            [
+                .. AppDomain.CurrentDomain.GetAssemblies()
+                    .Where(a => !IsSystemAssembly(a))
+            ];
 
             foreach (Assembly assembly in assemblies)
             {
                 try
                 {
-                    IEnumerable<Type> types = assembly.GetTypes()
-                        .Where(t => t.IsClass && !t.IsAbstract && !t.IsGenericType);
+                    Type[] types =
+                    [
+                        .. assembly.GetTypes()
+                            .Where(IsWorkflowContextType)
+                    ];
 
                     foreach (Type type in types)
                     {
-                        if (IsWorkflowContextType(type))
-                        {
-                            contextTypes.Add(type);
-                            _logger.Debug("Discovered workflow context type: {TypeName}", type.FullName);
-                        }
+                        string key = type.FullName ?? type.Name;
+                        _ = contextTypes.TryAdd(key, type);
+                        LogDiscoveredContextType(key);
                     }
                 }
                 catch (ReflectionTypeLoadException ex)
                 {
-                    _logger.Debug(ex, "Failed to load types from assembly {AssemblyName}", assembly.FullName);
+                    LogFailedToLoadTypes(assembly.FullName ?? "Unknown", ex);
                 }
             }
 
-            _logger.Information("Discovered {Count} workflow context types", contextTypes.Count);
+            LogDiscoveredContextTypeCount(contextTypes.Count);
         }
-        catch (Exception ex)
+        catch (ReflectionTypeLoadException ex)
         {
-            _logger.Error(ex, "Error discovering workflow context types");
+            LogContextTypeDiscoveryError(ex);
         }
 
         return contextTypes;
     }
 
-    private static bool IsWorkflowContextType(Type type)
-    {
-        if (!type.IsClass || type.IsAbstract || type.IsGenericType)
-        {
-            return false;
-        }
-
-        if (type.Namespace?.StartsWith("System", StringComparison.Ordinal) == true)
-        {
-            return false;
-        }
-
-        if (type.Namespace?.StartsWith("Microsoft", StringComparison.Ordinal) == true)
-        {
-            return false;
-        }
-
-        return type.GetProperties().Length > 0;
-    }
+    private static bool IsWorkflowContextType(Type type) =>
+        type.IsClass
+        && !type.IsAbstract
+        && !type.IsGenericTypeDefinition
+        && type.Namespace?.StartsWith("System", StringComparison.Ordinal) != true
+        && type.Namespace?.StartsWith("Microsoft", StringComparison.Ordinal) != true
+        && type.GetProperties().Length > 0;
 
     private static bool IsSystemAssembly(Assembly assembly)
     {
@@ -437,128 +376,355 @@ public sealed class PersistentWorkflowEngine : IPersistentWorkflowEngine
         string workflowInstanceId,
         CancellationToken cancellationToken)
     {
-        HashSet<Type> contextTypes = _knownWorkflowContextTypes.Value;
+        ConcurrentDictionary<string, Type> contextTypes = _knownWorkflowContextTypes.Value;
 
-        _logger.Debug(
-            "Searching for workflow {WorkflowInstanceId} across {TypeCount} known context types",
-            workflowInstanceId,
-            contextTypes.Count);
+        LogSearchingForWorkflow(workflowInstanceId, contextTypes.Count);
 
-        foreach (Type contextType in contextTypes)
+        foreach (KeyValuePair<string, Type> kvp in contextTypes)
         {
             try
             {
-                WorkflowStateInfo? stateInfo =
-                    await GetWorkflowStateInfoAsync(workflowInstanceId, contextType, cancellationToken);
-                if (stateInfo != null)
+                WorkflowStateInfo? stateInfo = await TryGetWorkflowStateInfoAsync(
+                    workflowInstanceId,
+                    kvp.Value,
+                    cancellationToken).ConfigureAwait(false);
+
+                if (stateInfo is not null)
                 {
-                    _logger.Debug(
-                        "Found workflow {WorkflowInstanceId} with context type {ContextType}",
-                        workflowInstanceId,
-                        contextType.Name);
-                    return (stateInfo, contextType);
+                    return (stateInfo, kvp.Value);
                 }
             }
-            catch (Exception ex)
+            catch (TargetInvocationException ex)
             {
-                _logger.Debug(ex, "Failed to get workflow state for type {ContextType}", contextType.Name);
+                LogFailedToCheckType(kvp.Key, workflowInstanceId, ex.InnerException ?? ex);
             }
         }
 
-        _logger.Warning(
-            "Workflow {WorkflowInstanceId} not found in any of the {TypeCount} known context types",
-            workflowInstanceId,
-            contextTypes.Count);
         return (null, null);
     }
 
-    private async ValueTask<WorkflowStateInfo?> GetWorkflowStateInfoAsync(
+    private async ValueTask<WorkflowStateInfo?> TryGetWorkflowStateInfoAsync(
         string workflowInstanceId,
+        Type contextType,
+        CancellationToken cancellationToken)
+    {
+        MethodInfo? getStateMethod = typeof(IWorkflowStateRepository)
+            .GetMethod(nameof(IWorkflowStateRepository.GetWorkflowStateAsync));
+
+        if (getStateMethod is null)
+        {
+            return null;
+        }
+
+        MethodInfo genericMethod = getStateMethod.MakeGenericMethod(contextType);
+        var task = (Task?)genericMethod.Invoke(
+            _stateRepository,
+            [workflowInstanceId, cancellationToken]);
+
+        if (task is null)
+        {
+            return null;
+        }
+
+        await task.ConfigureAwait(false);
+        object? result = task.GetType().GetProperty("Result")?.GetValue(task);
+
+        if (result is null)
+        {
+            return null;
+        }
+
+        Type resultType = result.GetType();
+        string? status = resultType.GetProperty("Status")?.GetValue(result)?.ToString();
+        string? waitingForSignal = resultType.GetProperty("WaitingForSignal")?.GetValue(result) as string;
+
+        if (Enum.TryParse(status, out WorkflowStatus workflowStatus))
+        {
+            return new WorkflowStateInfo
+            {
+                WorkflowInstanceId = workflowInstanceId,
+                Status = workflowStatus,
+                WaitingForSignal = waitingForSignal
+            };
+        }
+
+        return null;
+    }
+
+    private bool IsValidStateForSignaling(WorkflowStateInfo stateInfo, string signalName, string workflowInstanceId)
+    {
+        if (stateInfo.Status != WorkflowStatus.WaitingForSignal &&
+            stateInfo.Status != WorkflowStatus.WaitingForApproval)
+        {
+            LogWorkflowNotWaitingForSignal(workflowInstanceId, stateInfo.Status);
+            return false;
+        }
+
+        if (!string.Equals(stateInfo.WaitingForSignal, signalName, StringComparison.OrdinalIgnoreCase))
+        {
+            LogSignalMismatch(workflowInstanceId, stateInfo.WaitingForSignal, signalName);
+            return false;
+        }
+
+        return true;
+    }
+
+    private async ValueTask<bool> ResumeWorkflowWithSignalAsync(
+        string workflowInstanceId,
+        Type contextType,
+        CancellationToken cancellationToken)
+    {
+        MethodInfo? resumeMethod = GetType()
+            .GetMethod(nameof(ResumeWorkflowAsync), BindingFlags.Public | BindingFlags.Instance);
+
+        if (resumeMethod is null)
+        {
+            LogResumeMethodNotFound();
+            return false;
+        }
+
+        MethodInfo genericResumeMethod = resumeMethod.MakeGenericMethod(contextType);
+        try
+        {
+            var resumeTask =
+                (Task?)genericResumeMethod.Invoke(this, [workflowInstanceId, cancellationToken]);
+
+            if (resumeTask is not null)
+            {
+                await resumeTask.ConfigureAwait(false);
+            }
+
+            return true;
+        }
+        catch (TargetInvocationException ex)
+        {
+            LogWorkflowResumeError(workflowInstanceId, ex.InnerException ?? ex);
+            return false;
+        }
+    }
+
+    private async ValueTask<bool> UpdateWorkflowStatusToCancelledAsync(
+        string workflowInstanceId,
+        string reason,
         Type contextType,
         CancellationToken cancellationToken)
     {
         try
         {
-            MethodInfo? method = _stateRepository.GetType()
+            MethodInfo? getStateMethod = typeof(IWorkflowStateRepository)
                 .GetMethod(nameof(IWorkflowStateRepository.GetWorkflowStateAsync))
                 ?.MakeGenericMethod(contextType);
 
-            if (method is null)
+            if (getStateMethod is null)
             {
-                return null;
+                return false;
             }
 
-            dynamic? task = method.Invoke(_stateRepository, new object[] { workflowInstanceId, cancellationToken });
-            if (task is null)
+            var stateTask = (Task?)getStateMethod.Invoke(_stateRepository, [workflowInstanceId, cancellationToken]);
+            if (stateTask is null)
             {
-                return null;
+                return false;
             }
 
-            dynamic? state = await task;
-            if (state is null)
+            await stateTask.ConfigureAwait(false);
+            object? workflowState = stateTask.GetType().GetProperty("Result")?.GetValue(stateTask);
+
+            if (workflowState is null)
             {
-                return null;
+                return false;
             }
 
-            return new WorkflowStateInfo
+            // Get the current metadata
+            Type stateType = workflowState.GetType();
+            var currentMetadata = stateType.GetProperty("Metadata")?.GetValue(workflowState)
+                as IDictionary<string, object>;
+
+            // Create updated metadata
+            Dictionary<string, object> updatedMetadata = currentMetadata != null
+                ? new Dictionary<string, object>(currentMetadata)
+                : new Dictionary<string, object>();
+
+            updatedMetadata["CancellationReason"] = reason;
+            updatedMetadata["CancelledAt"] = DateTimeOffset.UtcNow;
+
+            // Get properties
+            PropertyInfo? statusProperty = stateType.GetProperty("Status");
+            PropertyInfo? lastUpdatedAtProperty = stateType.GetProperty("LastUpdatedAt");
+            PropertyInfo? metadataProperty = stateType.GetProperty("Metadata");
+
+            if (statusProperty is null || lastUpdatedAtProperty is null || metadataProperty is null)
             {
-                WorkflowInstanceId = state.WorkflowInstanceId,
-                WorkflowId = state.WorkflowId,
-                Status = state.Status,
-                WaitingForSignal = state.WaitingForSignal,
-                SignalTimeoutAt = state.SignalTimeoutAt,
-                LastUpdatedAt = state.LastUpdatedAt
-            };
+                return false;
+            }
+
+            // Use reflection to get the 'with' method or create a new instance
+            // For records, we need to use the copy constructor
+            MethodInfo? cloneMethod = stateType.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance);
+
+            object? updatedState;
+            if (cloneMethod is not null)
+            {
+                // It's a record type, use the clone method
+                updatedState = cloneMethod.Invoke(workflowState, null);
+                if (updatedState is null)
+                {
+                    return false;
+                }
+
+                statusProperty.SetValue(updatedState, WorkflowStatus.Cancelled);
+                lastUpdatedAtProperty.SetValue(updatedState, DateTimeOffset.UtcNow);
+                metadataProperty.SetValue(updatedState, updatedMetadata);
+            }
+            else
+            {
+                // Not a record, modify properties directly
+                statusProperty.SetValue(workflowState, WorkflowStatus.Cancelled);
+                lastUpdatedAtProperty.SetValue(workflowState, DateTimeOffset.UtcNow);
+                metadataProperty.SetValue(workflowState, updatedMetadata);
+                updatedState = workflowState;
+            }
+
+            MethodInfo? updateStateMethod = typeof(IWorkflowStateRepository)
+                .GetMethod(nameof(IWorkflowStateRepository.UpdateWorkflowStateAsync))
+                ?.MakeGenericMethod(contextType);
+
+            if (updateStateMethod is not null)
+            {
+                await ((Task)updateStateMethod.Invoke(_stateRepository, [updatedState, cancellationToken])!)
+                    .ConfigureAwait(false);
+            }
+
+            LogWorkflowCancelled(workflowInstanceId, reason);
+            return true;
         }
-        catch
+        catch (TargetInvocationException ex)
         {
-            return null;
+            LogWorkflowCancellationError(workflowInstanceId, ex.InnerException ?? ex);
+            return false;
         }
     }
 
-    private static string SerializeWorkflowDefinition<TContext>(IWorkflowDefinition<TContext> definition)
-        where TContext : class
-    {
-        var metadata = new
-        {
-            definition.WorkflowId,
-            definition.DisplayName,
-            Version = definition.Version.ToString(),
-            definition.WorkflowTimeout
-        };
+    // Logger message source generators
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Started persistent workflow {WorkflowId} with instance {InstanceId}")]
+    partial void LogWorkflowStarted(string workflowId, string instanceId);
 
-        return JsonSerializer.Serialize(metadata);
-    }
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow instance {InstanceId} not found for resumption")]
+    partial void LogWorkflowNotFound(string instanceId);
 
-    private IWorkflowDefinition<TContext>? DeserializeWorkflowDefinition<TContext>(string? serialized)
-        where TContext : class
-    {
-        if (string.IsNullOrEmpty(serialized))
-        {
-            return null;
-        }
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Resuming workflow instance {InstanceId}")]
+    partial void LogWorkflowResuming(string instanceId);
 
-        try
-        {
-            using IServiceScope scope = _serviceProvider.CreateScope();
-            IWorkflowDefinition<TContext>? definition =
-                scope.ServiceProvider.GetService<IWorkflowDefinition<TContext>>();
-            return definition;
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to deserialize workflow definition");
-            return null;
-        }
-    }
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Failed to deserialize workflow definition for instance {InstanceId}")]
+    partial void LogWorkflowDefinitionDeserializationFailed(string instanceId);
 
-    private sealed class WorkflowStateInfo
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Cancelling workflow {InstanceId} with reason: {Reason}")]
+    partial void LogWorkflowCancelling(string instanceId, string reason);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow instance {InstanceId} not found for cancellation")]
+    partial void LogWorkflowNotFoundForCancellation(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Signaling workflow {InstanceId} with signal {SignalName}")]
+    partial void LogWorkflowSignaling(string instanceId, string signalName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow instance {InstanceId} not found for signaling")]
+    partial void LogWorkflowNotFoundForSignaling(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Workflow {InstanceId} suspended - waiting for signal: {SignalName}")]
+    partial void LogWorkflowSuspended(string instanceId, string? signalName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow instance {InstanceId} is not waiting for a signal (current status: {Status})")]
+    partial void LogWorkflowNotWaitingForSignal(string instanceId, WorkflowStatus status);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message =
+            "Workflow instance {InstanceId} is waiting for signal {ExpectedSignal}, but received {ReceivedSignal}")]
+    partial void LogSignalMismatch(string instanceId, string? expectedSignal, string receivedSignal);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Error resuming workflow {InstanceId} after signal")]
+    partial void LogWorkflowResumeError(string instanceId, Exception ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Cancelled workflow {InstanceId}: {Reason}")]
+    partial void LogWorkflowCancelled(string instanceId, string reason);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Error cancelling workflow {InstanceId}")]
+    partial void LogWorkflowCancellationError(string instanceId, Exception ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Failed to resolve workflow definition from service provider")]
+    partial void LogWorkflowDefinitionResolutionFailed(InvalidOperationException ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Discovering workflow context types from loaded assemblies")]
+    partial void LogDiscoveringWorkflowContextTypes();
+
+    [LoggerMessage(
+        Level = LogLevel.Trace,
+        Message = "Discovered workflow context type: {TypeName}")]
+    partial void LogDiscoveredContextType(string typeName);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Failed to load types from assembly {AssemblyName}")]
+    partial void LogFailedToLoadTypes(string assemblyName, ReflectionTypeLoadException ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Discovered {Count} workflow context types")]
+    partial void LogDiscoveredContextTypeCount(int count);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Error discovering workflow context types")]
+    partial void LogContextTypeDiscoveryError(ReflectionTypeLoadException ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Searching for workflow {WorkflowInstanceId} across {TypeCount} known context types")]
+    partial void LogSearchingForWorkflow(string workflowInstanceId, int typeCount);
+
+    [LoggerMessage(
+        Level = LogLevel.Trace,
+        Message = "Failed to check type {TypeName} for workflow {InstanceId}")]
+    partial void LogFailedToCheckType(string typeName, string instanceId, Exception ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Failed to find ResumeWorkflowAsync method via reflection")]
+    partial void LogResumeMethodNotFound();
+
+    private sealed record WorkflowStateInfo
     {
         public required string WorkflowInstanceId { get; init; }
-        public required string WorkflowId { get; init; }
         public required WorkflowStatus Status { get; init; }
         public string? WaitingForSignal { get; init; }
-        public DateTimeOffset? SignalTimeoutAt { get; init; }
-        public required DateTimeOffset LastUpdatedAt { get; init; }
     }
 }

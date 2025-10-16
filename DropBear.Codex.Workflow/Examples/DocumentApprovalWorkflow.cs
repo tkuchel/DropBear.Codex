@@ -1,13 +1,17 @@
-using DropBear.Codex.Workflow.Core;
-using DropBear.Codex.Workflow.Results;
+#region
+
 using DropBear.Codex.Workflow.Builder;
-using DropBear.Codex.Workflow.Persistence.Steps;
+using DropBear.Codex.Workflow.Core;
 using DropBear.Codex.Workflow.Persistence.Models;
+using DropBear.Codex.Workflow.Persistence.Steps;
+using DropBear.Codex.Workflow.Results;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Persistence.Examples;
 
 /// <summary>
-/// Context for document approval workflow
+///     Context for document approval workflow
 /// </summary>
 public class DocumentApprovalContext
 {
@@ -32,7 +36,7 @@ public enum DocumentStatus
 }
 
 /// <summary>
-/// Step that requests document approval
+///     Step that requests document approval
 /// </summary>
 public class RequestDocumentApprovalStep : WaitForApprovalStep<DocumentApprovalContext>
 {
@@ -57,24 +61,26 @@ public class RequestDocumentApprovalStep : WaitForApprovalStep<DocumentApprovalC
         };
     }
 
-    protected override ValueTask OnApprovalReceivedAsync(DocumentApprovalContext context, ApprovalResponse approvalResponse, CancellationToken cancellationToken)
+    protected override ValueTask OnApprovalReceivedAsync(DocumentApprovalContext context,
+        ApprovalResponse approvalResponse, CancellationToken cancellationToken)
     {
         context.IsApproved = approvalResponse.IsApproved;
         context.ApprovedByUserId = approvalResponse.ApprovedBy;
         context.ApprovedAt = approvalResponse.ApprovedAt;
         context.ApprovalComments = approvalResponse.Comments;
         context.Status = approvalResponse.IsApproved ? DocumentStatus.Approved : DocumentStatus.Rejected;
-        
+
         return ValueTask.CompletedTask;
     }
 }
 
 /// <summary>
-/// Step that publishes the approved document
+///     Step that publishes the approved document
 /// </summary>
 public class PublishDocumentStep : WorkflowStepBase<DocumentApprovalContext>
 {
-    public override async ValueTask<StepResult> ExecuteAsync(DocumentApprovalContext context, CancellationToken cancellationToken = default)
+    public override async ValueTask<StepResult> ExecuteAsync(DocumentApprovalContext context,
+        CancellationToken cancellationToken = default)
     {
         if (!context.IsApproved)
         {
@@ -83,13 +89,12 @@ public class PublishDocumentStep : WorkflowStepBase<DocumentApprovalContext>
 
         // Simulate document publishing
         await Task.Delay(500, cancellationToken);
-        
+
         context.Status = DocumentStatus.Published;
-        
+
         var metadata = new Dictionary<string, object>
         {
-            ["PublishedAt"] = DateTimeOffset.UtcNow,
-            ["PublishedBy"] = "System"
+            ["PublishedAt"] = DateTimeOffset.UtcNow, ["PublishedBy"] = "System"
         };
 
         return Success(metadata);
@@ -97,7 +102,7 @@ public class PublishDocumentStep : WorkflowStepBase<DocumentApprovalContext>
 }
 
 /// <summary>
-/// Document approval workflow definition
+///     Document approval workflow definition
 /// </summary>
 public class DocumentApprovalWorkflow : Workflow<DocumentApprovalContext>
 {
@@ -110,7 +115,7 @@ public class DocumentApprovalWorkflow : Workflow<DocumentApprovalContext>
         builder
             .StartWith<RequestDocumentApprovalStep>()
             .If(ctx => ctx.IsApproved)
-                .ThenExecute<PublishDocumentStep>()
+            .ThenExecute<PublishDocumentStep>()
             .EndIf();
     }
 }

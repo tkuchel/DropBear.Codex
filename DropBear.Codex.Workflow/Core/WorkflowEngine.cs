@@ -6,22 +6,28 @@ using DropBear.Codex.Workflow.Configuration;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Metrics;
 using DropBear.Codex.Workflow.Results;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
 namespace DropBear.Codex.Workflow.Core;
 
 /// <summary>
-///     Main workflow execution engine that processes workflow definitions and manages step execution.
+///     Core workflow execution engine with support for metrics, tracing, and error handling.
 /// </summary>
-public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
+public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 {
-    private readonly ILogger _logger;
+    private readonly ILogger<WorkflowEngine> _logger;
     private readonly IServiceProvider _serviceProvider;
     private bool _disposed;
 
-    public WorkflowEngine(IServiceProvider serviceProvider, ILogger logger)
+    /// <summary>
+    ///     Initializes a new instance of the workflow engine.
+    /// </summary>
+    /// <param name="serviceProvider">Service provider for dependency resolution</param>
+    /// <param name="logger">Logger instance</param>
+    /// <exception cref="ArgumentNullException">Thrown when serviceProvider or logger is null</exception>
+    public WorkflowEngine(IServiceProvider serviceProvider, ILogger<WorkflowEngine> logger)
     {
         _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
@@ -34,18 +40,23 @@ public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
             return;
         }
 
-        _logger.Debug("Disposing WorkflowEngine");
-        await Task.CompletedTask.ConfigureAwait(false);
-
+        LogWorkflowEngineDisposing();
         _disposed = true;
-        GC.SuppressFinalize(this);
+
+        await ValueTask.CompletedTask.ConfigureAwait(false);
     }
 
-    public ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
+    public async ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
-        CancellationToken cancellationToken = default) where TContext : class =>
-        ExecuteAsync(definition, context, WorkflowExecutionOptions.Default, cancellationToken);
+        CancellationToken cancellationToken = default) where TContext : class
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        var defaultOptions = new WorkflowExecutionOptions();
+        return await ExecuteInternalAsync(definition, context, defaultOptions, cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     public async ValueTask<WorkflowResult<TContext>> ExecuteAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
@@ -54,158 +65,245 @@ public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         CancellationToken cancellationToken = default) where TContext : class
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        return await ExecuteInternalAsync(definition, context, options, cancellationToken).ConfigureAwait(false);
+    }
+
+    private async ValueTask<WorkflowResult<TContext>> ExecuteInternalAsync<TContext>(
+        IWorkflowDefinition<TContext> definition,
+        TContext context,
+        WorkflowExecutionOptions options,
+        CancellationToken cancellationToken) where TContext : class
+    {
         ArgumentNullException.ThrowIfNull(definition);
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(options);
 
-        string correlationId = Guid.NewGuid().ToString();
+        string correlationId = options.CorrelationId ?? Guid.NewGuid().ToString("N");
+        using Activity? activity = options.EnableTracing
+            ? CreateActivity(definition.WorkflowId, correlationId)
+            : null;
+
+        LogWorkflowStarting(definition.WorkflowId, definition.DisplayName, correlationId);
+
         var stopwatch = Stopwatch.StartNew();
         var executionTrace = new List<StepExecutionTrace>();
-
-        using Activity? activity = CreateActivity(definition.WorkflowId, correlationId);
-
-        _logger.Information(
-            "Starting workflow {WorkflowId} (Correlation: {CorrelationId})",
-            definition.WorkflowId,
-            correlationId);
 
         try
         {
             IWorkflowNode<TContext> rootNode = definition.BuildWorkflow();
-            NodeExecutionResult nodeResult = await ExecuteNodeAsync(
-                rootNode,
-                context,
-                options,
-                executionTrace,
-                cancellationToken).ConfigureAwait(false);
+            TimeSpan? effectiveTimeout = options.WorkflowTimeout ?? definition.WorkflowTimeout;
+
+            NodeExecutionResult result = effectiveTimeout.HasValue
+                ? await ExecuteWithTimeoutAsync(rootNode, context, options, executionTrace, effectiveTimeout.Value,
+                    cancellationToken).ConfigureAwait(false)
+                : await ExecuteNodeInternalAsync(rootNode, context, options, executionTrace, cancellationToken)
+                    .ConfigureAwait(false);
 
             stopwatch.Stop();
 
-            if (!nodeResult.IsSuccess || nodeResult.IsSuspension)
+            return result switch
             {
-                WorkflowMetrics metrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
-
-                if (nodeResult is { IsSuspension: true, SuspensionInfo: not null })
-                {
-                    SuspensionInfo suspensionInfo = nodeResult.SuspensionInfo.Value;
-                    _logger.Information(
-                        "Workflow {WorkflowId} suspended, waiting for signal: {SignalName} (Correlation: {CorrelationId})",
-                        definition.WorkflowId,
-                        suspensionInfo.SignalName,
-                        correlationId);
-
-                    return WorkflowResult<TContext>.Suspended(
-                        context,
-                        suspensionInfo.SignalName,
-                        suspensionInfo.Metadata,
-                        metrics,
-                        executionTrace,
-                        correlationId);
-                }
-
-                // Run compensation if workflow failed
-                if (!nodeResult.IsSuccess)
-                {
-                    await RunCompensationAsync(executionTrace, context, cancellationToken).ConfigureAwait(false);
-                }
-
-                _logger.Warning(
-                    "Workflow {WorkflowId} failed: {ErrorMessage} (Correlation: {CorrelationId})",
-                    definition.WorkflowId,
-                    nodeResult.ErrorMessage,
-                    correlationId);
-
-                activity?.SetTag("workflow.status", "failed");
-
-                return nodeResult.Exception != null
-                    ? WorkflowResult<TContext>.Failure(context, nodeResult.Exception, metrics, executionTrace,
-                        correlationId)
-                    : WorkflowResult<TContext>.Failure(context, nodeResult.ErrorMessage ?? "Workflow execution failed",
-                        metrics, executionTrace, correlationId);
-            }
-
-            _logger.Information(
-                "Workflow {WorkflowId} completed successfully in {Duration}ms (Correlation: {CorrelationId})",
-                definition.WorkflowId,
-                stopwatch.ElapsedMilliseconds,
-                correlationId);
-
-            activity?.SetTag("workflow.status", "completed");
-            activity?.SetTag("workflow.duration_ms", stopwatch.ElapsedMilliseconds);
-
-            WorkflowMetrics finalMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
-            return WorkflowResult<TContext>.Success(context, finalMetrics, executionTrace, correlationId);
+                { IsSuspension: true, SuspendedInfo: not null } =>
+                    HandleSuspension(result, context, executionTrace, stopwatch.Elapsed, correlationId, activity,
+                        definition.WorkflowId),
+                { IsSuccess: false } =>
+                    await HandleFailureAsync(result, context, executionTrace, stopwatch.Elapsed, correlationId,
+                        activity, options, definition.WorkflowId, cancellationToken).ConfigureAwait(false),
+                _ =>
+                    HandleSuccess(context, executionTrace, stopwatch.Elapsed, correlationId, activity,
+                        definition.WorkflowId)
+            };
         }
-        catch (OperationCanceledException ex)
+        catch (OperationCanceledException)
         {
-            stopwatch.Stop();
-            _logger.Warning(
-                ex,
-                "Workflow {WorkflowId} was cancelled (Correlation: {CorrelationId})",
-                definition.WorkflowId,
-                correlationId);
-
-            activity?.SetTag("workflow.status", "cancelled");
-
-            WorkflowMetrics metrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
-            return WorkflowResult<TContext>.Failure(context, ex, metrics, executionTrace, correlationId);
+            return HandleCancellation(context, executionTrace, stopwatch, correlationId, activity,
+                definition.WorkflowId);
         }
-        catch (Exception ex)
+        catch (InvalidOperationException ex)
         {
-            stopwatch.Stop();
-            _logger.Error(
-                ex,
-                "Workflow {WorkflowId} encountered an unexpected error (Correlation: {CorrelationId})",
-                definition.WorkflowId,
-                correlationId);
-
-            activity?.SetTag("workflow.status", "error");
-            activity?.SetTag("workflow.error", ex.Message);
-
-            WorkflowMetrics metrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
-            return WorkflowResult<TContext>.Failure(context, ex, metrics, executionTrace, correlationId);
+            return HandleInvalidOperation(context, executionTrace, stopwatch, correlationId, activity,
+                definition.WorkflowId, ex);
+        }
+        catch (TimeoutException ex)
+        {
+            return HandleTimeout(context, executionTrace, stopwatch, correlationId, activity, definition.WorkflowId,
+                ex);
         }
     }
 
-    private async ValueTask<NodeExecutionResult> ExecuteNodeAsync<TContext>(
+    private WorkflowResult<TContext> HandleSuspension<TContext>(
+        NodeExecutionResult result,
+        TContext context,
+        List<StepExecutionTrace> executionTrace,
+        TimeSpan duration,
+        string correlationId,
+        Activity? activity,
+        string workflowId) where TContext : class
+    {
+        string signalName = result.SuspendedInfo!.SignalName;
+
+        LogWorkflowSuspended(workflowId, signalName, correlationId);
+
+        activity?.SetTag("workflow.status", "suspended");
+        activity?.SetTag("workflow.signal", signalName);
+
+        WorkflowMetrics metrics = BuildMetrics(executionTrace, duration);
+        return WorkflowResult<TContext>.Suspended(
+            context,
+            signalName,
+            result.SuspendedInfo.Metadata,
+            metrics,
+            executionTrace,
+            correlationId);
+    }
+
+    private async ValueTask<WorkflowResult<TContext>> HandleFailureAsync<TContext>(
+        NodeExecutionResult result,
+        TContext context,
+        List<StepExecutionTrace> executionTrace,
+        TimeSpan duration,
+        string correlationId,
+        Activity? activity,
+        WorkflowExecutionOptions options,
+        string workflowId,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        LogWorkflowFailed(workflowId, result.ErrorMessage ?? "Unknown error");
+
+        if (options.EnableCompensation && executionTrace.Count > 0)
+        {
+            await RunCompensationAsync(executionTrace, cancellationToken).ConfigureAwait(false);
+        }
+
+        activity?.SetTag("workflow.status", "failed");
+        activity?.SetTag("workflow.error", result.ErrorMessage);
+
+        WorkflowMetrics failureMetrics = BuildMetrics(executionTrace, duration);
+        return result.Exception != null
+            ? WorkflowResult<TContext>.Failure(context, result.Exception, failureMetrics, executionTrace,
+                correlationId)
+            : WorkflowResult<TContext>.Failure(context, result.ErrorMessage ?? "Unknown error",
+                failureMetrics, executionTrace, correlationId);
+    }
+
+    private WorkflowResult<TContext> HandleSuccess<TContext>(
+        TContext context,
+        List<StepExecutionTrace> executionTrace,
+        TimeSpan duration,
+        string correlationId,
+        Activity? activity,
+        string workflowId) where TContext : class
+    {
+        LogWorkflowCompleted(workflowId, duration.TotalMilliseconds);
+
+        activity?.SetTag("workflow.status", "completed");
+
+        WorkflowMetrics successMetrics = BuildMetrics(executionTrace, duration);
+        return WorkflowResult<TContext>.Success(context, successMetrics, executionTrace, correlationId);
+    }
+
+    private WorkflowResult<TContext> HandleCancellation<TContext>(
+        TContext context,
+        List<StepExecutionTrace> executionTrace,
+        Stopwatch stopwatch,
+        string correlationId,
+        Activity? activity,
+        string workflowId) where TContext : class
+    {
+        LogWorkflowCancelled(workflowId);
+        stopwatch.Stop();
+
+        activity?.SetTag("workflow.status", "cancelled");
+
+        WorkflowMetrics cancelMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+        return WorkflowResult<TContext>.Failure(context, "Workflow execution was cancelled", cancelMetrics,
+            executionTrace, correlationId);
+    }
+
+    private WorkflowResult<TContext> HandleInvalidOperation<TContext>(
+        TContext context,
+        List<StepExecutionTrace> executionTrace,
+        Stopwatch stopwatch,
+        string correlationId,
+        Activity? activity,
+        string workflowId,
+        InvalidOperationException ex) where TContext : class
+    {
+        LogWorkflowInvalidOperation(workflowId, ex);
+        stopwatch.Stop();
+
+        activity?.SetTag("workflow.status", "error");
+        activity?.SetTag("workflow.error", ex.Message);
+
+        WorkflowMetrics errorMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+        return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace, correlationId);
+    }
+
+    private WorkflowResult<TContext> HandleTimeout<TContext>(
+        TContext context,
+        List<StepExecutionTrace> executionTrace,
+        Stopwatch stopwatch,
+        string correlationId,
+        Activity? activity,
+        string workflowId,
+        TimeoutException ex) where TContext : class
+    {
+        LogWorkflowTimeout(workflowId, ex);
+        stopwatch.Stop();
+
+        activity?.SetTag("workflow.status", "timeout");
+        activity?.SetTag("workflow.error", ex.Message);
+
+        WorkflowMetrics errorMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+        return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace, correlationId);
+    }
+
+    private async ValueTask<NodeExecutionResult> ExecuteWithTimeoutAsync<TContext>(
+        IWorkflowNode<TContext> node,
+        TContext context,
+        WorkflowExecutionOptions options,
+        List<StepExecutionTrace> executionTrace,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+
+        try
+        {
+            return await ExecuteNodeInternalAsync(node, context, options, executionTrace, timeoutCts.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            LogWorkflowTimeoutExceeded(timeout);
+            return new NodeExecutionResult
+            {
+                IsSuccess = false, ErrorMessage = $"Workflow exceeded timeout of {timeout.TotalSeconds} seconds"
+            };
+        }
+    }
+
+    private async ValueTask<NodeExecutionResult> ExecuteNodeInternalAsync<TContext>(
         IWorkflowNode<TContext> node,
         TContext context,
         WorkflowExecutionOptions options,
         List<StepExecutionTrace> executionTrace,
         CancellationToken cancellationToken) where TContext : class
     {
-        NodeExecutionResult<TContext>
-            nodeResult = await node.ExecuteAsync(context, _serviceProvider, cancellationToken).ConfigureAwait(false);
+        NodeExecutionResult<TContext> nodeResult =
+            await node.ExecuteAsync(context, _serviceProvider, cancellationToken).ConfigureAwait(false);
 
-        // Add step execution to trace
         if (nodeResult.StepTrace is not null)
         {
-            executionTrace.Add(nodeResult.StepTrace);
-
-            if (executionTrace.Count > WorkflowConstants.Limits.MaxExecutionTraceEntries)
-            {
-                _logger.Warning(
-                    "Execution trace exceeded maximum entries ({MaxEntries}), removing oldest entries",
-                    WorkflowConstants.Limits.MaxExecutionTraceEntries);
-
-                executionTrace.RemoveRange(0, executionTrace.Count - WorkflowConstants.Limits.MaxExecutionTraceEntries);
-            }
+            AddStepTrace(executionTrace, nodeResult.StepTrace);
         }
 
         // Check for suspension
         if (!nodeResult.StepResult.IsSuccess &&
             WorkflowConstants.Signals.IsSuspensionSignal(nodeResult.StepResult.Error?.Message))
         {
-            string? signalName = WorkflowConstants.Signals.ExtractSignalName(nodeResult.StepResult.Error?.Message);
-            return new NodeExecutionResult
-            {
-                IsSuccess = false,
-                IsSuspension = true,
-                SuspensionInfo = new SuspensionInfo
-                {
-                    SignalName = signalName!, Metadata = nodeResult.StepResult.Metadata
-                }
-            };
+            return CreateSuspensionResult(nodeResult);
         }
 
         // Handle failure
@@ -222,27 +320,67 @@ public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         // Process next nodes recursively
         if (nodeResult.NextNodes.Count > 0)
         {
-            foreach (IWorkflowNode<TContext> nextNode in nodeResult.NextNodes)
-            {
-                NodeExecutionResult result =
-                    await ExecuteNodeAsync(nextNode, context, options, executionTrace, cancellationToken).ConfigureAwait(false);
+            return await ExecuteNextNodesAsync(nodeResult.NextNodes, context, options, executionTrace,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
 
-                if (!result.IsSuccess || result.IsSuspension)
-                {
-                    return result;
-                }
+        return new NodeExecutionResult { IsSuccess = true };
+    }
+
+    private void AddStepTrace(List<StepExecutionTrace> executionTrace, StepExecutionTrace stepTrace)
+    {
+        executionTrace.Add(stepTrace);
+
+        if (executionTrace.Count > WorkflowConstants.Limits.MaxExecutionTraceEntries)
+        {
+            LogExecutionTraceExceeded(WorkflowConstants.Limits.MaxExecutionTraceEntries);
+            executionTrace.RemoveRange(0, executionTrace.Count - WorkflowConstants.Limits.MaxExecutionTraceEntries);
+        }
+    }
+
+    private static NodeExecutionResult CreateSuspensionResult<TContext>(NodeExecutionResult<TContext> nodeResult)
+        where TContext : class
+    {
+        string? signalName = WorkflowConstants.Signals.ExtractSignalName(nodeResult.StepResult.Error?.Message);
+        return new NodeExecutionResult
+        {
+            IsSuccess = false,
+            IsSuspension = true,
+            SuspendedInfo = new WorkflowSuspensionInfo
+            {
+                SignalName = signalName!, Metadata = nodeResult.StepResult.Metadata
+            }
+        };
+    }
+
+    private async ValueTask<NodeExecutionResult> ExecuteNextNodesAsync<TContext>(
+        IReadOnlyList<IWorkflowNode<TContext>> nextNodes,
+        TContext context,
+        WorkflowExecutionOptions options,
+        List<StepExecutionTrace> executionTrace,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        foreach (IWorkflowNode<TContext> nextNode in nextNodes)
+        {
+            NodeExecutionResult result =
+                await ExecuteNodeInternalAsync(nextNode, context, options, executionTrace, cancellationToken)
+                    .ConfigureAwait(false);
+
+            if (!result.IsSuccess || result.IsSuspension)
+            {
+                return result;
             }
         }
 
         return new NodeExecutionResult { IsSuccess = true };
     }
 
-    private async ValueTask RunCompensationAsync<TContext>(
+    private async ValueTask RunCompensationAsync(
         List<StepExecutionTrace> executionTrace,
-        TContext context,
-        CancellationToken cancellationToken) where TContext : class
+        CancellationToken cancellationToken)
     {
-        _logger.Information("Running compensation for {Count} executed steps", executionTrace.Count);
+        LogCompensationStarting(executionTrace.Count);
 
         // Execute compensation in reverse order
         for (int i = executionTrace.Count - 1; i >= 0; i--)
@@ -255,15 +393,23 @@ public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
             try
             {
-                _logger.Debug("Compensating step {StepName}", trace.StepName);
-                // Compensation logic would be executed here via step.CompensateAsync
-                // This requires access to the original step instance, which we'd need to track
+                cancellationToken.ThrowIfCancellationRequested();
+                LogCompensatingStep(trace.StepName);
+                // Note: Full compensation logic requires tracking step instances
+                // This would need to be implemented based on specific requirements
             }
-            catch (Exception ex)
+            catch (OperationCanceledException)
             {
-                _logger.Error(ex, "Compensation failed for step {StepName}", trace.StepName);
+                LogCompensationCancelled(trace.StepName);
+                throw;
+            }
+            catch (InvalidOperationException ex)
+            {
+                LogCompensationFailed(trace.StepName, ex);
             }
         }
+
+        await ValueTask.CompletedTask.ConfigureAwait(false);
     }
 
     private static WorkflowMetrics BuildMetrics(List<StepExecutionTrace> executionTrace, TimeSpan totalDuration)
@@ -286,26 +432,98 @@ public sealed class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         };
     }
 
-    private static Activity? CreateActivity(string workflowId, string correlationId)
+    private static Activity CreateActivity(string workflowId, string correlationId)
     {
-        var activity = new Activity($"{WorkflowConstants.Monitoring.ActivityNamePrefix}.WorkflowExecution");
+        using var activity = new Activity($"{WorkflowConstants.Monitoring.ActivityNamePrefix}.WorkflowExecution");
         activity.SetTag("workflow.id", workflowId);
         activity.SetTag("correlation.id", correlationId);
         return activity.Start();
     }
 
-    private record struct NodeExecutionResult
+    // Logger message source generators
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Disposing WorkflowEngine")]
+    partial void LogWorkflowEngineDisposing();
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Starting workflow execution: {WorkflowId} ({DisplayName}) with correlation ID {CorrelationId}")]
+    partial void LogWorkflowStarting(string workflowId, string displayName, string correlationId);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message =
+            "Workflow {WorkflowId} suspended - waiting for signal: {SignalName} (Correlation ID: {CorrelationId})")]
+    partial void LogWorkflowSuspended(string workflowId, string signalName, string correlationId);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow {WorkflowId} failed: {ErrorMessage}")]
+    partial void LogWorkflowFailed(string workflowId, string errorMessage);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Workflow {WorkflowId} completed successfully in {Duration}ms")]
+    partial void LogWorkflowCompleted(string workflowId, double duration);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Workflow {WorkflowId} was cancelled")]
+    partial void LogWorkflowCancelled(string workflowId);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Workflow {WorkflowId} failed with invalid operation")]
+    partial void LogWorkflowInvalidOperation(string workflowId, InvalidOperationException ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Workflow {WorkflowId} failed with timeout")]
+    partial void LogWorkflowTimeout(string workflowId, TimeoutException ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Workflow exceeded timeout of {Timeout}")]
+    partial void LogWorkflowTimeoutExceeded(TimeSpan timeout);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Execution trace exceeded maximum entries ({MaxEntries}), removing oldest entries")]
+    partial void LogExecutionTraceExceeded(int maxEntries);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Running compensation for {Count} executed steps")]
+    partial void LogCompensationStarting(int count);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Compensating step {StepName}")]
+    partial void LogCompensatingStep(string stepName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Compensation cancelled for step {StepName}")]
+    partial void LogCompensationCancelled(string stepName);
+
+    [LoggerMessage(
+        Level = LogLevel.Error,
+        Message = "Compensation failed for step {StepName}")]
+    partial void LogCompensationFailed(string stepName, InvalidOperationException ex);
+
+    private readonly record struct NodeExecutionResult
     {
         public bool IsSuccess { get; init; }
         public string? ErrorMessage { get; init; }
         public Exception? Exception { get; init; }
         public bool IsSuspension { get; init; }
-        public SuspensionInfo? SuspensionInfo { get; init; }
+        public WorkflowSuspensionInfo? SuspendedInfo { get; init; }
     }
 
-    private record struct SuspensionInfo
+    private sealed record WorkflowSuspensionInfo
     {
-        public string SignalName { get; init; }
+        public required string SignalName { get; init; }
         public IReadOnlyDictionary<string, object>? Metadata { get; init; }
     }
 }

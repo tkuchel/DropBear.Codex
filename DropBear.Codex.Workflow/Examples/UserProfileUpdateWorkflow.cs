@@ -1,13 +1,17 @@
-using DropBear.Codex.Workflow.Core;
-using DropBear.Codex.Workflow.Results;
+#region
+
+using System.Net.Mail;
 using DropBear.Codex.Workflow.Builder;
-using DropBear.Codex.Workflow.Persistence.Steps;
+using DropBear.Codex.Workflow.Core;
 using DropBear.Codex.Workflow.Persistence.Models;
+using DropBear.Codex.Workflow.Persistence.Steps;
+
+#endregion
 
 namespace DropBear.Codex.Workflow.Persistence.Examples;
 
 /// <summary>
-/// Context for user profile update workflow
+///     Context for user profile update workflow
 /// </summary>
 public class UserProfileUpdateContext
 {
@@ -22,7 +26,7 @@ public class UserProfileUpdateContext
 }
 
 /// <summary>
-/// Data model for profile modifications
+///     Data model for profile modifications
 /// </summary>
 public class ProfileModificationData
 {
@@ -35,7 +39,7 @@ public class ProfileModificationData
 }
 
 /// <summary>
-/// Step that allows user to modify their profile data
+///     Step that allows user to modify their profile data
 /// </summary>
 public class UserProfileModificationStep : UserModificationStep<UserProfileUpdateContext, ProfileModificationData>
 {
@@ -47,14 +51,15 @@ public class UserProfileModificationStep : UserModificationStep<UserProfileUpdat
     }
 
     public override async ValueTask<ProfileModificationData> PrepareModificationDataAsync(
-        UserProfileUpdateContext context, 
+        UserProfileUpdateContext context,
         CancellationToken cancellationToken = default)
     {
         // Load current profile data
-        var currentProfile = await _userRepository.GetUserProfileAsync(context.UserId, cancellationToken);
-        
+        Dictionary<string, object>? currentProfile =
+            await _userRepository.GetUserProfileAsync(context.UserId, cancellationToken);
+
         context.CurrentProfile = currentProfile ?? new Dictionary<string, object>();
-        
+
         // Return current data for modification
         return new ProfileModificationData
         {
@@ -67,8 +72,8 @@ public class UserProfileModificationStep : UserModificationStep<UserProfileUpdat
     }
 
     protected override async ValueTask<ValidationResult> ValidateModificationsAsync(
-        UserProfileUpdateContext context, 
-        ProfileModificationData modificationData, 
+        UserProfileUpdateContext context,
+        ProfileModificationData modificationData,
         CancellationToken cancellationToken = default)
     {
         var errors = new List<string>();
@@ -93,54 +98,66 @@ public class UserProfileModificationStep : UserModificationStep<UserProfileUpdat
         // Check for duplicate email
         if (!string.IsNullOrEmpty(modificationData.Email))
         {
-            var existingUser = await _userRepository.FindUserByEmailAsync(modificationData.Email, cancellationToken);
+            Dictionary<string, object>? existingUser =
+                await _userRepository.FindUserByEmailAsync(modificationData.Email, cancellationToken);
             if (existingUser != null && existingUser.GetValueOrDefault("UserId")?.ToString() != context.UserId)
             {
                 errors.Add("Email address is already in use");
             }
         }
 
-        return errors.Any() 
+        return errors.Any()
             ? ValidationResult.Failure("Validation failed", errors)
             : ValidationResult.Success();
     }
 
     protected override async ValueTask StorePendingChangesAsync(
-        UserProfileUpdateContext context, 
-        ProfileModificationData modificationData, 
+        UserProfileUpdateContext context,
+        ProfileModificationData modificationData,
         CancellationToken cancellationToken = default)
     {
         // Convert modification data to dictionary format
         var pendingChanges = new Dictionary<string, object>();
 
         if (!string.IsNullOrEmpty(modificationData.FirstName))
+        {
             pendingChanges["FirstName"] = modificationData.FirstName;
-        
+        }
+
         if (!string.IsNullOrEmpty(modificationData.LastName))
+        {
             pendingChanges["LastName"] = modificationData.LastName;
-        
+        }
+
         if (!string.IsNullOrEmpty(modificationData.Email))
+        {
             pendingChanges["Email"] = modificationData.Email;
-        
+        }
+
         if (!string.IsNullOrEmpty(modificationData.Department))
+        {
             pendingChanges["Department"] = modificationData.Department;
-        
+        }
+
         if (!string.IsNullOrEmpty(modificationData.JobTitle))
+        {
             pendingChanges["JobTitle"] = modificationData.JobTitle;
+        }
 
         // Store in context and repository
         context.PendingChanges = pendingChanges;
         context.ProposedChanges = pendingChanges;
         context.ModificationRequestId = Guid.NewGuid().ToString();
 
-        await _userRepository.StorePendingChangesAsync(context.UserId, context.ModificationRequestId, pendingChanges, cancellationToken);
+        await _userRepository.StorePendingChangesAsync(context.UserId, context.ModificationRequestId, pendingChanges,
+            cancellationToken);
     }
 
     private static bool IsValidEmail(string email)
     {
         try
         {
-            var addr = new System.Net.Mail.MailAddress(email);
+            var addr = new MailAddress(email);
             return addr.Address == email;
         }
         catch
@@ -151,19 +168,19 @@ public class UserProfileModificationStep : UserModificationStep<UserProfileUpdat
 }
 
 /// <summary>
-/// Step that requests approval for profile changes
+///     Step that requests approval for profile changes
 /// </summary>
 public class ProfileChangeApprovalStep : WaitForApprovalStep<UserProfileUpdateContext>
 {
     public override ApprovalRequest CreateApprovalRequest(UserProfileUpdateContext context)
     {
-        var changesSummary = string.Join(", ", context.ProposedChanges.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
-        
+        string changesSummary = string.Join(", ", context.ProposedChanges.Select(kvp => $"{kvp.Key}: {kvp.Value}"));
+
         return new ApprovalRequest
         {
             RequestId = Guid.NewGuid().ToString(),
             WorkflowInstanceId = "", // Will be set by engine
-            Title = $"Profile Change Approval Required",
+            Title = "Profile Change Approval Required",
             Description = $"User {context.UserId} has requested the following profile changes: {changesSummary}",
             RequestedBy = context.RequestedByUserId,
             RequestedAt = DateTimeOffset.UtcNow,
@@ -178,7 +195,8 @@ public class ProfileChangeApprovalStep : WaitForApprovalStep<UserProfileUpdateCo
         };
     }
 
-    protected override ValueTask OnApprovalReceivedAsync(UserProfileUpdateContext context, ApprovalResponse approvalResponse, CancellationToken cancellationToken)
+    protected override ValueTask OnApprovalReceivedAsync(UserProfileUpdateContext context,
+        ApprovalResponse approvalResponse, CancellationToken cancellationToken)
     {
         context.ChangesApproved = approvalResponse.IsApproved;
         return ValueTask.CompletedTask;
@@ -186,7 +204,7 @@ public class ProfileChangeApprovalStep : WaitForApprovalStep<UserProfileUpdateCo
 }
 
 /// <summary>
-/// Step that commits the approved profile changes
+///     Step that commits the approved profile changes
 /// </summary>
 public class CommitProfileChangesStep : CommitChangesStep<UserProfileUpdateContext>
 {
@@ -198,18 +216,21 @@ public class CommitProfileChangesStep : CommitChangesStep<UserProfileUpdateConte
     }
 
     protected override async ValueTask<Dictionary<string, object>?> GetPendingChangesAsync(
-        UserProfileUpdateContext context, 
+        UserProfileUpdateContext context,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrEmpty(context.ModificationRequestId))
+        {
             return null;
+        }
 
-        return await _userRepository.GetPendingChangesAsync(context.UserId, context.ModificationRequestId, cancellationToken);
+        return await _userRepository.GetPendingChangesAsync(context.UserId, context.ModificationRequestId,
+            cancellationToken);
     }
 
     protected override async ValueTask CommitPendingChangesAsync(
-        UserProfileUpdateContext context, 
-        Dictionary<string, object> pendingChanges, 
+        UserProfileUpdateContext context,
+        Dictionary<string, object> pendingChanges,
         CancellationToken cancellationToken = default)
     {
         await _userRepository.UpdateUserProfileAsync(context.UserId, pendingChanges, cancellationToken);
@@ -217,17 +238,18 @@ public class CommitProfileChangesStep : CommitChangesStep<UserProfileUpdateConte
     }
 
     protected override async ValueTask ClearPendingChangesAsync(
-        UserProfileUpdateContext context, 
+        UserProfileUpdateContext context,
         CancellationToken cancellationToken = default)
     {
         if (!string.IsNullOrEmpty(context.ModificationRequestId))
         {
-            await _userRepository.ClearPendingChangesAsync(context.UserId, context.ModificationRequestId, cancellationToken);
+            await _userRepository.ClearPendingChangesAsync(context.UserId, context.ModificationRequestId,
+                cancellationToken);
         }
     }
 
     protected override async ValueTask RollbackCommittedChangesAsync(
-        UserProfileUpdateContext context, 
+        UserProfileUpdateContext context,
         CancellationToken cancellationToken = default)
     {
         // Restore original profile data
@@ -236,7 +258,7 @@ public class CommitProfileChangesStep : CommitChangesStep<UserProfileUpdateConte
 }
 
 /// <summary>
-/// Complete user profile update workflow
+///     Complete user profile update workflow
 /// </summary>
 public class UserProfileUpdateWorkflow : Workflow<UserProfileUpdateContext>
 {
@@ -250,20 +272,30 @@ public class UserProfileUpdateWorkflow : Workflow<UserProfileUpdateContext>
             .StartWith<UserProfileModificationStep>()
             .Then<ProfileChangeApprovalStep>()
             .If(ctx => ctx.ChangesApproved)
-                .ThenExecute<CommitProfileChangesStep>()
+            .ThenExecute<CommitProfileChangesStep>()
             .EndIf();
     }
 }
 
 /// <summary>
-/// Repository interface for user profile operations
+///     Repository interface for user profile operations
 /// </summary>
 public interface IUserProfileRepository
 {
-    ValueTask<Dictionary<string, object>?> GetUserProfileAsync(string userId, CancellationToken cancellationToken = default);
-    ValueTask<Dictionary<string, object>?> FindUserByEmailAsync(string email, CancellationToken cancellationToken = default);
-    ValueTask StorePendingChangesAsync(string userId, string requestId, Dictionary<string, object> changes, CancellationToken cancellationToken = default);
-    ValueTask<Dictionary<string, object>?> GetPendingChangesAsync(string userId, string requestId, CancellationToken cancellationToken = default);
-    ValueTask UpdateUserProfileAsync(string userId, Dictionary<string, object> changes, CancellationToken cancellationToken = default);
+    ValueTask<Dictionary<string, object>?> GetUserProfileAsync(string userId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<Dictionary<string, object>?> FindUserByEmailAsync(string email,
+        CancellationToken cancellationToken = default);
+
+    ValueTask StorePendingChangesAsync(string userId, string requestId, Dictionary<string, object> changes,
+        CancellationToken cancellationToken = default);
+
+    ValueTask<Dictionary<string, object>?> GetPendingChangesAsync(string userId, string requestId,
+        CancellationToken cancellationToken = default);
+
+    ValueTask UpdateUserProfileAsync(string userId, Dictionary<string, object> changes,
+        CancellationToken cancellationToken = default);
+
     ValueTask ClearPendingChangesAsync(string userId, string requestId, CancellationToken cancellationToken = default);
 }
