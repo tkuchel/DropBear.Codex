@@ -76,6 +76,11 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
 
         string workflowInstanceId = Guid.NewGuid().ToString("N");
 
+        // Capture context type information
+        Type contextType = typeof(TContext);
+        string contextTypeName = contextType.FullName ?? contextType.Name;
+        string contextAssemblyQualifiedName = contextType.AssemblyQualifiedName ?? contextTypeName;
+
         var workflowState = new WorkflowInstanceState<TContext>
         {
             WorkflowInstanceId = workflowInstanceId,
@@ -85,7 +90,11 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
             Status = WorkflowStatus.Running,
             CreatedAt = DateTimeOffset.UtcNow,
             LastUpdatedAt = DateTimeOffset.UtcNow,
-            SerializedWorkflowDefinition = SerializeWorkflowDefinition(definition)
+            SerializedWorkflowDefinition = SerializeWorkflowDefinition(definition),
+
+            // NEW: Store type information for fast deserialization
+            ContextTypeName = contextTypeName,
+            ContextAssemblyQualifiedName = contextAssemblyQualifiedName
         };
 
         await _stateRepository.SaveWorkflowStateAsync(workflowState, cancellationToken).ConfigureAwait(false);
@@ -125,6 +134,7 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
 
         return await ContinueWorkflowExecutionAsync(state, definition, cancellationToken).ConfigureAwait(false);
     }
+
 
     public async ValueTask<bool> CancelWorkflowAsync(
         string workflowInstanceId,
@@ -191,6 +201,70 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
         return await _stateRepository.GetWorkflowStateAsync<TContext>(workflowInstanceId, cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    ///     Gets the context type from a workflow instance using stored type metadata.
+    ///     OPTIMIZED: No longer iterates through all types.
+    /// </summary>
+    private async ValueTask<Type?> GetWorkflowContextTypeAsync(
+        string workflowInstanceId,
+        CancellationToken cancellationToken)
+    {
+        // Get type info directly from repository
+        (string? assemblyQualifiedName, string? typeName) = await _stateRepository
+            .GetWorkflowContextTypeInfoAsync(workflowInstanceId, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (string.IsNullOrEmpty(assemblyQualifiedName) && string.IsNullOrEmpty(typeName))
+        {
+            LogCouldNotFindTypeInfo(workflowInstanceId);
+            return null;
+        }
+
+        // Try assembly qualified name first (most reliable)
+        if (!string.IsNullOrEmpty(assemblyQualifiedName))
+        {
+            var type = Type.GetType(assemblyQualifiedName);
+            if (type is not null)
+            {
+                LogResolvedContextTypeFromMetadata(workflowInstanceId, type.FullName ?? type.Name);
+                return type;
+            }
+        }
+
+        // Fallback: try to find by type name in known types
+        if (!string.IsNullOrEmpty(typeName))
+        {
+            ConcurrentDictionary<string, Type> contextTypes = _knownWorkflowContextTypes.Value;
+            if (contextTypes.TryGetValue(typeName, out Type? knownType))
+            {
+                LogResolvedContextTypeFromKnownTypes(workflowInstanceId, typeName);
+                return knownType;
+            }
+        }
+
+        LogCouldNotResolveContextType(workflowInstanceId);
+        return null;
+    }
+
+    /// <summary>
+    ///     Helper method that wraps ResumeWorkflowAsync in a Task-returning method for reflection compatibility.
+    /// </summary>
+    private async Task<bool> ResumeWorkflowGenericAsync<TContext>(
+        string workflowInstanceId,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        try
+        {
+            await ResumeWorkflowAsync<TContext>(workflowInstanceId, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            LogWorkflowResumeError(workflowInstanceId, ex);
+            return false;
+        }
     }
 
     private async ValueTask<PersistentWorkflowResult<TContext>> ContinueWorkflowExecutionAsync<TContext>(
@@ -355,13 +429,51 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         return contextTypes;
     }
 
-    private static bool IsWorkflowContextType(Type type) =>
-        type.IsClass
-        && !type.IsAbstract
-        && !type.IsGenericTypeDefinition
-        && type.Namespace?.StartsWith("System", StringComparison.Ordinal) != true
-        && type.Namespace?.StartsWith("Microsoft", StringComparison.Ordinal) != true
-        && type.GetProperties().Length > 0;
+    private static bool IsWorkflowContextType(Type type)
+    {
+        // More restrictive filtering to avoid internal types
+        if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
+        {
+            return false;
+        }
+
+        // Exclude compiler-generated types
+        if (type.Name.Contains("<") || type.Name.Contains(">"))
+        {
+            return false;
+        }
+
+        // Exclude WinRT types
+        if (type.FullName?.StartsWith("WinRT.", StringComparison.Ordinal) == true)
+        {
+            return false;
+        }
+
+        // Exclude internal runtime types
+        if (type.FullName?.Contains("+<") == true || type.FullName?.Contains(">d__") == true)
+        {
+            return false;
+        }
+
+        string? ns = type.Namespace;
+        if (ns is null)
+        {
+            return false;
+        }
+
+        // Only include types from non-system namespaces
+        if (ns.StartsWith("System", StringComparison.Ordinal) ||
+            ns.StartsWith("Microsoft", StringComparison.Ordinal) ||
+            ns.StartsWith("Windows", StringComparison.Ordinal) ||
+            ns.StartsWith("WinRT", StringComparison.Ordinal) ||
+            ns.StartsWith("Internal", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Must have at least one public property
+        return type.GetProperties(BindingFlags.Public | BindingFlags.Instance).Length > 0;
+    }
 
     private static bool IsSystemAssembly(Assembly assembly)
     {
@@ -372,35 +484,30 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
                assemblyName.StartsWith("netstandard", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    ///     Finds workflow state information using stored type metadata instead of iterating all types.
+    /// </summary>
     private async ValueTask<(WorkflowStateInfo?, Type?)> FindWorkflowStateInfoAsync(
         string workflowInstanceId,
         CancellationToken cancellationToken)
     {
-        ConcurrentDictionary<string, Type> contextTypes = _knownWorkflowContextTypes.Value;
+        // NEW APPROACH: Get the context type directly
+        Type? contextType = await GetWorkflowContextTypeAsync(workflowInstanceId, cancellationToken)
+            .ConfigureAwait(false);
 
-        LogSearchingForWorkflow(workflowInstanceId, contextTypes.Count);
-
-        foreach (KeyValuePair<string, Type> kvp in contextTypes)
+        if (contextType is null)
         {
-            try
-            {
-                WorkflowStateInfo? stateInfo = await TryGetWorkflowStateInfoAsync(
-                    workflowInstanceId,
-                    kvp.Value,
-                    cancellationToken).ConfigureAwait(false);
-
-                if (stateInfo is not null)
-                {
-                    return (stateInfo, kvp.Value);
-                }
-            }
-            catch (TargetInvocationException ex)
-            {
-                LogFailedToCheckType(kvp.Key, workflowInstanceId, ex.InnerException ?? ex);
-            }
+            LogWorkflowStateNotFound(workflowInstanceId);
+            return (null, null);
         }
 
-        return (null, null);
+        // Now get the state with the correct type
+        WorkflowStateInfo? stateInfo = await TryGetWorkflowStateInfoAsync(
+            workflowInstanceId,
+            contextType,
+            cancellationToken).ConfigureAwait(false);
+
+        return (stateInfo, stateInfo is not null ? contextType : null);
     }
 
     private async ValueTask<WorkflowStateInfo?> TryGetWorkflowStateInfoAsync(
@@ -408,47 +515,92 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         Type contextType,
         CancellationToken cancellationToken)
     {
-        MethodInfo? getStateMethod = typeof(IWorkflowStateRepository)
-            .GetMethod(nameof(IWorkflowStateRepository.GetWorkflowStateAsync));
-
-        if (getStateMethod is null)
+        try
         {
-            return null;
-        }
+            MethodInfo? getStateMethod = typeof(IWorkflowStateRepository)
+                .GetMethod(nameof(IWorkflowStateRepository.GetWorkflowStateAsync));
 
-        MethodInfo genericMethod = getStateMethod.MakeGenericMethod(contextType);
-        var task = (Task?)genericMethod.Invoke(
-            _stateRepository,
-            [workflowInstanceId, cancellationToken]);
+            if (getStateMethod is null)
+            {
+                return null;
+            }
 
-        if (task is null)
-        {
-            return null;
-        }
+            MethodInfo genericMethod = getStateMethod.MakeGenericMethod(contextType);
 
-        await task.ConfigureAwait(false);
-        object? result = task.GetType().GetProperty("Result")?.GetValue(task);
+            // Invoke the method - it returns ValueTask<WorkflowInstanceState<TContext>?>
+            object? result = genericMethod.Invoke(
+                _stateRepository,
+                new object[] { workflowInstanceId, cancellationToken });
 
-        if (result is null)
-        {
-            return null;
-        }
+            if (result is null)
+            {
+                return null;
+            }
 
-        Type resultType = result.GetType();
-        string? status = resultType.GetProperty("Status")?.GetValue(result)?.ToString();
-        string? waitingForSignal = resultType.GetProperty("WaitingForSignal")?.GetValue(result) as string;
+            // Handle ValueTask<T> properly
+            Type resultType = result.GetType();
+            if (!resultType.IsGenericType || resultType.GetGenericTypeDefinition() != typeof(ValueTask<>))
+            {
+                return null;
+            }
 
-        if (Enum.TryParse(status, out WorkflowStatus workflowStatus))
-        {
+            // Get the AsTask() method from ValueTask<T>
+            MethodInfo? asTaskMethod = resultType.GetMethod("AsTask", BindingFlags.Public | BindingFlags.Instance);
+            if (asTaskMethod is null)
+            {
+                return null;
+            }
+
+            // Convert ValueTask<T> to Task<T>
+            var task = (Task?)asTaskMethod.Invoke(result, null);
+            if (task is null)
+            {
+                return null;
+            }
+
+            await task.ConfigureAwait(false);
+
+            // Get the Result property from Task<T>
+            PropertyInfo? resultProperty = task.GetType().GetProperty("Result");
+            object? state = resultProperty?.GetValue(task);
+
+            if (state is null)
+            {
+                return null;
+            }
+
+            // Extract status and signal information using reflection
+            PropertyInfo? statusProperty = state.GetType().GetProperty("Status");
+            PropertyInfo? signalProperty = state.GetType().GetProperty("WaitingForSignal");
+
+            if (statusProperty is null)
+            {
+                return null;
+            }
+
+            object? statusValue = statusProperty.GetValue(state);
+            string? signalName = signalProperty?.GetValue(state) as string;
+
+            if (statusValue is not WorkflowStatus status)
+            {
+                return null;
+            }
+
             return new WorkflowStateInfo
             {
-                WorkflowInstanceId = workflowInstanceId,
-                Status = workflowStatus,
-                WaitingForSignal = waitingForSignal
+                WorkflowInstanceId = workflowInstanceId, Status = status, WaitingForSignal = signalName
             };
         }
-
-        return null;
+        catch (TargetInvocationException)
+        {
+            // Type mismatch - not the right context type
+            return null;
+        }
+        catch (Exception ex)
+        {
+            LogFailedToCheckType(contextType.FullName ?? contextType.Name, workflowInstanceId, ex);
+            return null;
+        }
     }
 
     private bool IsValidStateForSignaling(WorkflowStateInfo stateInfo, string signalName, string workflowInstanceId)
@@ -475,7 +627,7 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         CancellationToken cancellationToken)
     {
         MethodInfo? resumeMethod = GetType()
-            .GetMethod(nameof(ResumeWorkflowAsync), BindingFlags.Public | BindingFlags.Instance);
+            .GetMethod(nameof(ResumeWorkflowGenericAsync), BindingFlags.NonPublic | BindingFlags.Instance);
 
         if (resumeMethod is null)
         {
@@ -486,15 +638,15 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         MethodInfo genericResumeMethod = resumeMethod.MakeGenericMethod(contextType);
         try
         {
-            var resumeTask =
-                (Task?)genericResumeMethod.Invoke(this, [workflowInstanceId, cancellationToken]);
+            // ResumeWorkflowGenericAsync returns Task<bool>, which we can safely cast
+            var resumeTask = (Task<bool>?)genericResumeMethod.Invoke(this, [workflowInstanceId, cancellationToken]);
 
             if (resumeTask is not null)
             {
-                await resumeTask.ConfigureAwait(false);
+                return await resumeTask.ConfigureAwait(false);
             }
 
-            return true;
+            return false;
         }
         catch (TargetInvocationException ex)
         {
@@ -720,6 +872,31 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         Level = LogLevel.Error,
         Message = "Failed to find ResumeWorkflowAsync method via reflection")]
     partial void LogResumeMethodNotFound();
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Resolved context type for workflow {InstanceId} from metadata: {TypeName}")]
+    private partial void LogResolvedContextTypeFromMetadata(string instanceId, string typeName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Could not resolve context type for workflow {InstanceId}")]
+    private partial void LogCouldNotResolveContextType(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Workflow state {InstanceId} not found")]
+    private partial void LogWorkflowStateNotFound(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Could not find type information for workflow {InstanceId}")]
+    private partial void LogCouldNotFindTypeInfo(string instanceId);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Resolved context type for workflow {InstanceId} from known types: {TypeName}")]
+    private partial void LogResolvedContextTypeFromKnownTypes(string instanceId, string typeName);
 
     private sealed record WorkflowStateInfo
     {
