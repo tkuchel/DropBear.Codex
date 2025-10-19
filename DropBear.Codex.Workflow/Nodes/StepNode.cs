@@ -61,12 +61,10 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
         int retryAttempts = 0;
         StepResult? lastResult = null;
 
-        // Get retry policy - use defaults if not available
         RetryPolicy retryPolicy = RetryPolicy.Default;
 
         try
         {
-            // Execute with retry logic using the retry policy
             int maxAttempts = step.CanRetry ? retryPolicy.MaxAttempts : 1;
 
             for (int attempt = 0; attempt < maxAttempts; attempt++)
@@ -83,7 +81,6 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
                         .ConfigureAwait(false)
                     : await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
 
-                // Check if we should continue retrying
                 if (lastResult.IsSuccess)
                 {
                     break;
@@ -94,7 +91,6 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
                     break;
                 }
 
-                // Check custom retry predicate if available
                 if (retryPolicy.ShouldRetryPredicate != null &&
                     lastResult.Error?.SourceException != null &&
                     !retryPolicy.ShouldRetryPredicate(lastResult.Error?.SourceException))
@@ -104,6 +100,8 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
             }
 
             DateTimeOffset endTime = DateTimeOffset.UtcNow;
+
+            // ===== UPDATED: Add StepType and ContextType to trace =====
             var trace = new StepExecutionTrace
             {
                 StepName = step.StepName,
@@ -111,11 +109,14 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
                 StartTime = startTime,
                 EndTime = endTime,
                 Result = lastResult,
-                RetryAttempts = retryAttempts
+                RetryAttempts = retryAttempts,
+                StepType = typeof(TStep), // NEW: Store step type
+                ContextType = typeof(TContext) // NEW: Store context type
             };
+            // ==========================================================
 
-            // Check for suspension
-            if (lastResult is not { IsSuccess: true } && WorkflowConstants.Signals.IsSuspensionSignal(lastResult.Error?.Message))
+            if (lastResult is not { IsSuccess: true } &&
+                WorkflowConstants.Signals.IsSuspensionSignal(lastResult.Error?.Message))
             {
                 return NodeExecutionResult<TContext>.Failure(lastResult, trace);
             }
@@ -136,6 +137,8 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
         {
             DateTimeOffset endTime = DateTimeOffset.UtcNow;
             var failureResult = StepResult.Failure(ex);
+
+            // ===== UPDATED: Add StepType and ContextType to trace =====
             var trace = new StepExecutionTrace
             {
                 StepName = step.StepName,
@@ -143,8 +146,11 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
                 StartTime = startTime,
                 EndTime = endTime,
                 Result = failureResult,
-                RetryAttempts = retryAttempts
+                RetryAttempts = retryAttempts,
+                StepType = typeof(TStep), // NEW: Store step type
+                ContextType = typeof(TContext) // NEW: Store context type
             };
+            // ==========================================================
 
             return NodeExecutionResult<TContext>.Failure(failureResult, trace);
         }

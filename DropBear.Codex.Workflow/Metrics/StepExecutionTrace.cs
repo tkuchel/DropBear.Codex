@@ -1,8 +1,4 @@
-#region
-
 using DropBear.Codex.Workflow.Results;
-
-#endregion
 
 namespace DropBear.Codex.Workflow.Metrics;
 
@@ -57,6 +53,20 @@ public sealed record StepExecutionTrace
     ///     Gets additional metadata collected during step execution.
     /// </summary>
     public IReadOnlyDictionary<string, object>? Metadata { get; init; }
+
+    // ===== NEW PROPERTY FOR COMPENSATION SUPPORT =====
+    /// <summary>
+    ///     Gets the type information for the step that was executed.
+    ///     Used for compensation to reconstruct the step instance.
+    /// </summary>
+    public Type? StepType { get; init; }
+
+    /// <summary>
+    ///     Gets the type of the workflow context.
+    ///     Used for compensation to call the correctly typed CompensateAsync method.
+    /// </summary>
+    public Type? ContextType { get; init; }
+    // =================================================
 
     /// <summary>
     ///     Gets a value indicating whether this step was retried.
