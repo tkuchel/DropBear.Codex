@@ -172,7 +172,7 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
         if (options.EnableCompensation && executionTrace.Count > 0)
         {
-            await RunCompensationAsync(executionTrace, cancellationToken).ConfigureAwait(false);
+            await RunCompensationAsync(context, executionTrace, cancellationToken).ConfigureAwait(false);
         }
 
         activity?.SetTag("workflow.status", "failed");
@@ -376,40 +376,120 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         return new NodeExecutionResult { IsSuccess = true };
     }
 
-    private async ValueTask RunCompensationAsync(
+    /// <summary>
+    ///     Executes compensation logic for all successfully executed steps in reverse order.
+    ///     Implements the Saga pattern for workflow rollback.
+    /// </summary>
+    private async ValueTask RunCompensationAsync<TContext>(
+        TContext context,
         List<StepExecutionTrace> executionTrace,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken) where TContext : class
     {
         LogCompensationStarting(executionTrace.Count);
 
-        // Execute compensation in reverse order
+        int compensatedCount = 0;
+        int errorCount = 0;
+
+        // Execute compensation in reverse order (LIFO - Last In First Out)
         for (int i = executionTrace.Count - 1; i >= 0; i--)
         {
-            StepExecutionTrace trace = executionTrace[i];
-            if (!trace.Result.IsSuccess)
+            if (!await TryCompensateStepAsync(context, executionTrace[i], cancellationToken).ConfigureAwait(false))
             {
-                continue;
+                errorCount++;
             }
-
-            try
+            else if (executionTrace[i].Result.IsSuccess)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                LogCompensatingStep(trace.StepName);
-                // Note: Full compensation logic requires tracking step instances
-                // This would need to be implemented based on specific requirements
-            }
-            catch (OperationCanceledException)
-            {
-                LogCompensationCancelled(trace.StepName);
-                throw;
-            }
-            catch (InvalidOperationException ex)
-            {
-                LogCompensationFailed(trace.StepName, ex);
+                compensatedCount++;
             }
         }
 
-        await ValueTask.CompletedTask.ConfigureAwait(false);
+        LogCompensationSummary(compensatedCount, errorCount);
+    }
+
+    /// <summary>
+    ///     Attempts to compensate a single step.
+    /// </summary>
+    private async ValueTask<bool> TryCompensateStepAsync<TContext>(
+        TContext context,
+        StepExecutionTrace trace,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        // Only compensate successfully executed steps
+        if (!trace.Result.IsSuccess)
+        {
+            return true; // Not an error, just skipped
+        }
+
+        // Skip steps without type information
+        if (!ValidateStepTrace(trace, typeof(TContext)))
+        {
+            return true; // Not an error, just skipped
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LogCompensatingStep(trace.StepName);
+
+            return await ExecuteStepCompensationAsync(context, trace, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            LogCompensationCancelled(trace.StepName);
+            throw;
+        }
+        catch (InvalidOperationException ex)
+        {
+            LogCompensationFailed(trace.StepName, ex);
+            return false;
+        }
+    }
+
+    /// <summary>
+    ///     Validates that a step trace has the required information for compensation.
+    /// </summary>
+    private static bool ValidateStepTrace(StepExecutionTrace trace, Type expectedContextType)
+    {
+        return trace.StepType != null &&
+               trace.ContextType != null &&
+               trace.ContextType == expectedContextType;
+    }
+
+    /// <summary>
+    ///     Executes the compensation logic for a specific step.
+    /// </summary>
+    private async ValueTask<bool> ExecuteStepCompensationAsync<TContext>(
+        TContext context,
+        StepExecutionTrace trace,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        object? stepInstance = _serviceProvider.GetService(trace.StepType!);
+
+        if (stepInstance is not IWorkflowStep<TContext> typedStep)
+        {
+            LogCompensationSkipped(trace.StepName, "Unable to resolve step instance");
+            return true; // Not an error, just skipped
+        }
+
+        StepResult compensationResult = await typedStep
+            .CompensateAsync(context, cancellationToken)
+            .ConfigureAwait(false);
+
+        if (compensationResult.IsSuccess)
+        {
+            LogCompensationStepSucceeded(trace.StepName);
+            return true;
+        }
+
+        string errorMessage = compensationResult.Error?.Message ?? "Unknown compensation error";
+        LogCompensationStepFailed(trace.StepName, errorMessage);
+
+        if (compensationResult.Error?.SourceException is InvalidOperationException invalidOpEx)
+        {
+            throw invalidOpEx;
+        }
+
+        throw new InvalidOperationException(errorMessage, compensationResult.Error?.SourceException);
     }
 
     private static WorkflowMetrics BuildMetrics(List<StepExecutionTrace> executionTrace, TimeSpan totalDuration)
@@ -511,6 +591,26 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         Level = LogLevel.Error,
         Message = "Compensation failed for step {StepName}")]
     partial void LogCompensationFailed(string stepName, InvalidOperationException ex);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Skipping compensation for step {StepName}: {Reason}")]
+    partial void LogCompensationSkipped(string stepName, string reason);
+
+    [LoggerMessage(
+        Level = LogLevel.Debug,
+        Message = "Compensation succeeded for step {StepName}")]
+    partial void LogCompensationStepSucceeded(string stepName);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Compensation failed for step {StepName}: {ErrorMessage}")]
+    partial void LogCompensationStepFailed(string stepName, string errorMessage);
+
+    [LoggerMessage(
+        Level = LogLevel.Information,
+        Message = "Compensation completed - {CompensatedCount} steps compensated, {ErrorCount} errors")]
+    partial void LogCompensationSummary(int compensatedCount, int errorCount);
 
     private readonly record struct NodeExecutionResult
     {

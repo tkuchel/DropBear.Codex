@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Reflection;
 using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
@@ -16,6 +17,7 @@ namespace DropBear.Codex.Workflow.Persistence.Repositories;
 /// </summary>
 public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepository, IDisposable
 {
+    private readonly ConcurrentDictionary<string, string> _instanceToTypeIndex;
     private readonly ILogger<InMemoryWorkflowStateRepository> _logger;
     private readonly ConcurrentDictionary<string, WorkflowStateWrapper> _states;
     private bool _disposed;
@@ -29,7 +31,7 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _states = new ConcurrentDictionary<string, WorkflowStateWrapper>(StringComparer.OrdinalIgnoreCase);
-
+        _instanceToTypeIndex = new ConcurrentDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         LogUsingInMemoryRepository();
     }
 
@@ -43,6 +45,7 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
 
         LogDisposing(_states.Count);
         _states.Clear();
+        _instanceToTypeIndex.Clear();
         _disposed = true;
     }
 
@@ -95,6 +98,11 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
             wrapper,
             (_, _) => wrapper);
 
+        _instanceToTypeIndex.AddOrUpdate(
+            state.WorkflowInstanceId,
+            typeName,
+            (_, _) => typeName);
+
         LogSavedWorkflowState(state.WorkflowInstanceId, state.Status);
 
         return ValueTask.FromResult(state.WorkflowInstanceId);
@@ -117,6 +125,11 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
             wrapper,
             (_, _) => wrapper);
 
+        _instanceToTypeIndex.AddOrUpdate(
+            state.WorkflowInstanceId,
+            typeName,
+            (_, _) => typeName);
+
         LogUpdatedWorkflowState(state.WorkflowInstanceId, state.Status);
 
         return ValueTask.CompletedTask;
@@ -132,6 +145,7 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
 
         if (_states.TryRemove(workflowInstanceId, out _))
         {
+            _instanceToTypeIndex.TryRemove(workflowInstanceId, out _);
             LogDeletedWorkflowState(workflowInstanceId);
         }
         else
@@ -170,6 +184,37 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
         LogFoundWaitingWorkflows(waitingWorkflows.Count, requestedTypeName, signalName ?? string.Empty);
 
         return ValueTask.FromResult<IEnumerable<WorkflowInstanceState<TContext>>>(waitingWorkflows);
+    }
+
+
+    public ValueTask<(string? AssemblyQualifiedName, string? TypeName)> GetWorkflowContextTypeInfoAsync(
+        string workflowInstanceId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(workflowInstanceId);
+
+        if (!_states.TryGetValue(workflowInstanceId, out WorkflowStateWrapper? wrapper))
+        {
+            return ValueTask.FromResult<(string?, string?)>((null, null));
+        }
+
+        // Get type info from the state object using reflection
+        Type stateType = wrapper.State.GetType();
+        PropertyInfo? assemblyQualifiedNameProp = stateType.GetProperty("ContextAssemblyQualifiedName");
+        PropertyInfo? typeNameProp = stateType.GetProperty("ContextTypeName");
+
+        string? assemblyQualifiedName = assemblyQualifiedNameProp?.GetValue(wrapper.State) as string;
+        string? typeName = typeNameProp?.GetValue(wrapper.State) as string ?? wrapper.ContextTypeName;
+
+        return ValueTask.FromResult((assemblyQualifiedName, typeName));
+    }
+
+    public string? GetContextTypeName(string workflowInstanceId)
+    {
+        return _instanceToTypeIndex.TryGetValue(workflowInstanceId, out string? typeName)
+            ? typeName
+            : null;
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);

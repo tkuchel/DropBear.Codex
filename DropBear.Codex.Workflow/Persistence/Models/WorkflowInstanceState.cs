@@ -1,3 +1,5 @@
+// File: DropBear.Codex.Workflow/Persistence/Models/WorkflowInstanceState.cs
+
 #region
 
 using DropBear.Codex.Workflow.Common;
@@ -88,4 +90,18 @@ public sealed record WorkflowInstanceState<TContext> where TContext : class
     ///     Gets or sets the error message (if failed).
     /// </summary>
     public string? ErrorMessage { get; init; }
+
+    // ============ NEW PROPERTIES FOR TYPE INFORMATION ============
+
+    /// <summary>
+    ///     Gets or sets the fully qualified name of the context type.
+    ///     Used for type-safe deserialization without discovery.
+    /// </summary>
+    public string? ContextTypeName { get; init; }
+
+    /// <summary>
+    ///     Gets or sets the assembly qualified name of the context type.
+    ///     Used for type-safe deserialization without discovery.
+    /// </summary>
+    public string? ContextAssemblyQualifiedName { get; init; }
 }

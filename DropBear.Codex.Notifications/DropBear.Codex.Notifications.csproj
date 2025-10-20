@@ -48,7 +48,7 @@
     <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
     <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
     <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.226">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

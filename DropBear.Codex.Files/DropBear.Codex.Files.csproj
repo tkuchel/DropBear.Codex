@@ -45,7 +45,7 @@
   <ItemGroup>
     <PackageReference Include="FluentStorage.Azure.Blobs" Version="6.0.0" />
     <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.226">
+    <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
