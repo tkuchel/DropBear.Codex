@@ -1,5 +1,8 @@
 ﻿#region
 
+using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Tasks.Errors;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
 
@@ -70,12 +73,14 @@ public interface ITask
     /// <summary>
     ///     Validates whether the task's configuration/state is valid.
     /// </summary>
-    bool Validate();
+    /// <returns>A result indicating whether validation succeeded or failed with details.</returns>
+    Result<Unit, TaskValidationError> Validate();
 
     /// <summary>
     ///     Executes the task logic using the given <paramref name="context" />.
     /// </summary>
-    Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken);
+    /// <returns>A result indicating whether execution succeeded or failed with details.</returns>
+    Task<Result<Unit, TaskExecutionError>> ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken);
 
     /// <summary>
     ///     Adds a dependency to this task.

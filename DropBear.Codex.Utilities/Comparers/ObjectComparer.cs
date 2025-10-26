@@ -95,10 +95,9 @@ public static class ObjectComparer
 
             var result = Result<CompareResult, ObjectComparisonError>.Success(compareResult);
 
-            // Record timing data as metadata
+            // Log timing data
             var endTime = DateTime.UtcNow;
-            result = result.WithTiming(timing =>
-                Logger.Debug("Object comparison completed in {Duration}ms", timing.Duration.TotalMilliseconds));
+            Logger.Debug("Object comparison completed at {EndTime}", endTime);
 
             return result;
         }

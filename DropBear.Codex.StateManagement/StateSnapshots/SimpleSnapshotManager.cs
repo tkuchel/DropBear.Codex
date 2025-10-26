@@ -1,7 +1,9 @@
 ﻿#region
 
 using System.Collections.Concurrent;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.StateManagement.Errors;
 using DropBear.Codex.StateManagement.StateSnapshots.Interfaces;
 using DropBear.Codex.StateManagement.StateSnapshots.Models;
 using Serilog;
@@ -66,7 +68,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
     }
 
     /// <inheritdoc />
-    public Result SaveState(T state)
+    public Result<Unit, SnapshotError> SaveState(T state)
     {
         try
         {
@@ -75,7 +77,7 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
             if (_automaticSnapshotting && DateTime.Now - _lastSnapshotTime < _snapshotInterval)
             {
                 _logger.Debug("Automatic snapshotting skipped due to snapshot interval not reached.");
-                return Result.Failure("Snapshotting skipped due to interval.");
+                return Result<Unit, SnapshotError>.Failure(SnapshotError.IntervalNotReached());
             }
 
             var snapshot = new Snapshot<T>(state.Clone());
@@ -87,52 +89,54 @@ public sealed class SimpleSnapshotManager<T> : ISimpleSnapshotManager<T>, IDispo
 
             RemoveExpiredSnapshots();
             _logger.Debug("Snapshot version {Version} created successfully.", version);
-            return Result.Success();
+            return Result<Unit, SnapshotError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to create snapshot.");
-            return Result.Failure(ex.Message);
+            return Result<Unit, SnapshotError>.Failure(
+                SnapshotError.CreationFailed(ex.Message).WithContext(nameof(SaveState)),
+                ex);
         }
     }
 
     /// <inheritdoc />
-    public Result RestoreState(int version)
+    public Result<Unit, SnapshotError> RestoreState(int version)
     {
         if (!_snapshots.TryGetValue(version, out var snapshot))
         {
-            return Result.Failure("Snapshot not found.");
+            return Result<Unit, SnapshotError>.Failure(SnapshotError.NotFound(version));
         }
 
         _currentState = snapshot.State.Clone();
         _currentVersion = version;
         _logger.Debug("State restored to version {Version}.", version);
-        return Result.Success();
+        return Result<Unit, SnapshotError>.Success(Unit.Value);
     }
 
     /// <inheritdoc />
-    public Result<bool> IsDirty(T currentState)
+    public Result<bool, SnapshotError> IsDirty(T currentState)
     {
         if (_currentState == null)
         {
             // No known current => everything is dirty
-            return Result<bool>.Success(true);
+            return Result<bool, SnapshotError>.Success(true);
         }
 
         var isDirty = !EqualityComparer<T>.Default.Equals(_currentState, currentState);
-        return Result<bool>.Success(isDirty);
+        return Result<bool, SnapshotError>.Success(isDirty);
     }
 
     /// <inheritdoc />
-    public Result<T?> GetCurrentState()
+    public Result<T?, SnapshotError> GetCurrentState()
     {
         if (_currentState == null)
         {
-            return Result<T?>.Failure("No current state.");
+            return Result<T?, SnapshotError>.Failure(SnapshotError.NoCurrentState());
         }
 
         // Return cloned version
-        return Result<T?>.Success(_currentState.Clone());
+        return Result<T?, SnapshotError>.Success(_currentState.Clone());
     }
 
     /// <summary>

@@ -15,9 +15,7 @@ public sealed record ModalError : ResultError
     ///     Initializes a new instance of the <see cref="ModalError" /> class.
     /// </summary>
     /// <param name="message">The error message.</param>
-    /// <param name="timestamp">Optional timestamp for the error. Defaults to UTC now.</param>
-    public ModalError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public ModalError(string message) : base(message)
     {
     }
 

@@ -13,9 +13,8 @@ public sealed record FileOperationError : FilesError
     ///     Initializes a new instance of <see cref="FileOperationError" />.
     /// </summary>
     /// <param name="message">The error message describing the failure condition.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    public FileOperationError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public FileOperationError(string message)
+        : base(message)
     {
     }
 

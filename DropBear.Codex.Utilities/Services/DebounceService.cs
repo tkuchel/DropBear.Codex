@@ -3,7 +3,6 @@
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Utilities.Errors;
 using DropBear.Codex.Utilities.Interfaces;
 using Microsoft.Extensions.Caching.Memory;
@@ -41,106 +40,6 @@ public class DebounceService : IDebounceService
         {
             SlidingExpiration = TimeSpan.FromHours(1), Priority = CacheItemPriority.Low
         };
-    }
-
-    /// <summary>
-    ///     For backwards compatibility with the original implementation.
-    /// </summary>
-    public async Task<Core.Results.Compatibility.Result<T>> DebounceAsyncLegacy<T>(
-        Func<Task<Core.Results.Compatibility.Result<T>>> function,
-        string key = "",
-        TimeSpan? debounceTime = null,
-        [CallerMemberName] string caller = "",
-        [CallerFilePath] string filePath = "",
-        [CallerLineNumber] int lineNumber = 0)
-    {
-        Logger.Warning("Using legacy Result type for debounce operation");
-
-        key = GenerateKey(key, caller, filePath, lineNumber);
-        debounceTime ??= _defaultDebounceTime;
-
-        if (IsDebounced(key, debounceTime.Value, out var isFirstCall) && !isFirstCall)
-        {
-            return Core.Results.Compatibility.Result<T>.Failure("Operation debounced.");
-        }
-
-        try
-        {
-            return await function().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during legacy debounced function execution: {Key}", key);
-            return Core.Results.Compatibility.Result<T>.Failure(
-                "An error occurred while executing the function.", ex);
-        }
-    }
-
-    /// <summary>
-    ///     For backwards compatibility with the original implementation.
-    /// </summary>
-    public async Task<Result> DebounceAsyncLegacy(
-        Action action,
-        string key = "",
-        TimeSpan? debounceTime = null,
-        [CallerMemberName] string caller = "",
-        [CallerFilePath] string filePath = "",
-        [CallerLineNumber] int lineNumber = 0)
-    {
-        Logger.Warning("Using legacy Result type for debounce operation");
-
-        key = GenerateKey(key, caller, filePath, lineNumber);
-        debounceTime ??= _defaultDebounceTime;
-
-        if (IsDebounced(key, debounceTime.Value, out var isFirstCall) && !isFirstCall)
-        {
-            return Result.Failure("Operation debounced.");
-        }
-
-        try
-        {
-            await Task.Run(action).ConfigureAwait(false);
-            return Result.Success();
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during legacy debounced action execution: {Key}", key);
-            return Result.Failure(
-                "An error occurred while executing the action.", ex);
-        }
-    }
-
-    /// <summary>
-    ///     For backwards compatibility with the original implementation.
-    /// </summary>
-    public async Task<Result> DebounceAsyncLegacy(
-        Func<Task<Result>> function,
-        string key = "",
-        TimeSpan? debounceTime = null,
-        [CallerMemberName] string caller = "",
-        [CallerFilePath] string filePath = "",
-        [CallerLineNumber] int lineNumber = 0)
-    {
-        Logger.Warning("Using legacy Result type for debounce operation");
-
-        key = GenerateKey(key, caller, filePath, lineNumber);
-        debounceTime ??= _defaultDebounceTime;
-
-        if (IsDebounced(key, debounceTime.Value, out var isFirstCall) && !isFirstCall)
-        {
-            return Result.Failure("Operation debounced.");
-        }
-
-        try
-        {
-            return await function().ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error during legacy debounced function execution: {Key}", key);
-            return Result.Failure(
-                "An error occurred while executing the function.", ex);
-        }
     }
 
     /// <summary>

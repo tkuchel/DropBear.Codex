@@ -105,10 +105,16 @@ public class NotificationBridge : IDisposable
             }
 
             // Save to repository
-            await _repository.CreateAsync(record);
+            var createResult = await _repository.CreateAsync(record, token).ConfigureAwait(false);
+
+            if (!createResult.IsSuccess)
+            {
+                _logger.LogError("Failed to persist notification: {Error}", createResult.Error.Message);
+                return;
+            }
 
             // Notify UI via the notification center service
-            await _notificationCenterService.RaiseNotificationReceivedEvent(record);
+            await _notificationCenterService.RaiseNotificationReceivedEvent(record).ConfigureAwait(false);
 
             _logger.LogDebug("Notification persisted with ID: {Id}", record.Id);
         }

@@ -140,8 +140,15 @@ public class FileManagerBuilder
             _logger.Debug("Optimized MemoryStreamManager created for blob storage.");
         }
 
-        var blobStorage = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
-        _storageManager = new BlobStorageManager(blobStorage, _memoryStreamManager, _logger, containerName);
+        var blobStorageResult = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
+        if (!blobStorageResult.IsSuccess)
+        {
+            _logger.Error("Failed to create Azure Blob Storage: {Error}", blobStorageResult.Error.Message);
+            throw new InvalidOperationException($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}",
+                blobStorageResult.Exception);
+        }
+
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -199,16 +206,221 @@ public class FileManagerBuilder
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        var blobStorage = await BlobStorageFactory
+        var blobStorageResult = await BlobStorageFactory
             .CreateAzureBlobStorageAsync(accountName, accountKey, cancellationToken)
             .ConfigureAwait(false);
 
-        _storageManager = new BlobStorageManager(blobStorage, _memoryStreamManager, _logger, containerName);
+        if (!blobStorageResult.IsSuccess)
+        {
+            _logger.Error("Failed to create Azure Blob Storage asynchronously: {Error}", blobStorageResult.Error.Message);
+            throw new InvalidOperationException($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}",
+                blobStorageResult.Exception);
+        }
+
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
         return this;
     }
+
+    #region Try* Pattern Methods
+
+    /// <summary>
+    ///     Attempts to configure the <see cref="FileManager" /> with a custom <see cref="RecyclableMemoryStreamManager" />.
+    /// </summary>
+    /// <param name="memoryStreamManager">The custom memory stream manager to use.</param>
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the builder instance on success,
+    ///     or a <see cref="BuilderError" /> if validation failed.
+    /// </returns>
+    public Result<FileManagerBuilder, BuilderError> TryWithMemoryStreamManager(RecyclableMemoryStreamManager memoryStreamManager)
+    {
+        if (memoryStreamManager == null)
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("MemoryStreamManager cannot be null."));
+        }
+
+        _memoryStreamManager = memoryStreamManager;
+        _logger.Debug("Configured custom MemoryStreamManager.");
+        return Result<FileManagerBuilder, BuilderError>.Success(this);
+    }
+
+    /// <summary>
+    ///     Attempts to configure the <see cref="FileManager" /> to store files locally.
+    /// </summary>
+    /// <param name="baseDirectory">The base directory path for local storage.</param>
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the builder instance on success,
+    ///     or a <see cref="BuilderError" /> if configuration failed.
+    /// </returns>
+    public Result<FileManagerBuilder, BuilderError> TryUseLocalStorage(string baseDirectory = @"C:\Data")
+    {
+        if (string.IsNullOrEmpty(baseDirectory))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Base directory cannot be null or empty."));
+        }
+
+        try
+        {
+            // Create the directory if it doesn't exist
+            if (!Directory.Exists(baseDirectory))
+            {
+                Directory.CreateDirectory(baseDirectory);
+                _logger.Warning("Base directory did not exist. Created: {BaseDirectory}", baseDirectory);
+            }
+
+            // If no custom MemoryStreamManager is set, use an optimized default one
+            if (_memoryStreamManager == null)
+            {
+                _memoryStreamManager = new RecyclableMemoryStreamManager(
+                    new RecyclableMemoryStreamManager.Options
+                    {
+                        ThrowExceptionOnToArray = true,
+                        BlockSize = 4096 * 4,
+                        LargeBufferMultiple = 1024 * 1024,
+                        MaximumBufferSize = 1024 * 1024 * 100
+                    });
+                _logger.Debug("Optimized MemoryStreamManager created for local storage.");
+            }
+
+            _baseDirectory = baseDirectory;
+            _storageManager = new LocalStorageManager(_memoryStreamManager, _logger);
+            _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
+                baseDirectory);
+            return Result<FileManagerBuilder, BuilderError>.Success(this);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Failed to configure local storage with base directory: {BaseDirectory}", baseDirectory);
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed($"Failed to configure local storage: {ex.Message}"), ex);
+        }
+    }
+
+    /// <summary>
+    ///     Attempts to configure the <see cref="FileManager" /> to use Azure Blob Storage.
+    /// </summary>
+    /// <param name="accountName">Azure Storage account name.</param>
+    /// <param name="accountKey">The shared key for the Azure Storage account.</param>
+    /// <param name="containerName">The default container name for blob storage.</param>
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the builder instance on success,
+    ///     or a <see cref="BuilderError" /> if configuration failed.
+    /// </returns>
+    public Result<FileManagerBuilder, BuilderError> TryUseBlobStorage(
+        string accountName,
+        string accountKey,
+        string containerName = "defaultcontainer")
+    {
+        if (string.IsNullOrEmpty(accountName))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Account name cannot be null or empty."));
+        }
+
+        if (string.IsNullOrEmpty(accountKey))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Account key cannot be null or empty."));
+        }
+
+        if (string.IsNullOrEmpty(containerName))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Container name cannot be null or empty."));
+        }
+
+        var blobStorageResult = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
+        if (!blobStorageResult.IsSuccess)
+        {
+            _logger.Error("Failed to create Azure Blob Storage: {Error}", blobStorageResult.Error.Message);
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}"),
+                blobStorageResult.Exception);
+        }
+
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
+        _logger.Information(
+            "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
+            accountName, containerName);
+        return Result<FileManagerBuilder, BuilderError>.Success(this);
+    }
+
+    /// <summary>
+    ///     Asynchronously attempts to configure the <see cref="FileManager" /> to use Azure Blob Storage.
+    /// </summary>
+    /// <param name="accountName">Azure Storage account name.</param>
+    /// <param name="accountKey">The shared key for the Azure Storage account.</param>
+    /// <param name="containerName">The default container name for blob storage.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>
+    ///     A <see cref="Task" /> containing a <see cref="Result{T, TError}" /> with the builder instance on success,
+    ///     or a <see cref="BuilderError" /> if configuration failed.
+    /// </returns>
+    public async Task<Result<FileManagerBuilder, BuilderError>> TryUseBlobStorageAsync(
+        string accountName,
+        string accountKey,
+        string containerName = "defaultcontainer",
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrEmpty(accountName))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Account name cannot be null or empty."));
+        }
+
+        if (string.IsNullOrEmpty(accountKey))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Account key cannot be null or empty."));
+        }
+
+        if (string.IsNullOrEmpty(containerName))
+        {
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Container name cannot be null or empty."));
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var blobStorageResult = await BlobStorageFactory
+                .CreateAzureBlobStorageAsync(accountName, accountKey, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!blobStorageResult.IsSuccess)
+            {
+                _logger.Error("Failed to create Azure Blob Storage asynchronously: {Error}", blobStorageResult.Error.Message);
+                return Result<FileManagerBuilder, BuilderError>.Failure(
+                    BuilderError.BuildFailed($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}"),
+                    blobStorageResult.Exception);
+            }
+
+            _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
+            _logger.Information(
+                "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
+                accountName, containerName);
+            return Result<FileManagerBuilder, BuilderError>.Success(this);
+        }
+        catch (OperationCanceledException ex)
+        {
+            _logger.Information("Azure Blob Storage configuration was canceled.");
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed("Operation was canceled"), ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.Error(ex, "Error configuring Azure Blob Storage asynchronously.");
+            return Result<FileManagerBuilder, BuilderError>.Failure(
+                BuilderError.BuildFailed($"Failed to configure Azure Blob Storage: {ex.Message}"), ex);
+        }
+    }
+
+    #endregion
 
     /// <summary>
     ///     Builds and returns the configured <see cref="FileManager" /> instance.

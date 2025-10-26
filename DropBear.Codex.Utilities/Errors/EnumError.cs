@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using DropBear.Codex.Core.Results.Base;
 
@@ -12,10 +12,7 @@ namespace DropBear.Codex.Utilities.Errors;
 public sealed record EnumError : ResultError
 {
     public EnumError(string message, Exception? exception = null)
-        : base(message, DateTime.UtcNow)
+        : base(message)
     {
-        Metadata = exception is not null
-            ? new Dictionary<string, object>(StringComparer.Ordinal) { { "Exception", exception.Message } }
-            : null;
     }
 }

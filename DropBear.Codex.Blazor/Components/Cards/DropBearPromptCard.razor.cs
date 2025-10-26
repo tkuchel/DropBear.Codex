@@ -236,12 +236,12 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
 
         try
         {
-            await QueueStateHasChangedAsync(async () =>
+            await QueueStateHasChangedAsync((Func<Task>)(async () =>
             {
                 Logger.Debug("Button clicked: {ButtonId} {ButtonText} {ButtonColor}",
                     button.Id, button.Text, button.Color);
                 await OnButtonClicked.InvokeAsync(button);
-            });
+            }));
         }
         catch (Exception ex)
         {

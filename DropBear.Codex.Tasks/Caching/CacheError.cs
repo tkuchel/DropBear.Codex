@@ -34,4 +34,14 @@ public sealed record CacheError : ResultError
     {
         return new CacheError($"Cache operation failed: {message}");
     }
+
+    /// <summary>
+    ///     Creates an error for when a cached value cannot be cast to the requested type.
+    /// </summary>
+    /// <param name="key">The cache key.</param>
+    /// <param name="expectedType">The expected type name.</param>
+    public static CacheError TypeMismatch(string key, string expectedType)
+    {
+        return new CacheError($"Cache entry for key '{key}' is not of type {expectedType}");
+    }
 }

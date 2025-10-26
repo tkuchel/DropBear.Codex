@@ -73,8 +73,17 @@ public partial class NotificationCenter : DropBearComponentBase
                 _filter,
                 _componentCts.Token);
 
-            _notifications = new List<NotificationRecord>(result.Notifications);
-            _totalCount = result.TotalCount;
+            if (result.IsSuccess)
+            {
+                _notifications = new List<NotificationRecord>(result.Value.Notifications);
+                _totalCount = result.Value.TotalCount;
+            }
+            else
+            {
+                _notifications = new List<NotificationRecord>();
+                _totalCount = 0;
+                LogWarning("Failed to load notifications: {Error}", result.Error?.Message ?? "Unknown error");
+            }
         }
         catch (Exception ex)
         {

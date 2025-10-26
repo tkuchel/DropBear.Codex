@@ -2,7 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
-using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Results.Validations;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 
@@ -108,7 +108,7 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     /// <summary>
     ///     Gets whether there are validation errors to display.
     /// </summary>
-    public bool HasErrors => ValidationResult?.HasErrors == true;
+    public bool HasErrors => ValidationResult?.IsValid == false;
 
     /// <summary>
     ///     Gets the number of validation errors.

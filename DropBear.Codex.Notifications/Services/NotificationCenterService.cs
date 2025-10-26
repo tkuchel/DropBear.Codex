@@ -1,7 +1,10 @@
 ﻿#region
 
 using System.Text.Json;
+using DropBear.Codex.Core.Results;
+using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Notifications.Entities;
+using DropBear.Codex.Notifications.Errors;
 using DropBear.Codex.Notifications.Filters;
 using DropBear.Codex.Notifications.Interfaces;
 using DropBear.Codex.Notifications.Models;
@@ -43,20 +46,22 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
     public event Func<Guid, Task>? OnNotificationRead;
     public event Func<Guid, Task>? OnNotificationDismissed;
 
-    public async Task<(IReadOnlyList<NotificationRecord> Notifications, int TotalCount)> GetNotificationsAsync(
+    public async Task<Result<(IReadOnlyList<NotificationRecord> Notifications, int TotalCount), NotificationError>> GetNotificationsAsync(
         NotificationFilter filter, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await _repository.GetForUserAsync(filter);
+            return await _repository.GetForUserAsync(filter, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get notifications for user {UserId}", filter.UserId);
-            throw;
+            return Result<(IReadOnlyList<NotificationRecord> Notifications, int TotalCount), NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -64,19 +69,21 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task<NotificationRecord?> GetNotificationAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Result<NotificationRecord?, NotificationError>> GetNotificationAsync(Guid id, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await _repository.GetByIdAsync(id);
+            return await _repository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get notification {Id}", id);
-            throw;
+            return Result<NotificationRecord?, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -84,26 +91,34 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task MarkAsReadAsync(Guid notificationId, CancellationToken cancellationToken = default)
+    public async Task<Result<Unit, NotificationError>> MarkAsReadAsync(Guid notificationId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _repository.MarkAsReadAsync(notificationId);
+            var result = await _repository.MarkAsReadAsync(notificationId, cancellationToken).ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
 
             if (OnNotificationRead != null)
             {
-                await RaiseNotificationReadEvent(notificationId);
+                await RaiseNotificationReadEvent(notificationId).ConfigureAwait(false);
             }
 
             _logger.LogDebug("Notification {Id} marked as read", notificationId);
+            return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to mark notification {Id} as read", notificationId);
-            throw;
+            return Result<Unit, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -111,24 +126,32 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task MarkAllAsReadAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<Result<Unit, NotificationError>> MarkAllAsReadAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _repository.MarkAllAsReadAsync(userId);
+            var result = await _repository.MarkAllAsReadAsync(userId, cancellationToken).ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
 
             // Since we don't know which notifications were affected, we can't trigger individual events
             // We could consider adding a "batch" event for this scenario if needed
 
             _logger.LogDebug("All notifications for user {UserId} marked as read", userId);
+            return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to mark all notifications as read for user {UserId}", userId);
-            throw;
+            return Result<Unit, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -136,26 +159,34 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task DismissAsync(Guid notificationId, CancellationToken cancellationToken = default)
+    public async Task<Result<Unit, NotificationError>> DismissAsync(Guid notificationId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _repository.DismissAsync(notificationId);
+            var result = await _repository.DismissAsync(notificationId, cancellationToken).ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
 
             if (OnNotificationDismissed != null)
             {
-                await RaiseNotificationDismissedEvent(notificationId);
+                await RaiseNotificationDismissedEvent(notificationId).ConfigureAwait(false);
             }
 
             _logger.LogDebug("Notification {Id} dismissed", notificationId);
+            return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to dismiss notification {Id}", notificationId);
-            throw;
+            return Result<Unit, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -163,23 +194,31 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task DismissAllAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<Result<Unit, NotificationError>> DismissAllAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await _repository.DismissAllAsync(userId);
+            var result = await _repository.DismissAllAsync(userId, cancellationToken).ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
 
             // Similar to MarkAllAsRead, we don't have individual IDs to trigger events
 
             _logger.LogDebug("All notifications for user {UserId} dismissed", userId);
+            return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to dismiss all notifications for user {UserId}", userId);
-            throw;
+            return Result<Unit, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -187,35 +226,44 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task<int> GetUnreadCountAsync(Guid userId, CancellationToken cancellationToken = default)
+    public async Task<Result<int, NotificationError>> GetUnreadCountAsync(Guid userId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         try
         {
-            return await _repository.GetUnreadCountAsync(userId);
+            return await _repository.GetUnreadCountAsync(userId, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get unread count for user {UserId}", userId);
-            throw;
+            return Result<int, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
     }
 
-    public async Task<NotificationPreferences> GetPreferencesAsync(Guid userId,
+    public async Task<Result<NotificationPreferences?, NotificationError>> GetPreferencesAsync(Guid userId,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var dbPreferences = await _repository.GetUserPreferencesAsync(userId);
+            var dbPreferencesResult = await _repository.GetUserPreferencesAsync(userId, cancellationToken).ConfigureAwait(false);
+
+            if (!dbPreferencesResult.IsSuccess)
+            {
+                return Result<NotificationPreferences?, NotificationError>.Failure(dbPreferencesResult.Error);
+            }
+
+            var dbPreferences = dbPreferencesResult.Value;
 
             if (dbPreferences == null)
             {
                 // Return default preferences if not found
-                return new NotificationPreferences
+                var defaultPreferences = new NotificationPreferences
                 {
                     UserId = userId,
                     EnableToastNotifications = true,
@@ -223,6 +271,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                     EnableEmailNotifications = false,
                     TypePreferences = new Dictionary<string, NotificationTypePreference>()
                 };
+                return Result<NotificationPreferences?, NotificationError>.Success(defaultPreferences);
             }
 
             // Convert from DB model to service model
@@ -252,12 +301,14 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                 }
             }
 
-            return preferences;
+            return Result<NotificationPreferences?, NotificationError>.Success(preferences);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get notification preferences for user {UserId}", userId);
-            throw;
+            return Result<NotificationPreferences?, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -265,12 +316,12 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task SavePreferencesAsync(NotificationPreferences preferences,
+    public async Task<Result<Unit, NotificationError>> SavePreferencesAsync(NotificationPreferences preferences,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             // Convert from service model to DB model
@@ -290,14 +341,22 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                     new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             }
 
-            await _repository.SaveUserPreferencesAsync(dbPreferences);
+            var result = await _repository.SaveUserPreferencesAsync(dbPreferences, cancellationToken).ConfigureAwait(false);
+
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
 
             _logger.LogDebug("Saved notification preferences for user {UserId}", preferences.UserId);
+            return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to save notification preferences for user {UserId}", preferences.UserId);
-            throw;
+            return Result<Unit, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {
@@ -324,7 +383,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task<IReadOnlyList<NotificationRecord>> GetRecentNotificationsAsync(
+    public async Task<Result<IReadOnlyList<NotificationRecord>, NotificationError>> GetRecentNotificationsAsync(
         Guid userId,
         int count = 5,
         bool unreadOnly = true,
@@ -334,33 +393,40 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
 
         try
         {
-            return await _repository.GetRecentNotificationsAsync(userId, count, unreadOnly);
+            return await _repository.GetRecentNotificationsAsync(userId, count, unreadOnly, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to get recent notifications for user {UserId}", userId);
-            throw;
+            return Result<IReadOnlyList<NotificationRecord>, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
     }
 
-    public async Task<bool> PurgeOldNotificationsAsync(
+    public async Task<Result<bool, NotificationError>> PurgeOldNotificationsAsync(
         int daysToKeep = 90,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        await _operationLock.WaitAsync(cancellationToken);
+        await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var result = await _repository.DeleteOldNotificationsAsync(daysToKeep);
+            var result = await _repository.DeleteOldNotificationsAsync(daysToKeep, cancellationToken).ConfigureAwait(false);
 
-            if (result)
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
+
+            if (result.Value)
             {
                 _logger.LogInformation("Successfully purged old notifications (older than {Days} days)", daysToKeep);
             }
             else
             {
-                _logger.LogWarning("Failed to purge old notifications");
+                _logger.LogDebug("No old notifications to purge (older than {Days} days)", daysToKeep);
             }
 
             return result;
@@ -368,7 +434,9 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error during notification purge operation");
-            return false;
+            return Result<bool, NotificationError>.Failure(
+                NotificationError.FromException(ex),
+                ex);
         }
         finally
         {

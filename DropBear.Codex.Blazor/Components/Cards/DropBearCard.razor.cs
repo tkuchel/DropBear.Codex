@@ -118,11 +118,11 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
 
         try
         {
-            await QueueStateHasChangedAsync(async () =>
+            await QueueStateHasChangedAsync((Func<Task>)(async () =>
             {
                 Logger.Debug("Button clicked: {ButtonText}", button.Text);
                 await OnButtonClicked.InvokeAsync(button);
-            });
+            }));
         }
         catch (Exception ex)
         {

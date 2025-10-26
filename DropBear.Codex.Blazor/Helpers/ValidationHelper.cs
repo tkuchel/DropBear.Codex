@@ -1,10 +1,9 @@
-﻿using System.Collections.Immutable;
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
-using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using Serilog;
-using ValidationResult = DropBear.Codex.Blazor.Models.ValidationResult;
+using CoreValidationResult = DropBear.Codex.Core.Results.Validations.ValidationResult;
+using CoreValidationError = DropBear.Codex.Core.Results.Validations.ValidationError;
 
 namespace DropBear.Codex.Blazor.Helpers;
 
@@ -20,7 +19,7 @@ public static class ValidationHelper
     /// </summary>
     /// <param name="model">The model to validate.</param>
     /// <param name="validationContextFactory">Optional factory for custom validation context.</param>
-    public static ValidationResult ValidateModel(
+    public static CoreValidationResult ValidateModel(
         object model,
         Func<object, ValidationContext>? validationContextFactory = null)
     {
@@ -33,27 +32,22 @@ public static class ValidationHelper
 
             if (Validator.TryValidateObject(model, context, results, validateAllProperties: true))
             {
-                return ValidationResult.Success();
+                return CoreValidationResult.Success;
             }
 
             var errors = results
                 .SelectMany(result => GetValidationErrors(result))
-                .ToImmutableArray();
+                .ToList();
 
-            return errors.IsEmpty
-                ? ValidationResult.Success()
-                : ValidationResult.Failure(
-                    errors,
-                    "Data annotation validation failed"
-                );
+            return errors.Count == 0
+                ? CoreValidationResult.Success
+                : CoreValidationResult.Failed(errors);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Validation failed for {Type}", model.GetType().Name);
-            return ValidationResult.Failure(
-                "Validation",
-                $"Validation failed: {ex.Message}",
-                ex
+            return CoreValidationResult.Failed(
+                CoreValidationError.ForProperty("Validation", $"Validation failed: {ex.Message}")
             );
         }
     }
@@ -64,9 +58,9 @@ public static class ValidationHelper
     /// <param name="model">The model to validate.</param>
     /// <param name="customValidation">Optional custom validation rules.</param>
     /// <param name="validationContextFactory">Optional factory for custom validation context.</param>
-    public static ValidationResult ValidateModelWithCustomRules(
+    public static CoreValidationResult ValidateModelWithCustomRules(
         object model,
-        Action<object, ICollection<ValidationError>>? customValidation = null,
+        Action<object, ICollection<CoreValidationError>>? customValidation = null,
         Func<object, ValidationContext>? validationContextFactory = null)
     {
         ArgumentNullException.ThrowIfNull(model);
@@ -79,7 +73,7 @@ public static class ValidationHelper
                 return standardResult;
             }
 
-            var customErrors = new List<ValidationError>();
+            var customErrors = new List<CoreValidationError>();
             try
             {
                 customValidation(model, customErrors);
@@ -87,31 +81,24 @@ public static class ValidationHelper
             catch (Exception ex)
             {
                 Logger.Error(ex, "Custom validation failed for {Type}", model.GetType().Name);
-                return ValidationResult.Failure(
-                    "CustomValidation",
-                    $"Custom validation failed: {ex.Message}",
-                    ex
+                return CoreValidationResult.Failed(
+                    CoreValidationError.ForProperty("CustomValidation", $"Custom validation failed: {ex.Message}")
                 );
             }
 
             return customErrors.Count == 0
                 ? standardResult
-                : ValidationResult.Combine(new[]
+                : CoreValidationResult.Combine(new[]
                 {
                     standardResult,
-                    ValidationResult.Failure(
-                        customErrors.ToImmutableArray(),
-                        "Custom validation failed"
-                    )
+                    CoreValidationResult.Failed(customErrors)
                 });
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Validation failed for {Type}", model.GetType().Name);
-            return ValidationResult.Failure(
-                "Validation",
-                $"Validation failed: {ex.Message}",
-                ex
+            return CoreValidationResult.Failed(
+                CoreValidationError.ForProperty("Validation", $"Validation failed: {ex.Message}")
             );
         }
     }
@@ -121,7 +108,7 @@ public static class ValidationHelper
     /// </summary>
     /// <param name="models">The models to validate.</param>
     /// <param name="validationContextFactory">Optional factory for custom validation context.</param>
-    public static async Task<ValidationResult> ValidateModelsAsync(
+    public static async Task<CoreValidationResult> ValidateModelsAsync(
         IEnumerable<object> models,
         Func<object, ValidationContext>? validationContextFactory = null)
     {
@@ -132,7 +119,7 @@ public static class ValidationHelper
             var modelsList = models.ToList();
             if (modelsList.Count == 0)
             {
-                return ValidationResult.Success();
+                return CoreValidationResult.Success;
             }
 
             var validationTasks = modelsList
@@ -140,15 +127,13 @@ public static class ValidationHelper
                 .ToList();
 
             var results = await Task.WhenAll(validationTasks);
-            return ValidationResult.Combine(results);
+            return CoreValidationResult.Combine(results);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Batch validation failed");
-            return ValidationResult.Failure(
-                "BatchValidation",
-                $"Batch validation failed: {ex.Message}",
-                ex
+            return CoreValidationResult.Failed(
+                CoreValidationError.ForProperty("BatchValidation", $"Batch validation failed: {ex.Message}")
             );
         }
     }
@@ -157,7 +142,7 @@ public static class ValidationHelper
     ///     Converts data annotation validation results to validation errors.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static IEnumerable<ValidationError> GetValidationErrors(
+    private static IEnumerable<CoreValidationError> GetValidationErrors(
         System.ComponentModel.DataAnnotations.ValidationResult result)
     {
         if (string.IsNullOrEmpty(result.ErrorMessage))
@@ -169,14 +154,14 @@ public static class ValidationHelper
         var enumerable = members.ToList();
         if (!enumerable.Any())
         {
-            yield return new ValidationError("Model", result.ErrorMessage);
+            yield return CoreValidationError.ForProperty("Model", result.ErrorMessage);
             yield break;
         }
 
         foreach (var member in enumerable)
         {
             if (string.IsNullOrEmpty(member)) continue;
-            yield return new ValidationError(member, result.ErrorMessage);
+            yield return CoreValidationError.ForProperty(member, result.ErrorMessage);
         }
     }
 }

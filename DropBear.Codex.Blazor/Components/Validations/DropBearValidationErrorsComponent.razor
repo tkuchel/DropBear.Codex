@@ -73,7 +73,7 @@
                         role="listitem"
                         @onclick="@(() => HandleErrorClickAsync(item.Error))"
                         tabindex="@(OnErrorClicked.HasDelegate ? "0" : "-1")"
-                        @key="@($"{item.Error.Parameter}-{item.Error.ErrorMessage.GetHashCode()}")"
+                        @key="@($"{item.Error.PropertyName ?? "General"}-{item.Error.Message.GetHashCode()}")"
                         style="animation-delay: @(item.Index * 50)ms;">
 
                         <div class="validation-errors__item-icon">
@@ -82,11 +82,11 @@
 
                         <div class="validation-errors__item-content">
                             <div class="validation-errors__item-field">
-                                @FormatParameterName(item.Error.Parameter)
+                                @FormatParameterName(item.Error.PropertyName ?? "General")
                             </div>
                             <div class="validation-errors__item-message"
                                  id="@($"{ComponentElementId}-error-{item.Index}")">
-                                @item.Error.ErrorMessage
+                                @item.Error.Message
                             </div>
                         </div>
 

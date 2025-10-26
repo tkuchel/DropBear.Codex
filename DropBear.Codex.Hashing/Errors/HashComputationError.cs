@@ -9,9 +9,8 @@ public sealed record HashComputationError : HashingError
     ///     Initializes a new instance of <see cref="HashComputationError" />.
     /// </summary>
     /// <param name="message">The error message describing the failure condition.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    public HashComputationError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public HashComputationError(string message)
+        : base(message)
     {
     }
 

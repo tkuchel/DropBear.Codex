@@ -197,7 +197,7 @@ public sealed class JsInitializationService : IJsInitializationService
     /// <exception cref="TimeoutException">If initialization exceeds the timeout period.</exception>
     /// <exception cref="OperationCanceledException">If initialization is cancelled.</exception>
     /// <exception cref="JSException">If module initialization fails.</exception>
-    public async Task EnsureJsModuleInitializedAsync(
+    public async ValueTask EnsureJsModuleInitializedAsync(
         string moduleName,
         TimeSpan? timeout = null,
         CancellationToken cancellationToken = default)
@@ -274,6 +274,38 @@ public sealed class JsInitializationService : IJsInitializationService
                 $"JavaScript module {moduleName} initialization timed out after {timeout.Value.TotalSeconds:F1}s"
             );
         }
+    }
+
+    /// <summary>
+    ///     Checks if a JavaScript module is already initialized.
+    /// </summary>
+    /// <param name="moduleName">The name of the module to check.</param>
+    /// <returns>True if the module is initialized, false otherwise.</returns>
+    public bool IsModuleInitialized(string moduleName)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(moduleName);
+
+        // Check if pre-initialized
+        if (_preInitializedModules.Contains(moduleName))
+        {
+            return true;
+        }
+
+        // For synchronous check, we can't do async JS call, so return false
+        // The actual check happens in the async version
+        return false;
+    }
+
+    /// <summary>
+    ///     Clears the initialization state for all modules.
+    /// </summary>
+    public void ClearInitializationState()
+    {
+        ThrowIfDisposed();
+
+        _preInitializedModules.Clear();
+        _logger.Information("Cleared all module initialization states");
     }
 
     /// <summary>

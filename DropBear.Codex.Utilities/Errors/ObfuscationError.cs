@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using DropBear.Codex.Core.Results.Base;
 

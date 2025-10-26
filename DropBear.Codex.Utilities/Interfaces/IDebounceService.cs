@@ -2,7 +2,6 @@
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Results.Base;
-using DropBear.Codex.Core.Results.Compatibility;
 using DropBear.Codex.Utilities.Errors;
 
 #endregion
@@ -114,72 +113,4 @@ public interface IDebounceService
     ///     Clears all debounce entries from the cache.
     /// </summary>
     void ClearCache();
-
-    #region Backwards Compatibility Methods
-
-    /// <summary>
-    ///     For backwards compatibility with the original implementation.
-    /// </summary>
-    /// <typeparam name="T">The type of the result value.</typeparam>
-    /// <param name="function">The function to execute which returns a <see cref="Core.Results.Compatibility.Result{T}" />.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
-    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
-    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
-    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
-    /// <param name="lineNumber">
-    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
-    /// </param>
-    /// <returns>
-    ///     A <see cref="Task" /> containing a <see cref="Core.Results.Compatibility.Result{T}" /> with the function
-    ///     result or a debounce error.
-    /// </returns>
-    Task<Core.Results.Compatibility.Result<T>> DebounceAsyncLegacy<T>(
-        Func<Task<Core.Results.Compatibility.Result<T>>> function,
-        string key = "",
-        TimeSpan? debounceTime = null,
-        [CallerMemberName] string caller = "",
-        [CallerFilePath] string filePath = "",
-        [CallerLineNumber] int lineNumber = 0);
-
-    /// <summary>
-    ///     For backwards compatibility with the original implementation.
-    /// </summary>
-    /// <param name="action">The action to execute.</param>
-    /// <param name="key">An optional unique identifier for the action call used for debouncing purposes.</param>
-    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
-    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
-    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
-    /// <param name="lineNumber">
-    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
-    /// </param>
-    /// <returns>A <see cref="Task" /> containing a <see cref="Result" /> indicating success or a debounce error.</returns>
-    Task<Result> DebounceAsyncLegacy(
-        Action action,
-        string key = "",
-        TimeSpan? debounceTime = null,
-        [CallerMemberName] string caller = "",
-        [CallerFilePath] string filePath = "",
-        [CallerLineNumber] int lineNumber = 0);
-
-    /// <summary>
-    ///     For backwards compatibility with the original implementation.
-    /// </summary>
-    /// <param name="function">The function to execute which returns a <see cref="Result" />.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
-    /// <param name="debounceTime">The minimum time interval between successive executions.</param>
-    /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
-    /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
-    /// <param name="lineNumber">
-    ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
-    /// </param>
-    /// <returns>A <see cref="Task" /> containing a <see cref="Result" /> indicating success or a debounce error.</returns>
-    Task<Result> DebounceAsyncLegacy(
-        Func<Task<Result>> function,
-        string key = "",
-        TimeSpan? debounceTime = null,
-        [CallerMemberName] string caller = "",
-        [CallerFilePath] string filePath = "",
-        [CallerLineNumber] int lineNumber = 0);
-
-    #endregion
 }

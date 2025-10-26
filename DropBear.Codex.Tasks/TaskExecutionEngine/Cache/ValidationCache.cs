@@ -147,10 +147,11 @@ public sealed class ValidationCache : IDisposable
         CancellationToken cancellationToken)
     {
         // Synchronous check
-        if (!task.Validate())
+        var validationResult = task.Validate();
+        if (!validationResult.IsSuccess)
         {
-            return Result<Unit, TaskExecutionError>.Failure(
-                new TaskExecutionError($"Sync validation failed for task {task.Name}", task.Name));
+            // TaskValidationError extends TaskExecutionError, so we can use it directly
+            return Result<Unit, TaskExecutionError>.Failure(validationResult.Error);
         }
 
         // Async check

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
@@ -179,7 +179,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
     private async Task InitializeJavaScriptAsync()
     {
         var moduleResult = await GetJsModuleAsync(JsModuleName);
-        if (moduleResult.IsFailure)
+        if (moduleResult.IsSuccess == false)
         {
             throw new InvalidOperationException($"Failed to load JS module: {moduleResult.Exception?.Message}");
         }

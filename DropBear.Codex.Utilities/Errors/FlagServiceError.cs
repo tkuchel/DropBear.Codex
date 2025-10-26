@@ -1,4 +1,4 @@
-﻿using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Core.Results.Base;
 
 namespace DropBear.Codex.Utilities.Errors;
 

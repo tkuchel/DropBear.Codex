@@ -13,68 +13,23 @@ namespace DropBear.Codex.Blazor.Errors;
 ///     Represents an error that occurred during data fetch operations.
 ///     Enhanced for .NET 9 with improved error context and performance.
 /// </summary>
-public sealed class DataFetchError : IEquatable<DataFetchError>
+public sealed record DataFetchError : ResultError
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="DataFetchError"/> class.
     /// </summary>
     /// <param name="message">The error message.</param>
-    /// <param name="operationName">The name of the operation that failed.</param>
-    /// <param name="innerException">The inner exception that caused this error.</param>
-    /// <param name="caller">The calling method name.</param>
-    public DataFetchError(
-        string message,
-        string? operationName = null,
-        Exception? innerException = null,
-        [CallerMemberName] string? caller = null)
-    {
-        Message = message ?? throw new ArgumentNullException(nameof(message));
-        OperationName = operationName;
-        InnerException = innerException;
-        Caller = caller;
-        Timestamp = DateTimeOffset.UtcNow;
-        ErrorId = Guid.NewGuid();
-    }
+    public DataFetchError(string message) : base(message) { }
 
     /// <summary>
-    ///     Gets the error message.
-    /// </summary>
-    public string Message { get; }
-
-    /// <summary>
-    ///     Gets the name of the operation that failed.
-    /// </summary>
-    public string? OperationName { get; }
-
-    /// <summary>
-    ///     Gets the inner exception that caused this error.
-    /// </summary>
-    public Exception? InnerException { get; }
-
-    /// <summary>
-    ///     Gets the calling method name.
-    /// </summary>
-    public string? Caller { get; }
-
-    /// <summary>
-    ///     Gets the timestamp when the error occurred.
-    /// </summary>
-    public DateTimeOffset Timestamp { get; }
-
-    /// <summary>
-    ///     Gets a unique identifier for this error instance.
-    /// </summary>
-    public Guid ErrorId { get; }
-
-    /// <summary>
-    ///     Gets the operation type for categorization.
+    ///     Gets or sets the operation type for categorization.
     /// </summary>
     public DataFetchErrorType ErrorType { get; init; } = DataFetchErrorType.Unknown;
 
     /// <summary>
-    ///     Gets additional context data for the error.
+    ///     Gets or sets the name of the operation that failed.
     /// </summary>
-    public IReadOnlyDictionary<string, object>? Context { get; init; }
+    public string? OperationName { get; init; }
 
     /// <summary>
     ///     Gets whether this error is retryable.
@@ -89,80 +44,89 @@ public sealed class DataFetchError : IEquatable<DataFetchError>
     };
 
     /// <summary>
-    ///     Gets the full error context including all available information.
+    ///     Creates an error for a fetch timeout.
     /// </summary>
-    public string FullContext =>
-        $"[{ErrorId}] {Message}" +
-        (OperationName != null ? $" (Operation: {OperationName})" : "") +
-        (Caller != null ? $" (Caller: {Caller})" : "") +
-        $" (Type: {ErrorType})" +
-        $" (Retryable: {IsRetryable})" +
-        $" at {Timestamp:yyyy-MM-dd HH:mm:ss.fff} UTC" +
-        (Context?.Count > 0 ? $"\nContext: {string.Join(", ", Context.Select(kvp => $"{kvp.Key}={kvp.Value}"))}" : "") +
-        (InnerException != null ? $"\nInner Exception: {InnerException}" : "");
-
-    /// <summary>
-    ///     Creates a new DataFetchError with additional context.
-    /// </summary>
-    public DataFetchError WithContext(string key, object value)
+    /// <param name="operationName">The name of the operation that timed out.</param>
+    /// <param name="timeoutSeconds">The timeout in seconds.</param>
+    /// <returns>A new <see cref="DataFetchError"/> instance.</returns>
+    public static DataFetchError Timeout(string operationName, double timeoutSeconds)
     {
-        var newContext = Context?.ToDictionary(kvp => kvp.Key, kvp => kvp.Value) ?? new Dictionary<string, object>();
-        newContext[key] = value;
-
-        return new DataFetchError(Message, OperationName, InnerException, Caller)
+        return new DataFetchError($"Data fetch operation '{operationName}' timed out after {timeoutSeconds:F1}s")
         {
-            ErrorType = ErrorType, Context = newContext.AsReadOnly()
+            ErrorType = DataFetchErrorType.Timeout,
+            OperationName = operationName
         };
     }
 
     /// <summary>
-    ///     Creates a new DataFetchError with a specific error type.
+    ///     Creates an error for a network failure.
     /// </summary>
-    public DataFetchError WithErrorType(DataFetchErrorType errorType)
+    /// <param name="operationName">The name of the operation that failed.</param>
+    /// <param name="details">Details about the network error.</param>
+    /// <returns>A new <see cref="DataFetchError"/> instance.</returns>
+    public static DataFetchError NetworkError(string operationName, string details)
     {
-        return new DataFetchError(Message, OperationName, InnerException, Caller)
+        return new DataFetchError($"Network error during '{operationName}': {details}")
         {
-            ErrorType = errorType, Context = Context
+            ErrorType = DataFetchErrorType.NetworkError,
+            OperationName = operationName
         };
     }
 
     /// <summary>
-    ///     Determines whether the specified object is equal to the current object.
+    ///     Creates an error for a not found scenario.
     /// </summary>
-    public bool Equals(DataFetchError? other)
+    /// <param name="resourceName">The name of the resource that was not found.</param>
+    /// <returns>A new <see cref="DataFetchError"/> instance.</returns>
+    public static DataFetchError NotFound(string resourceName)
     {
-        if (other is null) return false;
-        if (ReferenceEquals(this, other)) return true;
-
-        return ErrorId.Equals(other.ErrorId) &&
-               string.Equals(Message, other.Message, StringComparison.Ordinal) &&
-               string.Equals(OperationName, other.OperationName, StringComparison.Ordinal) &&
-               ErrorType == other.ErrorType;
+        return new DataFetchError($"Resource '{resourceName}' not found")
+        {
+            ErrorType = DataFetchErrorType.NotFound,
+            OperationName = resourceName
+        };
     }
 
     /// <summary>
-    ///     Determines whether the specified object is equal to the current object.
+    ///     Creates an error for an unauthorized access scenario.
     /// </summary>
-    public override bool Equals(object? obj) => Equals(obj as DataFetchError);
+    /// <param name="operationName">The name of the operation that was unauthorized.</param>
+    /// <returns>A new <see cref="DataFetchError"/> instance.</returns>
+    public static DataFetchError Unauthorized(string operationName)
+    {
+        return new DataFetchError($"Unauthorized access to '{operationName}'")
+        {
+            ErrorType = DataFetchErrorType.AuthenticationError,
+            OperationName = operationName
+        };
+    }
 
     /// <summary>
-    ///     Returns a hash code for the current object.
+    ///     Creates an error for a server error scenario.
     /// </summary>
-    public override int GetHashCode() => HashCode.Combine(ErrorId, Message, OperationName, ErrorType);
+    /// <param name="operationName">The name of the operation.</param>
+    /// <param name="details">Details about the server error.</param>
+    /// <returns>A new <see cref="DataFetchError"/> instance.</returns>
+    public static DataFetchError ServerError(string operationName, string details)
+    {
+        return new DataFetchError($"Server error during '{operationName}': {details}")
+        {
+            ErrorType = DataFetchErrorType.ServerError,
+            OperationName = operationName
+        };
+    }
 
     /// <summary>
-    ///     Returns a string representation of the error.
+    ///     Creates an error for a general fetch failure.
     /// </summary>
-    public override string ToString() => FullContext;
-
-    /// <summary>
-    ///     Equality operator.
-    /// </summary>
-    public static bool operator ==(DataFetchError? left, DataFetchError? right) =>
-        left?.Equals(right) ?? right is null;
-
-    /// <summary>
-    ///     Inequality operator.
-    /// </summary>
-    public static bool operator !=(DataFetchError? left, DataFetchError? right) => !(left == right);
+    /// <param name="operationName">The name of the operation that failed.</param>
+    /// <param name="details">Details about the failure.</param>
+    /// <returns>A new <see cref="DataFetchError"/> instance.</returns>
+    public static DataFetchError FetchFailed(string operationName, string details)
+    {
+        return new DataFetchError($"Data fetch '{operationName}' failed: {details}")
+        {
+            OperationName = operationName
+        };
+    }
 }

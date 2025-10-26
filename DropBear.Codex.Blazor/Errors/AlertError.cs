@@ -15,9 +15,7 @@ public sealed record AlertError : ResultError
     ///     Initializes a new instance of the <see cref="AlertError" /> class.
     /// </summary>
     /// <param name="message">The error message.</param>
-    /// <param name="timestamp">Optional timestamp for the error. Defaults to UTC now.</param>
-    public AlertError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public AlertError(string message) : base(message)
     {
     }
 

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using System.Text;
@@ -146,7 +146,7 @@ public partial class DropBearSectionContainer : DropBearComponentBase
                 // Initialize JS module
                 var moduleResult = await GetJsModuleAsync(JsModuleName);
 
-                if (moduleResult.IsFailure)
+                if (moduleResult.IsSuccess == false)
                 {
                     LogError("Failed to initialize section container: {Error}", moduleResult.Exception);
                     return;
@@ -235,14 +235,14 @@ public partial class DropBearSectionContainer : DropBearComponentBase
                 // Only trigger UI update if width changed
                 if (_maxWidthStyle != newMaxWidth)
                 {
-                    await QueueStateHasChangedAsync(async () =>
+                    await QueueStateHasChangedAsync((Func<Task>)(async () =>
                     {
                         _maxWidthStyle = newMaxWidth;
                         if (OnDimensionsChanged.HasDelegate)
                         {
                             await OnDimensionsChanged.InvokeAsync(dimensions);
                         }
-                    });
+                    }));
                 }
             }
             finally
@@ -307,7 +307,7 @@ public partial class DropBearSectionContainer : DropBearComponentBase
             {
                 var moduleResult = await GetJsModuleAsync(JsModuleName);
 
-                if (moduleResult.IsFailure)
+                if (moduleResult.IsSuccess == false)
                 {
                     LogError("Failed to initialize section container: {Error}", moduleResult.Exception);
                     return _cachedDimensions;

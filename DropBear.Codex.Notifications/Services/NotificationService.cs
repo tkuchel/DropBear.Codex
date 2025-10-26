@@ -326,7 +326,20 @@ public sealed class NotificationService : INotificationService, IDisposable
             }
 
             // If the notification is marked sensitive, encrypt any string data
-            var notificationToPublish = isSensitive ? EncryptNotification(notification) : notification;
+            Notification notificationToPublish;
+            if (isSensitive)
+            {
+                var encryptResult = EncryptNotification(notification);
+                if (!encryptResult.IsSuccess)
+                {
+                    return Result<Unit, NotificationError>.Failure(encryptResult.Error, encryptResult.Exception);
+                }
+                notificationToPublish = encryptResult.Value!;
+            }
+            else
+            {
+                notificationToPublish = notification;
+            }
 
             // Acquire a semaphore specific to the channel
             var nowUtc = DateTime.UtcNow; // Convert DateTimeOffset to DateTime
@@ -426,7 +439,7 @@ public sealed class NotificationService : INotificationService, IDisposable
     /// </summary>
     /// <param name="notification">The original notification with unencrypted data.</param>
     /// <returns>A new <see cref="Notification" /> instance with certain fields encrypted via <see cref="_dataProtector" />.</returns>
-    private Notification EncryptNotification(Notification notification)
+    private Result<Notification, NotificationError> EncryptNotification(Notification notification)
     {
         try
         {
@@ -453,10 +466,22 @@ public sealed class NotificationService : INotificationService, IDisposable
             }
 
             // Create a new notification with the encrypted values
+            Notification encryptedNotification;
             if (_notificationPool != null)
             {
                 // If we have a pool, use it
-                return _notificationPool.Get(
+                encryptedNotification = _notificationPool.Get(
+                    notification.ChannelId,
+                    notification.Type,
+                    notification.Severity,
+                    encryptedMessage,
+                    encryptedTitle,
+                    encryptedDataDict);
+            }
+            else
+            {
+                // Otherwise create a new instance
+                encryptedNotification = new Notification(
                     notification.ChannelId,
                     notification.Type,
                     notification.Severity,
@@ -465,19 +490,15 @@ public sealed class NotificationService : INotificationService, IDisposable
                     encryptedDataDict);
             }
 
-            // Otherwise create a new instance
-            return new Notification(
-                notification.ChannelId,
-                notification.Type,
-                notification.Severity,
-                encryptedMessage,
-                encryptedTitle,
-                encryptedDataDict);
+            return Result<Notification, NotificationError>.Success(encryptedNotification);
         }
         catch (Exception ex)
         {
             Logger.Error(ex, "Error encrypting notification");
-            throw new InvalidOperationException("Failed to encrypt notification", ex);
+            return Result<Notification, NotificationError>.Failure(
+                NotificationError.EncryptionFailed(ex.Message)
+                    .WithContext(nameof(EncryptNotification)),
+                ex);
         }
     }
 

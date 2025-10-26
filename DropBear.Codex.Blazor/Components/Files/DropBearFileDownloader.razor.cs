@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Buffers;
 using System.Text.Json;
@@ -38,7 +38,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
 
             var moduleResult = await GetJsModuleAsync(JsModuleName);
 
-            if (moduleResult.IsFailure)
+            if (moduleResult.IsSuccess == false)
             {
                 LogError("Failed to load JS module: {Error}", moduleResult.Exception);
                 return;
@@ -514,7 +514,7 @@ public sealed partial class DropBearFileDownloader : DropBearComponentBase
         // Use the helper method instead of directly referencing _module
         var moduleResult = await GetJsDownloaderModuleAsync();
 
-        if (moduleResult.IsFailure)
+        if (moduleResult.IsSuccess == false)
         {
             LogError("Failed to download JS module: {Error}", moduleResult.Exception);
             return;

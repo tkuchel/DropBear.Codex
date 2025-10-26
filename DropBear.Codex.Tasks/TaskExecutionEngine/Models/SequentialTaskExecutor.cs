@@ -63,24 +63,26 @@ public class SequentialTaskExecutor
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     cts.CancelAfter(task.Timeout);
 
-                    try
+                    var executionResult = await task.ExecuteAsync(context, cts.Token).ConfigureAwait(false);
+
+                    if (executionResult.IsSuccess)
                     {
-                        await task.ExecuteAsync(context, cts.Token).ConfigureAwait(false);
                         _tracker.CompleteTask(task.Name, true);
                         context.IncrementCompletedTaskCount();
                     }
-                    catch (Exception ex)
+                    else
                     {
                         _tracker.CompleteTask(task.Name, false);
-                        _logger.Error(ex, "Task {TaskName} failed", task.Name);
-                        failedTasks.Add((task.Name, ex));
+                        var errorMessage = executionResult.Error.Message;
+                        var exception = executionResult.Error.Exception ?? new Exception(errorMessage);
+
+                        _logger.Error(exception, "Task {TaskName} failed: {ErrorMessage}", task.Name, errorMessage);
+                        failedTasks.Add((task.Name, exception));
 
                         // Stop on first failure if configured
                         if (!task.ContinueOnFailure && scope.Context.Options.StopOnFirstFailure)
                         {
-                            return Result<Unit, TaskExecutionError>.Failure(
-                                new TaskExecutionError($"Task {task.Name} failed and StopOnFirstFailure is enabled",
-                                    task.Name, ex));
+                            return Result<Unit, TaskExecutionError>.Failure(executionResult.Error);
                         }
                     }
                 }
@@ -88,6 +90,7 @@ public class SequentialTaskExecutor
                 {
                     _logger.Error(ex, "Unexpected error executing task {TaskName}", task.Name);
                     failedTasks.Add((task.Name, ex));
+                    _tracker.CompleteTask(task.Name, false);
                 }
             }
 

@@ -261,7 +261,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         catch (Exception ex)
         {
             return Result<IJSObjectReference, JsInteropError>.Failure(
-                new JsInteropError($"Error in GetJsModuleAsync: {ex.Message}", ex));
+                new JsInteropError($"Error in GetJsModuleAsync: {ex.Message}"), ex);
         }
     }
 
@@ -294,7 +294,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
             return Result<IJSObjectReference, JsInteropError>.Failure(
-                new JsInteropError($"Failed to load JS module: {moduleName}", ex));
+                new JsInteropError($"Failed to load JS module: {moduleName}"), ex);
         }
     }
 
@@ -325,7 +325,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             HandleJsException(ex, identifier, caller);
             return Result<T, JsInteropError>.Failure(
-                new JsInteropError($"JS interop failed for '{identifier}'", ex));
+                new JsInteropError($"JS interop failed for '{identifier}'"), ex);
         }
     }
 
@@ -355,7 +355,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             HandleJsException(ex, identifier, caller);
             return Result<Unit, JsInteropError>.Failure(
-                new JsInteropError($"JS interop failed for '{identifier}'", ex));
+                new JsInteropError($"JS interop failed for '{identifier}'"), ex);
         }
     }
 
@@ -418,7 +418,10 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <returns>A Task representing the operation.</returns>
     protected async Task QueueStateHasChangedAsync(Func<Task> action)
     {
-        await QueueStateHasChangedAsync(async () => await action());
+        await QueueStateHasChangedAsync((Func<ValueTask>)(async () =>
+        {
+            await action().ConfigureAwait(false);
+        }));
     }
 
     #endregion
@@ -456,9 +459,14 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         if (errors.Count > 0)
         {
             var combinedMessage = $"Failed to dispose {errors.Count} JS modules";
+            var exception = errors.Count > 1 ? new AggregateException(errors) : errors[0];
             return Result<Unit, JsInteropError>.PartialSuccess(
                 Unit.Value,
-                new JsInteropError(combinedMessage, errors.Count > 1 ? new AggregateException(errors) : errors[0]));
+                new JsInteropError(combinedMessage)
+                {
+                    SourceException = exception,
+                    StackTrace = exception.StackTrace
+                });
         }
 
         return Result<Unit, JsInteropError>.Success(Unit.Value);
@@ -521,7 +529,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             LogError("Module analysis failed (called from {Caller})", ex, caller ?? "unknown");
             return Result<Dictionary<string, bool>, JsInteropError>.Failure(
-                new JsInteropError($"Failed to analyze module: {ex.Message}", ex));
+                new JsInteropError($"Failed to analyze module: {ex.Message}"), ex);
         }
     }
 
@@ -591,13 +599,13 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             var timeoutSeconds = (timeout ?? DefaultOperationTimeout).TotalSeconds;
             LogWarning("Operation timed out: {Operation} after {Timeout}s", operationName, timeoutSeconds);
             return Result<T, DataFetchError>.Failure(
-                new DataFetchError($"The operation timed out after {timeoutSeconds} seconds", operationName));
+                DataFetchError.Timeout(operationName ?? "unknown", timeoutSeconds));
         }
         catch (Exception ex)
         {
             LogError("Operation failed: {Operation}", ex, operationName);
             return Result<T, DataFetchError>.Failure(
-                new DataFetchError($"Failed to execute operation: {ex.Message}", operationName));
+                DataFetchError.FetchFailed(operationName ?? "unknown", ex.Message), ex);
         }
     }
 
