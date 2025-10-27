@@ -82,13 +82,13 @@ public static class AntiForgeryHelper
         if (string.IsNullOrWhiteSpace(token))
         {
             return Result<Unit, ComponentError>.Failure(
-                ComponentError.ValidationFailed("Anti-forgery token is required"));
+                new ComponentError("Anti-forgery token is required"));
         }
 
         if (string.IsNullOrWhiteSpace(userId))
         {
             return Result<Unit, ComponentError>.Failure(
-                ComponentError.ValidationFailed("User identifier is required for token validation"));
+                new ComponentError("User identifier is required for token validation"));
         }
 
         try
@@ -98,7 +98,7 @@ public static class AntiForgeryHelper
             if (tokenBytes.Length < SaltByteSize + 32) // SHA256 is 32 bytes
             {
                 return Result<Unit, ComponentError>.Failure(
-                    ComponentError.ValidationFailed("Invalid token format"));
+                    new ComponentError("Invalid token format"));
             }
 
             // Extract salt (first 16 bytes)
@@ -113,12 +113,12 @@ public static class AntiForgeryHelper
         catch (FormatException)
         {
             return Result<Unit, ComponentError>.Failure(
-                ComponentError.ValidationFailed("Invalid token encoding"));
+                new ComponentError("Invalid token encoding"));
         }
         catch (Exception ex)
         {
             return Result<Unit, ComponentError>.Failure(
-                ComponentError.OperationFailed($"Token validation error: {ex.Message}"), ex);
+                new ComponentError($"Token validation error: {ex.Message}"), ex);
         }
     }
 
@@ -170,7 +170,7 @@ public static class AntiForgeryHelper
         if (string.IsNullOrWhiteSpace(cookieValue) || string.IsNullOrWhiteSpace(formValue))
         {
             return Result<Unit, ComponentError>.Failure(
-                ComponentError.ValidationFailed("CSRF cookie and form values are required"));
+                new ComponentError("CSRF cookie and form values are required"));
         }
 
         // Use constant-time comparison to prevent timing attacks
@@ -179,7 +179,7 @@ public static class AntiForgeryHelper
                 Encoding.UTF8.GetBytes(formValue)))
         {
             return Result<Unit, ComponentError>.Failure(
-                ComponentError.SecurityViolation("CSRF token mismatch"));
+                new ComponentError("CSRF token mismatch"));
         }
 
         return Result<Unit, ComponentError>.Success(Unit.Value);

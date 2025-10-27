@@ -215,30 +215,33 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                     throw new CryptographicException("Encrypted data is too short to contain required components");
                 }
 
-                // Use Span to avoid ToArray allocations where possible
-                var encryptedKeySpan = data.AsSpan(0, keySizeBytes);
-                var encryptedNonceSpan = data.AsSpan(keySizeBytes, keySizeBytes);
-                var tagSpan = data.AsSpan(2 * keySizeBytes, TagSize);
-                var ciphertextSpan = data.AsSpan((2 * keySizeBytes) + TagSize);
+                // Store offsets for later span creation (cannot use spans across await)
+                var tagOffset = 2 * keySizeBytes;
+                var ciphertextOffset = tagOffset + TagSize;
+                var ciphertextLength = data.Length - ciphertextOffset;
 
-                // Decrypt key and nonce (these need to be arrays for RSA)
-                var encryptedKey = encryptedKeySpan.ToArray();
-                var encryptedNonce = encryptedNonceSpan.ToArray();
+                // Extract and decrypt key and nonce (need arrays for RSA)
+                var encryptedKey = data.AsSpan(0, keySizeBytes).ToArray();
+                var encryptedNonce = data.AsSpan(keySizeBytes, keySizeBytes).ToArray();
 
                 decryptedKey = await DecryptWithRsaAsync(encryptedKey, cancellationToken).ConfigureAwait(false);
                 decryptedNonce = await DecryptWithRsaAsync(encryptedNonce, cancellationToken).ConfigureAwait(false);
 
+                // Now recreate spans after async operations (safe to use in synchronous code below)
+                var tagSpan = data.AsSpan(tagOffset, TagSize);
+                var ciphertextSpan = data.AsSpan(ciphertextOffset, ciphertextLength);
+
                 // Rent buffer for plaintext from ArrayPool
-                var plaintextBuffer = ArrayPool<byte>.Shared.Rent(ciphertextSpan.Length);
+                var plaintextBuffer = ArrayPool<byte>.Shared.Rent(ciphertextLength);
                 try
                 {
-                    // Decrypt the data
+                    // Decrypt the data (synchronous operation)
                     using var aesGcm = new AesGcm(decryptedKey, TagSize);
-                    aesGcm.Decrypt(decryptedNonce, ciphertextSpan, tagSpan, plaintextBuffer.AsSpan(0, ciphertextSpan.Length));
+                    aesGcm.Decrypt(decryptedNonce, ciphertextSpan, tagSpan, plaintextBuffer.AsSpan(0, ciphertextLength));
 
                     // Copy to final result array (this allocation is necessary for the return value)
-                    var plaintext = new byte[ciphertextSpan.Length];
-                    plaintextBuffer.AsSpan(0, ciphertextSpan.Length).CopyTo(plaintext);
+                    var plaintext = new byte[ciphertextLength];
+                    plaintextBuffer.AsSpan(0, ciphertextLength).CopyTo(plaintext);
 
                     stopwatch.Stop();
                     _logger.Information("Decryption completed successfully in {ElapsedMs}ms. " +
@@ -250,9 +253,16 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                 finally
                 {
                     // Clear and return the rented buffer
-                    Array.Clear(plaintextBuffer, 0, ciphertextSpan.Length);
+                    Array.Clear(plaintextBuffer, 0, ciphertextLength);
                     ArrayPool<byte>.Shared.Return(plaintextBuffer);
                 }
+            }
+            catch (CryptographicException ex)
+            {
+                stopwatch.Stop();
+                _logger.Error(ex, "Cryptographic error during decryption: {Message}", ex.Message);
+                return Result<byte[], SerializationError>.Failure(
+                    new SerializationError($"AES-GCM decryption failed: {ex.Message}") { Operation = "Decrypt" }, ex);
             }
             finally
             {
@@ -265,13 +275,6 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                 {
                     Array.Clear(decryptedNonce, 0, decryptedNonce.Length);
                 }
-            }
-            catch (CryptographicException ex)
-            {
-                stopwatch.Stop();
-                _logger.Error(ex, "Cryptographic error during decryption: {Message}", ex.Message);
-                return Result<byte[], SerializationError>.Failure(
-                    new SerializationError($"AES-GCM decryption failed: {ex.Message}") { Operation = "Decrypt" }, ex);
             }
         }
         catch (Exception ex)
