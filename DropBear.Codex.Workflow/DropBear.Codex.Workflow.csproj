@@ -96,11 +96,7 @@
     <!-- SourceLink -->
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All"/>
 
-    <!-- Nerdbank.GitVersioning for automatic versioning -->
-    <PackageReference Include="Nerdbank.GitVersioning" Version="3.8.118">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <!-- Nerdbank.GitVersioning is referenced in Directory.Build.props -->
   </ItemGroup>
 
   <!-- Project References -->

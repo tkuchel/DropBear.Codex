@@ -89,10 +89,40 @@ public static class ServiceCollectionExtensions
         return services;
     }
 
+    /// <summary>
+    ///     Adds notification center services with database persistence.
+    ///     SECURITY: Ensure connection strings are stored securely (Azure Key Vault, AWS Secrets Manager, etc.)
+    ///     and not committed to source control.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <param name="configuration">The configuration containing connection string.</param>
+    /// <returns>The service collection for chaining.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if connection string is missing or invalid.</exception>
     public static IServiceCollection AddNotificationCenter(
         this IServiceCollection services,
         IConfiguration configuration)
     {
+        // Validate connection string presence
+        var connectionString = configuration.GetConnectionString("DefaultConnection");
+
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Connection string 'DefaultConnection' is missing or empty. " +
+                "Ensure it is properly configured in appsettings.json or environment variables.");
+        }
+
+        // Security check: Warn if connection string appears to contain plain-text credentials
+        if (connectionString.Contains("Password=", StringComparison.OrdinalIgnoreCase) &&
+            !connectionString.Contains("Integrated Security=true", StringComparison.OrdinalIgnoreCase))
+        {
+            // Log warning but allow (user might be using managed identity or other auth)
+            // In production, consider using Azure SQL Managed Identity or Windows Authentication
+            Console.WriteLine(
+                "WARNING: Connection string contains password. " +
+                "Consider using Azure Key Vault, Managed Identity, or Windows Authentication for production.");
+        }
+
         // Register core notification services (which you already have)
         services.AddNotificationServices();
 
@@ -107,8 +137,7 @@ public static class ServiceCollectionExtensions
         // Register DB Context if using Entity Framework
         services.AddDbContext<NotificationDbContext>(options =>
         {
-            options.UseSqlServer(
-                configuration.GetConnectionString("DefaultConnection"),
+            options.UseSqlServer(connectionString,
                 b => b.MigrationsAssembly("DropBear.Codex.Notifications"));
         });
 

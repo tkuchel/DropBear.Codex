@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections;
+using System.Security.Cryptography;
 using System.Text;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
@@ -197,8 +198,8 @@ public class Argon2Hasher : IHasher
             using var argon2 = CreateArgon2(input, salt);
             var hashBytes = await Task.Run(() => argon2.GetBytes(_hashSize), cancellationToken).ConfigureAwait(false);
 
-            // StructuralComparisons checks byte arrays for equality
-            var isValid = StructuralComparisons.StructuralEqualityComparer.Equals(hashBytes, expectedHashBytes);
+            // Use constant-time comparison to prevent timing attacks
+            var isValid = CryptographicOperations.FixedTimeEquals(hashBytes, expectedHashBytes);
             if (isValid)
             {
                 Logger.Information("Argon2 verification successful.");
@@ -258,8 +259,8 @@ public class Argon2Hasher : IHasher
             using var argon2 = CreateArgon2(input, salt);
             var hashBytes = argon2.GetBytes(_hashSize);
 
-            // StructuralComparisons checks byte arrays for equality
-            var isValid = StructuralComparisons.StructuralEqualityComparer.Equals(hashBytes, expectedHashBytes);
+            // Use constant-time comparison to prevent timing attacks
+            var isValid = CryptographicOperations.FixedTimeEquals(hashBytes, expectedHashBytes);
             if (isValid)
             {
                 Logger.Information("Argon2 verification successful.");
