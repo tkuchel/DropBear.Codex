@@ -16,6 +16,14 @@ namespace DropBear.Codex.Core.Results.Serialization;
 public sealed class ResultTTErrorJsonConverter<T, TError> : JsonConverter<Result<T, TError>>
     where TError : ResultError
 {
+    /// <summary>
+    ///     Reads and deserializes a JSON representation into a Result{T, TError} instance.
+    /// </summary>
+    /// <param name="reader">The Utf8JsonReader to read from.</param>
+    /// <param name="typeToConvert">The type of object to convert.</param>
+    /// <param name="options">The serializer options to use.</param>
+    /// <returns>A Result{T, TError} instance deserialized from the JSON.</returns>
+    /// <exception cref="JsonException">Thrown when the JSON is malformed or missing required properties.</exception>
     public override Result<T, TError> Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
@@ -82,6 +90,13 @@ public sealed class ResultTTErrorJsonConverter<T, TError> : JsonConverter<Result
         };
     }
 
+    /// <summary>
+    ///     Writes a Result{T, TError} instance as JSON.
+    /// </summary>
+    /// <param name="writer">The Utf8JsonWriter to write to.</param>
+    /// <param name="value">The Result{T, TError} instance to serialize.</param>
+    /// <param name="options">The serializer options to use.</param>
+    /// <exception cref="ArgumentNullException">Thrown when writer or value is null.</exception>
     public override void Write(
         Utf8JsonWriter writer,
         Result<T, TError> value,

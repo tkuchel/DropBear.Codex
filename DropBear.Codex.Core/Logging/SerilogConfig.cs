@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Globalization;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -24,7 +25,7 @@ public static class SerilogConfig
     {
         return new LoggerConfiguration()
             .MinimumLevel.Is(minimumLevel)
-            .WriteTo.Console()
+            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
             .Enrich.FromLogContext()
             .Enrich.WithThreadId()
             .Enrich.WithEnvironmentName()
@@ -49,6 +50,7 @@ public static class SerilogConfig
             .MinimumLevel.Is(minimumLevel)
             .WriteTo.File(
                 filePath,
+                formatProvider: CultureInfo.InvariantCulture,
                 rollingInterval: rollingInterval,
                 retainedFileCountLimit: 31,
                 buffered: true)
@@ -71,9 +73,10 @@ public static class SerilogConfig
 
         return new LoggerConfiguration()
             .MinimumLevel.Is(minimumLevel)
-            .WriteTo.Console()
+            .WriteTo.Console(formatProvider: CultureInfo.InvariantCulture)
             .WriteTo.File(
                 filePath,
+                formatProvider: CultureInfo.InvariantCulture,
                 rollingInterval: RollingInterval.Day,
                 retainedFileCountLimit: 31)
             .Enrich.FromLogContext()

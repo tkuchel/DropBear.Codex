@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Enums;
@@ -77,6 +78,7 @@ public class Result<TError> : ResultBase, IResult<TError>
     /// <summary>
     ///     Implicit conversion from error to failure result.
     /// </summary>
+    [SuppressMessage("Usage", "CA2225:Operator overloads have named alternates", Justification = "Implicit conversion provides cleaner syntax; Failure() factory method serves as explicit alternate")]
     public static implicit operator Result<TError>(TError error) => Failure(error);
 
     #endregion

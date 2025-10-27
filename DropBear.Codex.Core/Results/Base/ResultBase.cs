@@ -2,6 +2,7 @@
 
 using System.Collections.Frozen;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
@@ -188,6 +189,7 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     ///     Gets exception count without enumerating the collection.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    [SuppressMessage("Design", "CA1024:Use properties where appropriate", Justification = "Method pattern maintained for consistency with other Get* methods and to indicate operation semantics")]
     public int GetExceptionCount() => _exceptions.Length;
 
     /// <summary>

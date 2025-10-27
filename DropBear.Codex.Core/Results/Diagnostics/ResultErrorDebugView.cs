@@ -1,4 +1,5 @@
-﻿using DropBear.Codex.Core.Enums;
+﻿using System.Diagnostics.CodeAnalysis;
+using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Errors;
 
@@ -7,6 +8,7 @@ namespace DropBear.Codex.Core.Results.Diagnostics;
 /// <summary>
 ///     Debugger type proxy for ResultError to provide better debugging experience.
 /// </summary>
+[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Instantiated by debugger via DebuggerTypeProxy attribute")]
 internal sealed class ResultErrorDebugView
 {
     private readonly ResultError _error;

@@ -12,9 +12,8 @@ namespace DropBear.Codex.Core.Logging;
 ///     Defaults to <see cref="NoOpLogger" /> until a real logger is supplied.
 /// </summary>
 /// <remarks>
-///     Thread-safety is achieved via <see cref="Volatile.Read{T}(ref T)" /> and
-///     <see cref="Volatile.Write{T}(ref T, T)" /> on the backing field, ensuring visibility
-///     of updates across threads without locks.
+///     Thread-safety is achieved via <see cref="Volatile"/> Read and Write operations
+///     on the backing field, ensuring visibility of updates across threads without locks.
 /// </remarks>
 public static class LoggerFactory
 {
@@ -29,7 +28,7 @@ public static class LoggerFactory
     ///     If not set explicitly, this returns a <see cref="NoOpLogger" />.
     /// </summary>
     /// <remarks>
-    ///     Uses <see cref="Volatile.Read{T}(ref T)" /> to ensure that changes made by
+    ///     Uses <see cref="Volatile"/> Read to ensure that changes made by
     ///     <see cref="SetLogger(ILogger)" /> are immediately visible to all threads.
     /// </remarks>
     public static ILogger Logger

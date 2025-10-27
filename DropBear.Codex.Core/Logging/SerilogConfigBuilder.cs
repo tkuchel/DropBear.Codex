@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Globalization;
 using Serilog;
 using Serilog.Events;
 using Serilog.Formatting.Compact;
@@ -118,7 +119,7 @@ public sealed class SerilogConfigBuilder
 
         if (_enableConsole)
         {
-            _configuration.WriteTo.Console();
+            _configuration.WriteTo.Console(formatProvider: CultureInfo.InvariantCulture);
         }
 
         if (_enableFile && !string.IsNullOrWhiteSpace(_filePath))
@@ -136,6 +137,7 @@ public sealed class SerilogConfigBuilder
             {
                 _configuration.WriteTo.File(
                     _filePath,
+                    formatProvider: CultureInfo.InvariantCulture,
                     rollingInterval: _rollingInterval,
                     retainedFileCountLimit: 31,
                     buffered: true);

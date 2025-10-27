@@ -1,4 +1,5 @@
-﻿using DropBear.Codex.Core.Results.Base;
+﻿using System.Diagnostics.CodeAnalysis;
+using DropBear.Codex.Core.Results.Base;
 
 namespace DropBear.Codex.Core.Interfaces;
 
@@ -22,6 +23,7 @@ public interface IResult<T, TError> : IReadOnlyResult<T, TError>
     /// <param name="predicate">A function that returns <c>true</c> if the value is acceptable.</param>
     /// <param name="error">The error to set if the predicate is not satisfied.</param>
     /// <returns>This result (for fluent chaining), possibly transformed into a failure state.</returns>
+    [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "'error' is the most descriptive parameter name for error handling methods")]
     IResult<T, TError> Ensure(Func<T, bool> predicate, TError error);
 
     /// <summary>

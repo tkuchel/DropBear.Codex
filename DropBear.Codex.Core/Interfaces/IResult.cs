@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Diagnostics.CodeAnalysis;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Base;
 
@@ -51,5 +52,6 @@ public interface IResult<out TError> : IResult
     ///     when <see cref="IResult.IsSuccess" /> is false.
     ///     This property is covariant, meaning it can be cast to a more derived type.
     /// </summary>
+    [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "'Error' is the most natural and conventional name for this property in error handling APIs")]
     TError? Error { get; }
 }

@@ -100,12 +100,8 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data, _options);
-
-            if (dto is null)
-            {
-                throw new JsonException("Deserialization returned null DTO.");
-            }
+            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data, _options)
+                ?? throw new JsonException("Deserialization returned null DTO.");
 
             ValidateDto(dto);
 
@@ -152,12 +148,8 @@ public sealed class JsonEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data, _options);
-
-            if (dto is null)
-            {
-                throw new JsonException("Deserialization returned null DTO.");
-            }
+            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data, _options)
+                ?? throw new JsonException("Deserialization returned null DTO.");
 
             ValidateDto(dto);
 

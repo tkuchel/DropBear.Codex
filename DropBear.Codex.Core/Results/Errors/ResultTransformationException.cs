@@ -165,6 +165,8 @@ public class ResultTransformationException : Exception
         ResultState targetState,
         Type resultType)
     {
+        ArgumentNullException.ThrowIfNull(resultType);
+
         var message = $"Invalid state transition from {sourceState} to {targetState} for type {resultType.Name}";
 
         return new ResultTransformationException(

@@ -1,5 +1,6 @@
 #region
 
+using System.Collections.Frozen;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Core.Results.Errors;
@@ -144,12 +145,15 @@ public sealed class StepResult : Result<Unit, ResultError>
         suspensionMetadata[WorkflowConstants.MetadataKeys.Suspension] = true;
         suspensionMetadata[WorkflowConstants.MetadataKeys.SignalName] = signalName;
 
+        // Convert to FrozenDictionary for optimal read performance
+        var frozenMetadata = suspensionMetadata.ToFrozenDictionary(StringComparer.Ordinal);
+
         return new StepResult(
             ResultState.Failure,
             default,
             error,
             null,
             false,
-            suspensionMetadata);
+            frozenMetadata);
     }
 }

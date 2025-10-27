@@ -338,40 +338,64 @@ public sealed class Blake2Hasher : BaseHasher
     private byte[] HashWithBlake2(string input, byte[]? salt)
     {
         Logger.Debug("Hashing input using Blake2 with optional salt (private helper).");
-        ReadOnlySpan<byte> inputBytes = Encoding.UTF8.GetBytes(input);
 
-        if (salt == null || salt.Length == 0)
-        {
-            return Blake2b.ComputeHash(_hashSize, inputBytes);
-        }
+        // Calculate the size needed for UTF8 bytes
+        var inputByteCount = Encoding.UTF8.GetByteCount(input);
+        byte[]? rentedInputBuffer = null;
 
-        // Use more efficient memory handling with stackalloc for small data
-        ReadOnlySpan<byte> saltSpan = salt;
-        var bufferSize = saltSpan.Length + inputBytes.Length;
-
-        if (bufferSize <= 1024)
-        {
-            // For small inputs, use stack allocation for better performance
-            Span<byte> saltedInput = stackalloc byte[bufferSize];
-            saltSpan.CopyTo(saltedInput);
-            inputBytes.CopyTo(saltedInput.Slice(saltSpan.Length));
-
-            return Blake2b.ComputeHash(_hashSize, saltedInput);
-        }
-
-        // For larger inputs, use ArrayPool to minimize GC pressure
-        var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
         try
         {
-            var bufferSpan = buffer.AsSpan(0, bufferSize);
-            saltSpan.CopyTo(bufferSpan);
-            inputBytes.CopyTo(bufferSpan.Slice(saltSpan.Length));
+            // Use stackalloc for small inputs, ArrayPool for large inputs
+            Span<byte> inputBytes = inputByteCount <= 512
+                ? stackalloc byte[inputByteCount]
+                : (rentedInputBuffer = ArrayPool<byte>.Shared.Rent(inputByteCount)).AsSpan(0, inputByteCount);
 
-            return Blake2b.ComputeHash(_hashSize, bufferSpan.Slice(0, bufferSize));
+            Encoding.UTF8.GetBytes(input, inputBytes);
+
+            if (salt == null || salt.Length == 0)
+            {
+                return Blake2b.ComputeHash(_hashSize, inputBytes);
+            }
+
+            // Use more efficient memory handling with stackalloc for small data
+            ReadOnlySpan<byte> saltSpan = salt;
+            var bufferSize = saltSpan.Length + inputByteCount;
+
+            if (bufferSize <= 1024)
+            {
+                // For small inputs, use stack allocation for better performance
+                Span<byte> saltedInput = stackalloc byte[bufferSize];
+                saltSpan.CopyTo(saltedInput);
+                inputBytes.CopyTo(saltedInput.Slice(saltSpan.Length));
+
+                return Blake2b.ComputeHash(_hashSize, saltedInput);
+            }
+
+            // For larger inputs, use ArrayPool to minimize GC pressure
+            var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+            try
+            {
+                var bufferSpan = buffer.AsSpan(0, bufferSize);
+                saltSpan.CopyTo(bufferSpan);
+                inputBytes.CopyTo(bufferSpan.Slice(saltSpan.Length));
+
+                return Blake2b.ComputeHash(_hashSize, bufferSpan.Slice(0, bufferSize));
+            }
+            finally
+            {
+                // Clear sensitive data before returning
+                Array.Clear(buffer, 0, bufferSize);
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // Return rented buffer if we used one
+            if (rentedInputBuffer != null)
+            {
+                Array.Clear(rentedInputBuffer, 0, inputByteCount);
+                ArrayPool<byte>.Shared.Return(rentedInputBuffer);
+            }
         }
     }
 

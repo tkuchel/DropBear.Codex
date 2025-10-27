@@ -1,5 +1,7 @@
 ﻿#region
 
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
@@ -108,9 +110,19 @@ public sealed class SipHasher : BaseHasher
                 return await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var buffer = Encoding.UTF8.GetBytes(input);
-                    var hashVal = SipHash24.Hash64(buffer, _key);
-                    return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                    var byteCount = Encoding.UTF8.GetByteCount(input);
+                    var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                    try
+                    {
+                        var bufferSpan = buffer.AsSpan(0, byteCount);
+                        Encoding.UTF8.GetBytes(input, bufferSpan);
+                        var hashVal = SipHash24.Hash64(bufferSpan, _key);
+                        return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                    }
                 }, cancellationToken).ConfigureAwait(false);
             }
 
@@ -141,9 +153,31 @@ public sealed class SipHasher : BaseHasher
         try
         {
             Logger.Information("Hashing input with SipHash-2-4 (sync).");
-            var buffer = Encoding.UTF8.GetBytes(input);
-            var hashVal = SipHash24.Hash64(buffer, _key);
-            return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+            var byteCount = Encoding.UTF8.GetByteCount(input);
+
+            // Use stackalloc for small inputs, ArrayPool for larger inputs
+            if (byteCount <= 512)
+            {
+                Span<byte> buffer = stackalloc byte[byteCount];
+                Encoding.UTF8.GetBytes(input, buffer);
+                var hashVal = SipHash24.Hash64(buffer, _key);
+                return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+            }
+            else
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                try
+                {
+                    var bufferSpan = buffer.AsSpan(0, byteCount);
+                    Encoding.UTF8.GetBytes(input, bufferSpan);
+                    var hashVal = SipHash24.Hash64(bufferSpan, _key);
+                    return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -211,6 +245,7 @@ public sealed class SipHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
@@ -234,14 +269,16 @@ public sealed class SipHasher : BaseHasher
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var hashVal = SipHash24.Hash64(data.Span, _key);
-                    var hashBytes = BitConverter.GetBytes(hashVal);
+                    Span<byte> hashBytes = stackalloc byte[8];
+                    BitConverter.TryWriteBytes(hashBytes, hashVal);
                     return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }, cancellationToken).ConfigureAwait(false);
             }
 
             {
                 var hashVal = SipHash24.Hash64(data.Span, _key);
-                var hashBytes = BitConverter.GetBytes(hashVal);
+                Span<byte> hashBytes = stackalloc byte[8];
+                BitConverter.TryWriteBytes(hashBytes, hashVal);
                 return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
         }
@@ -259,6 +296,7 @@ public sealed class SipHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
@@ -271,7 +309,8 @@ public sealed class SipHasher : BaseHasher
         {
             Logger.Information("Encoding data to Base64 hash using SipHash-2-4 (sync).");
             var hashVal = SipHash24.Hash64(data, _key);
-            var hashBytes = BitConverter.GetBytes(hashVal);
+            Span<byte> hashBytes = stackalloc byte[8];
+            BitConverter.TryWriteBytes(hashBytes, hashVal);
             return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
         }
         catch (Exception ex)

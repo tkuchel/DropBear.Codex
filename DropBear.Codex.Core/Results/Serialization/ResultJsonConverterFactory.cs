@@ -21,6 +21,8 @@ public sealed class ResultJsonConverterFactory : JsonConverterFactory
     /// <returns>A bool representing if the given type can be converted by this factory.</returns>
     public override bool CanConvert(Type typeToConvert)
     {
+        ArgumentNullException.ThrowIfNull(typeToConvert);
+
         if (!typeToConvert.IsGenericType)
         {
             return false;
@@ -40,6 +42,8 @@ public sealed class ResultJsonConverterFactory : JsonConverterFactory
     /// <returns>A Json converter for the specified type using the specified Json serializer options.</returns>
     public override JsonConverter? CreateConverter(Type typeToConvert, JsonSerializerOptions options)
     {
+        ArgumentNullException.ThrowIfNull(typeToConvert);
+
         var genericArgs = typeToConvert.GetGenericArguments();
 
         if (genericArgs.Length == 2)

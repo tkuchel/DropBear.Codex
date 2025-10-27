@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
@@ -85,7 +86,18 @@ public sealed class Murmur3Hasher : BaseHasher
                 return await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    return ComputeHashHex(Encoding.UTF8.GetBytes(input));
+                    var byteCount = Encoding.UTF8.GetByteCount(input);
+                    var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                    try
+                    {
+                        var bufferSpan = buffer.AsSpan(0, byteCount);
+                        Encoding.UTF8.GetBytes(input, bufferSpan);
+                        return ComputeHashHex(bufferSpan);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                    }
                 }, cancellationToken).ConfigureAwait(false);
             }
 
@@ -117,7 +129,29 @@ public sealed class Murmur3Hasher : BaseHasher
         try
         {
             Logger.Information("Hashing input with MurmurHash3 (32-bit) sync with seed {Seed}.", _seed);
-            return ComputeHashHex(Encoding.UTF8.GetBytes(input));
+            var byteCount = Encoding.UTF8.GetByteCount(input);
+
+            // Use stackalloc for small inputs, ArrayPool for larger inputs
+            if (byteCount <= 512)
+            {
+                Span<byte> buffer = stackalloc byte[byteCount];
+                Encoding.UTF8.GetBytes(input, buffer);
+                return ComputeHashHex(buffer);
+            }
+            else
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                try
+                {
+                    var bufferSpan = buffer.AsSpan(0, byteCount);
+                    Encoding.UTF8.GetBytes(input, bufferSpan);
+                    return ComputeHashHex(bufferSpan);
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
         }
         catch (Exception ex)
         {
@@ -208,14 +242,16 @@ public sealed class Murmur3Hasher : BaseHasher
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     var hash = MurmurHash3.Hash32(data.Span, _seed);
-                    var hashBytes = BitConverter.GetBytes(hash);
+                    Span<byte> hashBytes = stackalloc byte[4];
+                    BitConverter.TryWriteBytes(hashBytes, hash);
                     return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }, cancellationToken).ConfigureAwait(false);
             }
 
             {
                 var hash = MurmurHash3.Hash32(data.Span, _seed);
-                var hashBytes = BitConverter.GetBytes(hash);
+                Span<byte> hashBytes = stackalloc byte[4];
+                BitConverter.TryWriteBytes(hashBytes, hash);
                 return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
         }
@@ -233,6 +269,7 @@ public sealed class Murmur3Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
@@ -245,7 +282,8 @@ public sealed class Murmur3Hasher : BaseHasher
         {
             Logger.Information("Encoding data to Base64 hash using MurmurHash3 with seed {Seed} (sync).", _seed);
             var hash = MurmurHash3.Hash32(data, _seed);
-            var hashBytes = BitConverter.GetBytes(hash);
+            Span<byte> hashBytes = stackalloc byte[4];
+            BitConverter.TryWriteBytes(hashBytes, hash);
             return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
         }
         catch (Exception ex)
@@ -262,7 +300,7 @@ public sealed class Murmur3Hasher : BaseHasher
     /// <param name="data">The input data to hash.</param>
     /// <returns>A result containing a hex string representation of the hash.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Result<string, HashingError> ComputeHashHex(byte[] data)
+    private Result<string, HashingError> ComputeHashHex(ReadOnlySpan<byte> data)
     {
         var hashVal = MurmurHash3.Hash32(data, _seed);
         return Result<string, HashingError>.Success(hashVal.ToString("x8"));
@@ -274,10 +312,11 @@ public sealed class Murmur3Hasher : BaseHasher
     /// <param name="data">The input data to hash.</param>
     /// <returns>A result containing a Base64 string representation of the hash.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private Result<string, HashingError> ComputeHashBase64(byte[] data)
+    private Result<string, HashingError> ComputeHashBase64(ReadOnlySpan<byte> data)
     {
         var hashVal = MurmurHash3.Hash32(data, _seed);
-        var hashBytes = BitConverter.GetBytes(hashVal);
+        Span<byte> hashBytes = stackalloc byte[4];
+        BitConverter.TryWriteBytes(hashBytes, hashVal);
         return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
     }
 }

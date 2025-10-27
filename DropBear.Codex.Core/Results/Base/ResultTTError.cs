@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
@@ -254,11 +255,13 @@ public class Result<T, TError> : Result<TError>, IResult<T, TError>
     /// <summary>
     ///     Implicit conversion from value to success result.
     /// </summary>
+    [SuppressMessage("Usage", "CA2225:Operator overloads have named alternates", Justification = "Implicit conversion provides cleaner syntax; Success() factory method serves as explicit alternate")]
     public static implicit operator Result<T, TError>(T value) => Success(value);
 
     /// <summary>
     ///     Implicit conversion from error to failure result.
     /// </summary>
+    [SuppressMessage("Usage", "CA2225:Operator overloads have named alternates", Justification = "Implicit conversion provides cleaner syntax; Failure() factory method serves as explicit alternate")]
     public static implicit operator Result<T, TError>(TError error) => Failure(error);
 
     #endregion

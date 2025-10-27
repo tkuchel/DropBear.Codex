@@ -1,5 +1,7 @@
 ﻿#region
 
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
@@ -80,17 +82,27 @@ public sealed class Fnv1AHasher : BaseHasher
                 return await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var buffer = Encoding.UTF8.GetBytes(input);
+                    var byteCount = Encoding.UTF8.GetByteCount(input);
+                    var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                    try
+                    {
+                        var bufferSpan = buffer.AsSpan(0, byteCount);
+                        Encoding.UTF8.GetBytes(input, bufferSpan);
 
-                    if (_use64Bit)
-                    {
-                        var hashVal = Fnv1a.Hash64(buffer);
-                        return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                        if (_use64Bit)
+                        {
+                            var hashVal = Fnv1a.Hash64(bufferSpan);
+                            return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                        }
+                        else
+                        {
+                            var hashVal = Fnv1a.Hash32(bufferSpan);
+                            return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                        }
                     }
-                    else
+                    finally
                     {
-                        var hashVal = Fnv1a.Hash32(buffer);
-                        return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                        ArrayPool<byte>.Shared.Return(buffer);
                     }
                 }, cancellationToken).ConfigureAwait(false);
             }
@@ -123,17 +135,48 @@ public sealed class Fnv1AHasher : BaseHasher
         try
         {
             Logger.Information("Hashing input with FNV-1a ({0}-bit) sync.", _use64Bit ? 64 : 32);
-            var buffer = Encoding.UTF8.GetBytes(input);
+            var byteCount = Encoding.UTF8.GetByteCount(input);
 
-            if (_use64Bit)
+            // Use stackalloc for small inputs, ArrayPool for larger inputs
+            if (byteCount <= 512)
             {
-                var hashVal = Fnv1a.Hash64(buffer);
-                return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                Span<byte> buffer = stackalloc byte[byteCount];
+                Encoding.UTF8.GetBytes(input, buffer);
+
+                if (_use64Bit)
+                {
+                    var hashVal = Fnv1a.Hash64(buffer);
+                    return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                }
+                else
+                {
+                    var hashVal = Fnv1a.Hash32(buffer);
+                    return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                }
             }
             else
             {
-                var hashVal = Fnv1a.Hash32(buffer);
-                return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                try
+                {
+                    var bufferSpan = buffer.AsSpan(0, byteCount);
+                    Encoding.UTF8.GetBytes(input, bufferSpan);
+
+                    if (_use64Bit)
+                    {
+                        var hashVal = Fnv1a.Hash64(bufferSpan);
+                        return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                    }
+                    else
+                    {
+                        var hashVal = Fnv1a.Hash32(bufferSpan);
+                        return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
         }
         catch (Exception ex)
@@ -208,6 +251,7 @@ public sealed class Fnv1AHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override async Task<Result<string, HashingError>> EncodeToBase64HashAsync(
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
@@ -229,36 +273,38 @@ public sealed class Fnv1AHasher : BaseHasher
             {
                 return await Task.Run(() =>
                 {
-                    byte[] hashBytes;
                     if (_use64Bit)
                     {
                         var hashVal = Fnv1a.Hash64(data.Span);
-                        hashBytes = BitConverter.GetBytes(hashVal);
+                        Span<byte> hashBytes = stackalloc byte[8];
+                        BitConverter.TryWriteBytes(hashBytes, hashVal);
+                        return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                     }
                     else
                     {
                         var hashVal = Fnv1a.Hash32(data.Span);
-                        hashBytes = BitConverter.GetBytes(hashVal);
+                        Span<byte> hashBytes = stackalloc byte[4];
+                        BitConverter.TryWriteBytes(hashBytes, hashVal);
+                        return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                     }
-
-                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }, cancellationToken).ConfigureAwait(false);
             }
 
             {
-                byte[] hashBytes;
                 if (_use64Bit)
                 {
                     var hashVal = Fnv1a.Hash64(data.Span);
-                    hashBytes = BitConverter.GetBytes(hashVal);
+                    Span<byte> hashBytes = stackalloc byte[8];
+                    BitConverter.TryWriteBytes(hashBytes, hashVal);
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }
                 else
                 {
                     var hashVal = Fnv1a.Hash32(data.Span);
-                    hashBytes = BitConverter.GetBytes(hashVal);
+                    Span<byte> hashBytes = stackalloc byte[4];
+                    BitConverter.TryWriteBytes(hashBytes, hashVal);
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }
-
-                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
         }
         catch (OperationCanceledException)
@@ -275,6 +321,7 @@ public sealed class Fnv1AHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
@@ -287,19 +334,20 @@ public sealed class Fnv1AHasher : BaseHasher
         {
             Logger.Information("Encoding data to Base64 with FNV-1a ({0}-bit) sync.", _use64Bit ? 64 : 32);
 
-            byte[] hashBytes;
             if (_use64Bit)
             {
                 var hashVal = Fnv1a.Hash64(data);
-                hashBytes = BitConverter.GetBytes(hashVal);
+                Span<byte> hashBytes = stackalloc byte[8];
+                BitConverter.TryWriteBytes(hashBytes, hashVal);
+                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
             else
             {
                 var hashVal = Fnv1a.Hash32(data);
-                hashBytes = BitConverter.GetBytes(hashVal);
+                Span<byte> hashBytes = stackalloc byte[4];
+                BitConverter.TryWriteBytes(hashBytes, hashVal);
+                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
-
-            return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
         }
         catch (Exception ex)
         {

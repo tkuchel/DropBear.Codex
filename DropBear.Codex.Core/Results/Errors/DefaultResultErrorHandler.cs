@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections.Concurrent;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Enums;
 using DropBear.Codex.Core.Interfaces;
@@ -44,7 +45,7 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
     /// <summary>
     ///     Classifies an exception and returns appropriate error information.
     /// </summary>
-    public ErrorClassification ClassifyException(Exception exception)
+    public static ErrorClassification ClassifyException(Exception exception)
     {
         ArgumentNullException.ThrowIfNull(exception);
 
@@ -302,12 +303,9 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
     private static Func<string, ResultError> CreateErrorFactory(Type errorType)
     {
         // Try to find constructor with string parameter
-        var constructor = errorType.GetConstructor(new[] { typeof(string) });
-        if (constructor == null)
-        {
-            throw new InvalidOperationException(
+        var constructor = errorType.GetConstructor(new[] { typeof(string) })
+            ?? throw new InvalidOperationException(
                 $"Error type {errorType.Name} must have a constructor that accepts a string message.");
-        }
 
         return message => (ResultError)constructor.Invoke(new object[] { message });
     }
@@ -345,9 +343,13 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
 /// <summary>
 ///     SecurityException placeholder for .NET Standard compatibility.
 /// </summary>
+[SuppressMessage("Design", "CA1064:Exceptions should be public", Justification = "File-scoped type for internal compatibility, not meant for public consumption")]
+[SuppressMessage("Performance", "CA1812:Avoid uninstantiated internal classes", Justification = "Used via pattern matching in exception classification")]
 sealed file class SecurityException : Exception
 {
+    public SecurityException() : base("A security error occurred") { }
     public SecurityException(string message) : base(message) { }
+    public SecurityException(string message, Exception innerException) : base(message, innerException) { }
 }
 
 #endregion

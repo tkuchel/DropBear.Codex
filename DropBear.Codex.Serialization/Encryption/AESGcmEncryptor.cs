@@ -1,6 +1,9 @@
 ﻿#region
 
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
@@ -22,8 +25,9 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
     private const int NonceSize = 12; // Recommended for GCM
     private readonly bool _enableCaching;
 
-    // Cache for encrypted/decrypted results
-    private readonly Dictionary<int, byte[]> _encryptionCache;
+    // Thread-safe cache for encrypted/decrypted results - WARNING: Caching encryption is generally discouraged
+    // due to nonce reuse concerns. Only use if you understand the security implications.
+    private readonly ConcurrentDictionary<int, byte[]>? _encryptionCache;
 
     private readonly byte[] _key;
 
@@ -47,10 +51,15 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
 
         if (_enableCaching)
         {
-            _encryptionCache = new Dictionary<int, byte[]>(_maxCacheSize);
+            _encryptionCache = new ConcurrentDictionary<int, byte[]>();
+            _logger = LoggerFactory.Logger.ForContext<AesGcmEncryptor>();
+            _logger.Warning("Encryption caching is enabled. This may have security implications due to nonce reuse patterns.");
+        }
+        else
+        {
+            _logger = LoggerFactory.Logger.ForContext<AesGcmEncryptor>();
         }
 
-        _logger = LoggerFactory.Logger.ForContext<AesGcmEncryptor>();
         _logger.Information("AesGcmEncryptor initialized with caching: {EnableCaching}, MaxCacheSize: {MaxCacheSize}.",
             _enableCaching, _maxCacheSize);
     }
@@ -114,26 +123,26 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             _logger.Information("Starting encryption of data with length {Length} bytes.", data.Length);
             var stopwatch = Stopwatch.StartNew();
 
-            // Generate random nonce
-            var nonce = new byte[NonceSize];
-            RandomNumberGenerator.Fill(nonce);
-
-            // Prepare ciphertext and tag buffers
-            var ciphertext = new byte[data.Length];
-            var tag = new byte[TagSize];
+            // Rent buffers from ArrayPool for better performance
+            var nonce = ArrayPool<byte>.Shared.Rent(NonceSize);
+            var ciphertext = ArrayPool<byte>.Shared.Rent(data.Length);
+            var tag = ArrayPool<byte>.Shared.Rent(TagSize);
 
             try
             {
+                // Generate random nonce
+                RandomNumberGenerator.Fill(nonce.AsSpan(0, NonceSize));
+
                 // Perform encryption
                 using var aesGcm = new AesGcm(_key, TagSize);
-                aesGcm.Encrypt(nonce, data, ciphertext, tag);
+                aesGcm.Encrypt(nonce.AsSpan(0, NonceSize), data, ciphertext.AsSpan(0, data.Length), tag.AsSpan(0, TagSize));
 
                 // Encrypt the key and nonce with RSA
                 var encryptedKey = await EncryptWithRsaAsync(_key, cancellationToken).ConfigureAwait(false);
-                var encryptedNonce = await EncryptWithRsaAsync(nonce, cancellationToken).ConfigureAwait(false);
+                var encryptedNonce = await EncryptWithRsaAsync(nonce.AsSpan(0, NonceSize).ToArray(), cancellationToken).ConfigureAwait(false);
 
                 // Combine everything into a single result
-                var combinedData = CombineEncryptedComponents(encryptedKey, encryptedNonce, tag, ciphertext);
+                var combinedData = CombineEncryptedComponents(encryptedKey, encryptedNonce, tag.AsSpan(0, TagSize), ciphertext.AsSpan(0, data.Length));
 
                 stopwatch.Stop();
                 _logger.Information("Encryption completed successfully in {ElapsedMs}ms. " +
@@ -154,6 +163,17 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                 _logger.Error(ex, "Cryptographic error during encryption: {Message}", ex.Message);
                 return Result<byte[], SerializationError>.Failure(
                     new SerializationError($"AES-GCM encryption failed: {ex.Message}") { Operation = "Encrypt" }, ex);
+            }
+            finally
+            {
+                // Return rented buffers to the pool and clear sensitive data
+                Array.Clear(nonce, 0, NonceSize);
+                Array.Clear(tag, 0, TagSize);
+                Array.Clear(ciphertext, 0, data.Length);
+
+                ArrayPool<byte>.Shared.Return(nonce);
+                ArrayPool<byte>.Shared.Return(ciphertext);
+                ArrayPool<byte>.Shared.Return(tag);
             }
         }
         catch (Exception ex)
@@ -182,6 +202,9 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             _logger.Information("Starting decryption of data with length {Length} bytes.", data.Length);
             var stopwatch = Stopwatch.StartNew();
 
+            byte[]? decryptedKey = null;
+            byte[]? decryptedNonce = null;
+
             try
             {
                 // Extract key, nonce, tag, and ciphertext from combined data
@@ -192,28 +215,56 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                     throw new CryptographicException("Encrypted data is too short to contain required components");
                 }
 
-                var encryptedKey = data.AsSpan(0, keySizeBytes).ToArray();
-                var encryptedNonce = data.AsSpan(keySizeBytes, keySizeBytes).ToArray();
-                var tag = data.AsSpan(2 * keySizeBytes, TagSize).ToArray();
-                var ciphertext = data.AsSpan((2 * keySizeBytes) + TagSize).ToArray();
+                // Use Span to avoid ToArray allocations where possible
+                var encryptedKeySpan = data.AsSpan(0, keySizeBytes);
+                var encryptedNonceSpan = data.AsSpan(keySizeBytes, keySizeBytes);
+                var tagSpan = data.AsSpan(2 * keySizeBytes, TagSize);
+                var ciphertextSpan = data.AsSpan((2 * keySizeBytes) + TagSize);
 
-                // Decrypt key and nonce
-                var key = await DecryptWithRsaAsync(encryptedKey, cancellationToken).ConfigureAwait(false);
-                var nonce = await DecryptWithRsaAsync(encryptedNonce, cancellationToken).ConfigureAwait(false);
+                // Decrypt key and nonce (these need to be arrays for RSA)
+                var encryptedKey = encryptedKeySpan.ToArray();
+                var encryptedNonce = encryptedNonceSpan.ToArray();
 
-                // Allocate buffer for plaintext
-                var plaintext = new byte[ciphertext.Length];
+                decryptedKey = await DecryptWithRsaAsync(encryptedKey, cancellationToken).ConfigureAwait(false);
+                decryptedNonce = await DecryptWithRsaAsync(encryptedNonce, cancellationToken).ConfigureAwait(false);
 
-                // Decrypt the data
-                using var aesGcm = new AesGcm(key, TagSize);
-                aesGcm.Decrypt(nonce, ciphertext, tag, plaintext);
+                // Rent buffer for plaintext from ArrayPool
+                var plaintextBuffer = ArrayPool<byte>.Shared.Rent(ciphertextSpan.Length);
+                try
+                {
+                    // Decrypt the data
+                    using var aesGcm = new AesGcm(decryptedKey, TagSize);
+                    aesGcm.Decrypt(decryptedNonce, ciphertextSpan, tagSpan, plaintextBuffer.AsSpan(0, ciphertextSpan.Length));
 
-                stopwatch.Stop();
-                _logger.Information("Decryption completed successfully in {ElapsedMs}ms. " +
-                                    "Encrypted size: {EncryptedSize}, Decrypted size: {DecryptedSize}",
-                    stopwatch.ElapsedMilliseconds, data.Length, plaintext.Length);
+                    // Copy to final result array (this allocation is necessary for the return value)
+                    var plaintext = new byte[ciphertextSpan.Length];
+                    plaintextBuffer.AsSpan(0, ciphertextSpan.Length).CopyTo(plaintext);
 
-                return Result<byte[], SerializationError>.Success(plaintext);
+                    stopwatch.Stop();
+                    _logger.Information("Decryption completed successfully in {ElapsedMs}ms. " +
+                                        "Encrypted size: {EncryptedSize}, Decrypted size: {DecryptedSize}",
+                        stopwatch.ElapsedMilliseconds, data.Length, plaintext.Length);
+
+                    return Result<byte[], SerializationError>.Success(plaintext);
+                }
+                finally
+                {
+                    // Clear and return the rented buffer
+                    Array.Clear(plaintextBuffer, 0, ciphertextSpan.Length);
+                    ArrayPool<byte>.Shared.Return(plaintextBuffer);
+                }
+            }
+            finally
+            {
+                // Securely clear decrypted key and nonce
+                if (decryptedKey != null)
+                {
+                    Array.Clear(decryptedKey, 0, decryptedKey.Length);
+                }
+                if (decryptedNonce != null)
+                {
+                    Array.Clear(decryptedNonce, 0, decryptedNonce.Length);
+                }
             }
             catch (CryptographicException ex)
             {
@@ -243,26 +294,28 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Combines multiple byte arrays into a single array.
+    ///     Combines multiple byte arrays and spans into a single array using efficient copying.
     /// </summary>
-    private static byte[] CombineEncryptedComponents(byte[] encryptedKey, byte[] encryptedNonce, byte[] tag,
-        byte[] ciphertext)
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte[] CombineEncryptedComponents(byte[] encryptedKey, byte[] encryptedNonce, ReadOnlySpan<byte> tag,
+        ReadOnlySpan<byte> ciphertext)
     {
         var totalLength = encryptedKey.Length + encryptedNonce.Length + tag.Length + ciphertext.Length;
         var result = new byte[totalLength];
+        var resultSpan = result.AsSpan();
 
         var position = 0;
 
-        Buffer.BlockCopy(encryptedKey, 0, result, position, encryptedKey.Length);
+        encryptedKey.AsSpan().CopyTo(resultSpan.Slice(position));
         position += encryptedKey.Length;
 
-        Buffer.BlockCopy(encryptedNonce, 0, result, position, encryptedNonce.Length);
+        encryptedNonce.AsSpan().CopyTo(resultSpan.Slice(position));
         position += encryptedNonce.Length;
 
-        Buffer.BlockCopy(tag, 0, result, position, tag.Length);
+        tag.CopyTo(resultSpan.Slice(position));
         position += tag.Length;
 
-        Buffer.BlockCopy(ciphertext, 0, result, position, ciphertext.Length);
+        ciphertext.CopyTo(resultSpan.Slice(position));
 
         return result;
     }
@@ -327,7 +380,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Caches an encryption result.
+    ///     Caches an encryption result using thread-safe operations.
     /// </summary>
     private void CacheEncryptionResult(byte[] original, byte[] encrypted)
     {
@@ -340,14 +393,20 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
         {
             var hash = CalculateHash(original);
 
-            // If cache is full, remove oldest entry
+            // If cache is full, try to remove a random entry (simple eviction strategy)
             if (_encryptionCache.Count >= _maxCacheSize)
             {
-                var keyToRemove = _encryptionCache.Keys.First();
-                _encryptionCache.Remove(keyToRemove);
+                // Try to remove a random entry to make space
+                var keysSnapshot = _encryptionCache.Keys.ToArray();
+                if (keysSnapshot.Length > 0)
+                {
+                    var randomIndex = Random.Shared.Next(keysSnapshot.Length);
+                    _encryptionCache.TryRemove(keysSnapshot[randomIndex], out _);
+                }
             }
 
-            _encryptionCache[hash] = encrypted;
+            // Use TryAdd for thread safety - if key exists, we don't overwrite
+            _encryptionCache.TryAdd(hash, encrypted);
         }
         catch (Exception ex)
         {

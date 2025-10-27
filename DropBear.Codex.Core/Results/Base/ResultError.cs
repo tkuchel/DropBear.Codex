@@ -2,6 +2,7 @@
 
 using System.Collections.Frozen;
 using System.Diagnostics;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json.Serialization;
@@ -306,7 +307,7 @@ public abstract record ResultError
 
         if (SourceException?.InnerException != null)
         {
-            builder.AppendLine($"Inner Exception: {SourceException.InnerException.Message}");
+            builder.AppendLine(CultureInfo.InvariantCulture, $"Inner Exception: {SourceException.InnerException.Message}");
         }
 
         return builder.ToString();

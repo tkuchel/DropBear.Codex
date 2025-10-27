@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Frozen;
 using System.Diagnostics;
 using DropBear.Codex.Core.Enums;
 
@@ -98,11 +99,12 @@ public readonly record struct DiagnosticInfo
     ///     Creates a dictionary of diagnostic properties for structured logging.
     /// </summary>
     /// <returns>
-    ///     A read-only dictionary containing diagnostic properties suitable for structured logging frameworks.
+    ///     A read-only frozen dictionary containing diagnostic properties suitable for structured logging frameworks.
     /// </returns>
     /// <remarks>
     ///     The dictionary includes: State, ResultType, CreatedAt, Age, and optional TraceId, ActivityId, ParentActivityId.
     ///     Properties with null values are excluded from the dictionary.
+    ///     Returns a FrozenDictionary for optimal read performance and reduced memory overhead.
     /// </remarks>
     public IReadOnlyDictionary<string, object> ToDictionary()
     {
@@ -129,7 +131,7 @@ public readonly record struct DiagnosticInfo
             dict["ParentActivityId"] = ParentActivityId;
         }
 
-        return dict;
+        return dict.ToFrozenDictionary(StringComparer.Ordinal);
     }
 
     /// <summary>
