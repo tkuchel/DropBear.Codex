@@ -38,6 +38,13 @@ public sealed class Murmur3Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        Logger.Information("MurmurHash3 does not support salt. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithIterations(int iterations)
     {
         Logger.Information("MurmurHash3 does not support iterations. No-op.");
@@ -45,10 +52,24 @@ public sealed class Murmur3Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        Logger.Information("MurmurHash3 does not support iterations. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithHashSize(int size)
     {
         Logger.Information("MurmurHash3 output size is fixed at 32-bit. No-op.");
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
+    {
+        Logger.Information("MurmurHash3 output size is fixed at 32-bit. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>

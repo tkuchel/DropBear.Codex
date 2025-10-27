@@ -55,6 +55,13 @@ public sealed class SipHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        Logger.Information("SipHash does not utilize salt. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithIterations(int iterations)
     {
         Logger.Information("SipHash does not utilize iterations. No-op.");
@@ -62,10 +69,24 @@ public sealed class SipHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        Logger.Information("SipHash does not utilize iterations. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithHashSize(int size)
     {
         Logger.Information("SipHash-2-4 output is fixed at 64 bits. No-op.");
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
+    {
+        Logger.Information("SipHash-2-4 output is fixed at 64 bits. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>

@@ -41,10 +41,19 @@ public abstract class BaseHasher : IHasher
     public abstract IHasher WithSalt(byte[]? salt);
 
     /// <inheritdoc />
+    public abstract Result<IHasher, HashingError> WithSaltValidated(byte[]? salt);
+
+    /// <inheritdoc />
     public abstract IHasher WithIterations(int iterations);
 
     /// <inheritdoc />
+    public abstract Result<IHasher, HashingError> WithIterationsValidated(int iterations);
+
+    /// <inheritdoc />
     public abstract IHasher WithHashSize(int size);
+
+    /// <inheritdoc />
+    public abstract Result<IHasher, HashingError> WithHashSizeValidated(int size);
 
     /// <inheritdoc />
     public abstract Task<Result<string, HashingError>> HashAsync(string input,

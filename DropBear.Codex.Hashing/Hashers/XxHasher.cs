@@ -38,10 +38,24 @@ public sealed class XxHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        Logger.Information("XXHash does not support salt. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithIterations(int iterations)
     {
         Logger.Information("XXHash does not support iterations. No-op.");
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        Logger.Information("XXHash does not support iterations. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
@@ -60,6 +74,24 @@ public sealed class XxHasher : BaseHasher
         }
 
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
+    {
+        // XXHash can do 32-bit or 64-bit
+        if (size <= 4)
+        {
+            _use32Bit = true;
+            Logger.Information("Using 32-bit XXHash output.");
+        }
+        else
+        {
+            _use32Bit = false;
+            Logger.Information("Using 64-bit XXHash output.");
+        }
+
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>

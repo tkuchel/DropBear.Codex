@@ -33,15 +33,28 @@ public sealed class Blake2Hasher : BaseHasher
     /// <inheritdoc />
     public override IHasher WithSalt(byte[]? salt)
     {
+        var result = WithSaltValidated(salt);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentException(result.Error!.Message, nameof(salt));
+        }
+
+        return result.Value!;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
         if (salt is null || salt.Length == 0)
         {
             Logger.Error("Salt cannot be null or empty.");
-            throw new ArgumentException("Salt cannot be null or empty.", nameof(salt));
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Salt cannot be null or empty for Blake2 hashing."));
         }
 
         Logger.Information("Setting salt for Blake2 hashing.");
         _salt = salt;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
@@ -53,17 +66,38 @@ public sealed class Blake2Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        // Not applicable for Blake2; do nothing but log
+        Logger.Information("WithIterationsValidated called but not applicable for Blake2Hasher.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithHashSize(int size)
+    {
+        var result = WithHashSizeValidated(size);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), result.Error!.Message);
+        }
+
+        return result.Value!;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
     {
         if (size < 1)
         {
             Logger.Error("Hash size must be at least 1 byte for Blake2.");
-            throw new ArgumentOutOfRangeException(nameof(size), "Hash size must be at least 1 byte.");
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Hash size must be at least 1 byte for Blake2 hashing."));
         }
 
         Logger.Information("Setting hash size for Blake2 hashing to {Size} bytes.", size);
         _hashSize = size;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />

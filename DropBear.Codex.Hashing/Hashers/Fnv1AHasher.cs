@@ -35,10 +35,24 @@ public sealed class Fnv1AHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        Logger.Information("FNV-1a does not support salt. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithIterations(int iterations)
     {
         Logger.Information("FNV-1a does not support iterations. No-op.");
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        Logger.Information("FNV-1a does not support iterations. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
@@ -57,6 +71,24 @@ public sealed class Fnv1AHasher : BaseHasher
         }
 
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
+    {
+        // For FNV-1a, we support two sizes: 4 bytes (32-bit) and 8 bytes (64-bit)
+        if (size <= 4)
+        {
+            _use64Bit = false;
+            Logger.Information("Using 32-bit FNV-1a hash output.");
+        }
+        else
+        {
+            _use64Bit = true;
+            Logger.Information("Using 64-bit FNV-1a hash output.");
+        }
+
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
