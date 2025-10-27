@@ -684,15 +684,38 @@ public sealed class FileManager
     #region Private/Helper Methods
 
     // Builds full path within base directory
+    /// <summary>
+    /// Gets the full path for a file, ensuring it stays within the base directory (prevents path traversal).
+    /// SECURITY: Validates against directory traversal attacks (../, absolute paths, etc.)
+    /// </summary>
     private string GetFullPath(string path)
     {
+        // Get the absolute path
+        string fullPath;
         if (Path.IsPathRooted(path) && path.StartsWith(_baseDirectory, StringComparison.Ordinal))
         {
-            // Already a full path
-            return path;
+            // Already a full path within base directory
+            fullPath = Path.GetFullPath(path);
+        }
+        else
+        {
+            // Combine with base directory and resolve
+            fullPath = Path.GetFullPath(Path.Combine(_baseDirectory, path));
         }
 
-        return Path.GetFullPath(Path.Combine(_baseDirectory, path));
+        // SECURITY: Ensure resolved path is still within base directory
+        // This prevents path traversal attacks like "../../etc/passwd"
+        if (!fullPath.StartsWith(_baseDirectory, StringComparison.Ordinal))
+        {
+            _logger.Warning(
+                "Path traversal attempt blocked: {RequestedPath} resolved to {FullPath}, base: {BaseDirectory}",
+                path, fullPath, _baseDirectory);
+
+            throw new UnauthorizedAccessException(
+                $"Path traversal detected: '{path}' attempts to access outside base directory");
+        }
+
+        return fullPath;
     }
 
     // Validates directory existence and permissions

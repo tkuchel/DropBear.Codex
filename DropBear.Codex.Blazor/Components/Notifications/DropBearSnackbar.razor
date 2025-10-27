@@ -3,6 +3,9 @@
 @using DropBear.Codex.Blazor.Helpers
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
+@* SECURITY NOTE: SnackbarInstance.Message is sanitized using HtmlSanitizationHelper to prevent XSS attacks.
+   If you need to display trusted HTML from CMS/admin, use HtmlSanitizationHelper.FromTrustedSource() instead. *@
+
 <div id="@SnackbarInstance.Id"
      class="@CssClasses"
      style="--duration: @(SnackbarInstance.Duration)ms; --delay: @(SnackbarInstance.ShowDelay)ms"
@@ -24,7 +27,8 @@
         }
 
         <div class="snackbar-message">
-            @((MarkupString)SnackbarInstance.Message)
+            @* SECURITY: Sanitize snackbar message to prevent XSS attacks *@
+            @HtmlSanitizationHelper.Sanitize(SnackbarInstance.Message)
         </div>
 
         @if (SnackbarInstance.Actions?.Any() == true)

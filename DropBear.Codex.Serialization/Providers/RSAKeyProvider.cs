@@ -15,6 +15,10 @@ namespace DropBear.Codex.Serialization.Providers;
 
 /// <summary>
 ///     Provides methods to generate or load RSA keys from files.
+///     SECURITY NOTE (M3 - Medium Severity): Uses Windows DPAPI for private key encryption.
+///     This is Windows-only. For cross-platform support, consider implementing AES-GCM encryption
+///     with secure key storage (Azure Key Vault, AWS Secrets Manager, or user keychain).
+///     See SECURITY.md for details.
 /// </summary>
 public sealed class RSAKeyProvider
 {
