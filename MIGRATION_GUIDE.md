@@ -129,6 +129,260 @@ The following have been removed:
 
 ---
 
+## Security-Related Breaking Changes (Version 2025.11.0)
+
+### ⚠️ CRITICAL: Jumbler Password Obfuscation (Utilities Project)
+
+**Security Grade Improvement:** B+ → A-
+
+The Jumbler class has undergone major security improvements to address high-severity vulnerabilities:
+
+#### What Changed
+
+1. **Removed Default Encryption Key** (H1 - High Severity)
+   - Default key `"QVANYCLEPW"` has been removed
+   - `keyPhrase` parameter is now **required** (no longer optional)
+
+2. **Increased PBKDF2 Iterations** (H2 - High Severity)
+   - Changed from **10,000** → **600,000** iterations
+   - Aligns with OWASP 2023 recommendations
+   - 60x stronger resistance to brute-force attacks
+
+3. **Random Salt Generation** (H3 - High Severity)
+   - Each encryption operation now uses a unique 32-byte random salt
+   - Prevents rainbow table and precomputation attacks
+   - Salt is stored with encrypted data
+
+4. **Format Version Update**
+   - Version prefix changed: `.JuMbLe.02.` → `.JuMbLe.03.`
+   - v03 format stores: `[32-byte salt][encrypted data]`
+   - **NOT backward compatible** with v02 encrypted data
+
+#### Migration Steps
+
+**Step 1: Identify Jumbler Usage**
+
+Search your codebase for:
+```bash
+git grep "Jumbler.JumblePassword\|Jumbler.UnJumblePassword"
+```
+
+**Step 2: Update Method Calls (Breaking Change)**
+
+**Before (v02 - INSECURE):**
+```csharp
+// Used default key (security vulnerability)
+var jumbled = Jumbler.JumblePassword(password);
+
+// Optional custom key
+var jumbled = Jumbler.JumblePassword(password, "MyKey123");
+```
+
+**After (v03 - SECURE):**
+```csharp
+// KeyPhrase is now REQUIRED - compilation error if omitted
+var jumbled = Jumbler.JumblePassword(password, keyPhrase);
+
+// Must always provide explicit key phrase
+var result = Jumbler.JumblePassword(password, strongKeyPhrase);
+if (result.IsSuccess)
+{
+    var encrypted = result.Value;
+}
+```
+
+**Step 3: Generate Strong Key Phrases**
+
+```csharp
+// ❌ DON'T: Weak or predictable keys
+var weakKey = "password123";
+var weakKey2 = "MyAppName";
+
+// ✅ DO: Strong, random, application-specific keys
+using var rng = RandomNumberGenerator.Create();
+var keyBytes = new byte[32];
+rng.GetBytes(keyBytes);
+var strongKey = Convert.ToBase64String(keyBytes);
+// Result: "kX9mP2vQ8wR5tY6uI3oL7jH1nM4bV0cZ..."
+
+// Or use a passphrase with high entropy
+var strongKey = "MyApp-2025-Production-Encryption-Key-v1-a8f3c2d9";
+```
+
+**Step 4: Store Key Phrases Securely**
+
+**❌ DON'T store in code:**
+```csharp
+// NEVER hardcode keys in source code
+const string KEY = "my-secret-key"; // BAD!
+```
+
+**✅ DO use secure storage:**
+
+**Option A: Azure Key Vault**
+```csharp
+var client = new SecretClient(new Uri(keyVaultUrl), new DefaultAzureCredential());
+var secret = await client.GetSecretAsync("JumblerKeyPhrase");
+var keyPhrase = secret.Value.Value;
+```
+
+**Option B: AWS Secrets Manager**
+```csharp
+var client = new AmazonSecretsManagerClient();
+var request = new GetSecretValueRequest { SecretId = "JumblerKeyPhrase" };
+var response = await client.GetSecretValueAsync(request);
+var keyPhrase = response.SecretString;
+```
+
+**Option C: Environment Variables (less secure, ok for dev)**
+```csharp
+var keyPhrase = Environment.GetEnvironmentVariable("JUMBLER_KEY_PHRASE")
+    ?? throw new InvalidOperationException("JUMBLER_KEY_PHRASE not configured");
+```
+
+**Option D: ASP.NET Core User Secrets (dev only)**
+```bash
+dotnet user-secrets set "JumblerKeyPhrase" "your-strong-key-here"
+```
+```csharp
+var keyPhrase = configuration["JumblerKeyPhrase"];
+```
+
+**Step 5: Re-encrypt Existing Data**
+
+If you have data encrypted with the old Jumbler (v02), you **must** decrypt and re-encrypt:
+
+```csharp
+// Migration helper method
+public async Task<Result<Unit, JumblerError>> MigrateJumbledDataAsync(
+    string oldJumbledValue,
+    string newKeyPhrase)
+{
+    try
+    {
+        // 1. Decrypt with OLD Jumbler (keep old code temporarily)
+        var decrypted = OldJumbler.UnJumblePassword(oldJumbledValue);
+        if (!decrypted.IsSuccess)
+        {
+            return Result<Unit, JumblerError>.Failure(
+                new JumblerError("Failed to decrypt old format"));
+        }
+
+        // 2. Re-encrypt with NEW Jumbler
+        var reencrypted = Jumbler.JumblePassword(decrypted.Value, newKeyPhrase);
+        if (!reencrypted.IsSuccess)
+        {
+            return Result<Unit, JumblerError>.Failure(
+                new JumblerError("Failed to re-encrypt"));
+        }
+
+        // 3. Store new encrypted value
+        await SaveToDatabase(reencrypted.Value);
+
+        return Result<Unit, JumblerError>.Success(Unit.Value);
+    }
+    catch (Exception ex)
+    {
+        return Result<Unit, JumblerError>.Failure(
+            new JumblerError($"Migration failed: {ex.Message}"), ex);
+    }
+}
+```
+
+**Step 6: Performance Considerations**
+
+With 600,000 iterations, PBKDF2 key derivation is slower (intentionally):
+
+```csharp
+// Enable key caching (built-in, thread-safe)
+// First call: ~200-500ms (depends on CPU)
+var result1 = Jumbler.JumblePassword(password, keyPhrase); // Slow (derives key)
+
+// Subsequent calls with same keyPhrase + salt: <1ms
+var result2 = Jumbler.JumblePassword(password, keyPhrase); // Fast (cached)
+
+// Clear cache when needed (e.g., on logout, key rotation)
+Jumbler.ClearKeyCache();
+```
+
+#### Error Handling
+
+**Null/Empty KeyPhrase:**
+```csharp
+var result = Jumbler.JumblePassword(password, null);
+// result.IsSuccess = false
+// result.Error.Message = "KeyPhrase must be provided. Default keys are not supported for security reasons."
+```
+
+**Invalid Format During Decryption:**
+```csharp
+var result = Jumbler.UnJumblePassword("invalid-format", keyPhrase);
+// result.IsSuccess = false
+// result.Error.Message = "Invalid jumbled password format: too short to contain salt."
+```
+
+#### Testing
+
+**Unit Test Example:**
+```csharp
+[Fact]
+public void Jumbler_RoundTrip_WithSecureKeyPhrase_Success()
+{
+    // Arrange
+    var password = "MySecretPassword123!";
+    var keyPhrase = GenerateSecureKeyPhrase(); // 32+ char random
+
+    // Act: Encrypt
+    var encrypted = Jumbler.JumblePassword(password, keyPhrase);
+    Assert.True(encrypted.IsSuccess);
+
+    // Act: Decrypt
+    var decrypted = Jumbler.UnJumblePassword(encrypted.Value, keyPhrase);
+
+    // Assert
+    Assert.True(decrypted.IsSuccess);
+    Assert.Equal(password, decrypted.Value);
+}
+
+[Fact]
+public void Jumbler_RequiresKeyPhrase_ThrowsCompilationError()
+{
+    var password = "test";
+
+    // This will NOT compile (keyPhrase is required parameter)
+    // var result = Jumbler.JumblePassword(password);
+
+    // Must provide keyPhrase
+    var result = Jumbler.JumblePassword(password, "strong-key");
+    Assert.True(result.IsSuccess);
+}
+```
+
+#### Security Best Practices
+
+1. **✅ DO:**
+   - Use cryptographically random key phrases (32+ bytes)
+   - Store keys in Azure Key Vault, AWS Secrets Manager, or similar
+   - Use different keys for different environments (dev/staging/prod)
+   - Rotate keys periodically (e.g., every 90 days)
+   - Log failed decryption attempts for security monitoring
+
+2. **❌ DON'T:**
+   - Hardcode key phrases in source code
+   - Commit keys to version control
+   - Use weak/predictable keys like "password123"
+   - Share keys between applications
+   - Log decrypted values
+
+#### Timeline & Support
+
+- **Version 2025.10.x:** Old Jumbler (v02) with default keys
+- **Version 2025.11.0+:** New Jumbler (v03) with required keys
+- **Migration Period:** Keep old code for 90 days to decrypt legacy data
+- **Deprecation:** Old format fully deprecated after 2026-02-01
+
+---
+
 ## Migration by Project
 
 ### 1. Notifications Project

@@ -595,6 +595,383 @@ public class MetricsTrackingService
 
 ---
 
+## Utilities & Security Examples
+
+### Password Obfuscation with Jumbler (SECURE v03)
+
+**⚠️ SECURITY NOTE:** Jumbler v03 (2025.11.0+) requires explicit key phrases. See SECURITY.md and MIGRATION_GUIDE.md.
+
+#### Example 1: Secure Password Obfuscation
+
+```csharp
+using DropBear.Codex.Utilities.Obfuscation;
+using DropBear.Codex.Utilities.Errors;
+using Microsoft.Extensions.Configuration;
+
+public class SecurePasswordManager
+{
+    private readonly string _keyPhrase;
+
+    public SecurePasswordManager(IConfiguration configuration)
+    {
+        // Load key phrase from secure storage (Azure Key Vault, AWS Secrets, etc.)
+        _keyPhrase = configuration["JumblerKeyPhrase"]
+            ?? throw new InvalidOperationException("JumblerKeyPhrase not configured");
+
+        // Validate key strength
+        if (_keyPhrase.Length < 32)
+        {
+            throw new InvalidOperationException(
+                "JumblerKeyPhrase must be at least 32 characters for security");
+        }
+    }
+
+    public Result<string, JumblerError> ObfuscatePassword(string plainPassword)
+    {
+        // Input validation
+        if (string.IsNullOrWhiteSpace(plainPassword))
+        {
+            return Result<string, JumblerError>.Failure(
+                new JumblerError("Password cannot be empty"));
+        }
+
+        // Encrypt with Jumbler v03 (600k iterations, random salt)
+        var result = Jumbler.JumblePassword(plainPassword, _keyPhrase);
+
+        if (result.IsSuccess)
+        {
+            Logger.Information("Password obfuscated successfully");
+        }
+        else
+        {
+            Logger.Error("Failed to obfuscate password: {Error}", result.Error.Message);
+        }
+
+        return result;
+    }
+
+    public Result<string, JumblerError> DeobfuscatePassword(string obfuscatedPassword)
+    {
+        if (string.IsNullOrWhiteSpace(obfuscatedPassword))
+        {
+            return Result<string, JumblerError>.Failure(
+                new JumblerError("Obfuscated password cannot be empty"));
+        }
+
+        var result = Jumbler.UnJumblePassword(obfuscatedPassword, _keyPhrase);
+
+        if (result.IsSuccess)
+        {
+            Logger.Information("Password deobfuscated successfully");
+        }
+        else
+        {
+            Logger.Warning("Failed to deobfuscate password: {Error}", result.Error.Message);
+        }
+
+        return result;
+    }
+}
+```
+
+#### Example 2: Azure Key Vault Integration
+
+```csharp
+using Azure.Identity;
+using Azure.Security.KeyVault.Secrets;
+using DropBear.Codex.Utilities.Obfuscation;
+
+public class AzureKeyVaultPasswordService
+{
+    private readonly SecretClient _keyVaultClient;
+    private string? _cachedKeyPhrase;
+
+    public AzureKeyVaultPasswordService(string keyVaultUrl)
+    {
+        _keyVaultClient = new SecretClient(
+            new Uri(keyVaultUrl),
+            new DefaultAzureCredential());
+    }
+
+    private async Task<Result<string, JumblerError>> GetKeyPhraseAsync()
+    {
+        try
+        {
+            if (_cachedKeyPhrase is not null)
+            {
+                return Result<string, JumblerError>.Success(_cachedKeyPhrase);
+            }
+
+            var secret = await _keyVaultClient.GetSecretAsync("JumblerKeyPhrase");
+            _cachedKeyPhrase = secret.Value.Value;
+
+            return Result<string, JumblerError>.Success(_cachedKeyPhrase);
+        }
+        catch (Exception ex)
+        {
+            return Result<string, JumblerError>.Failure(
+                new JumblerError($"Failed to retrieve key phrase: {ex.Message}"), ex);
+        }
+    }
+
+    public async Task<Result<string, JumblerError>> EncryptPasswordAsync(string password)
+    {
+        var keyResult = await GetKeyPhraseAsync();
+        if (!keyResult.IsSuccess)
+        {
+            return Result<string, JumblerError>.Failure(keyResult.Error);
+        }
+
+        return Jumbler.JumblePassword(password, keyResult.Value);
+    }
+
+    public async Task<Result<string, JumblerError>> DecryptPasswordAsync(string encrypted)
+    {
+        var keyResult = await GetKeyPhraseAsync();
+        if (!keyResult.IsSuccess)
+        {
+            return Result<string, JumblerError>.Failure(keyResult.Error);
+        }
+
+        return Jumbler.UnJumblePassword(encrypted, keyResult.Value);
+    }
+}
+```
+
+#### Example 3: Password Migration from v02 to v03
+
+```csharp
+public class JumblerMigrationService
+{
+    private readonly ILogger _logger;
+    private readonly IPasswordRepository _repository;
+    private readonly string _newKeyPhrase;
+
+    public JumblerMigrationService(
+        ILogger logger,
+        IPasswordRepository repository,
+        IConfiguration configuration)
+    {
+        _logger = logger;
+        _repository = repository;
+        _newKeyPhrase = configuration["JumblerKeyPhrase.New"]
+            ?? throw new InvalidOperationException("New key phrase not configured");
+    }
+
+    public async Task<Result<int, JumblerError>> MigrateAllPasswordsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var migratedCount = 0;
+        var failedCount = 0;
+
+        // Get all records with old format encrypted passwords
+        var oldRecords = await _repository.GetLegacyEncryptedPasswordsAsync(cancellationToken);
+
+        foreach (var record in oldRecords)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                break;
+            }
+
+            var result = await MigrateSinglePasswordAsync(record, cancellationToken);
+            if (result.IsSuccess)
+            {
+                migratedCount++;
+                _logger.Information("Migrated password for record {Id}", record.Id);
+            }
+            else
+            {
+                failedCount++;
+                _logger.Error("Failed to migrate record {Id}: {Error}",
+                    record.Id, result.Error.Message);
+            }
+        }
+
+        _logger.Information(
+            "Migration complete: {Success} succeeded, {Failed} failed",
+            migratedCount, failedCount);
+
+        return Result<int, JumblerError>.Success(migratedCount);
+    }
+
+    private async Task<Result<Unit, JumblerError>> MigrateSinglePasswordAsync(
+        PasswordRecord record,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            // 1. Decrypt with OLD Jumbler (v02)
+            // Note: Keep old Jumbler code temporarily for migration
+            var decrypted = OldJumbler.UnJumblePassword(record.EncryptedPassword);
+            if (!decrypted.IsSuccess)
+            {
+                return Result<Unit, JumblerError>.Failure(
+                    new JumblerError($"Failed to decrypt old format: {decrypted.Error.Message}"));
+            }
+
+            // 2. Re-encrypt with NEW Jumbler (v03)
+            var reencrypted = Jumbler.JumblePassword(decrypted.Value, _newKeyPhrase);
+            if (!reencrypted.IsSuccess)
+            {
+                return Result<Unit, JumblerError>.Failure(
+                    new JumblerError($"Failed to re-encrypt: {reencrypted.Error.Message}"));
+            }
+
+            // 3. Update database
+            record.EncryptedPassword = reencrypted.Value;
+            record.EncryptionVersion = "v03";
+            record.MigratedAt = DateTime.UtcNow;
+
+            await _repository.UpdateAsync(record, cancellationToken);
+
+            return Result<Unit, JumblerError>.Success(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, JumblerError>.Failure(
+                new JumblerError($"Migration exception: {ex.Message}"), ex);
+        }
+    }
+}
+```
+
+#### Example 4: Functional Composition with Jumbler
+
+```csharp
+public class UserAuthenticationService
+{
+    private readonly string _keyPhrase;
+    private readonly IUserRepository _userRepository;
+
+    public async Task<Result<UserToken, AuthenticationError>> AuthenticateAsync(
+        string username,
+        string plaintextPassword)
+    {
+        // Functional pipeline: Validate → Encrypt → Compare → Generate Token
+        return ValidateCredentials(username, plaintextPassword)
+            .Bind(creds => EncryptPassword(creds.password))
+            .BindAsync(async encrypted => await VerifyUserAsync(username, encrypted))
+            .Map(user => GenerateToken(user))
+            .Match(
+                onSuccess: token => Result<UserToken, AuthenticationError>.Success(token),
+                onFailure: error => Result<UserToken, AuthenticationError>.Failure(
+                    AuthenticationError.FromJumblerError(error))
+            );
+    }
+
+    private Result<(string username, string password), JumblerError> ValidateCredentials(
+        string username,
+        string password)
+    {
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
+        {
+            return Result<(string, string), JumblerError>.Failure(
+                new JumblerError("Username and password are required"));
+        }
+
+        return Result<(string, string), JumblerError>.Success((username, password));
+    }
+
+    private Result<string, JumblerError> EncryptPassword(string password)
+    {
+        return Jumbler.JumblePassword(password, _keyPhrase);
+    }
+
+    private async Task<Result<User, JumblerError>> VerifyUserAsync(
+        string username,
+        string encryptedPassword)
+    {
+        var user = await _userRepository.FindByUsernameAsync(username);
+        if (user is null)
+        {
+            return Result<User, JumblerError>.Failure(
+                new JumblerError("User not found"));
+        }
+
+        // Compare encrypted passwords (timing-safe comparison built into Jumbler)
+        if (user.EncryptedPassword == encryptedPassword)
+        {
+            return Result<User, JumblerError>.Success(user);
+        }
+
+        return Result<User, JumblerError>.Failure(
+            new JumblerError("Invalid credentials"));
+    }
+
+    private UserToken GenerateToken(User user)
+    {
+        // Generate JWT or similar
+        return new UserToken
+        {
+            UserId = user.Id,
+            Token = GenerateJwtToken(user),
+            ExpiresAt = DateTime.UtcNow.AddHours(24)
+        };
+    }
+}
+```
+
+#### Example 5: Key Phrase Generation & Rotation
+
+```csharp
+public static class JumblerKeyPhraseGenerator
+{
+    /// <summary>
+    /// Generates a cryptographically secure key phrase.
+    /// </summary>
+    public static string GenerateSecureKeyPhrase(int byteLength = 32)
+    {
+        using var rng = RandomNumberGenerator.Create();
+        var keyBytes = new byte[byteLength];
+        rng.GetBytes(keyBytes);
+
+        // Base64 encoding: 32 bytes → 44 characters
+        return Convert.ToBase64String(keyBytes);
+    }
+
+    /// <summary>
+    /// Generates a human-readable passphrase with high entropy.
+    /// </summary>
+    public static string GeneratePassphrase(int wordCount = 6)
+    {
+        var words = new[]
+        {
+            "Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot",
+            "Golf", "Hotel", "India", "Juliet", "Kilo", "Lima",
+            "Mike", "November", "Oscar", "Papa", "Quebec", "Romeo",
+            "Sierra", "Tango", "Uniform", "Victor", "Whiskey", "Xray",
+            "Yankee", "Zulu"
+        };
+
+        using var rng = RandomNumberGenerator.Create();
+        var selected = new List<string>();
+
+        for (int i = 0; i < wordCount; i++)
+        {
+            var randomBytes = new byte[4];
+            rng.GetBytes(randomBytes);
+            var randomIndex = BitConverter.ToUInt32(randomBytes, 0) % words.Length;
+            selected.Add(words[randomIndex]);
+        }
+
+        // Add random number for extra entropy
+        var randomNum = rng.GetBytes(2);
+        var num = BitConverter.ToUInt16(randomNum, 0) % 10000;
+
+        return $"{string.Join("-", selected)}-{num:D4}";
+        // Example: "Charlie-Hotel-Uniform-Papa-Lima-Tango-3847"
+    }
+}
+
+// Usage:
+var keyPhrase = JumblerKeyPhraseGenerator.GenerateSecureKeyPhrase();
+// Store in Azure Key Vault, AWS Secrets Manager, etc.
+await keyVaultClient.SetSecretAsync("JumblerKeyPhrase", keyPhrase);
+```
+
+---
+
 ## Error Handling Patterns
 
 ### Pattern 1: Convert Between Error Types
