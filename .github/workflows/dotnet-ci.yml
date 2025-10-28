@@ -33,13 +33,13 @@ jobs:
         run: dotnet workload update
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore DropBear.Codex.sln
 
-      - name: Build
-        run: dotnet build --no-restore --configuration Debug
+      - name: Build solution
+        run: dotnet build DropBear.Codex.sln --no-restore --configuration Debug
 
       - name: Run tests with coverage
-        run: dotnet test --no-build --verbosity normal --configuration Debug --collect:"XPlat Code Coverage" --results-directory ./TestResults
+        run: dotnet test DropBear.Codex.sln --no-build --verbosity normal --configuration Debug --collect:"XPlat Code Coverage" --results-directory ./TestResults
 
       - name: Generate coverage report
         run: |
@@ -61,6 +61,7 @@ jobs:
         shell: pwsh
 
   build-and-manage-nuget:
+    # Tests are run in test-coverage job; this job only builds and packages library projects
     needs: test-coverage
     runs-on: windows-latest
 
@@ -105,9 +106,6 @@ jobs:
           scan-ref: '${{ matrix.project }}'
           severity: 'CRITICAL,HIGH'
           exit-code: '0'
-
-      - name: Test
-        run: dotnet test ${{ matrix.project }}/${{ matrix.project }}.csproj --no-build --verbosity normal --configuration Release
 
       - name: Pack
         run: dotnet pack ${{ matrix.project }}/${{ matrix.project }}.csproj --no-build --output ./nuget-packages --configuration Release
