@@ -15,7 +15,53 @@ env:
   DOTNET_VERSION: '9.0.x'
 
 jobs:
+  test-coverage:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Update .NET workloads
+        run: dotnet workload update
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Debug
+
+      - name: Run tests with coverage
+        run: dotnet test --no-build --verbosity normal --configuration Debug --collect:"XPlat Code Coverage" --results-directory ./TestResults
+
+      - name: Generate coverage report
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool
+          reportgenerator -reports:./TestResults/**/coverage.cobertura.xml -targetdir:./TestResults/CoverageReport -reporttypes:"Html;MarkdownSummaryGithub" -title:"DropBear.Codex Coverage"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./TestResults/CoverageReport
+          retention-days: 30
+
+      - name: Add coverage summary to workflow
+        run: |
+          if (Test-Path ./TestResults/CoverageReport/SummaryGithub.md) {
+            Get-Content ./TestResults/CoverageReport/SummaryGithub.md >> $env:GITHUB_STEP_SUMMARY
+          }
+        shell: pwsh
+
   build-and-manage-nuget:
+    needs: test-coverage
     runs-on: windows-latest
 
     strategy:
