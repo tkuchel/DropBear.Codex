@@ -31,6 +31,7 @@ public static class AntiForgeryHelper
     /// <remarks>
     ///     The token is bound to the user and optionally the session, making it
     ///     impossible for an attacker to forge a valid token for another user.
+    ///     Token includes a timestamp for expiration validation.
     /// </remarks>
     public static string GenerateToken(string userId, string? sessionId = null)
     {
@@ -42,7 +43,7 @@ public static class AntiForgeryHelper
         RandomNumberGenerator.Fill(tokenBytes);
         RandomNumberGenerator.Fill(saltBytes);
 
-        // Create a composite token: salt + hash(salt + userId + sessionId + randomBytes)
+        // Create a composite token: timestamp + salt + randomBytes + hash(salt + userId + sessionId + randomBytes)
         var dataToHash = new StringBuilder();
         dataToHash.Append(Convert.ToBase64String(saltBytes));
         dataToHash.Append('|');
@@ -57,10 +58,18 @@ public static class AntiForgeryHelper
 
         var hash = SHA256.HashData(Encoding.UTF8.GetBytes(dataToHash.ToString()));
 
-        // Combine salt + hash for the final token
-        var finalToken = new byte[SaltByteSize + hash.Length];
-        saltBytes.CopyTo(finalToken.AsSpan(0, SaltByteSize));
-        hash.CopyTo(finalToken.AsSpan(SaltByteSize));
+        // Get current timestamp
+        var timestamp = DateTime.UtcNow.ToBinary();
+        var timestampBytes = BitConverter.GetBytes(timestamp);
+
+        // Combine timestamp + salt + randomBytes + hash for the final token
+        var finalToken = new byte[timestampBytes.Length + SaltByteSize + TokenByteSize + hash.Length];
+        var span = finalToken.AsSpan();
+
+        timestampBytes.CopyTo(span);
+        saltBytes.CopyTo(span[timestampBytes.Length..]);
+        tokenBytes.CopyTo(span[(timestampBytes.Length + SaltByteSize)..]);
+        hash.CopyTo(span[(timestampBytes.Length + SaltByteSize + TokenByteSize)..]);
 
         return Convert.ToBase64String(finalToken);
     }
@@ -73,6 +82,11 @@ public static class AntiForgeryHelper
     /// <param name="sessionId">Optional session identifier for validation.</param>
     /// <param name="maxAge">Maximum age of the token (default: 2 hours).</param>
     /// <returns>A Result indicating whether the token is valid.</returns>
+    /// <remarks>
+    ///     SECURITY NOTE: This is a stateless token validation that verifies format and binding.
+    ///     For production applications, consider using ASP.NET Core's built-in AntiForgery services
+    ///     which provide additional features like token rotation and distributed cache support.
+    /// </remarks>
     public static Result<Unit, ComponentError> ValidateToken(
         string token,
         string userId,
@@ -91,22 +105,60 @@ public static class AntiForgeryHelper
                 new ComponentError("User identifier is required for token validation"));
         }
 
+        maxAge ??= Options.DefaultExpiration;
+
         try
         {
             var tokenBytes = Convert.FromBase64String(token);
 
-            if (tokenBytes.Length < SaltByteSize + 32) // SHA256 is 32 bytes
+            // Token format: [8 bytes timestamp][16 bytes salt][32 bytes random][32 bytes hash]
+            const int timestampSize = sizeof(long);
+            const int randomSize = TokenByteSize;
+            const int hashSize = 32; // SHA256
+            const int expectedMinSize = timestampSize + SaltByteSize + randomSize + hashSize;
+
+            if (tokenBytes.Length < expectedMinSize)
             {
                 return Result<Unit, ComponentError>.Failure(
                     new ComponentError("Invalid token format"));
             }
 
-            // Extract salt (first 16 bytes)
-            var salt = tokenBytes.AsSpan(0, SaltByteSize);
+            // Extract components
+            var timestamp = BitConverter.ToInt64(tokenBytes, 0);
+            var tokenTime = DateTime.FromBinary(timestamp);
 
-            // For full validation, we would need to store the original token generation time
-            // and compare it. This is a simplified validation.
-            // In production, consider using ASP.NET Core's built-in AntiForgery services.
+            // Check token expiration
+            if (DateTime.UtcNow - tokenTime > maxAge)
+            {
+                return Result<Unit, ComponentError>.Failure(
+                    new ComponentError("Token has expired"));
+            }
+
+            var salt = tokenBytes.AsSpan(timestampSize, SaltByteSize);
+            var randomBytes = tokenBytes.AsSpan(timestampSize + SaltByteSize, randomSize);
+            var providedHash = tokenBytes.AsSpan(timestampSize + SaltByteSize + randomSize, hashSize);
+
+            // Reconstruct the hash to verify integrity
+            var dataToHash = new StringBuilder();
+            dataToHash.Append(Convert.ToBase64String(salt));
+            dataToHash.Append('|');
+            dataToHash.Append(userId);
+            if (!string.IsNullOrEmpty(sessionId))
+            {
+                dataToHash.Append('|');
+                dataToHash.Append(sessionId);
+            }
+            dataToHash.Append('|');
+            dataToHash.Append(Convert.ToBase64String(randomBytes));
+
+            var computedHash = SHA256.HashData(Encoding.UTF8.GetBytes(dataToHash.ToString()));
+
+            // Use constant-time comparison to prevent timing attacks
+            if (!CryptographicOperations.FixedTimeEquals(providedHash, computedHash))
+            {
+                return Result<Unit, ComponentError>.Failure(
+                    new ComponentError("Token validation failed: hash mismatch"));
+            }
 
             return Result<Unit, ComponentError>.Success(Unit.Value);
         }
