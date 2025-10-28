@@ -74,7 +74,7 @@ public static class CircuitResilienceExtensions
 
                 // Add handler using the event's add method
                 var addMethod = eventInfo.AddMethod;
-                addMethod.Invoke(component, [handler]);
+                addMethod!.Invoke(component, [handler]);
 
                 try
                 {
@@ -85,7 +85,7 @@ public static class CircuitResilienceExtensions
                 {
                     // Remove handler using the event's remove method
                     var removeMethod = eventInfo.RemoveMethod;
-                    removeMethod.Invoke(component, [handler]);
+                    removeMethod!.Invoke(component, [handler]);
                 }
             }
 

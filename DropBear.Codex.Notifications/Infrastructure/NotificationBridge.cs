@@ -109,7 +109,7 @@ public class NotificationBridge : IDisposable
 
             if (!createResult.IsSuccess)
             {
-                _logger.LogError("Failed to persist notification: {Error}", createResult.Error.Message);
+                _logger.LogError("Failed to persist notification: {Error}", createResult.Error?.Message ?? "Unknown error");
                 return;
             }
 

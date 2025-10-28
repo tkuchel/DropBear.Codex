@@ -382,7 +382,7 @@ public sealed class FileManager
                     FileOperationError.ReadFailed(identifier, readResult.Error?.Message ?? "Unknown error"));
             }
 
-            var dropBearFile = readResult.Value;
+            var dropBearFile = readResult.Value!;
 
             // Ensure we do not remove the last container
             if (dropBearFile.ContentContainers.Count == 1 && containerToDelete != null)
@@ -904,7 +904,7 @@ public sealed class FileManager
 
                 if (result.IsSuccess)
                 {
-                    return Result<T, FileOperationError>.Success((T)(object)result.Value);
+                    return Result<T, FileOperationError>.Success((T)(object)result.Value!);
                 }
 
                 return Result<T, FileOperationError>.Failure(result.Error!);

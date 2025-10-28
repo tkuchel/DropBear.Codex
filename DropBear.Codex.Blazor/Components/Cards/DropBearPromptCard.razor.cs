@@ -141,7 +141,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
         builder.Append("prompt-card");
 
         // Type class
-        string typeClass;
+        string? typeClass;
         if (!PromptClasses.TryGetValue(PromptType, out typeClass))
         {
             typeClass = "prompt-card-default";

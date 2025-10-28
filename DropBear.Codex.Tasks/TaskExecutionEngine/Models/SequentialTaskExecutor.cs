@@ -73,7 +73,7 @@ public class SequentialTaskExecutor
                     else
                     {
                         _tracker.CompleteTask(task.Name, false);
-                        var errorMessage = executionResult.Error.Message;
+                        var errorMessage = executionResult.Error!.Message;
                         var exception = executionResult.Error.Exception ?? new Exception(errorMessage);
 
                         _logger.Error(exception, "Task {TaskName} failed: {ErrorMessage}", task.Name, errorMessage);

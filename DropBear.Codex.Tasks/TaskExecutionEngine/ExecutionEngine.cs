@@ -282,7 +282,7 @@ public sealed class ExecutionEngine : IAsyncDisposable
                     _logger.Information("Using execution strategy: {Strategy}", strategy);
 
                     // Queue tasks in dependency order
-                    foreach (var task in orderedTasks)
+                    foreach (var task in orderedTasks!)
                     {
                         _taskQueue.Enqueue(task);
                     }

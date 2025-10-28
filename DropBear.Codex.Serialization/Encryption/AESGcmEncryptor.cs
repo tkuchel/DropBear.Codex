@@ -113,10 +113,10 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             {
                 var dataHash = CalculateHash(data);
 
-                if (_encryptionCache.TryGetValue(dataHash, out var cachedResult))
+                if (_encryptionCache?.TryGetValue(dataHash, out var cachedResult) == true)
                 {
                     _logger.Information("Cache hit for encryption, returning cached result.");
-                    return Result<byte[], SerializationError>.Success(cachedResult);
+                    return Result<byte[], SerializationError>.Success(cachedResult!);
                 }
             }
 

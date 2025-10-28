@@ -11,8 +11,7 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.7.0</Version>
-    <PackageVersion>2025.9.0</PackageVersion> <!-- Specifies the version of the package -->
+    <Version>2025.10.0</Version>
     <PackageId>DropBear.Codex.StateManagement</PackageId> <!-- Unique identifier for the package -->
     <Title>DropBear Codex State Management</Title>
     <Description>Simplified state management and snapshot system for the DropBear Codex framework.</Description>
@@ -20,12 +19,18 @@
     <Company>DropBear</Company> <!-- Company or individual responsible for the package -->
     <PackageTags>DropBear, Codex, StateManagement</PackageTags> <!-- Tags for easier discoverability -->
     <PackageLicenseExpression>MIT</PackageLicenseExpression> <!-- License under which the package is distributed -->
-    <Copyright>2024 Terrence Kuchel (DropBear)</Copyright>
+    <Copyright>2025 Terrence Kuchel (DropBear)</Copyright>
     <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
     <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex</RepositoryUrl>
     <RepositoryType>git</RepositoryType> <!-- Specifies the type of repository (git, svn, etc.) -->
     <!-- <PackageIconUrl>https://github.com/tkuchel/DropBear.Codex/raw/main/icon.png</PackageIconUrl> -->
     <PackageReleaseNotes>Refactored state management system with simplified snapshot management.</PackageReleaseNotes> <!-- Release notes for the package -->
+
+    <!-- SourceLink for debugging -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <!-- Build Options -->
     <AssemblyName>DropBear.Codex.StateManagement</AssemblyName>
@@ -33,7 +38,7 @@
     <Optimize>true</Optimize> <!-- Enables optimizations during build -->
     <Deterministic>true</Deterministic> <!-- Ensures deterministic builds -->
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors> <!-- Optionally ensure warnings are treated as errors -->
-    <WarningsAsErrors>CSxxxx</WarningsAsErrors> <!-- Specific warnings that should be treated as errors -->
+    <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors> <!-- Nullable reference type warnings as errors -->
     <NoWarn>CS1591</NoWarn> <!-- Suppresses missing XML comments warnings (CS1591) if needed -->
 
     <!-- Output Options -->
@@ -47,10 +52,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
+      <PrivateAssets>All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="R3" Version="1.3.0" />

@@ -57,7 +57,7 @@ public sealed class TaskDependencyResolver
                 return Result<Unit, TaskExecutionError>.Failure(sortResult.Error);
             }
 
-            foreach (var name in sortResult.Value)
+            foreach (var name in sortResult.Value!)
             {
                 if (tasks.TryGetValue(name, out var task))
                 {

@@ -44,11 +44,11 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         if (exportStreamResult.IsSuccess == false)
         {
-            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error.Message);
+            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error!.Message);
             return;
         }
 
-        using var ms = exportStreamResult.Value;
+        using var ms = exportStreamResult.Value!;
 
         if (ms.Length == 0)
         {

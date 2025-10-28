@@ -143,8 +143,8 @@ public class FileManagerBuilder
         var blobStorageResult = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
         if (!blobStorageResult.IsSuccess)
         {
-            _logger.Error("Failed to create Azure Blob Storage: {Error}", blobStorageResult.Error.Message);
-            throw new InvalidOperationException($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}",
+            _logger.Error("Failed to create Azure Blob Storage: {Error}", blobStorageResult.Error?.Message ?? "Unknown error");
+            throw new InvalidOperationException($"Failed to create Azure Blob Storage: {blobStorageResult.Error?.Message ?? "Unknown error"}",
                 blobStorageResult.Exception);
         }
 
@@ -212,8 +212,8 @@ public class FileManagerBuilder
 
         if (!blobStorageResult.IsSuccess)
         {
-            _logger.Error("Failed to create Azure Blob Storage asynchronously: {Error}", blobStorageResult.Error.Message);
-            throw new InvalidOperationException($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}",
+            _logger.Error("Failed to create Azure Blob Storage asynchronously: {Error}", blobStorageResult.Error?.Message ?? "Unknown error");
+            throw new InvalidOperationException($"Failed to create Azure Blob Storage: {blobStorageResult.Error?.Message ?? "Unknown error"}",
                 blobStorageResult.Exception);
         }
 
@@ -336,9 +336,9 @@ public class FileManagerBuilder
         var blobStorageResult = BlobStorageFactory.CreateAzureBlobStorage(accountName, accountKey);
         if (!blobStorageResult.IsSuccess)
         {
-            _logger.Error("Failed to create Azure Blob Storage: {Error}", blobStorageResult.Error.Message);
+            _logger.Error("Failed to create Azure Blob Storage: {Error}", blobStorageResult.Error?.Message ?? "Unknown error");
             return Result<FileManagerBuilder, BuilderError>.Failure(
-                BuilderError.BuildFailed($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}"),
+                BuilderError.BuildFailed($"Failed to create Azure Blob Storage: {blobStorageResult.Error?.Message ?? "Unknown error"}"),
                 blobStorageResult.Exception);
         }
 
@@ -394,9 +394,9 @@ public class FileManagerBuilder
 
             if (!blobStorageResult.IsSuccess)
             {
-                _logger.Error("Failed to create Azure Blob Storage asynchronously: {Error}", blobStorageResult.Error.Message);
+                _logger.Error("Failed to create Azure Blob Storage asynchronously: {Error}", blobStorageResult.Error?.Message ?? "Unknown error");
                 return Result<FileManagerBuilder, BuilderError>.Failure(
-                    BuilderError.BuildFailed($"Failed to create Azure Blob Storage: {blobStorageResult.Error.Message}"),
+                    BuilderError.BuildFailed($"Failed to create Azure Blob Storage: {blobStorageResult.Error?.Message ?? "Unknown error"}"),
                     blobStorageResult.Exception);
             }
 

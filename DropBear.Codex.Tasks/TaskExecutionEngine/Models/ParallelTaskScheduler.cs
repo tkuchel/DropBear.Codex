@@ -231,7 +231,7 @@ public sealed class ParallelTaskScheduler : IDisposable
             {
                 metrics.RecordFailure(taskMetrics.Elapsed);
                 _stats.IncrementFailedTasks();
-                _logger.Error("Task {TaskName} failed: {ErrorMessage}", task.Name, executionResult.Error.Message);
+                _logger.Error("Task {TaskName} failed: {ErrorMessage}", task.Name, executionResult.Error!.Message);
                 return Result<Unit, TaskExecutionError>.Failure(executionResult.Error);
             }
         }
