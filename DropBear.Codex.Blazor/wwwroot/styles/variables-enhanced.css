@@ -1,0 +1,371 @@
+/* variables-enhanced.css - Modern .NET 9 / CSS enhancements */
+/* Extends existing variables.css with modern patterns */
+
+:root {
+  /* ============================================
+     MODERN COLOR SCALES (Tailwind-inspired)
+     ============================================ */
+
+  /* Primary Scale (Viking/Teal) */
+  --color-primary-50: #f0fdfa;
+  --color-primary-100: #ccfbf1;
+  --color-primary-200: #99f6e4;
+  --color-primary-300: #5eead4;
+  --color-primary-400: #2dd4bf;
+  --color-primary-500: #62dbc8; /* Base - Viking */
+  --color-primary-600: #4ec7b4;
+  --color-primary-700: #3a9d8f;
+  --color-primary-800: #2c7a70;
+  --color-primary-900: #1f544e;
+  --color-primary-950: #0d2d2a;
+
+  /* Success Scale (Pastel Green) */
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-200: #bbf7d0;
+  --color-success-300: #86efac;
+  --color-success-400: #7cd651; /* Base */
+  --color-success-500: #5db740;
+  --color-success-600: #4a9833;
+  --color-success-700: #3a7a28;
+  --color-success-800: #2e6120;
+  --color-success-900: #1f4116;
+  --color-success-950: #0f230b;
+
+  /* Warning Scale (Mustard) */
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-300: #fcd34d;
+  --color-warning-400: #ffd14d; /* Base - Mustard */
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+  --color-warning-900: #78350f;
+  --color-warning-950: #451a03;
+
+  /* Error/Danger Scale (Persimmon) */
+  --color-error-50: #fef2f2;
+  --color-error-100: #fee2e2;
+  --color-error-200: #fecaca;
+  --color-error-300: #fca5a5;
+  --color-error-400: #ff8a8a;
+  --color-error-500: #ff5757; /* Base - Persimmon */
+  --color-error-600: #dc2626;
+  --color-error-700: #b91c1c;
+  --color-error-800: #991b1b;
+  --color-error-900: #7f1d1d;
+  --color-error-950: #450a0a;
+
+  /* Info Scale (Malibu Blue) */
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-200: #bfdbfe;
+  --color-info-300: #93c5fd;
+  --color-info-400: #60a5fa;
+  --color-info-500: #4ebafd; /* Base - Malibu */
+  --color-info-600: #2563eb;
+  --color-info-700: #1d4ed8;
+  --color-info-800: #1e40af;
+  --color-info-900: #1e3a8a;
+  --color-info-950: #0f172a;
+
+  /* Neutral/Gray Scale - Enhanced */
+  --color-gray-50: #fbfbfb;   /* White */
+  --color-gray-100: #f6f6f7;  /* Seasalt */
+  --color-gray-200: #e9eaec;  /* Anti-flash white */
+  --color-gray-300: #dbdddf;  /* Platinum */
+  --color-gray-400: #b9bbc0;  /* French gray */
+  --color-gray-500: #94979c;  /* Cadet gray */
+  --color-gray-600: #67696f;  /* Dim gray */
+  --color-gray-700: #4e5055;  /* Davy gray */
+  --color-gray-800: #343639;  /* Onyx */
+  --color-gray-900: #1e1f22;  /* Black */
+  --color-gray-950: #0a0a0b;  /* Extra dark */
+
+  /* ============================================
+     RESPONSIVE TYPOGRAPHY (fluid scaling)
+     ============================================ */
+
+  /* Fluid font sizes using clamp() for responsive scaling */
+  --text-xs: clamp(0.75rem, 0.7rem + 0.25vw, 0.8rem);      /* 12-13px */
+  --text-sm: clamp(0.875rem, 0.825rem + 0.25vw, 0.95rem);  /* 14-15px */
+  --text-base: clamp(1rem, 0.95rem + 0.25vw, 1.125rem);    /* 16-18px */
+  --text-lg: clamp(1.125rem, 1.05rem + 0.375vw, 1.375rem); /* 18-22px */
+  --text-xl: clamp(1.25rem, 1.15rem + 0.5vw, 1.625rem);    /* 20-26px */
+  --text-2xl: clamp(1.5rem, 1.35rem + 0.75vw, 2rem);       /* 24-32px */
+  --text-3xl: clamp(1.875rem, 1.65rem + 1.125vw, 2.625rem); /* 30-42px */
+  --text-4xl: clamp(2.25rem, 1.95rem + 1.5vw, 3.375rem);   /* 36-54px */
+
+  /* Line height improvements */
+  --leading-none: 1;
+  --leading-tight: 1.25;
+  --leading-snug: 1.375;
+  --leading-normal: 1.5;
+  --leading-relaxed: 1.625;
+  --leading-loose: 2;
+
+  /* ============================================
+     ENHANCED SPACING SYSTEM
+     ============================================ */
+
+  /* Modern spacing scale (4px base, 0.5 increments) */
+  --space-px: 1px;
+  --space-0: 0;
+  --space-0-5: 0.125rem;  /* 2px */
+  --space-1: 0.25rem;     /* 4px */
+  --space-1-5: 0.375rem;  /* 6px */
+  --space-2: 0.5rem;      /* 8px */
+  --space-2-5: 0.625rem;  /* 10px */
+  --space-3: 0.75rem;     /* 12px */
+  --space-3-5: 0.875rem;  /* 14px */
+  --space-4: 1rem;        /* 16px */
+  --space-5: 1.25rem;     /* 20px */
+  --space-6: 1.5rem;      /* 24px */
+  --space-7: 1.75rem;     /* 28px */
+  --space-8: 2rem;        /* 32px */
+  --space-10: 2.5rem;     /* 40px */
+  --space-12: 3rem;       /* 48px */
+  --space-16: 4rem;       /* 64px */
+  --space-20: 5rem;       /* 80px */
+  --space-24: 6rem;       /* 96px */
+  --space-32: 8rem;       /* 128px */
+
+  /* ============================================
+     ENHANCED SHADOWS
+     ============================================ */
+
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.05);
+  --shadow-none: none;
+
+  /* Colored shadows for focus states */
+  --shadow-primary-sm: 0 0 0 3px rgba(98, 219, 200, 0.2);
+  --shadow-error-sm: 0 0 0 3px rgba(255, 87, 87, 0.2);
+  --shadow-success-sm: 0 0 0 3px rgba(124, 214, 81, 0.2);
+  --shadow-warning-sm: 0 0 0 3px rgba(255, 209, 77, 0.2);
+
+  /* ============================================
+     ANIMATION & TRANSITIONS
+     ============================================ */
+
+  /* Duration */
+  --duration-75: 75ms;
+  --duration-100: 100ms;
+  --duration-150: 150ms;
+  --duration-200: 200ms;
+  --duration-300: 300ms;
+  --duration-500: 500ms;
+  --duration-700: 700ms;
+  --duration-1000: 1000ms;
+
+  /* Easing functions */
+  --ease-linear: linear;
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-out: cubic-bezier(0, 0, 0.2, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* Composite transitions */
+  --transition-all: all var(--duration-150) var(--ease-in-out);
+  --transition-colors: background-color var(--duration-150) var(--ease-in-out),
+                       border-color var(--duration-150) var(--ease-in-out),
+                       color var(--duration-150) var(--ease-in-out),
+                       fill var(--duration-150) var(--ease-in-out),
+                       stroke var(--duration-150) var(--ease-in-out);
+  --transition-transform: transform var(--duration-150) var(--ease-in-out);
+
+  /* ============================================
+     ACCESSIBILITY ENHANCEMENTS
+     ============================================ */
+
+  /* Focus visible (keyboard navigation only) */
+  --focus-ring: 0 0 0 3px var(--color-primary-200);
+  --focus-ring-error: 0 0 0 3px var(--color-error-200);
+  --focus-ring-offset: 0 0 0 2px white, 0 0 0 4px var(--color-primary-500);
+
+  /* Screen reader only utility (text for assistive tech) */
+  --sr-only-position: absolute;
+  --sr-only-width: 1px;
+  --sr-only-height: 1px;
+  --sr-only-padding: 0;
+  --sr-only-margin: -1px;
+  --sr-only-overflow: hidden;
+  --sr-only-clip: rect(0, 0, 0, 0);
+  --sr-only-white-space: nowrap;
+  --sr-only-border-width: 0;
+
+  /* ============================================
+     RESPONSIVE BREAKPOINTS
+     ============================================ */
+
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+
+  /* ============================================
+     CONTAINER QUERIES
+     ============================================ */
+
+  --container-sm: 640px;
+  --container-md: 768px;
+  --container-lg: 1024px;
+  --container-xl: 1280px;
+  --container-2xl: 1536px;
+
+  /* ============================================
+     MODERN BORDER RADIUS
+     ============================================ */
+
+  --radius-none: 0;
+  --radius-sm: 0.125rem;    /* 2px */
+  --radius-DEFAULT: 0.25rem; /* 4px */
+  --radius-md: 0.375rem;    /* 6px */
+  --radius-lg: 0.5rem;      /* 8px */
+  --radius-xl: 0.75rem;     /* 12px */
+  --radius-2xl: 1rem;       /* 16px */
+  --radius-3xl: 1.5rem;     /* 24px */
+  --radius-full: 9999px;
+
+  /* ============================================
+     SYSTEM PREFERENCES DETECTION
+     ============================================ */
+
+  /* Set color scheme for browser UI */
+  color-scheme: light dark;
+}
+
+/* ============================================
+   DARK MODE SUPPORT
+   ============================================ */
+
+[data-theme="dark"],
+:root.dark-mode {
+  /* Override color assignments for dark mode */
+  --clr-background: var(--color-gray-900);
+  --clr-surface-primary: var(--color-gray-800);
+  --clr-surface-secondary: var(--color-gray-700);
+  --clr-surface-dark: var(--color-gray-950);
+  --clr-surface-light: var(--color-gray-800);
+
+  --clr-text-primary: var(--color-gray-50);
+  --clr-text-secondary: var(--color-gray-300);
+  --clr-text-muted: var(--color-gray-400);
+
+  --clr-border: var(--color-gray-700);
+  --clr-border-hover: var(--color-gray-600);
+  --clr-border-focus: var(--color-primary-400);
+
+  /* Adjust shadows for dark mode */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4),
+                0 2px 4px -1px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5),
+                0 4px 6px -2px rgba(0, 0, 0, 0.4);
+
+  /* Dark mode card background */
+  --clr-card-background: var(--color-gray-800);
+}
+
+/* Auto dark mode based on system preference */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* Same overrides as explicit dark mode */
+    --clr-background: var(--color-gray-900);
+    --clr-surface-primary: var(--color-gray-800);
+    --clr-surface-secondary: var(--color-gray-700);
+    --clr-surface-dark: var(--color-gray-950);
+    --clr-surface-light: var(--color-gray-800);
+
+    --clr-text-primary: var(--color-gray-50);
+    --clr-text-secondary: var(--color-gray-300);
+    --clr-text-muted: var(--color-gray-400);
+
+    --clr-border: var(--color-gray-700);
+    --clr-border-hover: var(--color-gray-600);
+    --clr-border-focus: var(--color-primary-400);
+
+    --clr-card-background: var(--color-gray-800);
+  }
+}
+
+/* ============================================
+   REDUCED MOTION SUPPORT
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --duration-75: 0ms;
+    --duration-100: 0ms;
+    --duration-150: 0ms;
+    --duration-200: 0ms;
+    --duration-300: 0ms;
+    --duration-500: 0ms;
+    --duration-700: 0ms;
+    --duration-1000: 0ms;
+
+    --transition-fast: 0ms;
+    --transition-medium: 0ms;
+    --transition-slow: 0ms;
+
+    --transition-all: none;
+    --transition-colors: none;
+    --transition-transform: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Screen reader only text */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Screen reader only - focusable (for skip links) */
+.sr-only-focusable:focus,
+.sr-only-focusable:active {
+  position: static;
+  width: auto;
+  height: auto;
+  overflow: visible;
+  clip: auto;
+  white-space: normal;
+}
+
+/* Focus visible (keyboard navigation only, not mouse clicks) */
+.focus-visible:focus-visible {
+  outline: 2px solid var(--color-primary-500);
+  outline-offset: 2px;
+}
+
+/* Remove default focus ring for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}

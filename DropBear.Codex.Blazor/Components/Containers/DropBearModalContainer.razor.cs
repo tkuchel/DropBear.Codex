@@ -3,6 +3,9 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
+using Microsoft.AspNetCore.Components;
+using Microsoft.AspNetCore.Components.Web;
+using Microsoft.JSInterop;
 
 #endregion
 
@@ -33,6 +36,11 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
     // Cached parameters to detect changes
     private string _customHeight = DEFAULT_DIMENSION;
     private string _customWidth = DEFAULT_DIMENSION;
+
+    // Modal overlay element reference for focus management
+    private ElementReference _modalOverlay;
+
+    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
     // Dictionary cache to avoid recreating
     private IDictionary<string, object>? _filteredParametersCache;
@@ -254,6 +262,49 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         builder.Append(_transitionDuration);
         builder.Append(';');
         return builder.ToString();
+    }
+
+    /// <summary>
+    ///     Manages focus when the modal is displayed for accessibility.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (ModalService.IsModalVisible && !IsDisposed)
+        {
+            try
+            {
+                // Focus the modal overlay for keyboard navigation
+                await JSRuntime.InvokeVoidAsync("eval",
+                    "document.querySelector('[role=\"dialog\"]')?.focus()");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Failed to focus modal");
+            }
+        }
+    }
+
+    /// <summary>
+    ///     Handles keyboard events on the modal (Escape key to close).
+    /// </summary>
+    private Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && !IsDisposed)
+        {
+            try
+            {
+                ModalService.Close();
+                Logger.Debug("Modal closed via Escape key");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(ex, "Error closing modal with Escape key");
+            }
+        }
+
+        return Task.CompletedTask;
     }
 
     /// <summary>

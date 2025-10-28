@@ -1623,5 +1623,49 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         await LoadDataAsync();
     }
 
+    /// <summary>
+    ///     Handles keyboard events on sortable column headers for accessibility.
+    /// </summary>
+    /// <param name="e">The keyboard event arguments.</param>
+    /// <param name="column">The column header that received the event.</param>
+    private Task OnColumnHeaderKeyDown(KeyboardEventArgs e, DataGridColumn<TItem> column)
+    {
+        if (!column.Sortable)
+        {
+            return Task.CompletedTask;
+        }
+
+        // Enter or Space triggers sort
+        if (e.Key is "Enter" or " ")
+        {
+            SortBy(column);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    ///     Handles keyboard events on data rows for accessibility (Enter/Space to select).
+    /// </summary>
+    /// <param name="e">The keyboard event arguments.</param>
+    /// <param name="item">The item in the row that received the event.</param>
+    private async Task OnRowKeyDown(KeyboardEventArgs e, TItem item)
+    {
+        switch (e.Key)
+        {
+            case "Enter":
+                await HandleRowClickAsync(item);
+                break;
+            case " ":
+                // Toggle selection if multi-select is enabled
+                if (EnableMultiSelect)
+                {
+                    var isCurrentlySelected = IsItemSelected(item);
+                    await ToggleSelection(item, !isCurrentlySelected);
+                }
+                break;
+        }
+    }
+
     #endregion
 }

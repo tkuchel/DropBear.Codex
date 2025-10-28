@@ -2,11 +2,13 @@
 
 /* Import all CSS files */
 @import 'variables.css';
+@import 'variables-enhanced.css'; /* Modern .NET 9 enhancements */
 @import 'reset.css';
 @import 'typography.css';
 @import 'utilities.css';
 @import 'components.css';
 @import 'layout.css';
+@import 'responsive-modern.css'; /* Modern responsive patterns */
 @import 'themes.css';
 @import 'print.css';
 
