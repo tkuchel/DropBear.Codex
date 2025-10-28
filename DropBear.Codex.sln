@@ -28,6 +28,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Hashing.Test
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Serialization.Tests", "DropBear.Codex.Serialization.Tests\DropBear.Codex.Serialization.Tests.csproj", "{BCF10825-F461-4883-B94C-4E20EF590190}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Files.Tests", "DropBear.Codex.Files.Tests\DropBear.Codex.Files.Tests.csproj", "{1910D385-785E-4795-8CAC-07807C287AB8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -206,6 +208,18 @@ Global
 		{BCF10825-F461-4883-B94C-4E20EF590190}.Release|x64.Build.0 = Release|Any CPU
 		{BCF10825-F461-4883-B94C-4E20EF590190}.Release|x86.ActiveCfg = Release|Any CPU
 		{BCF10825-F461-4883-B94C-4E20EF590190}.Release|x86.Build.0 = Release|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Debug|x64.Build.0 = Debug|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Debug|x86.Build.0 = Debug|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Release|x64.ActiveCfg = Release|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Release|x64.Build.0 = Release|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Release|x86.ActiveCfg = Release|Any CPU
+		{1910D385-785E-4795-8CAC-07807C287AB8}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
