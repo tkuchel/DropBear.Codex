@@ -150,15 +150,15 @@ await stateMachine.FireAsync(Trigger.Start);
 For detailed examples and advanced usage, see the [CLAUDE.md](CLAUDE.md) file and individual project documentation.
 
 ## Contributing
-Contributions are welcome! If you’d like to contribute, please follow these steps:
 
-1. Fork the repository.
-2. Create a new branch (`git checkout -b feature/your-feature`).
-3. Make your changes and commit them (`git commit -m 'Add your feature'`).
-4. Push to the branch (`git push origin feature/your-feature`).
-5. Open a Pull Request.
+Contributions are welcome! Please see our [Contributing Guidelines](CONTRIBUTING.md) for detailed information on:
 
-Please make sure your code adheres to the project's coding standards and includes relevant tests.
+- Development setup and workflow
+- Code style and standards
+- Testing requirements
+- Pull request process
+
+For maintainers creating releases, see [RELEASE.md](RELEASE.md) for the release process and tagging guidelines.
 
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
