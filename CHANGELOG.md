@@ -8,7 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Workflow Engine Performance & Stability Improvements** (Session 6 - 2025-10-29):
+- **Workflow Engine Architecture Improvements** (Session 6 Phase 2 - 2025-10-29):
+  - Created `IWorkflowTypeResolver` interface and `AppDomainWorkflowTypeResolver` implementation for workflow context type discovery
+  - Created `IWorkflowStateCoordinator` interface and `DefaultWorkflowStateCoordinator` implementation for state persistence operations
+  - Created `IWorkflowSignalHandler` interface and `DefaultWorkflowSignalHandler` implementation for workflow signal delivery
+  - Added `WorkflowStateInfo` lightweight record for querying workflow state without full context deserialization
+  - Separated concerns in `PersistentWorkflowEngine` (reduced from 907 LOC to ~400 LOC)
+  - Type discovery now lazy-loaded via `Lazy<ConcurrentDictionary<string, Type>>` for better performance
+  - Signal handling now properly validates signal names and workflow states
+  - State coordinator uses reflection to handle unknown generic types at runtime
+- **Workflow Engine Performance & Stability Improvements** (Session 6 Phase 1 - 2025-10-29):
   - Implemented degree of parallelism limiting in `ParallelNode` using `SemaphoreSlim`
   - Added `CircularExecutionTrace<T>` class for O(1) trace operations (replaces O(n) `RemoveRange`)
   - Created `CompensationFailure` record type for tracking Saga pattern rollback failures
@@ -42,6 +51,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DropBear.Codex.Core`: Added `Result<T>` return type to standardize API responses across all libraries.
 
 ### Changed
+- **Workflow Engine Refactoring** (Session 6 Phase 2 - 2025-10-29):
+  - Refactored `PersistentWorkflowEngine` to extract specialized services following Single Responsibility Principle
+  - `PersistentWorkflowEngine` now creates `DefaultWorkflowSignalHandler` internally with callback to avoid circular dependency
+  - Removed ~500 lines of type discovery, state coordination, and signal handling code from main engine
+  - Updated DI registration in `ServiceCollectionExtensions` to register new infrastructure services
+  - All existing public APIs remain unchanged (non-breaking refactoring)
 - **CI/CD Pipeline Improvements** (Session 5 - 2025-10-29):
   - Fixed cross-platform compatibility: added `shell: bash` for Unix commands on Windows runners
   - Switched from legacy Coverlet MSBuild properties to `--collect:"XPlat Code Coverage"`
