@@ -1,6 +1,6 @@
 # DropBear.Codex.Hashing
 
-A flexible, high-performance hashing library for .NET 8 featuring multiple hashing algorithms (Argon2, Blake2, Blake3, etc.), robust error handling through strongly-typed Results, and a fluent builder API for registering and retrieving hasher instances.
+A flexible, high-performance hashing library for .NET 9 featuring multiple hashing algorithms (Argon2, Blake2, Blake3, etc.), robust error handling through strongly-typed Results, and a fluent builder API for registering and retrieving hasher instances.
 
 ## Overview
 
