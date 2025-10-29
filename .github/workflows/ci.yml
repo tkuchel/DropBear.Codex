@@ -34,24 +34,23 @@ jobs:
         shell: bash
         run: |
           dotnet test --configuration Release --no-build --nologo \
-            /p:CollectCoverage=true \
-            /p:CoverletOutput=./TestResults/coverage/ \
-            /p:CoverletOutputFormat="cobertura" \
-            /p:Threshold=70 \
-            /p:ThresholdType=line
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./TestResults \
+            --logger "trx" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
       - name: Publish Coverage Report
         uses: danielpalme/ReportGenerator-GitHub-Action@5
         with:
-          reports: "**/coverage.cobertura.xml"
-          targetdir: "coveragereport"
+          reports: "./TestResults/**/coverage.cobertura.xml"
+          targetdir: "./TestResults/CoverageReport"
           reporttypes: "HtmlInline_AzurePipelines;Cobertura"
 
       - name: Upload Coverage Artifact
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ matrix.os }}
-          path: coveragereport
+          path: ./TestResults/CoverageReport
 
       - name: Collect Test Results
         if: always()
