@@ -1,0 +1,67 @@
+name: CI (.NET 9)
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        dotnet: [ "9.0.x" ]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ matrix.dotnet }}
+
+      - name: Restore
+        run: dotnet restore --nologo
+
+      - name: Build (Release)
+        run: dotnet build --configuration Release --no-restore --nologo /warnaserror
+
+      - name: Test + Coverage (Cobertura)
+        run: |
+          dotnet test --configuration Release --no-build --nologo \
+            /p:CollectCoverage=true \
+            /p:CoverletOutput=./TestResults/coverage/ \
+            /p:CoverletOutputFormat="cobertura" \
+            /p:Threshold=70 \
+            /p:ThresholdType=line
+
+      - name: Publish Coverage Report
+        uses: danielpalme/ReportGenerator-GitHub-Action@5
+        with:
+          reports: "**/coverage.cobertura.xml"
+          targetdir: "coveragereport"
+          reporttypes: "HtmlInline_AzurePipelines;Cobertura"
+
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coveragereport
+
+      - name: Collect Test Results
+        if: always()
+        run: |
+          mkdir -p TestResults/collected
+          find . -type f -name "*.trx" -exec cp {} TestResults/collected \;
+
+      - name: Annotate Test Results
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: ".NET Tests"
+          path: "TestResults/collected/*.trx"
+          reporter: dotnet-trx
