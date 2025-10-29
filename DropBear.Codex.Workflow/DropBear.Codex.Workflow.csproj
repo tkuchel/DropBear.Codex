@@ -8,9 +8,7 @@
         <Nullable>enable</Nullable>
         <!-- Version Information - Using Nerdbank.GitVersioning -->
         <AssemblyVersion>2025.10.0</AssemblyVersion>
-        <FileVersion>2025.10.0</FileVersion>
-        <Version>2025.10.0</Version>
-        <!-- NuGet Package Configuration -->
+        <FileVersion>2025.10.0</FileVersion>        <!-- NuGet Package Configuration -->
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <PackageId>DropBear.Codex.Workflow</PackageId>
         <Title>DropBear Codex Workflow Engine</Title>

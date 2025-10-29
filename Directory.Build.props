@@ -1,6 +1,46 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <!--
+        ═══════════════════════════════════════════════════════════════════════
+        VERSION MANAGEMENT - CRITICAL INFORMATION
+        ═══════════════════════════════════════════════════════════════════════
+
+        This solution uses Nerdbank.GitVersioning for automatic version management.
+
+        ⚠️  DO NOT add <Version> elements to .csproj files!
+
+        Version Control:
+        • Single source of truth: version.json (root directory)
+        • Format: YYYY.MM (e.g., "2025.11")
+        • Build height automatically appended (e.g., 2025.11.47)
+        • Git commit height determines patch version
+
+        How It Works:
+        1. version.json defines major.minor (e.g., "2025.11")
+        2. Nerdbank.GitVersioning calculates build height from git commits
+        3. Final version: 2025.11.{height} (e.g., 2025.11.47)
+        4. All .csproj files automatically get this version
+
+        Validation:
+        • CI pipeline runs validate-version-alignment.ps1
+        • Blocks builds if hardcoded versions found in .csproj files
+        • Ensures version consistency across all packages
+
+        To Update Version:
+        1. Edit version.json (e.g., "2025.11" → "2025.12")
+        2. Commit and push
+        3. Tag for release: git tag v2025.12.0
+
+        More Info:
+        • See RELEASE.md for complete release process
+        • See validate-version-alignment.ps1 for validation details
+        • See https://github.com/dotnet/Nerdbank.GitVersioning
+
+        ═══════════════════════════════════════════════════════════════════════
+    -->
+
     <ItemGroup>
+        <!-- Nerdbank.GitVersioning: Automatic version management from Git -->
         <PackageReference Include="Nerdbank.GitVersioning" Condition="!Exists('packages.config')">
             <PrivateAssets>all</PrivateAssets>
         </PackageReference>

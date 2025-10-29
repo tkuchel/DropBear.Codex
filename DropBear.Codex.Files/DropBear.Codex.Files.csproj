@@ -5,9 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.Files</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.Files</PackageId>
         <Title>DropBear Codex Files</Title>
         <Description>Provides file management and storage capabilities for the DropBear.Codex ecosystem</Description>
         <Authors>Terrence Kuchel</Authors>

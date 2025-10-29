@@ -9,9 +9,7 @@
         <LangVersion>latest</LangVersion>
         <!-- Ensures the latest C# language features are available -->
         <!-- Package Information -->
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.StateManagement</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.StateManagement</PackageId>
         <!-- Unique identifier for the package -->
         <Title>DropBear Codex State Management</Title>
         <Description>Simplified state management and snapshot system for the DropBear Codex framework.</Description>

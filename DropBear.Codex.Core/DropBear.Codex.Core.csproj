@@ -8,9 +8,7 @@
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
         <!-- Package Information -->
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.Core</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.Core</PackageId>
         <Title>DropBear Codex Core</Title>
         <Description>The core library for DropBear.Codex providing Result pattern, error handling, and telemetry infrastructure for .NET 9+ applications. Features type-safe error handling, functional extensions, and OpenTelemetry integration.</Description>
         <Authors>Terrence Kuchel</Authors>

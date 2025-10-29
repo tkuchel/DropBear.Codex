@@ -9,9 +9,7 @@
         <LangVersion>latest</LangVersion>
         <!-- Ensures the latest C# language features are available -->
         <!-- Package Information -->
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.Notifications</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.Notifications</PackageId>
         <!-- Unique identifier for the package -->
         <Title>DropBear Codex Notifications</Title>
         <Description>Notification system for the DropBear Codex ecosystem, supporting user-specific notifications and optional serialization.</Description>

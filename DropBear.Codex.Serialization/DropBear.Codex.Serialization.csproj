@@ -5,9 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.Serialization</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.Serialization</PackageId>
         <Title>DropBear Codex Serialization</Title>
         <Description>Provides serialization and deserialization utilities for the DropBear.Codex ecosystem</Description>
         <Authors>Terrence Kuchel</Authors>
