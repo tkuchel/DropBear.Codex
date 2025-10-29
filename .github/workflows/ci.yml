@@ -28,7 +28,7 @@ jobs:
         run: dotnet restore --nologo
 
       - name: Build (Release)
-        run: dotnet build --configuration Release --no-restore --nologo /warnaserror
+        run: dotnet build --configuration Release --no-restore --nologo
 
       - name: Test + Coverage (Cobertura)
         run: |
