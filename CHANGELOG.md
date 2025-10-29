@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Central Package Management** (Session 5 - 2025-10-29):
+  - Implemented CPM with `Directory.Packages.props` for centralized package version management
+  - All 87 package versions now managed in single location
+  - Removed version attributes from all 20 .csproj files
+  - Improved maintainability and consistency across solution
+- **Workflow Project Analyzer Configuration** (Session 5 - 2025-10-29):
+  - Created `GlobalSuppressions.cs` with justified analyzer suppressions
+  - Created `.editorconfig` for path-specific analyzer rules
+  - Documentation warnings temporarily suppressed with TODO comments
+  - Example/demo code appropriately excluded from strict rules
 - **Test Infrastructure** (Session 4 - 2025-10-28):
   - Created `DropBear.Codex.Core.Tests` with 61 comprehensive Result pattern tests
   - Integrated xUnit 2.9.2, FluentAssertions 8.8.0, and coverlet.collector 6.0.4
@@ -23,6 +33,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DropBear.Codex.Core`: Added `Result<T>` return type to standardize API responses across all libraries.
 
 ### Changed
+- **CI/CD Pipeline Improvements** (Session 5 - 2025-10-29):
+  - Fixed cross-platform compatibility: added `shell: bash` for Unix commands on Windows runners
+  - Switched from legacy Coverlet MSBuild properties to `--collect:"XPlat Code Coverage"`
+  - Updated coverage report paths to match coverlet.collector output structure
+  - Made artifact names unique per OS to prevent conflicts (`coverage-ubuntu-latest`, `coverage-windows-latest`)
+  - Disabled redundant `dotnet-ci.yml` workflow (had fundamental design flaws)
+  - All CI jobs now run successfully on both Ubuntu and Windows
 - **CI/CD Pipeline Enhancements** (Session 4 - 2025-10-28):
   - Updated .NET version from 8.0.x to 9.0.x across all workflows
   - Added Trivy security scanning for CRITICAL and HIGH severity vulnerabilities
@@ -31,6 +48,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DropBear.Codex.Serialization`: Updated `JsonSerializer` to handle circular references.
 
 ### Fixed
+- **DropBear.Codex.Workflow Build Errors** (Session 5 - 2025-10-29):
+  - Fixed nullable reference warnings using pattern matching in `StepNode.cs` and `InMemoryWorkflowStateRepository.cs`
+  - Added standard exception constructors (CA1032 compliance) to all custom exception classes
+  - Added `ConfigureAwait(false)` to async operations in `DelayNode.cs`
+  - Workflow project now builds with 0 errors in Release configuration
+- **DropBear.Codex.Workflow Exception Design** (Session 5 - 2025-10-29):
+  - `WorkflowConfigurationException`: Added parameterless, message, and message+innerException constructors
+  - `WorkflowExecutionException`: Added parameterless, message, and message+innerException constructors
+  - `WorkflowStepTimeoutException`: Added parameterless, message, and message+innerException constructors
+  - All exception classes now comply with .NET exception design guidelines (CA1032)
 - **SECURITY - CRITICAL** (Session 4 - 2025-10-28): Fixed authentication bypass vulnerability in `DropBear.Codex.Blazor.Helpers.AntiForgeryHelper`
   - ⚠️ **BREAKING CHANGE**: Token format changed - all existing tokens are invalid
   - **Vulnerability**: `ValidateToken` method always returned success without actually validating tokens

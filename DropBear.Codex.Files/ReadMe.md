@@ -1,6 +1,6 @@
 # DropBear.Codex.Files
 
-A high-performance, memory-optimized file management library for .NET 8 applications that supports local and cloud storage operations with robust error handling.
+A high-performance, memory-optimized file management library for .NET 9 applications that supports local and cloud storage operations with robust error handling.
 
 ## Overview
 
@@ -21,7 +21,7 @@ The library supports serialization, compression, and encryption of file content,
   - Optional encryption of sensitive data
 - **Builder Pattern API**: Fluent, easy-to-use API for constructing files and configuring options
 - **Async/Await First**: Fully asynchronous API with proper cancellation token support
-- **Performance Optimized**: Uses .NET 8 features for maximum performance
+- **Performance Optimized**: Uses .NET 9 features for maximum performance
 
 ## Installation
 
@@ -31,7 +31,7 @@ dotnet add package DropBear.Codex.Files
 
 ## Dependencies
 
-- .NET 8.0 or higher
+- .NET 9.0 or higher
 - FluentStorage (for Azure Blob Storage support)
 - Microsoft.IO.RecyclableMemoryStream
 - Serilog

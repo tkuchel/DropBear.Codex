@@ -1,6 +1,6 @@
 ﻿# DropBear.Codex.Serialization
 
-A high-performance, memory-optimized serialization library for .NET 8 applications that supports JSON, MessagePack, and custom serialization with compression, encoding, and encryption capabilities.
+A high-performance, memory-optimized serialization library for .NET 9 applications that supports JSON, MessagePack, and custom serialization with compression, encoding, and encryption capabilities.
 
 ## Overview
 
@@ -29,7 +29,7 @@ The library is built with a focus on performance and memory efficiency, making i
   - RSA key management for secure key exchange
 - **Builder Pattern API**: Fluent, easy-to-use API for constructing serializers
 - **Async/Await First**: Fully asynchronous API with proper cancellation token support
-- **Performance Optimized**: Uses .NET 8 features for maximum performance
+- **Performance Optimized**: Uses .NET 9 features for maximum performance
 - **Stream Support**: Direct stream serialization for large data sets
 
 ## Installation
@@ -40,7 +40,7 @@ dotnet add package DropBear.Codex.Serialization
 
 ## Dependencies
 
-- .NET 8.0 or higher
+- .NET 9.0 or higher
 - Microsoft.IO.RecyclableMemoryStream
 - MessagePack (optional, for MessagePack serialization)
 - Serilog

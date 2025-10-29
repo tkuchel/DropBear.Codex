@@ -200,4 +200,4 @@ We thank the following security researchers for their responsible disclosure:
 
 ---
 
-**Last Updated**: October 12, 2025
+**Last Updated**: October 29, 2025
