@@ -10,7 +10,7 @@
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Version>2025.10.0</Version>
         <PackageId>DropBear.Codex.Blazor</PackageId>
-        <!-- Ã¢â‚¬Â¦ other package properties Ã¢â‚¬Â¦ -->
+        <!-- … other package properties … -->
         <!-- SourceLink for debugging -->
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
