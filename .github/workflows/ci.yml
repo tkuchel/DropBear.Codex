@@ -31,6 +31,7 @@ jobs:
         run: dotnet build --configuration Release --no-restore --nologo
 
       - name: Test + Coverage (Cobertura)
+        shell: bash
         run: |
           dotnet test --configuration Release --no-build --nologo \
             /p:CollectCoverage=true \
@@ -49,11 +50,12 @@ jobs:
       - name: Upload Coverage Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: coverage
+          name: coverage-${{ matrix.os }}
           path: coveragereport
 
       - name: Collect Test Results
         if: always()
+        shell: bash
         run: |
           mkdir -p TestResults/collected
           find . -type f -name "*.trx" -exec cp {} TestResults/collected \;
@@ -62,6 +64,6 @@ jobs:
         if: always()
         uses: dorny/test-reporter@v1
         with:
-          name: ".NET Tests"
+          name: ".NET Tests (${{ matrix.os }})"
           path: "TestResults/collected/*.trx"
           reporter: dotnet-trx
