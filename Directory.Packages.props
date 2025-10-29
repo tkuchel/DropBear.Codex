@@ -12,7 +12,7 @@
 
     <!-- ===== Code Analysis & Annotations ===== -->
     <PackageVersion Include="JetBrains.Annotations" Version="2025.2.2" />
-    <PackageVersion Include="Meziantou.Analyzer" Version="2.0.227" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="2.0.239" />
     <PackageVersion Include="Roslynator.Analyzers" Version="4.14.1" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.2.0-beta.556" />
 
