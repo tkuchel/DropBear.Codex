@@ -58,6 +58,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `WorkflowExecutionException`: Added parameterless, message, and message+innerException constructors
   - `WorkflowStepTimeoutException`: Added parameterless, message, and message+innerException constructors
   - All exception classes now comply with .NET exception design guidelines (CA1032)
+- **SECURITY - HIGH SEVERITY** (Session 5 - 2025-10-29): Fixed multiple security issues in `DropBear.Codex.Utilities.Obfuscation.Jumbler`
+  - ⚠️ **BREAKING CHANGE**: Jumbler v03 format incompatible with older versions
+  - **H1 FIXED**: Removed hardcoded default encryption key - `keyPhrase` parameter now required
+  - **H2 FIXED**: Increased PBKDF2 iterations from 10,000 to 600,000 (OWASP 2023 recommendation)
+  - **H3 FIXED**: Implemented random 32-byte salt generation per operation using `RandomNumberGenerator.GetBytes()`
+  - **M1 FIXED**: Migrated key cache to `ConcurrentDictionary` for thread-safe operation
+  - **Enhancement**: Version identifier updated to v03 to indicate security improvements
+  - **Security**: All cryptographic operations now follow current best practices
+- **SECURITY - MEDIUM SEVERITY** (Session 5 - 2025-10-29): Enhanced connection string validation in `DropBear.Codex.Notifications`
+  - **H4 MITIGATED**: Added null/empty validation with exception on startup
+  - **Enhancement**: Added warning when plain-text passwords detected in connection strings
+  - **Documentation**: Added XML comments recommending Azure Key Vault, Managed Identity, or Windows Authentication
 - **SECURITY - CRITICAL** (Session 4 - 2025-10-28): Fixed authentication bypass vulnerability in `DropBear.Codex.Blazor.Helpers.AntiForgeryHelper`
   - ⚠️ **BREAKING CHANGE**: Token format changed - all existing tokens are invalid
   - **Vulnerability**: `ValidateToken` method always returned success without actually validating tokens
