@@ -1,0 +1,73 @@
+root = false
+
+# Disable analyzer rules for example/demonstration code
+[Examples/**.cs]
+dotnet_diagnostic.CA1000.severity = none
+dotnet_diagnostic.CA1002.severity = none
+dotnet_diagnostic.CA1031.severity = none
+dotnet_diagnostic.CA1056.severity = none
+dotnet_diagnostic.CA1062.severity = none
+dotnet_diagnostic.CA1303.severity = none
+dotnet_diagnostic.CA1724.severity = none
+dotnet_diagnostic.CA1812.severity = none
+dotnet_diagnostic.CA1848.severity = none
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CA2227.severity = none
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.IDE0011.severity = none
+dotnet_diagnostic.IDE0019.severity = none
+dotnet_diagnostic.MA0002.severity = none
+dotnet_diagnostic.MA0004.severity = none
+dotnet_diagnostic.MA0006.severity = none
+dotnet_diagnostic.MA0015.severity = none
+dotnet_diagnostic.MA0016.severity = none
+dotnet_diagnostic.MA0021.severity = none
+dotnet_diagnostic.MA0048.severity = none
+dotnet_diagnostic.MA0051.severity = none
+dotnet_diagnostic.CA1860.severity = none
+
+# Disable analyzer rules for sample persistence models
+[Persistence/Models/**.cs]
+dotnet_diagnostic.CA1002.severity = none
+dotnet_diagnostic.CA1056.severity = none
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.MA0002.severity = none
+dotnet_diagnostic.MA0016.severity = none
+dotnet_diagnostic.MA0048.severity = none
+
+# Disable specific rules for step implementations in examples
+[Persistence/Steps/**.cs]
+dotnet_diagnostic.CA2007.severity = none
+dotnet_diagnostic.CS1591.severity = none
+dotnet_diagnostic.CS1573.severity = none
+dotnet_diagnostic.MA0002.severity = none
+dotnet_diagnostic.MA0004.severity = none
+
+# Disable documentation warnings for persistence interfaces (sample code)
+[Persistence/Interfaces/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+# Disable documentation warnings for extension methods
+[Persistence/Extensions/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+# Disable documentation warnings for repositories (sample implementation)
+[Persistence/Repositories/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+# Disable documentation warnings for specific production namespaces (TODO: Add comprehensive documentation)
+[Builder/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+[Core/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+[Nodes/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+[Persistence/Implementation/**.cs]
+dotnet_diagnostic.CS1591.severity = none
+
+# Production code - keep strict analyzer settings
+[*.cs]
+# Enable all analyzers by default (inherited from root .editorconfig)

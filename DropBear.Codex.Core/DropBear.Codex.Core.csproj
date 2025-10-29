@@ -1,15 +1,12 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
-
     <PropertyGroup>
         <!-- Target Framework -->
         <TargetFramework>net9.0</TargetFramework>
-
         <!-- Language Features -->
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
-
         <!-- Package Information -->
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Version>2025.10.0</Version>
@@ -27,92 +24,75 @@
         <PackageIcon>icon.png</PackageIcon>
         <PackageReleaseNotes>See https://github.com/tkuchel/DropBear.Codex/blob/master/CHANGELOG.md</PackageReleaseNotes>
         <PackageReadmeFile>PACKAGE_README.md</PackageReadmeFile>
-
         <!-- Build Options -->
         <AssemblyName>DropBear.Codex.Core</AssemblyName>
         <RootNamespace>DropBear.Codex.Core</RootNamespace>
         <Optimize>true</Optimize>
         <Deterministic>true</Deterministic>
-
         <!-- FIXED: Enable ContinuousIntegrationBuild in CI environments -->
         <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
-
         <!-- Quality Settings -->
         <!-- FIXED: Only enable TreatWarningsAsErrors in Release builds -->
         <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
-
         <!-- FIXED: Specific nullable warnings as errors -->
         <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-
         <!-- FIXED: Only suppress CS1591 in Debug builds while documentation is being completed -->
         <NoWarn Condition="'$(Configuration)' == 'Debug'">CS1591</NoWarn>
         <!-- In Release, all XML documentation must be present -->
-
         <!-- Code Analysis -->
         <!-- FIXED: Enable comprehensive code analysis -->
         <EnableNETAnalyzers>true</EnableNETAnalyzers>
         <AnalysisLevel>latest-all</AnalysisLevel>
         <AnalysisMode>AllEnabledByDefault</AnalysisMode>
         <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-
         <!-- Output Options -->
         <OutputType>Library</OutputType>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <DebugType>embedded</DebugType>
-
         <!-- SourceLink -->
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
         <EmbedUntrackedSources>true</EmbedUntrackedSources>
         <IncludeSymbols>true</IncludeSymbols>
         <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-
         <!-- FIXED: Enable NuGet Package Validation -->
         <EnablePackageValidation>true</EnablePackageValidation>
         <PackageValidationEnabled>true</PackageValidationEnabled>
         <GenerateCompatibilitySuppressionFile>true</GenerateCompatibilitySuppressionFile>
         <EnableStrictModeForCompatibleFrameworksInPackage>true</EnableStrictModeForCompatibleFrameworksInPackage>
     </PropertyGroup>
-
     <!-- Item Group for Dependencies -->
     <ItemGroup>
         <!-- Core Dependencies -->
-        <PackageReference Include="MessagePack" Version="3.1.4"/>
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
-        <PackageReference Include="Microsoft.Extensions.ObjectPool" Version="9.0.10" />
-
+        <PackageReference Include="MessagePack" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+        <PackageReference Include="Microsoft.Extensions.ObjectPool" />
         <!-- Logging Dependencies -->
-        <PackageReference Include="Serilog" Version="4.3.0"/>
-        <PackageReference Include="Serilog.Enrichers.Environment" Version="3.0.1"/>
-        <PackageReference Include="Serilog.Enrichers.Process" Version="3.0.0"/>
-        <PackageReference Include="Serilog.Enrichers.Thread" Version="4.0.0"/>
-        <PackageReference Include="Serilog.Formatting.Compact" Version="3.0.0"/>
-        <PackageReference Include="Serilog.Sinks.Console" Version="6.0.0"/>
-        <PackageReference Include="Serilog.Sinks.File" Version="7.0.0"/>
-
+        <PackageReference Include="Serilog" />
+        <PackageReference Include="Serilog.Enrichers.Environment" />
+        <PackageReference Include="Serilog.Enrichers.Process" />
+        <PackageReference Include="Serilog.Enrichers.Thread" />
+        <PackageReference Include="Serilog.Formatting.Compact" />
+        <PackageReference Include="Serilog.Sinks.Console" />
+        <PackageReference Include="Serilog.Sinks.File" />
         <!-- Development Dependencies (Private) -->
         <!-- FIXED: Mark JetBrains.Annotations as private asset -->
-        <PackageReference Include="JetBrains.Annotations" Version="2025.2.0" PrivateAssets="all"/>
-
+        <PackageReference Include="JetBrains.Annotations" PrivateAssets="all" />
         <!-- Analyzers (Private) -->
-        <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
+        <PackageReference Include="Meziantou.Analyzer">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-
         <!-- FIXED: Add Roslynator for additional code quality analysis -->
-        <PackageReference Include="Roslynator.Analyzers" Version="4.14.1">
+        <PackageReference Include="Roslynator.Analyzers">
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
         </PackageReference>
-
         <!-- SourceLink -->
-        <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All"/>
+        <PackageReference Include="Microsoft.SourceLink.GitHub" PrivateAssets="All" />
     </ItemGroup>
-
     <!-- Files to Include in Package -->
     <ItemGroup>
-        <None Include="PACKAGE_README.md" Pack="true" PackagePath=""/>
-        <None Include="icon.png" Pack="true" PackagePath=""/>
+        <None Include="PACKAGE_README.md" Pack="true" PackagePath="" />
+        <None Include="icon.png" Pack="true" PackagePath="" />
     </ItemGroup>
-
 </Project>

@@ -207,7 +207,7 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
         string? assemblyQualifiedName = assemblyQualifiedNameProp?.GetValue(wrapper.State) as string;
         string? typeName = typeNameProp?.GetValue(wrapper.State) as string ?? wrapper.ContextTypeName;
 
-        return ValueTask.FromResult((assemblyQualifiedName, typeName));
+        return ValueTask.FromResult<(string?, string?)>((assemblyQualifiedName, typeName));
     }
 
     public string? GetContextTypeName(string workflowInstanceId)

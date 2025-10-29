@@ -1,69 +1,60 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.10.0</Version>
-    <PackageId>DropBear.Codex.Files</PackageId>
-    <Title>DropBear Codex Files</Title>
-    <Description>Provides file management and storage capabilities for the DropBear.Codex ecosystem</Description>
-    <Authors>Terrence Kuchel</Authors>
-    <Company>DropBear</Company>
-    <PackageTags>DropBear, Codex, Files, Storage, Blob</PackageTags>
-    <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <Copyright>2025 Terrence Kuchel (DropBear)</Copyright>
-    <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex</RepositoryUrl>
-    <RepositoryType>git</RepositoryType>
-    <PackageReleaseNotes>Initial release of the DropBear Codex Files library, providing file management and storage capabilities including local and Azure Blob storage support.</PackageReleaseNotes>
-
-    <!-- SourceLink for debugging -->
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-
-    <AssemblyName>DropBear.Codex.Files</AssemblyName>
-    <RootNamespace>DropBear.Codex.Files</RootNamespace>
-    <Optimize>true</Optimize>
-    <Deterministic>true</Deterministic>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-    <NoWarn>CS1591</NoWarn>
-
-    <OutputType>Library</OutputType>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <DebugType>embedded</DebugType>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj"/>
-    <ProjectReference Include="..\DropBear.Codex.Hashing\DropBear.Codex.Hashing.csproj"/>
-    <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj"/>
-    <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="FluentStorage.Azure.Blobs" Version="6.0.0" />
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1"/>
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
-      <PrivateAssets>All</PrivateAssets>
-    </PackageReference>
-    <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.8.118</Version>
-    </PackageReference>
-    <PackageReference Include="System.Text.Json" Version="9.0.10" />
-  </ItemGroup>
-
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Version>2025.10.0</Version>
+        <PackageId>DropBear.Codex.Files</PackageId>
+        <Title>DropBear Codex Files</Title>
+        <Description>Provides file management and storage capabilities for the DropBear.Codex ecosystem</Description>
+        <Authors>Terrence Kuchel</Authors>
+        <Company>DropBear</Company>
+        <PackageTags>DropBear, Codex, Files, Storage, Blob</PackageTags>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <Copyright>2025 Terrence Kuchel (DropBear)</Copyright>
+        <PackageProjectUrl>https://github.com/tkuchel/DropBear.Codex</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/tkuchel/DropBear.Codex</RepositoryUrl>
+        <RepositoryType>git</RepositoryType>
+        <PackageReleaseNotes>Initial release of the DropBear Codex Files library, providing file management and storage capabilities including local and Azure Blob storage support.</PackageReleaseNotes>
+        <!-- SourceLink for debugging -->
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <AssemblyName>DropBear.Codex.Files</AssemblyName>
+        <RootNamespace>DropBear.Codex.Files</RootNamespace>
+        <Optimize>true</Optimize>
+        <Deterministic>true</Deterministic>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+        <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
+        <NoWarn>CS1591</NoWarn>
+        <OutputType>Library</OutputType>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <DebugType>embedded</DebugType>
+    </PropertyGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
+        <ProjectReference Include="..\DropBear.Codex.Hashing\DropBear.Codex.Hashing.csproj" />
+        <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
+        <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="FluentStorage.Azure.Blobs" />
+        <PackageReference Include="JetBrains.Annotations">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="Meziantou.Analyzer">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
+        <PackageReference Include="Microsoft.SourceLink.GitHub">
+            <PrivateAssets>All</PrivateAssets>
+        </PackageReference>
+        <PackageReference Update="Nerdbank.GitVersioning"></PackageReference>
+        <PackageReference Include="System.Text.Json" />
+    </ItemGroup>
 </Project>
