@@ -43,7 +43,7 @@ public sealed class DelayNode<TContext> : WorkflowNodeBase<TContext>, ILinkableN
     {
         try
         {
-            await Task.Delay(_delay, cancellationToken);
+            await Task.Delay(_delay, cancellationToken).ConfigureAwait(false);
 
             IWorkflowNode<TContext>[] nextNodes = _nextNode is not null
                 ? new[] { _nextNode }

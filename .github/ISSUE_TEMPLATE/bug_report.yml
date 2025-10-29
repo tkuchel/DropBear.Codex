@@ -1,0 +1,24 @@
+name: Bug report
+description: Create a report to help improve DropBear.Codex
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the issue and expected behavior
+    validations: { required: true }
+  - type: input
+    id: version
+    attributes: { label: Package/version (if applicable) }
+  - type: textarea
+    id: repro
+    attributes: { label: Reproduction steps or sample code }
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: OS, .NET version, runtime, etc.
+  - type: textarea
+    id: notes
+    attributes: { label: Additional context }

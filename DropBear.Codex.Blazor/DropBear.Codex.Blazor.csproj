@@ -1,52 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk.Razor">
-  <PropertyGroup>
-    <!-- Target Framework -->
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-
-    <!-- Package Information -->
-    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.10.0</Version>
-    <PackageId>DropBear.Codex.Blazor</PackageId>
-    <!-- … other package properties … -->
-
-    <!-- SourceLink for debugging -->
-    <PublishRepositoryUrl>true</PublishRepositoryUrl>
-    <EmbedUntrackedSources>true</EmbedUntrackedSources>
-    <IncludeSymbols>true</IncludeSymbols>
-    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-
-    <!-- Build Options -->
-    <AssemblyName>DropBear.Codex.Blazor</AssemblyName>
-    <RootNamespace>DropBear.Codex.Blazor</RootNamespace>
-    <Optimize>true</Optimize>
-    <Deterministic>true</Deterministic>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-    <NoWarn>CS1591</NoWarn>
-
-    <!-- Output Options -->
-    <OutputType>Library</OutputType>
-    <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <DebugType>embedded</DebugType>
-
-    <!-- Static Web Assets Configuration -->
-    <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
-    <StaticWebAssetBasePath>_content/DropBear.Codex.Blazor</StaticWebAssetBasePath>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <SupportedPlatform Include="browser"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App"/>
-  </ItemGroup>
-
-  <!-- Option 1: Remove these lines to let the SDK handle scoped CSS automatically -->
-  <!--
+    <PropertyGroup>
+        <!-- Target Framework -->
+        <TargetFramework>net9.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <!-- Package Information -->
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <Version>2025.10.0</Version>
+        <PackageId>DropBear.Codex.Blazor</PackageId>
+        <!-- … other package properties … -->
+        <!-- SourceLink for debugging -->
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <!-- Build Options -->
+        <AssemblyName>DropBear.Codex.Blazor</AssemblyName>
+        <RootNamespace>DropBear.Codex.Blazor</RootNamespace>
+        <Optimize>true</Optimize>
+        <Deterministic>true</Deterministic>
+        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+        <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
+        <NoWarn>CS1591</NoWarn>
+        <!-- Output Options -->
+        <OutputType>Library</OutputType>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <DebugType>embedded</DebugType>
+        <!-- Static Web Assets Configuration -->
+        <AddRazorSupportForMvc>true</AddRazorSupportForMvc>
+        <StaticWebAssetBasePath>_content/DropBear.Codex.Blazor</StaticWebAssetBasePath>
+    </PropertyGroup>
+    <ItemGroup>
+        <SupportedPlatform Include="browser" />
+    </ItemGroup>
+    <ItemGroup>
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+    <!-- Option 1: Remove these lines to let the SDK handle scoped CSS automatically -->
+    <!--
   <ItemGroup>
     <None Remove="**/*.razor.css" />
     <Content Include="**/*.razor.css">
@@ -54,50 +47,42 @@
     </Content>
   </ItemGroup>
   -->
-
-  <!-- Option 2: Explicitly include as RazorScopedCss -->
-  <!--
+    <!-- Option 2: Explicitly include as RazorScopedCss -->
+    <!--
   <ItemGroup>
     <RazorScopedCss Include="**/*.razor.css">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </RazorScopedCss>
   </ItemGroup>
   -->
-
-  <ItemGroup>
-    <Watch Include="**\*.css"/>
-    <Watch Include="**\*.razor.css"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
-    <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
-    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
-      <PrivateAssets>All</PrivateAssets>
-    </PackageReference>
-    <PackageReference Update="Nerdbank.GitVersioning">
-      <Version>3.8.118</Version>
-    </PackageReference>
-  </ItemGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj"/>
-    <ProjectReference Include="..\DropBear.Codex.Notifications\DropBear.Codex.Notifications.csproj"/>
-    <ProjectReference Include="..\DropBear.Codex.Tasks\DropBear.Codex.Tasks.csproj"/>
-    <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <TypeScriptCompile Include="wwwroot\scripts\base.d.ts"/>
-  </ItemGroup>
-
-  <ItemGroup>
-    <UpToDateCheckInput Remove="Components\Wizards\DropBearMailMergeWizard.razor" />
-  </ItemGroup>
+    <ItemGroup>
+        <Watch Include="**\*.css" />
+        <Watch Include="**\*.razor.css" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="JetBrains.Annotations">
+            <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
+        <PackageReference Include="Meziantou.Analyzer">
+            <PrivateAssets>all</PrivateAssets>
+            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
+        <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+        <PackageReference Include="Microsoft.SourceLink.GitHub">
+            <PrivateAssets>All</PrivateAssets>
+        </PackageReference>
+        <PackageReference Update="Nerdbank.GitVersioning"></PackageReference>
+    </ItemGroup>
+    <ItemGroup>
+        <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
+        <ProjectReference Include="..\DropBear.Codex.Notifications\DropBear.Codex.Notifications.csproj" />
+        <ProjectReference Include="..\DropBear.Codex.Tasks\DropBear.Codex.Tasks.csproj" />
+        <ProjectReference Include="..\DropBear.Codex.Utilities\DropBear.Codex.Utilities.csproj" />
+    </ItemGroup>
+    <ItemGroup>
+        <TypeScriptCompile Include="wwwroot\scripts\base.d.ts" />
+    </ItemGroup>
+    <ItemGroup>
+        <UpToDateCheckInput Remove="Components\Wizards\DropBearMailMergeWizard.razor" />
+    </ItemGroup>
 </Project>

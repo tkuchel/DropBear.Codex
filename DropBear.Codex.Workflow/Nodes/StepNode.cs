@@ -59,7 +59,7 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
         TStep step = serviceProvider.GetRequiredService<TStep>();
         DateTimeOffset startTime = DateTimeOffset.UtcNow;
         int retryAttempts = 0;
-        StepResult? lastResult = null;
+        StepResult lastResult = StepResult.Failure("Step execution did not complete");
 
         RetryPolicy retryPolicy = RetryPolicy.Default;
 
@@ -92,8 +92,8 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
                 }
 
                 if (retryPolicy.ShouldRetryPredicate != null &&
-                    lastResult.Error?.SourceException != null &&
-                    !retryPolicy.ShouldRetryPredicate(lastResult.Error?.SourceException))
+                    lastResult.Error?.SourceException is { } sourceException &&
+                    !retryPolicy.ShouldRetryPredicate(sourceException))
                 {
                     break;
                 }
@@ -116,7 +116,8 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
             // ==========================================================
 
             if (lastResult is not { IsSuccess: true } &&
-                WorkflowConstants.Signals.IsSuspensionSignal(lastResult.Error?.Message))
+                lastResult.Error?.Message is { } errorMessage &&
+                WorkflowConstants.Signals.IsSuspensionSignal(errorMessage))
             {
                 return NodeExecutionResult<TContext>.Failure(lastResult, trace);
             }
