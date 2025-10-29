@@ -94,13 +94,14 @@ public sealed class NotificationPool
         /// <returns>A new notification with default values.</returns>
         public Notification Create()
         {
-            // Create a notification with minimal initialization
-            // Full initialization happens when Get() is called
+            // Create a notification with valid dummy values
+            // These will be overwritten when Get() is called and Initialize() is invoked
+            // Note: We use valid values here because the Notification constructor validates immediately
             return new Notification(
-                Guid.Empty,
-                NotificationType.NotSpecified,
-                NotificationSeverity.NotSpecified,
-                string.Empty);
+                Guid.NewGuid(),
+                NotificationType.Toast,
+                NotificationSeverity.Information,
+                "Pooled notification");
         }
 
         /// <summary>
