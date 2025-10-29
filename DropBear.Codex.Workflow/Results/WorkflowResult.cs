@@ -66,6 +66,17 @@ public sealed record WorkflowResult<TContext> where TContext : class
     public IReadOnlyDictionary<string, object>? SuspensionMetadata { get; init; }
 
     /// <summary>
+    /// Gets the list of compensation failures that occurred during workflow rollback, if any.
+    /// Only populated when compensation is enabled and workflow fails.
+    /// </summary>
+    public IReadOnlyList<CompensationFailure>? CompensationFailures { get; init; }
+
+    /// <summary>
+    /// Gets a value indicating whether compensation was attempted and had failures.
+    /// </summary>
+    public bool HasCompensationFailures => CompensationFailures?.Count > 0;
+
+    /// <summary>
     /// Gets the full exception message including inner exceptions.
     /// </summary>
     public string GetFullExceptionMessage()
@@ -119,13 +130,15 @@ public sealed record WorkflowResult<TContext> where TContext : class
     /// <param name="metrics">Optional execution metrics</param>
     /// <param name="executionTrace">Optional execution trace</param>
     /// <param name="correlationId">Optional correlation ID</param>
+    /// <param name="compensationFailures">Optional list of compensation failures during rollback</param>
     /// <returns>A failed workflow result</returns>
     public static WorkflowResult<TContext> Failure(
         TContext context,
         string errorMessage,
         WorkflowMetrics? metrics = null,
         IReadOnlyList<StepExecutionTrace>? executionTrace = null,
-        string? correlationId = null)
+        string? correlationId = null,
+        IReadOnlyList<CompensationFailure>? compensationFailures = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentException.ThrowIfNullOrWhiteSpace(errorMessage);
@@ -137,7 +150,8 @@ public sealed record WorkflowResult<TContext> where TContext : class
             ErrorMessage = errorMessage,
             Metrics = metrics,
             ExecutionTrace = executionTrace,
-            CorrelationId = correlationId
+            CorrelationId = correlationId,
+            CompensationFailures = compensationFailures
         };
     }
 
@@ -149,13 +163,15 @@ public sealed record WorkflowResult<TContext> where TContext : class
     /// <param name="metrics">Optional execution metrics</param>
     /// <param name="executionTrace">Optional execution trace</param>
     /// <param name="correlationId">Optional correlation ID</param>
+    /// <param name="compensationFailures">Optional list of compensation failures during rollback</param>
     /// <returns>A failed workflow result with exception details</returns>
     public static WorkflowResult<TContext> Failure(
         TContext context,
         Exception exception,
         WorkflowMetrics? metrics = null,
         IReadOnlyList<StepExecutionTrace>? executionTrace = null,
-        string? correlationId = null)
+        string? correlationId = null,
+        IReadOnlyList<CompensationFailure>? compensationFailures = null)
     {
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(exception);
@@ -168,7 +184,8 @@ public sealed record WorkflowResult<TContext> where TContext : class
             SourceException = exception,
             Metrics = metrics,
             ExecutionTrace = executionTrace,
-            CorrelationId = correlationId
+            CorrelationId = correlationId,
+            CompensationFailures = compensationFailures
         };
     }
 

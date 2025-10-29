@@ -86,7 +86,8 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         LogWorkflowStarting(definition.WorkflowId, definition.DisplayName, correlationId);
 
         var stopwatch = Stopwatch.StartNew();
-        var executionTrace = new List<StepExecutionTrace>();
+        var executionTrace = new CircularExecutionTrace<StepExecutionTrace>(
+            WorkflowConstants.Limits.MaxExecutionTraceEntries);
 
         try
         {
@@ -134,7 +135,7 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
     private WorkflowResult<TContext> HandleSuspension<TContext>(
         NodeExecutionResult result,
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         TimeSpan duration,
         string correlationId,
         Activity? activity,
@@ -147,20 +148,20 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         activity?.SetTag("workflow.status", "suspended");
         activity?.SetTag("workflow.signal", signalName);
 
-        WorkflowMetrics metrics = BuildMetrics(executionTrace, duration);
+        WorkflowMetrics metrics = BuildMetrics(executionTrace.ToList(), duration);
         return WorkflowResult<TContext>.Suspended(
             context,
             signalName,
             result.SuspendedInfo.Metadata,
             metrics,
-            executionTrace,
+            executionTrace.ToList(),
             correlationId);
     }
 
     private async ValueTask<WorkflowResult<TContext>> HandleFailureAsync<TContext>(
         NodeExecutionResult result,
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         TimeSpan duration,
         string correlationId,
         Activity? activity,
@@ -170,25 +171,33 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
     {
         LogWorkflowFailed(workflowId, result.ErrorMessage ?? "Unknown error");
 
+        List<CompensationFailure>? compensationFailures = null;
         if (options.EnableCompensation && executionTrace.Count > 0)
         {
-            await RunCompensationAsync(context, executionTrace, cancellationToken).ConfigureAwait(false);
+            compensationFailures = await RunCompensationAsync(context, executionTrace.ToList(), cancellationToken)
+                .ConfigureAwait(false);
+
+            // Add compensation failure info to activity
+            if (compensationFailures.Count > 0)
+            {
+                activity?.SetTag("workflow.compensation_failures", compensationFailures.Count);
+            }
         }
 
         activity?.SetTag("workflow.status", "failed");
         activity?.SetTag("workflow.error", result.ErrorMessage);
 
-        WorkflowMetrics failureMetrics = BuildMetrics(executionTrace, duration);
+        WorkflowMetrics failureMetrics = BuildMetrics(executionTrace.ToList(), duration);
         return result.Exception != null
-            ? WorkflowResult<TContext>.Failure(context, result.Exception, failureMetrics, executionTrace,
-                correlationId)
+            ? WorkflowResult<TContext>.Failure(context, result.Exception, failureMetrics, executionTrace.ToList(),
+                correlationId, compensationFailures)
             : WorkflowResult<TContext>.Failure(context, result.ErrorMessage ?? "Unknown error",
-                failureMetrics, executionTrace, correlationId);
+                failureMetrics, executionTrace.ToList(), correlationId, compensationFailures);
     }
 
     private WorkflowResult<TContext> HandleSuccess<TContext>(
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         TimeSpan duration,
         string correlationId,
         Activity? activity,
@@ -198,13 +207,13 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
         activity?.SetTag("workflow.status", "completed");
 
-        WorkflowMetrics successMetrics = BuildMetrics(executionTrace, duration);
-        return WorkflowResult<TContext>.Success(context, successMetrics, executionTrace, correlationId);
+        WorkflowMetrics successMetrics = BuildMetrics(executionTrace.ToList(), duration);
+        return WorkflowResult<TContext>.Success(context, successMetrics, executionTrace.ToList(), correlationId);
     }
 
     private WorkflowResult<TContext> HandleCancellation<TContext>(
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         Stopwatch stopwatch,
         string correlationId,
         Activity? activity,
@@ -215,14 +224,14 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
         activity?.SetTag("workflow.status", "cancelled");
 
-        WorkflowMetrics cancelMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
+        WorkflowMetrics cancelMetrics = BuildMetrics(executionTrace.ToList(), stopwatch.Elapsed);
         return WorkflowResult<TContext>.Failure(context, "Workflow execution was cancelled", cancelMetrics,
-            executionTrace, correlationId);
+            executionTrace.ToList(), correlationId);
     }
 
     private WorkflowResult<TContext> HandleInvalidOperation<TContext>(
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         Stopwatch stopwatch,
         string correlationId,
         Activity? activity,
@@ -235,13 +244,13 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         activity?.SetTag("workflow.status", "error");
         activity?.SetTag("workflow.error", ex.Message);
 
-        WorkflowMetrics errorMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
-        return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace, correlationId);
+        WorkflowMetrics errorMetrics = BuildMetrics(executionTrace.ToList(), stopwatch.Elapsed);
+        return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace.ToList(), correlationId);
     }
 
     private WorkflowResult<TContext> HandleTimeout<TContext>(
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         Stopwatch stopwatch,
         string correlationId,
         Activity? activity,
@@ -254,15 +263,15 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         activity?.SetTag("workflow.status", "timeout");
         activity?.SetTag("workflow.error", ex.Message);
 
-        WorkflowMetrics errorMetrics = BuildMetrics(executionTrace, stopwatch.Elapsed);
-        return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace, correlationId);
+        WorkflowMetrics errorMetrics = BuildMetrics(executionTrace.ToList(), stopwatch.Elapsed);
+        return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace.ToList(), correlationId);
     }
 
     private async ValueTask<NodeExecutionResult> ExecuteWithTimeoutAsync<TContext>(
         IWorkflowNode<TContext> node,
         TContext context,
         WorkflowExecutionOptions options,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         TimeSpan timeout,
         CancellationToken cancellationToken) where TContext : class
     {
@@ -288,7 +297,7 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         IWorkflowNode<TContext> node,
         TContext context,
         WorkflowExecutionOptions options,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         CancellationToken cancellationToken) where TContext : class
     {
         NodeExecutionResult<TContext> nodeResult =
@@ -328,15 +337,15 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         return new NodeExecutionResult { IsSuccess = true };
     }
 
-    private void AddStepTrace(List<StepExecutionTrace> executionTrace, StepExecutionTrace stepTrace)
+    private void AddStepTrace(CircularExecutionTrace<StepExecutionTrace> executionTrace, StepExecutionTrace stepTrace)
     {
-        executionTrace.Add(stepTrace);
-
-        if (executionTrace.Count > WorkflowConstants.Limits.MaxExecutionTraceEntries)
+        // Log warning if we're about to overwrite oldest entries
+        if (executionTrace.IsFull)
         {
             LogExecutionTraceExceeded(WorkflowConstants.Limits.MaxExecutionTraceEntries);
-            executionTrace.RemoveRange(0, executionTrace.Count - WorkflowConstants.Limits.MaxExecutionTraceEntries);
         }
+
+        executionTrace.Add(stepTrace);
     }
 
     private static NodeExecutionResult CreateSuspensionResult<TContext>(NodeExecutionResult<TContext> nodeResult)
@@ -358,7 +367,7 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         IReadOnlyList<IWorkflowNode<TContext>> nextNodes,
         TContext context,
         WorkflowExecutionOptions options,
-        List<StepExecutionTrace> executionTrace,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
         CancellationToken cancellationToken) where TContext : class
     {
         foreach (IWorkflowNode<TContext> nextNode in nextNodes)
@@ -380,22 +389,26 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
     ///     Executes compensation logic for all successfully executed steps in reverse order.
     ///     Implements the Saga pattern for workflow rollback.
     /// </summary>
-    private async ValueTask RunCompensationAsync<TContext>(
+    /// <returns>A list of compensation failures, empty if all compensations succeeded</returns>
+    private async ValueTask<List<CompensationFailure>> RunCompensationAsync<TContext>(
         TContext context,
-        List<StepExecutionTrace> executionTrace,
+        IReadOnlyList<StepExecutionTrace> executionTrace,
         CancellationToken cancellationToken) where TContext : class
     {
         LogCompensationStarting(executionTrace.Count);
 
         int compensatedCount = 0;
-        int errorCount = 0;
+        var failures = new List<CompensationFailure>();
 
         // Execute compensation in reverse order (LIFO - Last In First Out)
         for (int i = executionTrace.Count - 1; i >= 0; i--)
         {
-            if (!await TryCompensateStepAsync(context, executionTrace[i], cancellationToken).ConfigureAwait(false))
+            var result = await TryCompensateStepAsync(context, executionTrace[i], cancellationToken)
+                .ConfigureAwait(false);
+
+            if (result is not null)
             {
-                errorCount++;
+                failures.Add(result);
             }
             else if (executionTrace[i].Result.IsSuccess)
             {
@@ -403,13 +416,17 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
             }
         }
 
-        LogCompensationSummary(compensatedCount, errorCount);
+        LogCompensationSummary(compensatedCount, failures.Count);
+        return failures;
     }
 
     /// <summary>
     ///     Attempts to compensate a single step.
     /// </summary>
-    private async ValueTask<bool> TryCompensateStepAsync<TContext>(
+    /// <returns>
+    ///     A CompensationFailure if compensation failed, or null if compensation succeeded or was skipped.
+    /// </returns>
+    private async ValueTask<CompensationFailure?> TryCompensateStepAsync<TContext>(
         TContext context,
         StepExecutionTrace trace,
         CancellationToken cancellationToken) where TContext : class
@@ -417,13 +434,13 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         // Only compensate successfully executed steps
         if (!trace.Result.IsSuccess)
         {
-            return true; // Not an error, just skipped
+            return null; // Not an error, just skipped
         }
 
         // Skip steps without type information
         if (!ValidateStepTrace(trace, typeof(TContext)))
         {
-            return true; // Not an error, just skipped
+            return null; // Not an error, just skipped
         }
 
         try
@@ -431,18 +448,34 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             LogCompensatingStep(trace.StepName);
 
-            return await ExecuteStepCompensationAsync(context, trace, cancellationToken).ConfigureAwait(false);
+            bool success = await ExecuteStepCompensationAsync(context, trace, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!success)
+            {
+                return new CompensationFailure(
+                    trace.StepName,
+                    "Compensation returned failure status",
+                    null);
+            }
+
+            return null; // Success
         }
         catch (OperationCanceledException)
         {
             LogCompensationCancelled(trace.StepName);
             throw;
         }
-        catch (InvalidOperationException ex)
+#pragma warning disable CA1031 // Catching all exceptions during compensation is intentional
+        catch (Exception ex)
         {
             LogCompensationFailed(trace.StepName, ex);
-            return false;
+            return new CompensationFailure(
+                trace.StepName,
+                $"Exception during compensation: {ex.Message}",
+                ex);
         }
+#pragma warning restore CA1031
     }
 
     /// <summary>
@@ -492,7 +525,7 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         throw new InvalidOperationException(errorMessage, compensationResult.Error?.SourceException);
     }
 
-    private static WorkflowMetrics BuildMetrics(List<StepExecutionTrace> executionTrace, TimeSpan totalDuration)
+    private static WorkflowMetrics BuildMetrics(IReadOnlyList<StepExecutionTrace> executionTrace, TimeSpan totalDuration)
     {
         int stepsExecuted = executionTrace.Count;
         int stepsFailed = executionTrace.Count(t => !t.Result.IsSuccess);
@@ -590,7 +623,7 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
     [LoggerMessage(
         Level = LogLevel.Error,
         Message = "Compensation failed for step {StepName}")]
-    partial void LogCompensationFailed(string stepName, InvalidOperationException ex);
+    partial void LogCompensationFailed(string stepName, Exception ex);
 
     [LoggerMessage(
         Level = LogLevel.Debug,

@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Workflow Engine Performance & Stability Improvements** (Session 6 - 2025-10-29):
+  - Implemented degree of parallelism limiting in `ParallelNode` using `SemaphoreSlim`
+  - Added `CircularExecutionTrace<T>` class for O(1) trace operations (replaces O(n) `RemoveRange`)
+  - Created `CompensationFailure` record type for tracking Saga pattern rollback failures
+  - Added `CompensationFailures` property to `WorkflowResult<TContext>`
+  - Added `HasCompensationFailures` property for checking compensation status
+  - All parallel workflows now respect `Environment.ProcessorCount` for throttling
+  - Execution trace no longer silently truncates - uses circular buffer with 10,000 entry capacity
+  - Compensation errors now properly collected and reported instead of being swallowed
 - **Central Package Management** (Session 5 - 2025-10-29):
   - Implemented CPM with `Directory.Packages.props` for centralized package version management
   - All 87 package versions now managed in single location
@@ -48,6 +57,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DropBear.Codex.Serialization`: Updated `JsonSerializer` to handle circular references.
 
 ### Fixed
+- **DropBear.Codex.Workflow Performance & Robustness** (Session 6 - 2025-10-29):
+  - Fixed unbounded parallel execution that could exhaust system resources with 10+ parallel branches
+  - Fixed inefficient O(n) trace truncation using `RemoveRange(0, n)` that shifted all elements
+  - Fixed silent compensation exception swallowing - errors now properly tracked and reported to caller
+  - Updated `LogCompensationFailed` to accept general `Exception` instead of only `InvalidOperationException`
+  - Parallel workflows no longer start all tasks simultaneously - properly throttled via semaphore
+  - Workflow results now include full details of compensation failures during Saga rollback
+  - Added telemetry tag for compensation failures count in OpenTelemetry activities
 - **DropBear.Codex.Workflow Build Errors** (Session 5 - 2025-10-29):
   - Fixed nullable reference warnings using pattern matching in `StepNode.cs` and `InMemoryWorkflowStateRepository.cs`
   - Added standard exception constructors (CA1032 compliance) to all custom exception classes
