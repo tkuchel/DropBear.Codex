@@ -5,9 +5,7 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.Utilities</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.Utilities</PackageId>
         <Title>DropBear Codex Utilities</Title>
         <Description>Provides utility classes and helpers for the DropBear.Codex ecosystem</Description>
         <Authors>Terrence Kuchel</Authors>

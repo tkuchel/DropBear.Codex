@@ -28,6 +28,16 @@ jobs:
         with:
           dotnet-version: ${{ matrix.dotnet }}
 
+      - name: Validate Version Alignment
+        shell: pwsh
+        run: |
+          Write-Host "Validating version alignment (Nerdbank.GitVersioning)..."
+          ./validate-version-alignment.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Version validation failed! See output above for details."
+            exit 1
+          }
+
       - name: Restore
         run: dotnet restore --nologo
 

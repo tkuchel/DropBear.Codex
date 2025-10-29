@@ -7,9 +7,7 @@
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
         <!-- Package Information -->
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Version>2025.10.0</Version>
-        <PackageId>DropBear.Codex.Blazor</PackageId>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>        <PackageId>DropBear.Codex.Blazor</PackageId>
         <!-- … other package properties … -->
         <!-- SourceLink for debugging -->
         <PublishRepositoryUrl>true</PublishRepositoryUrl>
