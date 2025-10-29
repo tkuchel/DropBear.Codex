@@ -396,8 +396,11 @@ public static class UtilityExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T? ToNullable<T, TError>(this Result<T, TError> result)
         where TError : ResultError
-        where T : struct =>
-        result.IsSuccess ? result.Value : null;
+        where T : struct
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.IsSuccess ? result.Value : null;
+    }
 
     /// <summary>
     ///     Converts a nullable value to a Result.

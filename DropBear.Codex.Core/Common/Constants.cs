@@ -124,7 +124,7 @@ public static class Constants
     /// <summary>
     ///     Serialization-related constants.
     /// </summary>
-    public static class Serialization
+    public static class SerializationConstants
     {
         /// <summary>
         ///     Default buffer size for serialization operations.
@@ -250,7 +250,7 @@ public static class Constants
     /// <summary>
     ///     Diagnostic and logging constants.
     /// </summary>
-    public static class Diagnostics
+    public static class DiagnosticsConstants
     {
         /// <summary>
         ///     Maximum number of stack trace frames to capture.

@@ -131,8 +131,7 @@ public sealed record EnvelopeDto<TPayload>
     ///         <item><see cref="CreatedAt" /> must not be default (<see cref="DateTime.MinValue" />)</item>
     ///         <item>If <see cref="SealedAt" /> exists, it must be equal to or after <see cref="CreatedAt" /></item>
     ///     </list>
-    ///     This method is called by <see cref="MessagePackEnvelopeSerializer" /> during deserialization
-    ///     to ensure data integrity.
+    ///     This method is called during deserialization to ensure data integrity.
     /// </remarks>
     public bool IsValid()
     {

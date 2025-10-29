@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Diagnostics.CodeAnalysis;
 using DropBear.Codex.Core.Results.Base;
 
 #endregion
@@ -20,6 +21,7 @@ public interface IResultErrorHandler
     /// <summary>
     ///     Handles errors by creating appropriate result failures.
     /// </summary>
+    [SuppressMessage("Naming", "CA1716:Identifiers should not match keywords", Justification = "'error' is the most descriptive parameter name for error handling methods")]
     Result<T, TError> HandleError<T, TError>(TError error)
         where TError : ResultError;
 }

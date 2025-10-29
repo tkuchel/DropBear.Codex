@@ -1,4 +1,5 @@
 ﻿@namespace DropBear.Codex.Blazor.Components.Notifications
+@using DropBear.Codex.Blazor.Helpers
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
 <div class="notification-item @CssClasses" @onclick="ToggleExpanded">
@@ -21,7 +22,8 @@
         </div>
 
         <div class="notification-message @(IsExpanded ? "expanded" : "")">
-            @((MarkupString)Notification.Message)
+            @* SECURITY: Sanitize notification message to prevent XSS attacks *@
+            @HtmlSanitizationHelper.Sanitize(Notification.Message)
         </div>
 
         @if (IsExpanded && !string.IsNullOrEmpty(Notification.SerializedData))

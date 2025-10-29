@@ -1,8 +1,10 @@
 ﻿#region
 
 using System.Diagnostics;
+using DropBear.Codex.Core;
 using DropBear.Codex.Core.Logging;
-using DropBear.Codex.Core.Results.Compatibility;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Tasks.Errors;
 using Serilog;
 
 #endregion
@@ -109,8 +111,8 @@ public class TaskManager : IDisposable
     /// <param name="cancellationToken">
     ///     An optional cancellation token that can cancel the entire operation.
     /// </param>
-    /// <returns>A <see cref="Result" /> indicating success or failure of the execution.</returns>
-    public async Task<Result> ExecuteAsync(
+    /// <returns>A result indicating success or failure of the execution.</returns>
+    public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(
         IProgress<(string TaskName, int ProgressPercentage)>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -159,7 +161,8 @@ public class TaskManager : IDisposable
                 async Task ExecuteTask(CancellationTokenSource passedLinkedCts)
                 {
                     var taskStopwatch = Stopwatch.StartNew();
-                    var result = Result.Failure("Task did not execute successfully");
+                    var result = Result<Unit, TaskExecutionError>.Failure(
+                        new TaskExecutionError("Task did not execute successfully", name));
 
                     for (var retry = 0; retry <= options.MaxRetries; retry++)
                     {
@@ -187,7 +190,8 @@ public class TaskManager : IDisposable
                         catch (Exception ex) when (ex is not TaskCanceledException)
                         {
                             // Catch unhandled exceptions, consider them as failures, retry if still within limit
-                            result = Result.Failure($"Task '{name}' threw an exception: {ex.Message}");
+                            result = Result<Unit, TaskExecutionError>.Failure(
+                                new TaskExecutionError($"Task '{name}' threw an exception: {ex.Message}", name, ex));
 
                             if (retry == options.MaxRetries)
                             {
@@ -244,7 +248,7 @@ public class TaskManager : IDisposable
         stopwatch.Stop();
         _logger.Information("All tasks completed in {ElapsedMilliseconds}ms", stopwatch.ElapsedMilliseconds);
 
-        return Result.Success();
+        return Result<Unit, TaskExecutionError>.Success(Unit.Value);
     }
 
     /// <summary>

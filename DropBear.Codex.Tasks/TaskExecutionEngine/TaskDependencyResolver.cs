@@ -48,9 +48,16 @@ public sealed class TaskDependencyResolver
         try
         {
             BuildGraph(tasks);
-            var sorted = TopologicalSort();
+            var sortResult = TopologicalSort();
 
-            foreach (var name in sorted)
+            if (!sortResult.IsSuccess)
+            {
+                _listPool.Return(sortedTasks);
+                sortedTasks = new List<ITask>();
+                return Result<Unit, TaskExecutionError>.Failure(sortResult.Error);
+            }
+
+            foreach (var name in sortResult.Value!)
             {
                 if (tasks.TryGetValue(name, out var task))
                 {
@@ -63,7 +70,7 @@ public sealed class TaskDependencyResolver
         catch (Exception ex)
         {
             _listPool.Return(sortedTasks);
-            sortedTasks = new List<ITask>(); // Ensure out parameter is assigned
+            sortedTasks = new List<ITask>();
 
             return Result<Unit, TaskExecutionError>.Failure(
                 new TaskExecutionError("Failed to resolve dependencies", null, ex));
@@ -98,7 +105,7 @@ public sealed class TaskDependencyResolver
         }
     }
 
-    private List<string> TopologicalSort()
+    private Result<List<string>, TaskExecutionError> TopologicalSort()
     {
         var result = new List<string>(_graph.Count);
         var queue = new Queue<string>();
@@ -126,10 +133,14 @@ public sealed class TaskDependencyResolver
 
         if (result.Count != _graph.Count)
         {
-            throw new InvalidOperationException("Circular dependency detected");
+            // Circular dependency detected - identify the tasks involved
+            var unprocessedTasks = _graph.Keys.Except(result).ToList();
+            var message = $"Circular dependency detected among tasks: {string.Join(", ", unprocessedTasks)}";
+            return Result<List<string>, TaskExecutionError>.Failure(
+                new TaskExecutionError(message));
         }
 
-        return result;
+        return Result<List<string>, TaskExecutionError>.Success(result);
     }
 
     private void ClearGraph()

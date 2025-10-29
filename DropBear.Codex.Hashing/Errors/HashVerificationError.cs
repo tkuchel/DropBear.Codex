@@ -9,9 +9,8 @@ public sealed record HashVerificationError : HashingError
     ///     Initializes a new instance of <see cref="HashVerificationError" />.
     /// </summary>
     /// <param name="message">The error message describing the failure condition.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    public HashVerificationError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public HashVerificationError(string message)
+        : base(message)
     {
     }
 

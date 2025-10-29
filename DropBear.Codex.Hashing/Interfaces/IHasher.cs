@@ -107,19 +107,52 @@ public interface IHasher
     /// </summary>
     /// <param name="salt">The salt bytes to use in hashing operations.</param>
     /// <returns>The configured hasher instance.</returns>
+    /// <remarks>
+    ///     This method throws ArgumentException on invalid input.
+    ///     For Railway-Oriented Programming, use <see cref="WithSaltValidated"/> instead.
+    /// </remarks>
     IHasher WithSalt(byte[]? salt);
+
+    /// <summary>
+    ///     Configures the hasher with a salt, returning a Result for error handling.
+    /// </summary>
+    /// <param name="salt">The salt bytes to use in hashing operations.</param>
+    /// <returns>A Result containing the configured hasher or an error.</returns>
+    Result<IHasher, HashingError> WithSaltValidated(byte[]? salt);
 
     /// <summary>
     ///     Configures the hasher with a specific number of iterations.
     /// </summary>
     /// <param name="iterations">The number of iterations to use in hashing operations.</param>
     /// <returns>The configured hasher instance.</returns>
+    /// <remarks>
+    ///     This method throws ArgumentException on invalid input.
+    ///     For Railway-Oriented Programming, use <see cref="WithIterationsValidated"/> instead.
+    /// </remarks>
     IHasher WithIterations(int iterations);
+
+    /// <summary>
+    ///     Configures the hasher with a specific number of iterations, returning a Result for error handling.
+    /// </summary>
+    /// <param name="iterations">The number of iterations to use in hashing operations.</param>
+    /// <returns>A Result containing the configured hasher or an error.</returns>
+    Result<IHasher, HashingError> WithIterationsValidated(int iterations);
 
     /// <summary>
     ///     Configures the hasher with a specific hash size in bytes.
     /// </summary>
     /// <param name="size">The size in bytes for the hash output.</param>
     /// <returns>The configured hasher instance.</returns>
+    /// <remarks>
+    ///     This method throws ArgumentException on invalid input.
+    ///     For Railway-Oriented Programming, use <see cref="WithHashSizeValidated"/> instead.
+    /// </remarks>
     IHasher WithHashSize(int size);
+
+    /// <summary>
+    ///     Configures the hasher with a specific hash size in bytes, returning a Result for error handling.
+    /// </summary>
+    /// <param name="size">The size in bytes for the hash output.</param>
+    /// <returns>A Result containing the configured hasher or an error.</returns>
+    Result<IHasher, HashingError> WithHashSizeValidated(int size);
 }

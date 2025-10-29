@@ -8,10 +8,15 @@
 
     <!-- Package Information -->
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-    <Version>2025.7.0</Version>
-    <PackageVersion>2025.9.0</PackageVersion>
+    <Version>2025.10.0</Version>
     <PackageId>DropBear.Codex.Blazor</PackageId>
     <!-- … other package properties … -->
+
+    <!-- SourceLink for debugging -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <!-- Build Options -->
     <AssemblyName>DropBear.Codex.Blazor</AssemblyName>
@@ -19,7 +24,7 @@
     <Optimize>true</Optimize>
     <Deterministic>true</Deterministic>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <WarningsAsErrors>CSxxxx</WarningsAsErrors>
+    <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
     <NoWarn>CS1591</NoWarn>
 
     <!-- Output Options -->
@@ -65,12 +70,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2" />
+    <PackageReference Include="JetBrains.Annotations" Version="2025.2.2">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Meziantou.Analyzer" Version="2.0.227">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
+    <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
+      <PrivateAssets>All</PrivateAssets>
+    </PackageReference>
     <PackageReference Update="Nerdbank.GitVersioning">
       <Version>3.8.118</Version>
     </PackageReference>

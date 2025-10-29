@@ -99,6 +99,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(action);
 
         if (!result.IsSuccess)
@@ -127,6 +128,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(asyncAction);
 
         if (!result.IsSuccess)
@@ -155,6 +157,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(asyncAction);
 
         if (!result.IsSuccess)
@@ -186,6 +189,8 @@ public static class UnitExtensions
         Func<TError>? errorFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
+
         return result.IsSuccess
             ? Result<Unit, TError>.Success(Unit.Value)
             : FailureFromResult(result, errorFactory);
@@ -202,6 +207,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(onSuccess);
 
         if (result.IsSuccess)
@@ -229,6 +235,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(onSuccess);
 
         if (result.IsSuccess)
@@ -260,6 +267,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(action);
 
         if (!result.IsSuccess)
@@ -292,6 +300,7 @@ public static class UnitExtensions
         Func<Exception, TError>? exceptionFactory = null)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
         ArgumentNullException.ThrowIfNull(asyncAction);
 
         if (!result.IsSuccess)

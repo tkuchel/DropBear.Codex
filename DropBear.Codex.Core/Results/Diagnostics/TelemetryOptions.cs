@@ -38,11 +38,10 @@ public sealed class TelemetryOptions
     ///     Disable for better performance, enable for detailed diagnostics.
     ///     Default: true in Debug, false in Release.
     /// </summary>
-    public bool CaptureStackTraces { get; set; } =
 #if DEBUG
-        true;
+    public bool CaptureStackTraces { get; set; } = true;
 #else
-        false;
+    public bool CaptureStackTraces { get; set; }
 #endif
 
     /// <summary>

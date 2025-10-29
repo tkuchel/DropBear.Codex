@@ -203,7 +203,7 @@ public class ContentContainerBuilder
 
                 if (serializer != null && serializer.IsSuccess)
                 {
-                    var serializedData = await serializer.Value.SerializeAsync(data, cancellationToken)
+                    var serializedData = await serializer.Value!.SerializeAsync(data, cancellationToken)
                         .ConfigureAwait(false);
 
                     if (serializedData.IsSuccess)

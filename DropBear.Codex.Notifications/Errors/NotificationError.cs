@@ -17,9 +17,8 @@ public sealed record NotificationError : ResultError
     ///     Initializes a new instance of the <see cref="NotificationError" /> class.
     /// </summary>
     /// <param name="message">The error message describing the notification failure.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    public NotificationError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public NotificationError(string message)
+        : base(message)
     {
         // Default severity is Error
         Severity = NotificationSeverity.Error;
@@ -28,7 +27,7 @@ public sealed record NotificationError : ResultError
     /// <summary>
     ///     Gets or sets the severity level of this notification error.
     /// </summary>
-    public NotificationSeverity Severity { get; init; }
+    public new NotificationSeverity Severity { get; init; }
 
     /// <summary>
     ///     Gets or sets additional context about where the error occurred.
@@ -48,15 +47,19 @@ public sealed record NotificationError : ResultError
     /// <returns>A new <see cref="NotificationError" /> instance.</returns>
     public static NotificationError FromException(Exception ex, bool isTransient = false)
     {
-        return new NotificationError(ex.Message)
+        var error = new NotificationError(ex.Message)
         {
-            IsTransient = isTransient,
             Severity = isTransient ? NotificationSeverity.Warning : NotificationSeverity.Error,
-            Metadata = new Dictionary<string, object>(StringComparer.Ordinal)
-            {
-                ["ExceptionType"] = ex.GetType().Name, ["StackTrace"] = ex.StackTrace ?? string.Empty
-            }
+            IsTransient = isTransient
         };
+
+        // Use WithException to set the exception properly
+        var errorWithException = (NotificationError)error.WithException(ex);
+
+        // Add additional metadata
+        return (NotificationError)errorWithException
+            .WithMetadata("ExceptionType", ex.GetType().Name)
+            .WithMetadata("IsTransient", isTransient);
     }
 
     /// <summary>
@@ -88,4 +91,70 @@ public sealed record NotificationError : ResultError
     {
         return this with { IsTransient = isTransient };
     }
+
+    #region Factory Methods
+
+    /// <summary>
+    ///     Creates an error for when a notification is not found.
+    /// </summary>
+    public static NotificationError NotFound(Guid notificationId) =>
+        new($"Notification with ID '{notificationId}' was not found.")
+        {
+            Context = nameof(NotFound),
+            Severity = NotificationSeverity.Warning
+        };
+
+    /// <summary>
+    ///     Creates an error for when notification publishing fails.
+    /// </summary>
+    public static NotificationError PublishFailed(string reason) =>
+        new($"Failed to publish notification: {reason}")
+        {
+            Context = nameof(PublishFailed),
+            Severity = NotificationSeverity.Error,
+            IsTransient = true
+        };
+
+    /// <summary>
+    ///     Creates an error for when notification encryption fails.
+    /// </summary>
+    public static NotificationError EncryptionFailed(string reason) =>
+        new($"Failed to encrypt notification: {reason}")
+        {
+            Context = nameof(EncryptionFailed),
+            Severity = NotificationSeverity.Error
+        };
+
+    /// <summary>
+    ///     Creates an error for when notification decryption fails.
+    /// </summary>
+    public static NotificationError DecryptionFailed(string reason) =>
+        new($"Failed to decrypt notification: {reason}")
+        {
+            Context = nameof(DecryptionFailed),
+            Severity = NotificationSeverity.Error
+        };
+
+    /// <summary>
+    ///     Creates an error for when database operations fail.
+    /// </summary>
+    public static NotificationError DatabaseOperationFailed(string operation, string reason) =>
+        new($"Database operation '{operation}' failed: {reason}")
+        {
+            Context = nameof(DatabaseOperationFailed),
+            Severity = NotificationSeverity.Error,
+            IsTransient = true
+        };
+
+    /// <summary>
+    ///     Creates an error for invalid notification data.
+    /// </summary>
+    public static NotificationError InvalidData(string field, string reason) =>
+        new($"Invalid notification data in field '{field}': {reason}")
+        {
+            Context = nameof(InvalidData),
+            Severity = NotificationSeverity.Error
+        };
+
+    #endregion
 }

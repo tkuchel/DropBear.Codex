@@ -14,6 +14,14 @@ namespace DropBear.Codex.Core.Results.Serialization;
 /// </summary>
 public sealed class ValidationResultJsonConverter : JsonConverter<ValidationResult>
 {
+    /// <summary>
+    ///     Reads and deserializes a JSON representation into a ValidationResult instance.
+    /// </summary>
+    /// <param name="reader">The Utf8JsonReader to read from.</param>
+    /// <param name="typeToConvert">The type of object to convert.</param>
+    /// <param name="options">The serializer options to use.</param>
+    /// <returns>A ValidationResult instance deserialized from the JSON.</returns>
+    /// <exception cref="JsonException">Thrown when the JSON is malformed or missing required properties.</exception>
     public override ValidationResult Read(
         ref Utf8JsonReader reader,
         Type typeToConvert,
@@ -72,6 +80,13 @@ public sealed class ValidationResultJsonConverter : JsonConverter<ValidationResu
         return ValidationResult.Failed(errors);
     }
 
+    /// <summary>
+    ///     Writes a ValidationResult instance as JSON.
+    /// </summary>
+    /// <param name="writer">The Utf8JsonWriter to write to.</param>
+    /// <param name="value">The ValidationResult instance to serialize.</param>
+    /// <param name="options">The serializer options to use.</param>
+    /// <exception cref="ArgumentNullException">Thrown when writer or value is null.</exception>
     public override void Write(
         Utf8JsonWriter writer,
         ValidationResult value,

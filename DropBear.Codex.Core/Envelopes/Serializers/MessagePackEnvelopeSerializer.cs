@@ -58,11 +58,8 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data);
-            if (dto is null)
-            {
-                throw new MessagePackSerializationException("Deserialization returned null DTO.");
-            }
+            var dto = JsonSerializer.Deserialize<EnvelopeDto<T>>(data)
+                ?? throw new MessagePackSerializationException("Deserialization returned null DTO.");
 
             return CreateEnvelopeFromDto(dto);
         }
@@ -106,11 +103,8 @@ public sealed class MessagePackEnvelopeSerializer : IEnvelopeSerializer
 
         try
         {
-            var dto = MessagePackSerializer.Deserialize<EnvelopeDto<T>>(data, _options);
-            if (dto is null)
-            {
-                throw new MessagePackSerializationException("Deserialization returned null DTO.");
-            }
+            var dto = MessagePackSerializer.Deserialize<EnvelopeDto<T>>(data, _options)
+                ?? throw new MessagePackSerializationException("Deserialization returned null DTO.");
 
             return CreateEnvelopeFromDto(dto);
         }

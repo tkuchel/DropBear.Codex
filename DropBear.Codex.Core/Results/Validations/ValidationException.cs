@@ -8,6 +8,15 @@
 public sealed class ValidationException : Exception
 {
     /// <summary>
+    ///     Initializes a new instance of the <see cref="ValidationException"/> class.
+    /// </summary>
+    public ValidationException()
+        : base("Validation failed")
+    {
+        Errors = [];
+    }
+
+    /// <summary>
     ///     Initializes a new ValidationException from a ValidationResult.
     /// </summary>
     public ValidationException(ValidationResult validationResult)
@@ -22,6 +31,15 @@ public sealed class ValidationException : Exception
     /// </summary>
     public ValidationException(string message)
         : base(message)
+    {
+        Errors = [];
+    }
+
+    /// <summary>
+    ///     Initializes a new ValidationException with a message and inner exception.
+    /// </summary>
+    public ValidationException(string message, Exception innerException)
+        : base(message, innerException)
     {
         Errors = [];
     }

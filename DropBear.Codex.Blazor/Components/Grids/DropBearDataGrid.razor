@@ -1,5 +1,6 @@
 ﻿@inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 @typeparam TItem
+@using DropBear.Codex.Blazor.Enums
 
 @if (IsLoading)
 {
@@ -9,9 +10,9 @@
     }
     else
     {
-        <div class="dropbear-loading-container">
-            <div class="dropbear-loading-spinner"></div>
-            <p>Loading...</p>
+        <div class="dropbear-loading-container" role="status" aria-live="polite" aria-busy="true">
+            <div class="dropbear-loading-spinner" aria-hidden="true"></div>
+            <p>Loading data...</p>
         </div>
     }
 }
@@ -19,7 +20,7 @@ else
 {
     @if (ShowError && _lastOperationResult?.Error != null)
     {
-        <div class="dropbear-error-container">
+        <div class="dropbear-error-container" role="alert" aria-live="assertive">
             @if (ErrorTemplate != null)
             {
                 @ErrorTemplate(_lastOperationResult.Error)
@@ -27,10 +28,13 @@ else
             else
             {
                 <div class="dropbear-error-message">
-                    <i class="fas fa-exclamation-circle"></i>
+                    <i class="fas fa-exclamation-circle" aria-hidden="true"></i>
                     <span>@_lastOperationResult.Error.Message</span>
-                    <button class="dropbear-error-close" @onclick="() => _errorDisplayUntil = DateTime.MinValue">
-                        <i class="fas fa-times"></i>
+                    <button class="dropbear-error-close"
+                            @onclick="() => _errorDisplayUntil = DateTime.MinValue"
+                            aria-label="Dismiss error message"
+                            type="button">
+                        <i class="fas fa-times" aria-hidden="true"></i>
                     </button>
                 </div>
             }
@@ -52,16 +56,20 @@ else
                         @if (EnableSearch)
                         {
                             <div class="search-wrapper">
+                                <label for="datagrid-search-@ComponentId" class="sr-only">Search data</label>
                                 <input @ref="_searchInput"
-                                       type="text"
+                                       id="datagrid-search-@ComponentId"
+                                       type="search"
                                        class="search-input"
                                        placeholder="Search..."
                                        @oninput="OnSearchInput"
-                                       @bind="SearchTerm"/>
+                                       @bind="SearchTerm"
+                                       aria-label="Search data"
+                                       aria-describedby="@(_isSearching ? $"search-status-{ComponentId}" : null)"/>
                                 @if (_isSearching)
                                 {
-                                    <span class="search-indicator">
-                                        <i class="fas fa-spinner fa-spin"></i>
+                                    <span class="search-indicator" id="search-status-@ComponentId" role="status" aria-live="polite">
+                                        <i class="fas fa-spinner fa-spin" aria-hidden="true"></i>
                                         Searching...
                                     </span>
                                 }
@@ -69,14 +77,20 @@ else
                         }
                         @if (AllowAdd)
                         {
-                            <button class="btn-primary" @onclick="AddItemAsync">
-                                <i class="fas fa-plus"></i> Add
+                            <button class="btn-primary"
+                                    @onclick="AddItemAsync"
+                                    aria-label="Add new item"
+                                    type="button">
+                                <i class="fas fa-plus" aria-hidden="true"></i> Add
                             </button>
                         }
                         @if (AllowExport)
                         {
-                            <button class="btn-secondary" @onclick="ExportDataAsync">
-                                <i class="fas fa-file-export"></i> Export
+                            <button class="btn-secondary"
+                                    @onclick="ExportDataAsync"
+                                    aria-label="Export data"
+                                    type="button">
+                                <i class="fas fa-file-export" aria-hidden="true"></i> Export
                             </button>
                         }
                     </div>
@@ -84,35 +98,47 @@ else
 
                 <!-- Table structure -->
                 <div class="datagrid-table-wrapper">
-                    <table class="datagrid-table">
+                    <table class="datagrid-table" role="grid" aria-label="@Title" aria-rowcount="@TotalItemCount">
                         <!-- Table Header -->
                         <thead>
-                        <tr class="datagrid-row header">
+                        <tr class="datagrid-row header" role="row">
                             @if (EnableMultiSelect)
                             {
-                                <th class="datagrid-cell" style="width: 40px;">
+                                <th class="datagrid-cell" style="width: 40px;" role="columnheader">
                                     <input type="checkbox"
-                                           @onchange="@(e => ToggleSelectAll(e.Value is true))"/>
+                                           @onchange="@(e => ToggleSelectAll(e.Value is true))"
+                                           aria-label="Select all items"/>
                                 </th>
                             }
                             @foreach (var column in _columns)
                             {
+                                var sortDirection = column.Sortable ? GetSortDirection(column) : null;
+                                var ariaSortValue = sortDirection switch
+                                {
+                                    SortDirection.Ascending => "ascending",
+                                    SortDirection.Descending => "descending",
+                                    null when column.Sortable => "none",
+                                    _ => null
+                                };
                                 <th class="datagrid-cell"
                                     style="min-width: @(column.Width)px;"
-                                    @onclick="@(() => SortBy(column))">
+                                    role="columnheader"
+                                    aria-sort="@ariaSortValue"
+                                    @onclick="@(() => { if (column.Sortable) SortBy(column); })"
+                                    @onkeydown="@(e => OnColumnHeaderKeyDown(e, column))"
+                                    tabindex="@(column.Sortable ? 0 : -1)">
                                     <div class="datagrid-cell-content">
                                         @column.Title
                                         @if (column.Sortable)
                                         {
-                                            var sortDirection = GetSortDirection(column);
-                                            <i class="fas @(GetSortIconClass(sortDirection)) datagrid-cell-sort-icon"></i>
+                                            <i class="fas @(GetSortIconClass(sortDirection)) datagrid-cell-sort-icon" aria-hidden="true"></i>
                                         }
                                     </div>
                                 </th>
                             }
                             @if (AllowEdit || AllowDelete || AllowDownload)
                             {
-                                <th class="datagrid-cell datagrid-cell-actions">Actions</th>
+                                <th class="datagrid-cell datagrid-cell-actions" role="columnheader">Actions</th>
                             }
                         </tr>
                         </thead>
@@ -121,8 +147,8 @@ else
                         <tbody>
                         @if (!HasData)
                         {
-                            <tr>
-                                <td colspan="@TotalColumnCount">
+                            <tr role="row">
+                                <td colspan="@TotalColumnCount" role="gridcell">
                                     <div class="no-data-container">
                                         @if (NoDataTemplate != null)
                                         {
@@ -131,7 +157,7 @@ else
                                         else
                                         {
                                             <div class="no-data-message">
-                                                <i class="fas fa-search"></i>
+                                                <i class="fas fa-search" aria-hidden="true"></i>
                                                 <p>No data available.</p>
                                             </div>
                                         }
@@ -145,22 +171,27 @@ else
                             {
                                 <tr @key="item"
                                     class="datagrid-row @(IsItemSelected(item) ? "selected" : "")"
+                                    role="row"
+                                    aria-selected="@IsItemSelected(item)"
+                                    tabindex="0"
                                     @onclick="() => HandleRowClickAsync(item)"
                                     @ondblclick="() => HandleRowDoubleClickAsync(item)"
                                     @oncontextmenu="e => HandleRowContextMenuAsync(e, item)"
-                                    @oncontextmenu:preventDefault>
+                                    @oncontextmenu:preventDefault
+                                    @onkeydown="@(e => OnRowKeyDown(e, item))">
                                     @if (EnableMultiSelect)
                                     {
-                                        <td class="datagrid-cell" style="width: 40px;">
+                                        <td class="datagrid-cell" style="width: 40px;" role="gridcell">
                                             <input type="checkbox"
                                                    checked="@IsItemSelected(item)"
                                                    @onchange="@(e => ToggleSelection(item, e.Value is true))"
-                                                   @onclick:stopPropagation="true"/>
+                                                   @onclick:stopPropagation="true"
+                                                   aria-label="Select row"/>
                                         </td>
                                     }
                                     @foreach (var column in _columns)
                                     {
-                                        <td class="datagrid-cell" style="min-width: @(column.Width)px;">
+                                        <td class="datagrid-cell" style="min-width: @(column.Width)px;" role="gridcell">
                                             <div class="datagrid-cell-content">
                                                 @if (column.Template != null)
                                                 {
@@ -175,29 +206,35 @@ else
                                     }
                                     @if (AllowEdit || AllowDelete || AllowDownload)
                                     {
-                                        <td class="datagrid-cell datagrid-cell-actions">
+                                        <td class="datagrid-cell datagrid-cell-actions" role="gridcell">
                                             @if (AllowEdit)
                                             {
                                                 <button class="btn-icon"
                                                         @onclick:stopPropagation="true"
-                                                        @onclick="@(() => EditItemAsync(item))">
-                                                    <i class="fas fa-edit"></i>
+                                                        @onclick="@(() => EditItemAsync(item))"
+                                                        aria-label="Edit item"
+                                                        type="button">
+                                                    <i class="fas fa-edit" aria-hidden="true"></i>
                                                 </button>
                                             }
                                             @if (AllowDownload)
                                             {
                                                 <button class="btn-icon"
                                                         @onclick:stopPropagation="true"
-                                                        @onclick="@(() => DownloadItemAsync(item))">
-                                                    <i class="fas fa-download"></i>
+                                                        @onclick="@(() => DownloadItemAsync(item))"
+                                                        aria-label="Download item"
+                                                        type="button">
+                                                    <i class="fas fa-download" aria-hidden="true"></i>
                                                 </button>
                                             }
                                             @if (AllowDelete)
                                             {
                                                 <button class="btn-icon"
                                                         @onclick:stopPropagation="true"
-                                                        @onclick="@(() => DeleteItemAsync(item))">
-                                                    <i class="fas fa-trash"></i>
+                                                        @onclick="@(() => DeleteItemAsync(item))"
+                                                        aria-label="Delete item"
+                                                        type="button">
+                                                    <i class="fas fa-trash" aria-hidden="true"></i>
                                                 </button>
                                             }
                                         </td>
@@ -213,18 +250,28 @@ else
                 @if (EnablePagination)
                 {
                     <div class="datagrid-footer">
-                        <div class="pagination">
-                            <button class="btn-icon" @onclick="PreviousPage" disabled="@(CurrentPage == 1)">
-                                <i class="fas fa-chevron-left"></i>
+                        <nav class="pagination" role="navigation" aria-label="Data grid pagination">
+                            <button class="btn-icon"
+                                    @onclick="PreviousPage"
+                                    disabled="@(CurrentPage == 1)"
+                                    aria-label="Previous page"
+                                    type="button">
+                                <i class="fas fa-chevron-left" aria-hidden="true"></i>
                             </button>
-                            <span>Page @CurrentPage of @TotalPages</span>
-                            <button class="btn-icon" @onclick="NextPage" disabled="@(CurrentPage == TotalPages)">
-                                <i class="fas fa-chevron-right"></i>
+                            <span role="status" aria-live="polite" aria-atomic="true">Page @CurrentPage of @TotalPages</span>
+                            <button class="btn-icon"
+                                    @onclick="NextPage"
+                                    disabled="@(CurrentPage == TotalPages)"
+                                    aria-label="Next page"
+                                    type="button">
+                                <i class="fas fa-chevron-right" aria-hidden="true"></i>
                             </button>
-                        </div>
+                        </nav>
                         <div class="items-per-page">
-                            <label for="itemsPerPage">Items per page:</label>
-                            <select id="itemsPerPage" @onchange="ItemsPerPageChanged">
+                            <label for="itemsPerPage-@ComponentId">Items per page:</label>
+                            <select id="itemsPerPage-@ComponentId"
+                                    @onchange="ItemsPerPageChanged"
+                                    aria-label="Select number of items per page">
                                 @foreach (var option in ItemsPerPageOptions)
                                 {
                                     <option value="@option" selected="@(option == ItemsPerPage)">@option</option>

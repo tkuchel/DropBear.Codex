@@ -2,7 +2,9 @@
 
 /// <summary>
 ///     Represents errors that occur during deserialization operations.
+///     OBSOLETE: Use Result&lt;T, DeserializationError&gt; pattern instead.
 /// </summary>
+[Obsolete("Use Result<T, DeserializationError> or Result<T, SerializationError> pattern instead of throwing exceptions. See DropBear.Codex.Serialization.Errors.DeserializationError", false)]
 public sealed class DeserializationException : Exception
 {
     /// <summary>

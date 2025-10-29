@@ -34,6 +34,13 @@ public class Blake3Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        Logger.Information("Blake3 does not support salt. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithIterations(int iterations)
     {
         Logger.Information("Blake3 does not support iterations. No-op.");
@@ -41,18 +48,38 @@ public class Blake3Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        Logger.Information("Blake3 does not support iterations. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithHashSize(int size)
+    {
+        var result = WithHashSizeValidated(size);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), result.Error!.Message);
+        }
+
+        return result.Value!;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
     {
         if (size < 1)
         {
             Logger.Error("Blake3 hash size must be at least 1 byte.");
-            throw new ArgumentOutOfRangeException(nameof(size), "Hash size must be at least 1 byte.");
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Hash size must be at least 1 byte for Blake3 hashing."));
         }
 
         // Blake3 supports arbitrary output size
         Logger.Information("Setting Blake3 hash output size to {Size} bytes.", size);
         _hashSize = size;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />

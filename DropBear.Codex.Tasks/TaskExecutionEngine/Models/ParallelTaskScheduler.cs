@@ -217,20 +217,32 @@ public sealed class ParallelTaskScheduler : IDisposable
             cts.CancelAfter(task.Timeout);
 
             _logger.Information("Executing task {TaskName}", task.Name);
-            await task.ExecuteAsync(scope.Context, cts.Token).ConfigureAwait(false);
+            var executionResult = await task.ExecuteAsync(scope.Context, cts.Token).ConfigureAwait(false);
 
             taskMetrics.Stop();
-            metrics.RecordSuccess(taskMetrics.Elapsed);
-            _stats.IncrementCompletedTasks();
-            return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+
+            if (executionResult.IsSuccess)
+            {
+                metrics.RecordSuccess(taskMetrics.Elapsed);
+                _stats.IncrementCompletedTasks();
+                return Result<Unit, TaskExecutionError>.Success(Unit.Value);
+            }
+            else
+            {
+                metrics.RecordFailure(taskMetrics.Elapsed);
+                _stats.IncrementFailedTasks();
+                _logger.Error("Task {TaskName} failed: {ErrorMessage}", task.Name, executionResult.Error!.Message);
+                return Result<Unit, TaskExecutionError>.Failure(executionResult.Error);
+            }
         }
         catch (Exception ex)
         {
             taskMetrics.Stop();
             metrics.RecordFailure(taskMetrics.Elapsed);
             _stats.IncrementFailedTasks();
+            _logger.Error(ex, "Unexpected error executing task {TaskName}", task.Name);
             return Result<Unit, TaskExecutionError>.Failure(
-                new TaskExecutionError($"Task {task.Name} failed", task.Name, ex));
+                new TaskExecutionError($"Task {task.Name} failed unexpectedly", task.Name, ex));
         }
     }
 

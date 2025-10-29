@@ -252,4 +252,77 @@ public sealed record WorkflowResult<TContext> where TContext : class
             ErrorMessage = ErrorMessage ?? exception.Message
         };
     }
+
+    #region Result Pattern Interoperability
+
+    /// <summary>
+    /// Converts this WorkflowResult to Core's Result pattern using OperationError.
+    /// This enables integration with Result-based pipelines and APIs.
+    /// </summary>
+    /// <returns>A Result containing the context or an OperationError</returns>
+    public Result<TContext, OperationError> ToResult()
+    {
+        if (IsSuccess)
+        {
+            return Result<TContext, OperationError>.Success(Context);
+        }
+
+        var error = OperationError.ForOperation(
+            "WorkflowExecution",
+            ErrorMessage ?? "Workflow execution failed"
+        );
+
+        // Add workflow-specific metadata
+        if (CorrelationId is not null)
+        {
+            error = (OperationError)error.WithMetadata("CorrelationId", CorrelationId);
+        }
+
+        if (Metrics is not null)
+        {
+            error = (OperationError)error.WithMetadata("Metrics", Metrics);
+        }
+
+        if (IsSuspended)
+        {
+            error = (OperationError)error.WithMetadata("IsSuspended", true);
+            if (SuspendedSignalName is not null)
+            {
+                error = (OperationError)error.WithMetadata("SuspendedSignalName", SuspendedSignalName);
+            }
+        }
+
+        // Preserve exception if present
+        if (SourceException is not null)
+        {
+            return Result<TContext, OperationError>.Failure(error, SourceException);
+        }
+
+        return Result<TContext, OperationError>.Failure(error);
+    }
+
+    /// <summary>
+    /// Converts this WorkflowResult to Core's Result pattern with a custom error type.
+    /// Use this when you need to map workflow errors to a specific error domain.
+    /// </summary>
+    /// <typeparam name="TError">The target error type</typeparam>
+    /// <param name="errorMapper">Function to map from WorkflowResult to TError</param>
+    /// <returns>A Result containing the context or a custom error</returns>
+    public Result<TContext, TError> ToResult<TError>(Func<WorkflowResult<TContext>, TError> errorMapper)
+        where TError : ResultError
+    {
+        ArgumentNullException.ThrowIfNull(errorMapper);
+
+        if (IsSuccess)
+        {
+            return Result<TContext, TError>.Success(Context);
+        }
+
+        var error = errorMapper(this);
+        return SourceException is not null
+            ? Result<TContext, TError>.Failure(error, SourceException)
+            : Result<TContext, TError>.Failure(error);
+    }
+
+    #endregion
 }

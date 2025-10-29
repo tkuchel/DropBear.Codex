@@ -382,7 +382,7 @@ public sealed class FileManager
                     FileOperationError.ReadFailed(identifier, readResult.Error?.Message ?? "Unknown error"));
             }
 
-            var dropBearFile = readResult.Value;
+            var dropBearFile = readResult.Value!;
 
             // Ensure we do not remove the last container
             if (dropBearFile.ContentContainers.Count == 1 && containerToDelete != null)
@@ -424,21 +424,26 @@ public sealed class FileManager
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> to search.</param>
     /// <param name="contentType">The content type to match.</param>
-    /// <returns>The matching <see cref="ContentContainer" /> or <c>null</c> if not found.</returns>
-    public ContentContainer? GetContainerByContentType(DropBearFile file, string contentType)
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the matching <see cref="ContentContainer" /> (or null if not found)
+    ///     on success, or a <see cref="FileOperationError" /> if an error occurred during the search.
+    /// </returns>
+    public Result<ContentContainer?, FileOperationError> GetContainerByContentType(DropBearFile file, string contentType)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(contentType);
 
         try
         {
-            return file.ContentContainers
+            var container = file.ContentContainers
                 .FirstOrDefault(c => c.ContentType.Equals(contentType, StringComparison.OrdinalIgnoreCase));
+            return Result<ContentContainer?, FileOperationError>.Success(container);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error getting content container by content type: {ContentType}", contentType);
-            return null;
+            return Result<ContentContainer?, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error retrieving container by content type: {ex.Message}"), ex);
         }
     }
 
@@ -447,21 +452,26 @@ public sealed class FileManager
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> to search.</param>
     /// <param name="hash">The hash to match.</param>
-    /// <returns>The matching <see cref="ContentContainer" /> or <c>null</c> if not found.</returns>
-    public ContentContainer? GetContainerByHash(DropBearFile file, string hash)
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the matching <see cref="ContentContainer" /> (or null if not found)
+    ///     on success, or a <see cref="FileOperationError" /> if an error occurred during the search.
+    /// </returns>
+    public Result<ContentContainer?, FileOperationError> GetContainerByHash(DropBearFile file, string hash)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(hash);
 
         try
         {
-            return file.ContentContainers
+            var container = file.ContentContainers
                 .FirstOrDefault(c => string.Equals(c.Hash, hash, StringComparison.Ordinal));
+            return Result<ContentContainer?, FileOperationError>.Success(container);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error getting content container by hash: {Hash}", hash);
-            return null;
+            return Result<ContentContainer?, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error retrieving container by hash: {ex.Message}"), ex);
         }
     }
 
@@ -469,23 +479,28 @@ public sealed class FileManager
     ///     Lists all distinct content types in the <see cref="DropBearFile" />.
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> whose containers are listed.</param>
-    /// <returns>A frozen list of content types present in <paramref name="file" />.</returns>
-    public IReadOnlyList<string> ListContainerTypes(DropBearFile file)
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing a frozen list of content types
+    ///     on success, or a <see cref="FileOperationError" /> if an error occurred.
+    /// </returns>
+    public Result<IReadOnlyList<string>, FileOperationError> ListContainerTypes(DropBearFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
 
         try
         {
             // Use frozen collections for read-only lists (.NET 8 feature)
-            return file.ContentContainers
+            var types = file.ContentContainers
                 .Select(c => c.ContentType)
                 .ToFrozenSet(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            return Result<IReadOnlyList<string>, FileOperationError>.Success(types);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error listing content container types.");
-            return Array.Empty<string>();
+            return Result<IReadOnlyList<string>, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error listing container types: {ex.Message}"), ex);
         }
     }
 
@@ -542,7 +557,13 @@ public sealed class FileManager
 
         try
         {
-            var containerToRemove = GetContainerByContentType(file, contentType);
+            var getResult = GetContainerByContentType(file, contentType);
+            if (!getResult.IsSuccess)
+            {
+                return Result<Unit, FileOperationError>.Failure(getResult.Error, getResult.Exception);
+            }
+
+            var containerToRemove = getResult.Value;
             if (containerToRemove == null)
             {
                 return Result<Unit, FileOperationError>.Failure(
@@ -571,19 +592,24 @@ public sealed class FileManager
     ///     Counts the total number of <see cref="ContentContainer" /> objects in the <see cref="DropBearFile" />.
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> to count containers in.</param>
-    /// <returns>The number of content containers.</returns>
-    public int CountContainers(DropBearFile file)
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the count of containers
+    ///     on success, or a <see cref="FileOperationError" /> if an error occurred.
+    /// </returns>
+    public Result<int, FileOperationError> CountContainers(DropBearFile file)
     {
         ArgumentNullException.ThrowIfNull(file);
 
         try
         {
-            return file.ContentContainers.Count;
+            var count = file.ContentContainers.Count;
+            return Result<int, FileOperationError>.Success(count);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error counting content containers.");
-            return 0;
+            return Result<int, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error counting containers: {ex.Message}"), ex);
         }
     }
 
@@ -593,21 +619,26 @@ public sealed class FileManager
     /// </summary>
     /// <param name="file">The <see cref="DropBearFile" /> to search.</param>
     /// <param name="contentType">The content type to match.</param>
-    /// <returns>The count of matching containers.</returns>
-    public int CountContainersByType(DropBearFile file, string contentType)
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the count of matching containers
+    ///     on success, or a <see cref="FileOperationError" /> if an error occurred.
+    /// </returns>
+    public Result<int, FileOperationError> CountContainersByType(DropBearFile file, string contentType)
     {
         ArgumentNullException.ThrowIfNull(file);
         ArgumentNullException.ThrowIfNull(contentType);
 
         try
         {
-            return file.ContentContainers.Count(c =>
+            var count = file.ContentContainers.Count(c =>
                 c.ContentType.Equals(contentType, StringComparison.OrdinalIgnoreCase));
+            return Result<int, FileOperationError>.Success(count);
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error counting content containers by content type: {ContentType}", contentType);
-            return 0;
+            return Result<int, FileOperationError>.Failure(
+                FileOperationError.InvalidOperation($"Error counting containers by type: {ex.Message}"), ex);
         }
     }
 
@@ -653,15 +684,38 @@ public sealed class FileManager
     #region Private/Helper Methods
 
     // Builds full path within base directory
+    /// <summary>
+    /// Gets the full path for a file, ensuring it stays within the base directory (prevents path traversal).
+    /// SECURITY: Validates against directory traversal attacks (../, absolute paths, etc.)
+    /// </summary>
     private string GetFullPath(string path)
     {
+        // Get the absolute path
+        string fullPath;
         if (Path.IsPathRooted(path) && path.StartsWith(_baseDirectory, StringComparison.Ordinal))
         {
-            // Already a full path
-            return path;
+            // Already a full path within base directory
+            fullPath = Path.GetFullPath(path);
+        }
+        else
+        {
+            // Combine with base directory and resolve
+            fullPath = Path.GetFullPath(Path.Combine(_baseDirectory, path));
         }
 
-        return Path.GetFullPath(Path.Combine(_baseDirectory, path));
+        // SECURITY: Ensure resolved path is still within base directory
+        // This prevents path traversal attacks like "../../etc/passwd"
+        if (!fullPath.StartsWith(_baseDirectory, StringComparison.Ordinal))
+        {
+            _logger.Warning(
+                "Path traversal attempt blocked: {RequestedPath} resolved to {FullPath}, base: {BaseDirectory}",
+                path, fullPath, _baseDirectory);
+
+            throw new UnauthorizedAccessException(
+                $"Path traversal detected: '{path}' attempts to access outside base directory");
+        }
+
+        return fullPath;
     }
 
     // Validates directory existence and permissions
@@ -850,7 +904,7 @@ public sealed class FileManager
 
                 if (result.IsSuccess)
                 {
-                    return Result<T, FileOperationError>.Success((T)(object)result.Value);
+                    return Result<T, FileOperationError>.Success((T)(object)result.Value!);
                 }
 
                 return Result<T, FileOperationError>.Failure(result.Error!);

@@ -18,12 +18,9 @@ public static class ResultErrorFactory<TError> where TError : ResultError
 
     private static Func<string, TError> CreateFactory()
     {
-        var ctor = typeof(TError).GetConstructor([typeof(string)]);
-        if (ctor == null)
-        {
-            throw new InvalidOperationException(
+        var ctor = typeof(TError).GetConstructor([typeof(string)])
+            ?? throw new InvalidOperationException(
                 $"{typeof(TError).Name} must have a constructor accepting a string message parameter");
-        }
 
         var messageParam = Expression.Parameter(typeof(string), "message");
         var newExpression = Expression.New(ctor, messageParam);

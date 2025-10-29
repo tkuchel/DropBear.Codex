@@ -11,8 +11,7 @@ public sealed record ComponentError : ResultError
     ///     Initializes a new instance of the <see cref="ComponentError" /> class.
     /// </summary>
     /// <param name="message">The error message.</param>
-    /// <param name="timestamp">Optional timestamp for the error. Defaults to UTC now.</param>
-    public ComponentError(string message, DateTime? timestamp = null) : base(message, timestamp)
+    public ComponentError(string message) : base(message)
     {
     }
 }

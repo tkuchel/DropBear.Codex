@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
@@ -159,7 +159,7 @@ public partial class DropBearContextMenu : DropBearComponentBase
             _dotNetRef = DotNetObjectReference.Create(this);
             var jsModuleResult = await GetJsModuleAsync(ModuleName);
 
-            if (jsModuleResult.IsFailure)
+            if (jsModuleResult.IsSuccess == false)
             {
                 LogError("Failed to get JS module: {Error}", jsModuleResult.Exception);
                 return;
@@ -260,7 +260,7 @@ public partial class DropBearContextMenu : DropBearComponentBase
             // Get the Utils module instead of trying to use the context menu module
             var utilsModuleResult = await GetJsModuleAsync(JsModuleNames.Utils);
 
-            if (utilsModuleResult.IsFailure)
+            if (utilsModuleResult.IsSuccess == false)
             {
                 LogError("Failed to get Utils module: {Error}", utilsModuleResult.Exception);
                 throw new InvalidOperationException("Failed to get Utils module");

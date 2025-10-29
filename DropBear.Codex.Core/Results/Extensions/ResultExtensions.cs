@@ -554,8 +554,9 @@ public static class ResultExtensions
         Func<T, TResult> mapper)
         where TError : ResultError
     {
-        // No null checks - caller guarantees non-null
-        // No exception handling - caller guarantees no throws
+        ArgumentNullException.ThrowIfNull(result);
+        ArgumentNullException.ThrowIfNull(mapper);
+
         return result.IsSuccess
             ? Result<TResult, TError>.Success(mapper(result.Value!))
             : Result<TResult, TError>.Failure(result.Error!);
@@ -606,7 +607,9 @@ public static class ResultExtensions
                 for (var i = 0; i < batchLength; i++)
                 {
                     var item = sourceList[offset + i];
+                    #pragma warning disable CA2012 // ValueTask instances should not be stored - suppressed for batching pattern
                     batchTasks[i] = mapper(item, cancellationToken);
+                    #pragma warning restore CA2012
                 }
 
                 // Await all tasks in batch
@@ -664,6 +667,8 @@ public static class ResultExtensions
         out TError? error)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(result);
+
         success = result.IsSuccess;
         value = result.Value;
         error = result.Error;

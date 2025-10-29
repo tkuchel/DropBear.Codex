@@ -9,9 +9,8 @@ public sealed record StorageError : FilesError
     ///     Initializes a new instance of <see cref="StorageError" />.
     /// </summary>
     /// <param name="message">The error message describing the failure condition.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    public StorageError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    public StorageError(string message)
+        : base(message)
     {
     }
 
@@ -57,5 +56,26 @@ public sealed record StorageError : FilesError
     public static StorageError UpdateFailed(string path, string message)
     {
         return new StorageError($"Failed to update {path}: {message}");
+    }
+
+    /// <summary>
+    ///     Creates an error indicating that input validation failed.
+    /// </summary>
+    /// <param name="paramName">The name of the invalid parameter.</param>
+    /// <param name="reason">The reason why the input is invalid.</param>
+    /// <returns>A <see cref="StorageError" /> with a descriptive message.</returns>
+    public static StorageError InvalidInput(string paramName, string reason)
+    {
+        return new StorageError($"Invalid input for parameter '{paramName}': {reason}");
+    }
+
+    /// <summary>
+    ///     Creates an error indicating that storage creation failed.
+    /// </summary>
+    /// <param name="message">A message describing why the creation failed.</param>
+    /// <returns>A <see cref="StorageError" /> with a descriptive message.</returns>
+    public static StorageError CreationFailed(string message)
+    {
+        return new StorageError($"Failed to create storage: {message}");
     }
 }

@@ -2,19 +2,24 @@
 @typeparam T
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
 
-<div class="dropbear-selection-panel" id="@ComponentId">
+<div class="dropbear-selection-panel" id="@ComponentId" role="region" aria-labelledby="panel-title-@ComponentId">
     <div class="selection-panel-header">
-        <h3 class="panel-title">@Title</h3>
-        <div class="selection-count">@SelectedItems?.Count items selected</div>
+        <h3 class="panel-title" id="panel-title-@ComponentId">@Title</h3>
+        <div class="selection-count" role="status" aria-live="polite" aria-atomic="true">
+            @SelectedItems?.Count items selected
+        </div>
     </div>
 
-    <div class="selection-panel-content @(IsCollapsed ? "collapsed" : "")">
+    <div class="selection-panel-content @(IsCollapsed ? "collapsed" : "")"
+         id="panel-content-@ComponentId"
+         aria-hidden="@IsCollapsed">
         @if (SelectedItems != null && SelectedItems.Any())
         {
-            <div class="selection-list">
+            <ul class="selection-list" role="list" aria-label="Selected items">
                 @foreach (var item in SelectedItems)
                 {
-                    <div class="selection-item">
+                    var itemDisplay = ItemDisplayExpression?.Invoke(item) ?? item?.ToString() ?? "Item";
+                    <li class="selection-item" role="listitem">
                         <div class="item-content">
                             @if (ItemTemplate != null)
                             {
@@ -22,17 +27,21 @@
                             }
                             else
                             {
-                                <span>@(ItemDisplayExpression?.Invoke(item) ?? item?.ToString())</span>
+                                <span>@itemDisplay</span>
                             }
                         </div>
-                        <button type="button" class="remove-button" @onclick="@(() => RemoveItem(item))" title="Remove">
-                            <span class="remove-icon">×</span>
+                        <button type="button"
+                                class="remove-button"
+                                @onclick="@(() => RemoveItem(item))"
+                                aria-label="Remove @itemDisplay"
+                                title="Remove">
+                            <span class="remove-icon" aria-hidden="true">×</span>
                         </button>
-                    </div>
+                    </li>
                 }
-            </div>
+            </ul>
 
-            <div class="selection-actions">
+            <div class="selection-actions" role="group" aria-label="Selection actions">
                 @if (ActionButtons != null && ActionButtons.Any())
                 {
                     @foreach (var button in ActionButtons.Take(3))
@@ -40,10 +49,12 @@
                         <button type="button"
                                 class="action-button @button.ButtonClass"
                                 @onclick="@(() => button.OnClick.InvokeAsync(SelectedItems))"
-                                disabled="@(!SelectedItems.Any() || button.IsDisabled)">
+                                disabled="@(!SelectedItems.Any() || button.IsDisabled)"
+                                aria-label="@button.Text"
+                                aria-disabled="@(!SelectedItems.Any() || button.IsDisabled)">
                             @if (!string.IsNullOrEmpty(button.IconClass))
                             {
-                                <i class="@button.IconClass"></i>
+                                <i class="@button.IconClass" aria-hidden="true"></i>
                             }
                             <span>@button.Text</span>
                         </button>
@@ -59,7 +70,12 @@
         }
     </div>
 
-    <div class="selection-panel-toggle" @onclick="ToggleCollapse">
-        <span class="toggle-icon @(IsCollapsed ? "collapsed" : "")"></span>
-    </div>
+    <button type="button"
+            class="selection-panel-toggle"
+            @onclick="ToggleCollapse"
+            aria-expanded="@(!IsCollapsed)"
+            aria-controls="panel-content-@ComponentId"
+            aria-label="@(IsCollapsed ? "Expand selection panel" : "Collapse selection panel")">
+        <span class="toggle-icon @(IsCollapsed ? "collapsed" : "")" aria-hidden="true"></span>
+    </button>
 </div>

@@ -1,4 +1,12 @@
-﻿namespace DropBear.Codex.Tasks.TaskManagement;
+﻿#region
+
+using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Tasks.Caching;
+
+#endregion
+
+namespace DropBear.Codex.Tasks.TaskManagement;
 
 /// <summary>
 ///     Provides a simple in-memory cache for storing and retrieving objects by key.
@@ -14,14 +22,34 @@ public sealed class SharedCache
     /// <typeparam name="T">The type of the value.</typeparam>
     /// <param name="key">The key for the cached value.</param>
     /// <param name="value">The value to be cached.</param>
-    public void Set<T>(string key, T value)
+    /// <returns>A result indicating success or failure.</returns>
+    public Result<Unit, CacheError> Set<T>(string key, T value)
     {
-        if (value is not null)
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return Result<Unit, CacheError>.Failure(
+                CacheError.OperationFailed("Cache key cannot be null or empty."));
+        }
+
+        if (value is null)
+        {
+            return Result<Unit, CacheError>.Failure(
+                CacheError.OperationFailed("Cache value cannot be null."));
+        }
+
+        try
         {
             lock (_lock)
             {
                 _cache[key] = value;
             }
+            return Result<Unit, CacheError>.Success(Unit.Value);
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, CacheError>.Failure(
+                CacheError.OperationFailed($"Failed to set cache value: {ex.Message}"),
+                ex);
         }
     }
 
@@ -30,21 +58,42 @@ public sealed class SharedCache
     /// </summary>
     /// <typeparam name="T">The type of the value.</typeparam>
     /// <param name="key">The key for the cached value.</param>
-    /// <returns>The cached value of type <typeparamref name="T" />.</returns>
-    /// <exception cref="KeyNotFoundException">
-    ///     Thrown if the key is not found in the cache or the value is not of the expected type.
-    /// </exception>
-    public T Get<T>(string key)
+    /// <returns>
+    ///     A result containing the cached value of type <typeparamref name="T" /> if successful,
+    ///     or an error if the key is not found or the value is not of the expected type.
+    /// </returns>
+    public Result<T, CacheError> Get<T>(string key)
     {
-        lock (_lock)
+        if (string.IsNullOrWhiteSpace(key))
         {
-            if (_cache.TryGetValue(key, out var value) && value is T typedValue)
-            {
-                return typedValue;
-            }
+            return Result<T, CacheError>.Failure(
+                CacheError.OperationFailed("Cache key cannot be null or empty."));
         }
 
-        throw new KeyNotFoundException($"Key '{key}' not found in cache or is not of type {typeof(T)}");
+        try
+        {
+            lock (_lock)
+            {
+                if (!_cache.TryGetValue(key, out var value))
+                {
+                    return Result<T, CacheError>.Failure(CacheError.NotFound(key));
+                }
+
+                if (value is not T typedValue)
+                {
+                    return Result<T, CacheError>.Failure(
+                        CacheError.TypeMismatch(key, typeof(T).Name));
+                }
+
+                return Result<T, CacheError>.Success(typedValue);
+            }
+        }
+        catch (Exception ex)
+        {
+            return Result<T, CacheError>.Failure(
+                CacheError.OperationFailed($"Failed to get cache value: {ex.Message}"),
+                ex);
+        }
     }
 
     /// <summary>

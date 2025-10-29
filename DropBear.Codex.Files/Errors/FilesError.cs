@@ -15,9 +15,8 @@ public abstract record FilesError : ResultError
     ///     Initializes a new instance of <see cref="FilesError" />.
     /// </summary>
     /// <param name="message">The error message describing the failure condition.</param>
-    /// <param name="timestamp">Optional custom timestamp for the error. Defaults to UTC now.</param>
-    protected FilesError(string message, DateTime? timestamp = null)
-        : base(message, timestamp)
+    protected FilesError(string message)
+        : base(message)
     {
     }
 }

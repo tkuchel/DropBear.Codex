@@ -1,5 +1,7 @@
 ﻿#region
 
+using System.Buffers;
+using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
@@ -36,10 +38,24 @@ public sealed class XxHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        Logger.Information("XXHash does not support salt. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithIterations(int iterations)
     {
         Logger.Information("XXHash does not support iterations. No-op.");
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        Logger.Information("XXHash does not support iterations. No-op.");
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
@@ -58,6 +74,24 @@ public sealed class XxHasher : BaseHasher
         }
 
         return this;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
+    {
+        // XXHash can do 32-bit or 64-bit
+        if (size <= 4)
+        {
+            _use32Bit = true;
+            Logger.Information("Using 32-bit XXHash output.");
+        }
+        else
+        {
+            _use32Bit = false;
+            Logger.Information("Using 64-bit XXHash output.");
+        }
+
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>
@@ -96,17 +130,27 @@ public sealed class XxHasher : BaseHasher
                 return await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    var buffer = Encoding.UTF8.GetBytes(input);
+                    var byteCount = Encoding.UTF8.GetByteCount(input);
+                    var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                    try
+                    {
+                        var bufferSpan = buffer.AsSpan(0, byteCount);
+                        Encoding.UTF8.GetBytes(input, bufferSpan);
 
-                    if (_use32Bit)
-                    {
-                        var hash = XXHash.Hash32(buffer, (uint)_seed);
-                        return Result<string, HashingError>.Success(hash.ToString("x8"));
+                        if (_use32Bit)
+                        {
+                            var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
+                            return Result<string, HashingError>.Success(hash.ToString("x8"));
+                        }
+                        else
+                        {
+                            var hash = XXHash.Hash64(bufferSpan, _seed);
+                            return Result<string, HashingError>.Success(hash.ToString("x16"));
+                        }
                     }
-                    else
+                    finally
                     {
-                        var hash = XXHash.Hash64(buffer, _seed);
-                        return Result<string, HashingError>.Success(hash.ToString("x16"));
+                        ArrayPool<byte>.Shared.Return(buffer);
                     }
                 }, cancellationToken).ConfigureAwait(false);
             }
@@ -141,17 +185,48 @@ public sealed class XxHasher : BaseHasher
             Logger.Information("Hashing input with XXHash ({0}-bit) sync with seed {1}.",
                 _use32Bit ? 32 : 64, _seed);
 
-            var buffer = Encoding.UTF8.GetBytes(input);
+            var byteCount = Encoding.UTF8.GetByteCount(input);
 
-            if (_use32Bit)
+            // Use stackalloc for small inputs, ArrayPool for larger inputs
+            if (byteCount <= 512)
             {
-                var hash = XXHash.Hash32(buffer, (uint)_seed);
-                return Result<string, HashingError>.Success(hash.ToString("x8"));
+                Span<byte> buffer = stackalloc byte[byteCount];
+                Encoding.UTF8.GetBytes(input, buffer);
+
+                if (_use32Bit)
+                {
+                    var hash = XXHash.Hash32(buffer, (uint)_seed);
+                    return Result<string, HashingError>.Success(hash.ToString("x8"));
+                }
+                else
+                {
+                    var hash = XXHash.Hash64(buffer, _seed);
+                    return Result<string, HashingError>.Success(hash.ToString("x16"));
+                }
             }
             else
             {
-                var hash = XXHash.Hash64(buffer, _seed);
-                return Result<string, HashingError>.Success(hash.ToString("x16"));
+                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                try
+                {
+                    var bufferSpan = buffer.AsSpan(0, byteCount);
+                    Encoding.UTF8.GetBytes(input, bufferSpan);
+
+                    if (_use32Bit)
+                    {
+                        var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
+                        return Result<string, HashingError>.Success(hash.ToString("x8"));
+                    }
+                    else
+                    {
+                        var hash = XXHash.Hash64(bufferSpan, _seed);
+                        return Result<string, HashingError>.Success(hash.ToString("x16"));
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
             }
         }
         catch (Exception ex)
@@ -249,38 +324,39 @@ public sealed class XxHasher : BaseHasher
                 return await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    byte[] hashBytes;
 
                     if (_use32Bit)
                     {
                         var hash = XXHash.Hash32(data.Span, (uint)_seed);
-                        hashBytes = BitConverter.GetBytes(hash);
+                        Span<byte> hashBytes = stackalloc byte[4];
+                        BitConverter.TryWriteBytes(hashBytes, hash);
+                        return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                     }
                     else
                     {
                         var hash = XXHash.Hash64(data.Span, _seed);
-                        hashBytes = BitConverter.GetBytes(hash);
+                        Span<byte> hashBytes = stackalloc byte[8];
+                        BitConverter.TryWriteBytes(hashBytes, hash);
+                        return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                     }
-
-                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }, cancellationToken).ConfigureAwait(false);
             }
 
             {
-                byte[] hashBytes;
-
                 if (_use32Bit)
                 {
                     var hash = XXHash.Hash32(data.Span, (uint)_seed);
-                    hashBytes = BitConverter.GetBytes(hash);
+                    Span<byte> hashBytes = stackalloc byte[4];
+                    BitConverter.TryWriteBytes(hashBytes, hash);
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }
                 else
                 {
                     var hash = XXHash.Hash64(data.Span, _seed);
-                    hashBytes = BitConverter.GetBytes(hash);
+                    Span<byte> hashBytes = stackalloc byte[8];
+                    BitConverter.TryWriteBytes(hashBytes, hash);
+                    return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
                 }
-
-                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
         }
         catch (OperationCanceledException)
@@ -297,6 +373,7 @@ public sealed class XxHasher : BaseHasher
     }
 
     /// <inheritdoc />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override Result<string, HashingError> EncodeToBase64Hash(byte[] data)
     {
         if (data == null || data.Length == 0)
@@ -310,20 +387,20 @@ public sealed class XxHasher : BaseHasher
             Logger.Information("Encoding data to Base64 hash using XXHash ({0}-bit) sync with seed {1}.",
                 _use32Bit ? 32 : 64, _seed);
 
-            byte[] hashBytes;
-
             if (_use32Bit)
             {
                 var hash = XXHash.Hash32(data, (uint)_seed);
-                hashBytes = BitConverter.GetBytes(hash);
+                Span<byte> hashBytes = stackalloc byte[4];
+                BitConverter.TryWriteBytes(hashBytes, hash);
+                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
             else
             {
                 var hash = XXHash.Hash64(data, _seed);
-                hashBytes = BitConverter.GetBytes(hash);
+                Span<byte> hashBytes = stackalloc byte[8];
+                BitConverter.TryWriteBytes(hashBytes, hash);
+                return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
             }
-
-            return Result<string, HashingError>.Success(Convert.ToBase64String(hashBytes));
         }
         catch (Exception ex)
         {

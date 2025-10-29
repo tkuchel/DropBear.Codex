@@ -126,7 +126,7 @@ public sealed record ValidationError : ResultError
         ArgumentException.ThrowIfNullOrWhiteSpace(message);
 
         // Extract the property name from the path (last segment)
-        var propertyName = propertyPath.Contains('.')
+        var propertyName = propertyPath.Contains('.', StringComparison.Ordinal)
             ? propertyPath[(propertyPath.LastIndexOf('.') + 1)..]
             : propertyPath;
 

@@ -56,11 +56,13 @@ public partial class NotificationBadge : DropBearComponentBase, IDisposable
     {
         try
         {
-            UnreadCount = await NotificationService.GetUnreadCountAsync(UserId);
+            var result = await NotificationService.GetUnreadCountAsync(UserId);
+            UnreadCount = result.IsSuccess ? result.Value : 0;
         }
         catch (Exception ex)
         {
             LogError("Failed to get unread notification count", ex);
+            UnreadCount = 0;
         }
     }
 

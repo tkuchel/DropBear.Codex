@@ -21,7 +21,7 @@ public readonly record struct Unit : ISpanFormattable
     /// <summary>
     ///     Gets the single <see cref="Unit" /> value.
     /// </summary>
-    public static Unit Value { get; } = default;
+    public static Unit Value { get; }
 
     #region Task and ValueTask Conversions
 

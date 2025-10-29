@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Globalization;
 using System.Linq.Expressions;
@@ -42,13 +42,13 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         var dataToExport = FilteredData.ToList();
         var exportStreamResult = await _excelExporter.ExportToExcelStreamAsync(dataToExport);
 
-        if (exportStreamResult.IsFailure)
+        if (exportStreamResult.IsSuccess == false)
         {
-            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error.Message);
+            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error!.Message);
             return;
         }
 
-        using var ms = exportStreamResult.Value;
+        using var ms = exportStreamResult.Value!;
 
         if (ms.Length == 0)
         {
@@ -216,7 +216,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             // Load the module first
             var downloadModuleResult = await GetJsModuleAsync("DropBearFileDownloader");
 
-            if (downloadModuleResult.IsFailure)
+            if (downloadModuleResult.IsSuccess == false)
             {
                 LogError("Failed to load JS module: {Module}", downloadModuleResult.Exception);
                 return;
@@ -436,7 +436,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     }
 
     /// <summary>
-    ///     Shows a sort indicator (▲ or ▼) if the column is currently being sorted.
+    ///     Shows a sort indicator (? or ?) if the column is currently being sorted.
     /// </summary>
     /// <param name="column">The column to check.</param>
     /// <returns>A MarkupString containing the sort indicator or an empty string.</returns>
@@ -448,7 +448,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             return new MarkupString(string.Empty);
         }
 
-        var indicator = _currentSortDirection == SortDirection.Ascending ? "▲" : "▼";
+        var indicator = _currentSortDirection == SortDirection.Ascending ? "?" : "?";
         return new MarkupString($"<span>{indicator}</span>");
     }
 

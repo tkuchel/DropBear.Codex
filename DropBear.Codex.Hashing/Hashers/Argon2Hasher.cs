@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Collections;
+using System.Security.Cryptography;
 using System.Text;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
@@ -36,9 +37,32 @@ public class Argon2Hasher : IHasher
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="salt" /> is null.</exception>
     public IHasher WithSalt(byte[]? salt)
     {
+        var result = WithSaltValidated(salt);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentNullException(nameof(salt), result.Error!.Message);
+        }
+
+        return result.Value!;
+    }
+
+    /// <summary>
+    ///     Sets the salt for Argon2 hashing, returning a Result for error handling.
+    /// </summary>
+    /// <param name="salt">A byte array representing the salt. Must not be null.</param>
+    /// <returns>A Result containing the configured hasher or an error.</returns>
+    public Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
+        if (salt is null)
+        {
+            Logger.Error("Salt cannot be null for Argon2 hashing.");
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Salt cannot be null for Argon2 hashing."));
+        }
+
         Logger.Information("Setting salt for Argon2 hashing.");
-        _salt = salt ?? throw new ArgumentNullException(nameof(salt), "Salt cannot be null.");
-        return this;
+        _salt = salt;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>
@@ -49,14 +73,32 @@ public class Argon2Hasher : IHasher
     /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="iterations" /> is less than 1.</exception>
     public IHasher WithIterations(int iterations)
     {
+        var result = WithIterationsValidated(iterations);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentOutOfRangeException(nameof(iterations), result.Error!.Message);
+        }
+
+        return result.Value!;
+    }
+
+    /// <summary>
+    ///     Sets the number of iterations for Argon2 hashing, returning a Result for error handling.
+    /// </summary>
+    /// <param name="iterations">The number of iterations (must be at least 1).</param>
+    /// <returns>A Result containing the configured hasher or an error.</returns>
+    public Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
         if (iterations < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(iterations), "Iterations must be at least 1.");
+            Logger.Error("Iterations must be at least 1 for Argon2 hashing.");
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Iterations must be at least 1 for Argon2 hashing."));
         }
 
         Logger.Information("Setting iterations for Argon2 hashing to {Iterations}.", iterations);
         _iterations = iterations;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>
@@ -67,14 +109,32 @@ public class Argon2Hasher : IHasher
     /// <exception cref="ArgumentOutOfRangeException">Thrown if <paramref name="size" /> is less than 1.</exception>
     public IHasher WithHashSize(int size)
     {
+        var result = WithHashSizeValidated(size);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), result.Error!.Message);
+        }
+
+        return result.Value!;
+    }
+
+    /// <summary>
+    ///     Sets the hash output size (in bytes) for Argon2 hashing, returning a Result for error handling.
+    /// </summary>
+    /// <param name="size">Number of bytes to output (e.g., 16 or 32).</param>
+    /// <returns>A Result containing the configured hasher or an error.</returns>
+    public Result<IHasher, HashingError> WithHashSizeValidated(int size)
+    {
         if (size < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(size), "Hash size must be at least 1 byte.");
+            Logger.Error("Hash size must be at least 1 byte for Argon2 hashing.");
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Hash size must be at least 1 byte for Argon2 hashing."));
         }
 
         Logger.Information("Setting hash size for Argon2 hashing to {Size} bytes.", size);
         _hashSize = size;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <summary>
@@ -197,8 +257,8 @@ public class Argon2Hasher : IHasher
             using var argon2 = CreateArgon2(input, salt);
             var hashBytes = await Task.Run(() => argon2.GetBytes(_hashSize), cancellationToken).ConfigureAwait(false);
 
-            // StructuralComparisons checks byte arrays for equality
-            var isValid = StructuralComparisons.StructuralEqualityComparer.Equals(hashBytes, expectedHashBytes);
+            // Use constant-time comparison to prevent timing attacks
+            var isValid = CryptographicOperations.FixedTimeEquals(hashBytes, expectedHashBytes);
             if (isValid)
             {
                 Logger.Information("Argon2 verification successful.");
@@ -258,8 +318,8 @@ public class Argon2Hasher : IHasher
             using var argon2 = CreateArgon2(input, salt);
             var hashBytes = argon2.GetBytes(_hashSize);
 
-            // StructuralComparisons checks byte arrays for equality
-            var isValid = StructuralComparisons.StructuralEqualityComparer.Equals(hashBytes, expectedHashBytes);
+            // Use constant-time comparison to prevent timing attacks
+            var isValid = CryptographicOperations.FixedTimeEquals(hashBytes, expectedHashBytes);
             if (isValid)
             {
                 Logger.Information("Argon2 verification successful.");

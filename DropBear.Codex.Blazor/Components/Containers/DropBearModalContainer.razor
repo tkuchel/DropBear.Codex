@@ -6,9 +6,14 @@
 {
     <div class="modal-overlay"
          @onclick="HandleOutsideClick"
+         @onkeydown="HandleKeyDown"
          role="dialog"
-         aria-modal="true">
+         aria-modal="true"
+         aria-labelledby="modal-title-@ComponentId"
+         tabindex="-1"
+         @ref="_modalOverlay">
         <div class="modal-content @_modalTransitionClass"
+             id="modal-content-@ComponentId"
              style="@ModalStyle"
              @onclick:stopPropagation="true">
             <DynamicComponent Type="ModalService.CurrentComponent"

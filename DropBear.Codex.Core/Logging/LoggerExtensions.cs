@@ -19,10 +19,8 @@ public static class LoggerExtensions
     /// <returns>An ILogger enriched with the SourceContext from the static class name.</returns>
     public static ILogger ForStaticClass(this ILogger logger, Type staticClass)
     {
-        if (staticClass is null)
-        {
-            throw new ArgumentNullException(nameof(staticClass));
-        }
+        ArgumentNullException.ThrowIfNull(logger);
+        ArgumentNullException.ThrowIfNull(staticClass);
 
         // Not strictly required, but you can guard if you only want truly static classes.
         // A 'static' class in C# is just sealed + abstract at runtime, so:

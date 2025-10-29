@@ -282,7 +282,7 @@ public sealed class ContentContainer
                     new ContentContainerError("Failed to build serializer."));
             }
 
-            var result = await serializer.Value.DeserializeAsync<T>(Data, cancellationToken).ConfigureAwait(false);
+            var result = await serializer.Value!.DeserializeAsync<T>(Data, cancellationToken).ConfigureAwait(false);
 
             return !result.IsSuccess
                 ? Result<T, ContentContainerError>.Failure(new ContentContainerError(result.Exception?.Message))

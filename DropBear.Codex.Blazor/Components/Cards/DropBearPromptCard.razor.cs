@@ -141,7 +141,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
         builder.Append("prompt-card");
 
         // Type class
-        string typeClass;
+        string? typeClass;
         if (!PromptClasses.TryGetValue(PromptType, out typeClass))
         {
             typeClass = "prompt-card-default";
@@ -236,12 +236,12 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
 
         try
         {
-            await QueueStateHasChangedAsync(async () =>
+            await QueueStateHasChangedAsync((Func<Task>)(async () =>
             {
                 Logger.Debug("Button clicked: {ButtonId} {ButtonText} {ButtonColor}",
                     button.Id, button.Text, button.Color);
                 await OnButtonClicked.InvokeAsync(button);
-            });
+            }));
         }
         catch (Exception ex)
         {

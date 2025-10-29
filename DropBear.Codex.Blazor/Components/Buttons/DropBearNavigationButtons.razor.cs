@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Frozen;
 using DropBear.Codex.Blazor.Components.Bases;
@@ -95,7 +95,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 
             // Get JS module with error handling
             var moduleResult = await GetJsModuleAsync(JsModuleName);
-            if (moduleResult.IsFailure)
+            if (moduleResult.IsSuccess == false)
             {
                 LogError("Failed to load navigation buttons JS module: {Error}", moduleResult.Exception);
                 return;
@@ -140,7 +140,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             await using var _ = await _operationSemaphore.LockAsync(OperationTimeout, ComponentToken);
 
             var moduleResult = await GetJsModuleAsync(JsModuleName);
-            if (moduleResult.IsFailure)
+            if (moduleResult.IsSuccess == false)
             {
                 LogError("Failed to get JS module for back navigation: {Error}", moduleResult.Exception);
                 return;
@@ -204,7 +204,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             await using var _ = await _operationSemaphore.LockAsync(OperationTimeout, ComponentToken);
 
             var moduleResult = await GetJsModuleAsync(JsModuleName);
-            if (moduleResult.IsFailure)
+            if (moduleResult.IsSuccess == false)
             {
                 LogError("Failed to get JS module for scroll: {Error}", moduleResult.Exception);
                 return;

@@ -15,4 +15,24 @@ public sealed record TaskValidationError : TaskExecutionError
         : base($"Task Validation Error: {message}", taskName, exception)
     {
     }
+
+    /// <summary>
+    ///     Creates a validation error for when a task name is invalid.
+    /// </summary>
+    /// <param name="taskName">The invalid task name.</param>
+    public static TaskValidationError InvalidName(string taskName)
+    {
+        return new TaskValidationError("Task name cannot be null or empty", taskName);
+    }
+
+    /// <summary>
+    ///     Creates a validation error for when a task property has an invalid value.
+    /// </summary>
+    /// <param name="taskName">The name of the task.</param>
+    /// <param name="propertyName">The name of the invalid property.</param>
+    /// <param name="reason">The reason why the property is invalid.</param>
+    public static TaskValidationError InvalidProperty(string taskName, string propertyName, string reason)
+    {
+        return new TaskValidationError($"Property '{propertyName}' is invalid: {reason}", taskName);
+    }
 }

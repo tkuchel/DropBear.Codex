@@ -45,13 +45,13 @@
 /* Dark theme */
 @media (prefers-color-scheme: dark) {
   :root {
-    --clr-background: var(--clr-black, #1e1f22);
-    --clr-text-primary: var(--clr-silver-sand, #bbbec3);
-    --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
-    --clr-surface-primary: var(--clr-davy-gray, #4e5055);
-    --clr-surface-secondary: var(--clr-onyx, #343639);
-    --clr-surface-dark: var(--clr-black, #1e1f22);
-    --clr-surface-light: var(--clr-dim-gray, #67696f);
+    --clr-background: var(--color-gray-900, #1e1f22);
+    --clr-text-primary: var(--color-gray-50, #fbfbfb);
+    --clr-text-secondary: var(--color-gray-300, #dbdddf);
+    --clr-surface-primary: var(--color-gray-800, #343639);
+    --clr-surface-secondary: var(--color-gray-700, #4e5055);
+    --clr-surface-dark: var(--color-gray-950, #0a0a0b);
+    --clr-surface-light: var(--color-gray-600, #67696f);
 
     --clr-link: var(--clr-malibu);
     --clr-link-hover: var(--clr-viking);
@@ -131,13 +131,13 @@
 
 /* Theme toggle class for JavaScript theme switching */
 .theme-dark {
-  --clr-background: var(--clr-black, #1e1f22);
-  --clr-text-primary: var(--clr-silver-sand, #bbbec3);
-  --clr-text-secondary: var(--clr-french-gray, #b9bbc0);
-  --clr-surface-primary: var(--clr-davy-gray, #4e5055);
-  --clr-surface-secondary: var(--clr-onyx, #343639);
-  --clr-surface-dark: var(--clr-black, #1e1f22);
-  --clr-surface-light: var(--clr-dim-gray, #67696f);
+  --clr-background: var(--color-gray-900, #1e1f22);
+  --clr-text-primary: var(--color-gray-50, #fbfbfb);
+  --clr-text-secondary: var(--color-gray-300, #dbdddf);
+  --clr-surface-primary: var(--color-gray-800, #343639);
+  --clr-surface-secondary: var(--color-gray-700, #4e5055);
+  --clr-surface-dark: var(--color-gray-950, #0a0a0b);
+  --clr-surface-light: var(--color-gray-600, #67696f);
 
   --clr-link: var(--clr-malibu);
   --clr-link-hover: var(--clr-viking);

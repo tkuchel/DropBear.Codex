@@ -1,5 +1,9 @@
 ﻿@using DropBear.Codex.Blazor.Enums
+@using DropBear.Codex.Blazor.Helpers
 @inherits DropBear.Codex.Blazor.Components.Bases.DropBearComponentBase
+
+@* SECURITY NOTE: Message content is sanitized using HtmlSanitizationHelper to prevent XSS attacks.
+   If you need to display trusted HTML from CMS/admin, use HtmlSanitizationHelper.FromTrustedSource() instead. *@
 
 <div id="@AlertId"
      class="alert @AlertTypeCssClass @(_isVisible ? "alert--visible" : "alert--hidden")"
@@ -22,7 +26,8 @@
         @if (!string.IsNullOrWhiteSpace(Message))
         {
             <div class="alert__message">
-                @((MarkupString)Message)
+                @* SECURITY: Sanitize alert message to prevent XSS attacks *@
+                @HtmlSanitizationHelper.Sanitize(Message)
             </div>
         }
     </div>

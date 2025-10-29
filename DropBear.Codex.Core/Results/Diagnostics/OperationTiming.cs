@@ -10,7 +10,7 @@ namespace DropBear.Codex.Core.Results.Diagnostics;
 ///     Provides timing information for result operations.
 /// </summary>
 [StructLayout(LayoutKind.Auto)]
-public readonly struct OperationTiming
+public readonly record struct OperationTiming
 {
     /// <summary>
     ///     The UTC time when the operation started.

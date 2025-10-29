@@ -1,6 +1,9 @@
 ﻿#region
 
 using System.Runtime.CompilerServices;
+using DropBear.Codex.Core;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Tasks.Errors;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
 using ExecutionContext = DropBear.Codex.Tasks.TaskExecutionEngine.Models.ExecutionContext;
@@ -78,47 +81,66 @@ public sealed class SimpleTask : ITask
         return _dependencies.Contains(dependency);
     }
 
-    public bool Validate()
+    public Result<Unit, TaskValidationError> Validate()
     {
         if (string.IsNullOrWhiteSpace(Name))
         {
-            return false;
+            return Result<Unit, TaskValidationError>.Failure(
+                TaskValidationError.InvalidName(Name ?? string.Empty));
         }
 
         if (MaxRetryCount < 0)
         {
-            return false;
+            return Result<Unit, TaskValidationError>.Failure(
+                TaskValidationError.InvalidProperty(Name, nameof(MaxRetryCount), "must be non-negative"));
         }
 
         if (RetryDelay < TimeSpan.Zero)
         {
-            return false;
+            return Result<Unit, TaskValidationError>.Failure(
+                TaskValidationError.InvalidProperty(Name, nameof(RetryDelay), "must be non-negative"));
         }
 
         if (Timeout <= TimeSpan.Zero)
         {
-            return false;
+            return Result<Unit, TaskValidationError>.Failure(
+                TaskValidationError.InvalidProperty(Name, nameof(Timeout), "must be positive"));
         }
 
-        return true;
+        return Result<Unit, TaskValidationError>.Success(Unit.Value);
     }
 
-    public async Task ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken)
+    public async Task<Result<Unit, TaskExecutionError>> ExecuteAsync(ExecutionContext context, CancellationToken cancellationToken)
     {
-        ArgumentNullException.ThrowIfNull(context);
+        if (context == null)
+        {
+            return Result<Unit, TaskExecutionError>.Failure(
+                new TaskExecutionError("Execution context cannot be null", Name));
+        }
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(Timeout);
 
-        using var scope = await context.CreateScopeAsync(cts.Token).ConfigureAwait(false);
-
         try
         {
+            using var scope = await context.CreateScopeAsync(cts.Token).ConfigureAwait(false);
             await _executeAsync(context, cts.Token).ConfigureAwait(false);
+            return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            throw new TimeoutException($"Task '{Name}' execution timed out after {Timeout.TotalSeconds} seconds");
+            return Result<Unit, TaskExecutionError>.Failure(
+                TaskExecutionError.Timeout(Name, Timeout));
+        }
+        catch (OperationCanceledException)
+        {
+            return Result<Unit, TaskExecutionError>.Failure(
+                TaskExecutionError.Cancelled(Name));
+        }
+        catch (Exception ex)
+        {
+            return Result<Unit, TaskExecutionError>.Failure(
+                TaskExecutionError.Failed(Name, ex));
         }
     }
 

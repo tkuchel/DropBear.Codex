@@ -2,6 +2,8 @@ name: .NET CI and NuGet Management
 
 permissions:
   contents: write
+  pull-requests: write
+  security-events: write
 
 on:
   push:
@@ -11,24 +13,214 @@ on:
   pull_request:
     branches: [ main, master, develop ]
 
+# Cancel in-progress runs when a new workflow with the same ref is triggered
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
-  DOTNET_VERSION: '8.0.x'
+  DOTNET_VERSION: '9.0.x'
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: 1
+  DOTNET_NOLOGO: true
 
 jobs:
-  build-and-manage-nuget:
+  # Build solution once and share artifacts with all downstream jobs
+  build:
+    name: Build Solution
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+          cache: true
+          cache-dependency-path: '**/*.csproj'
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Update .NET workloads
+        run: dotnet workload update
+
+      - name: Restore dependencies
+        run: dotnet restore DropBear.Codex.sln
+
+      - name: Build solution (Debug)
+        run: dotnet build DropBear.Codex.sln --no-restore --configuration Debug
+
+      - name: Build solution (Release)
+        run: dotnet build DropBear.Codex.sln --no-restore --configuration Release /p:EnforceCodeStyleInBuild=true
+
+      - name: Upload Debug build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-debug
+          path: |
+            **/bin/Debug/**
+            !**/bin/Debug/**/ref/**
+          retention-days: 1
+
+      - name: Upload Release build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-release
+          path: |
+            **/bin/Release/**
+            !**/bin/Release/**/ref/**
+          retention-days: 7
+
+  test-coverage:
+    name: Test with Coverage
+    needs: build
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Download Debug build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-debug
+
+      - name: Run tests with coverage
+        run: dotnet test DropBear.Codex.sln --no-build --verbosity normal --configuration Debug --collect:"XPlat Code Coverage" --results-directory ./TestResults --logger "trx;LogFileName=test-results.trx"
+
+      - name: Install coverage report generator
+        run: dotnet tool install --global dotnet-reportgenerator-globaltool
+
+      - name: Generate coverage report
+        run: reportgenerator -reports:./TestResults/**/coverage.cobertura.xml -targetdir:./TestResults/CoverageReport -reporttypes:"Html;MarkdownSummaryGithub;Cobertura" -title:"DropBear.Codex Coverage"
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: ./TestResults/CoverageReport
+          retention-days: 30
+
+      - name: Add coverage summary to workflow
+        run: |
+          if (Test-Path ./TestResults/CoverageReport/SummaryGithub.md) {
+            Get-Content ./TestResults/CoverageReport/SummaryGithub.md >> $env:GITHUB_STEP_SUMMARY
+          }
+        shell: pwsh
+
+      - name: Add test results summary
+        if: always()
+        run: |
+          $testResults = Get-ChildItem -Path ./TestResults -Filter "*.trx" -Recurse
+          $totalTests = 0
+          $passedTests = 0
+          $failedTests = 0
+
+          foreach ($result in $testResults) {
+            [xml]$trx = Get-Content $result.FullName
+            $total = $trx.TestRun.ResultSummary.Counters.total
+            $passed = $trx.TestRun.ResultSummary.Counters.passed
+            $failed = $trx.TestRun.ResultSummary.Counters.failed
+
+            $totalTests += [int]$total
+            $passedTests += [int]$passed
+            $failedTests += [int]$failed
+          }
+
+          "## Test Results" >> $env:GITHUB_STEP_SUMMARY
+          "- Total Tests: $totalTests" >> $env:GITHUB_STEP_SUMMARY
+          "- Passed: ✅ $passedTests" >> $env:GITHUB_STEP_SUMMARY
+          "- Failed: ❌ $failedTests" >> $env:GITHUB_STEP_SUMMARY
+        shell: pwsh
+
+  security-scan:
+    name: Security Analysis
+    needs: build
     runs-on: windows-latest
 
     strategy:
+      fail-fast: false
       matrix:
         project:
           - DropBear.Codex.Blazor
           - DropBear.Codex.Core
           - DropBear.Codex.Files
           - DropBear.Codex.Hashing
-          - DropBear.Codex.Tasks
+          - DropBear.Codex.Notifications
           - DropBear.Codex.Serialization
           - DropBear.Codex.StateManagement
+          - DropBear.Codex.Tasks
           - DropBear.Codex.Utilities
+          - DropBear.Codex.Workflow
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Security Scan with Trivy
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '${{ matrix.project }}'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.project }}.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results-${{ matrix.project }}.sarif'
+          category: 'trivy-${{ matrix.project }}'
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: windows-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  package:
+    name: Create NuGet Packages
+    needs: [build, test-coverage]
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project:
+          - DropBear.Codex.Blazor
+          - DropBear.Codex.Core
+          - DropBear.Codex.Files
+          - DropBear.Codex.Hashing
+          - DropBear.Codex.Notifications
+          - DropBear.Codex.Serialization
+          - DropBear.Codex.StateManagement
+          - DropBear.Codex.Tasks
+          - DropBear.Codex.Utilities
+          - DropBear.Codex.Workflow
 
     steps:
       - name: Checkout code
@@ -41,27 +233,39 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
-      - name: Update .NET workloads
-        run: dotnet workload update
+      - name: Download Release build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-release
 
-      - name: Restore dependencies
-        run: dotnet restore ${{ matrix.project }}/${{ matrix.project }}.csproj
-
-      - name: Build
-        run: dotnet build ${{ matrix.project }}/${{ matrix.project }}.csproj --no-restore --configuration Release
-
-      - name: Test
-        run: dotnet test ${{ matrix.project }}/${{ matrix.project }}.csproj --no-build --verbosity normal --configuration Release
-
-      - name: Pack
+      - name: Pack NuGet package
         run: dotnet pack ${{ matrix.project }}/${{ matrix.project }}.csproj --no-build --output ./nuget-packages --configuration Release
 
-      - name: Extract Package Version
-        id: extract_version
-        run: |
-          $packageName = Get-ChildItem -Path ./nuget-packages/ | Where-Object { $_.Name -like "*${{ matrix.project }}*.nupkg" } | Select-Object -ExpandProperty Name
-          $packageVersion = $packageName -replace '^.*\.(\d+\.\d+\.\d+)\.nupkg$', '$1'
-          echo "PACKAGE_VERSION=$packageVersion" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-${{ matrix.project }}
+          path: ./nuget-packages/*.nupkg
+          retention-days: 7
+
+  publish:
+    name: Publish Packages
+    needs: package
+    runs-on: windows-latest
+    if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: nuget-*
+          path: ./nuget-packages
+          merge-multiple: true
 
       - name: Set Release Name
         run: |
@@ -70,6 +274,7 @@ jobs:
           } else {
             echo "RELEASE_NAME=${{ github.ref_name }}-$(git rev-parse --short HEAD)" | Out-File -FilePath $env:GITHUB_ENV -Append
           }
+        shell: pwsh
 
       - name: Check if GitHub Release Exists
         id: check_release
@@ -89,16 +294,16 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create GitHub Release
-        if: env.EXISTS == 'false' && (github.ref_type == 'tag' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+        if: env.EXISTS == 'false'
         run: |
           $releaseName = "${{ env.RELEASE_NAME }}"
-          gh release create "$releaseName" --title "$releaseName" --notes "Release $releaseName"
+          $packageCount = (Get-ChildItem ./nuget-packages/*.nupkg).Count
+          gh release create "$releaseName" --title "$releaseName" --notes "Release $releaseName with $packageCount NuGet packages"
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload Artifacts to Release
-        if: github.ref_type == 'tag' || github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+      - name: Upload Packages to GitHub Release
         run: |
           $releaseName = "${{ env.RELEASE_NAME }}"
           Get-ChildItem ./nuget-packages/*.nupkg | ForEach-Object {
@@ -108,11 +313,11 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish NuGet Package
+      - name: Publish to NuGet.org
         if: github.ref_type == 'tag'
         run: |
           Get-ChildItem ./nuget-packages/*.nupkg | ForEach-Object {
-            dotnet nuget push $_.FullName --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json
+            dotnet nuget push $_.FullName --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
           }
         shell: pwsh
         env:

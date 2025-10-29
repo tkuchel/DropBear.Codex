@@ -33,15 +33,28 @@ public sealed class Blake2Hasher : BaseHasher
     /// <inheritdoc />
     public override IHasher WithSalt(byte[]? salt)
     {
+        var result = WithSaltValidated(salt);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentException(result.Error!.Message, nameof(salt));
+        }
+
+        return result.Value!;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithSaltValidated(byte[]? salt)
+    {
         if (salt is null || salt.Length == 0)
         {
             Logger.Error("Salt cannot be null or empty.");
-            throw new ArgumentException("Salt cannot be null or empty.", nameof(salt));
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Salt cannot be null or empty for Blake2 hashing."));
         }
 
         Logger.Information("Setting salt for Blake2 hashing.");
         _salt = salt;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
@@ -53,17 +66,38 @@ public sealed class Blake2Hasher : BaseHasher
     }
 
     /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithIterationsValidated(int iterations)
+    {
+        // Not applicable for Blake2; do nothing but log
+        Logger.Information("WithIterationsValidated called but not applicable for Blake2Hasher.");
+        return Result<IHasher, HashingError>.Success(this);
+    }
+
+    /// <inheritdoc />
     public override IHasher WithHashSize(int size)
+    {
+        var result = WithHashSizeValidated(size);
+        if (!result.IsSuccess)
+        {
+            throw new ArgumentOutOfRangeException(nameof(size), result.Error!.Message);
+        }
+
+        return result.Value!;
+    }
+
+    /// <inheritdoc />
+    public override Result<IHasher, HashingError> WithHashSizeValidated(int size)
     {
         if (size < 1)
         {
             Logger.Error("Hash size must be at least 1 byte for Blake2.");
-            throw new ArgumentOutOfRangeException(nameof(size), "Hash size must be at least 1 byte.");
+            return Result<IHasher, HashingError>.Failure(
+                new HashComputationError("Hash size must be at least 1 byte for Blake2 hashing."));
         }
 
         Logger.Information("Setting hash size for Blake2 hashing to {Size} bytes.", size);
         _hashSize = size;
-        return this;
+        return Result<IHasher, HashingError>.Success(this);
     }
 
     /// <inheritdoc />
@@ -338,40 +372,64 @@ public sealed class Blake2Hasher : BaseHasher
     private byte[] HashWithBlake2(string input, byte[]? salt)
     {
         Logger.Debug("Hashing input using Blake2 with optional salt (private helper).");
-        ReadOnlySpan<byte> inputBytes = Encoding.UTF8.GetBytes(input);
 
-        if (salt == null || salt.Length == 0)
-        {
-            return Blake2b.ComputeHash(_hashSize, inputBytes);
-        }
+        // Calculate the size needed for UTF8 bytes
+        var inputByteCount = Encoding.UTF8.GetByteCount(input);
+        byte[]? rentedInputBuffer = null;
 
-        // Use more efficient memory handling with stackalloc for small data
-        ReadOnlySpan<byte> saltSpan = salt;
-        var bufferSize = saltSpan.Length + inputBytes.Length;
-
-        if (bufferSize <= 1024)
-        {
-            // For small inputs, use stack allocation for better performance
-            Span<byte> saltedInput = stackalloc byte[bufferSize];
-            saltSpan.CopyTo(saltedInput);
-            inputBytes.CopyTo(saltedInput.Slice(saltSpan.Length));
-
-            return Blake2b.ComputeHash(_hashSize, saltedInput);
-        }
-
-        // For larger inputs, use ArrayPool to minimize GC pressure
-        var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
         try
         {
-            var bufferSpan = buffer.AsSpan(0, bufferSize);
-            saltSpan.CopyTo(bufferSpan);
-            inputBytes.CopyTo(bufferSpan.Slice(saltSpan.Length));
+            // Use stackalloc for small inputs, ArrayPool for large inputs
+            Span<byte> inputBytes = inputByteCount <= 512
+                ? stackalloc byte[inputByteCount]
+                : (rentedInputBuffer = ArrayPool<byte>.Shared.Rent(inputByteCount)).AsSpan(0, inputByteCount);
 
-            return Blake2b.ComputeHash(_hashSize, bufferSpan.Slice(0, bufferSize));
+            Encoding.UTF8.GetBytes(input, inputBytes);
+
+            if (salt == null || salt.Length == 0)
+            {
+                return Blake2b.ComputeHash(_hashSize, inputBytes);
+            }
+
+            // Use more efficient memory handling with stackalloc for small data
+            ReadOnlySpan<byte> saltSpan = salt;
+            var bufferSize = saltSpan.Length + inputByteCount;
+
+            if (bufferSize <= 1024)
+            {
+                // For small inputs, use stack allocation for better performance
+                Span<byte> saltedInput = stackalloc byte[bufferSize];
+                saltSpan.CopyTo(saltedInput);
+                inputBytes.CopyTo(saltedInput.Slice(saltSpan.Length));
+
+                return Blake2b.ComputeHash(_hashSize, saltedInput);
+            }
+
+            // For larger inputs, use ArrayPool to minimize GC pressure
+            var buffer = ArrayPool<byte>.Shared.Rent(bufferSize);
+            try
+            {
+                var bufferSpan = buffer.AsSpan(0, bufferSize);
+                saltSpan.CopyTo(bufferSpan);
+                inputBytes.CopyTo(bufferSpan.Slice(saltSpan.Length));
+
+                return Blake2b.ComputeHash(_hashSize, bufferSpan.Slice(0, bufferSize));
+            }
+            finally
+            {
+                // Clear sensitive data before returning
+                Array.Clear(buffer, 0, bufferSize);
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
         finally
         {
-            ArrayPool<byte>.Shared.Return(buffer);
+            // Return rented buffer if we used one
+            if (rentedInputBuffer != null)
+            {
+                Array.Clear(rentedInputBuffer, 0, inputByteCount);
+                ArrayPool<byte>.Shared.Return(rentedInputBuffer);
+            }
         }
     }
 

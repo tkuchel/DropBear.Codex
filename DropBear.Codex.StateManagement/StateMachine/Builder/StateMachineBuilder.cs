@@ -1,5 +1,8 @@
 ﻿#region
 
+using DropBear.Codex.Core.Results;
+using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.StateManagement.Errors;
 using Serilog;
 using Stateless;
 
@@ -442,6 +445,28 @@ public class StateMachineBuilder<TState, TTrigger>
 
         _stateMachine.Value.Configure(state).OnEntryFrom(trigger, entryAction, entryActionDescription);
         return this;
+    }
+
+    /// <summary>
+    ///     Finalizes configuration and returns the underlying <see cref="StateMachine{TState, TTrigger}" />
+    ///     wrapped in a Result pattern for safe error handling.
+    ///     No further configuration is allowed after calling this method.
+    /// </summary>
+    /// <returns>
+    ///     A <see cref="Result{T, TError}" /> containing the configured state machine on success,
+    ///     or a <see cref="BuilderError" /> if the builder has already been built.
+    /// </returns>
+    public Result<StateMachine<TState, TTrigger>, BuilderError> BuildSafe()
+    {
+        if (_isBuilt)
+        {
+            return Result<StateMachine<TState, TTrigger>, BuilderError>.Failure(
+                BuilderError.AlreadyBuilt());
+        }
+
+        _logger.Debug("State machine build complete.");
+        _isBuilt = true;
+        return Result<StateMachine<TState, TTrigger>, BuilderError>.Success(_stateMachine.Value);
     }
 
     /// <summary>

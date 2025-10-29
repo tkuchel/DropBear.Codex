@@ -124,7 +124,7 @@ public sealed class AsyncEnumerableResult<T, TError> : Result<TError>
     {
         if (!IsSuccess || _enumerable is null)
         {
-            return EmptyAsyncEnumerable().ConfigureAwait(false).WithCancellation(cancellationToken);
+            return EmptyAsyncEnumerable(cancellationToken).ConfigureAwait(false).WithCancellation(cancellationToken);
         }
 
         return _enumerable.ConfigureAwait(false).WithCancellation(cancellationToken);

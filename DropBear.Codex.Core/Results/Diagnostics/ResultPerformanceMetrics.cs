@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Collections.Frozen;
 using System.Diagnostics;
 using DropBear.Codex.Core.Enums;
 
@@ -157,29 +158,32 @@ public readonly record struct ResultPerformanceMetrics
          """;
 
     /// <summary>
-    ///     Creates a read-only dictionary of metrics for structured logging.
+    ///     Creates a read-only frozen dictionary of metrics for structured logging.
     /// </summary>
     /// <returns>
-    ///     A read-only dictionary containing all performance metrics suitable for structured logging frameworks.
+    ///     A read-only frozen dictionary containing all performance metrics suitable for structured logging frameworks.
     /// </returns>
     /// <remarks>
     ///     The dictionary includes execution time, exception count, state, result type, performance score,
     ///     and boolean performance indicators (IsPerformant, IsSlow, IsVerySlow).
+    ///     Returns a FrozenDictionary for optimal read performance and reduced memory overhead.
     /// </remarks>
     public IReadOnlyDictionary<string, object> ToDictionary()
     {
-        return new Dictionary<string, object>(StringComparer.Ordinal)
-        {
-            ["ExecutionTimeMs"] = ExecutionTimeMs,
-            ["ExceptionCount"] = ExceptionCount,
-            ["State"] = State.ToString(),
-            ["ResultType"] = ResultType,
-            ["PerformanceScore"] = PerformanceScore,
-            ["IsPerformant"] = IsPerformant,
-            ["IsSlow"] = IsSlow,
-            ["IsVerySlow"] = IsVerySlow,
-            ["Timestamp"] = Timestamp
-        };
+        return FrozenDictionary.ToFrozenDictionary(
+            new Dictionary<string, object>(StringComparer.Ordinal)
+            {
+                ["ExecutionTimeMs"] = ExecutionTimeMs,
+                ["ExceptionCount"] = ExceptionCount,
+                ["State"] = State.ToString(),
+                ["ResultType"] = ResultType,
+                ["PerformanceScore"] = PerformanceScore,
+                ["IsPerformant"] = IsPerformant,
+                ["IsSlow"] = IsSlow,
+                ["IsVerySlow"] = IsVerySlow,
+                ["Timestamp"] = Timestamp
+            },
+            StringComparer.Ordinal);
     }
 
     /// <summary>
