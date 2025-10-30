@@ -1,4 +1,11 @@
+#region
+
+using DropBear.Codex.Blazor.Helpers;
+using DropBear.Codex.Blazor.Options;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Options;
+
+#endregion
 
 namespace DropBear.Codex.Blazor.Middleware;
 
@@ -9,15 +16,19 @@ namespace DropBear.Codex.Blazor.Middleware;
 public sealed class SecurityHeadersMiddleware
 {
     private readonly RequestDelegate _next;
+    private readonly SecurityHeadersOptions _options;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SecurityHeadersMiddleware" /> class.
     /// </summary>
     /// <param name="next">The next middleware in the pipeline.</param>
-    public SecurityHeadersMiddleware(RequestDelegate next)
+    /// <param name="options">Security headers configuration options.</param>
+    public SecurityHeadersMiddleware(RequestDelegate next, IOptions<SecurityHeadersOptions> options)
     {
         ArgumentNullException.ThrowIfNull(next);
+        ArgumentNullException.ThrowIfNull(options);
         _next = next;
+        _options = options.Value;
     }
 
     /// <summary>
@@ -28,76 +39,104 @@ public sealed class SecurityHeadersMiddleware
     {
         ArgumentNullException.ThrowIfNull(context);
 
+        // Generate nonce if configured
+        string? nonce = null;
+        if (_options.UseNonceCsp)
+        {
+            nonce = ContentSecurityPolicyHelper.GenerateNonce();
+            context.Items["CSP-Nonce"] = nonce;
+        }
+
         // Add security headers before processing the request
-        AddSecurityHeaders(context.Response);
+        AddSecurityHeaders(context.Response, nonce);
 
         // Call the next middleware in the pipeline
         await _next(context).ConfigureAwait(false);
     }
 
     /// <summary>
-    ///     Adds comprehensive security headers to the HTTP response.
+    ///     Adds comprehensive security headers to the HTTP response based on configuration.
     /// </summary>
     /// <param name="response">The HTTP response to add headers to.</param>
-    private static void AddSecurityHeaders(HttpResponse response)
+    /// <param name="nonce">Optional nonce for CSP.</param>
+    private void AddSecurityHeaders(HttpResponse response, string? nonce)
     {
         var headers = response.Headers;
 
-        // Prevent clickjacking attacks
-        // Restricts the page from being displayed in frames/iframes
-        headers.Append("X-Frame-Options", "DENY");
+        // X-Frame-Options: Prevent clickjacking attacks
+        headers.Append("X-Frame-Options", _options.XFrameOptions);
 
-        // Alternative to X-Frame-Options with more granular control
-        headers.Append("Content-Security-Policy",
-            "default-src 'self'; " +
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " + // Blazor requires unsafe-eval
-            "style-src 'self' 'unsafe-inline'; " + // Allow inline styles for Blazor
-            "img-src 'self' data: https:; " +
-            "font-src 'self' data:; " +
-            "connect-src 'self'; " +
-            "frame-ancestors 'none'; " +
-            "base-uri 'self'; " +
-            "form-action 'self'");
-
-        // Prevent MIME type sniffing
-        // Ensures browsers respect the declared Content-Type
-        headers.Append("X-Content-Type-Options", "nosniff");
-
-        // Enable XSS protection in older browsers
-        // Modern browsers use CSP, but this provides defense-in-depth
-        headers.Append("X-XSS-Protection", "1; mode=block");
-
-        // Control referrer information sent with requests
-        // Prevents leaking sensitive URL information to third parties
-        headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
-
-        // Feature Policy / Permissions Policy
-        // Restrict access to browser features and APIs
-        headers.Append("Permissions-Policy",
-            "accelerometer=(), " +
-            "camera=(), " +
-            "geolocation=(), " +
-            "gyroscope=(), " +
-            "magnetometer=(), " +
-            "microphone=(), " +
-            "payment=(), " +
-            "usb=()");
-
-        // HTTP Strict Transport Security (HSTS)
-        // Force HTTPS for 1 year, including subdomains
-        // Note: Only add this if your application uses HTTPS
-        if (response.HttpContext.Request.IsHttps)
+        // Content-Security-Policy: Comprehensive content restrictions
+        var cspPolicy = _options.ContentSecurityPolicy;
+        if (string.IsNullOrEmpty(cspPolicy))
         {
-            headers.Append("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload");
+            // Generate CSP based on configuration
+            cspPolicy = _options.UseStrictCsp
+                ? ContentSecurityPolicyHelper.GenerateBlazorServerPolicy(
+                    _options.AllowedScriptSources,
+                    _options.AllowedStyleSources,
+                    _options.SignalREndpoint,
+                    nonce)
+                : ContentSecurityPolicyHelper.Presets.Development;
         }
 
-        // Prevent DNS prefetching
-        headers.Append("X-DNS-Prefetch-Control", "off");
+        headers.Append("Content-Security-Policy", cspPolicy);
 
-        // Disable client-side caching for sensitive pages
-        // Uncomment if needed for authentication pages
-        // headers.Append("Cache-Control", "no-store, no-cache, must-revalidate, private");
-        // headers.Append("Pragma", "no-cache");
-        // headers.Append("Expires", "0");
+        // X-Content-Type-Options: Prevent MIME type sniffing
+        if (_options.AddXContentTypeOptions)
+        {
+            headers.Append("X-Content-Type-Options", "nosniff");
+        }
+
+        // X-XSS-Protection: Enable XSS protection in older browsers (defense-in-depth)
+        if (_options.AddXssProtection)
+        {
+            headers.Append("X-XSS-Protection", "1; mode=block");
+        }
+
+        // Referrer-Policy: Control referrer information
+        headers.Append("Referrer-Policy", _options.ReferrerPolicy);
+
+        // Permissions-Policy: Restrict access to browser features and APIs
+        if (!string.IsNullOrEmpty(_options.PermissionsPolicy))
+        {
+            headers.Append("Permissions-Policy", _options.PermissionsPolicy);
+        }
+
+        // HSTS: Force HTTPS (only when request is already HTTPS)
+        if (_options.AddHsts && response.HttpContext.Request.IsHttps)
+        {
+            var hstsValue = $"max-age={_options.HstsMaxAge}";
+            if (_options.HstsIncludeSubDomains)
+            {
+                hstsValue += "; includeSubDomains";
+            }
+
+            if (_options.HstsPreload)
+            {
+                hstsValue += "; preload";
+            }
+
+            headers.Append("Strict-Transport-Security", hstsValue);
+        }
+
+        // X-DNS-Prefetch-Control: Prevent DNS prefetching
+        if (_options.DisableDnsPrefetch)
+        {
+            headers.Append("X-DNS-Prefetch-Control", "off");
+        }
+
+        // Cross-Origin Policies (opt-in for compatibility)
+        if (_options.AddCrossOriginPolicies)
+        {
+            // Cross-Origin-Embedder-Policy: Requires CORP for cross-origin resources
+            headers.Append("Cross-Origin-Embedder-Policy", _options.CrossOriginEmbedderPolicy);
+
+            // Cross-Origin-Opener-Policy: Isolate browsing context
+            headers.Append("Cross-Origin-Opener-Policy", _options.CrossOriginOpenerPolicy);
+
+            // Cross-Origin-Resource-Policy: Control resource loading
+            headers.Append("Cross-Origin-Resource-Policy", _options.CrossOriginResourcePolicy);
+        }
     }
 }
