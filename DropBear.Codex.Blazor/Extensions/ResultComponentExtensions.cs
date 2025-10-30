@@ -43,7 +43,7 @@ public static class ResultComponentExtensions
                 "InvokeAsync",
                 BindingFlags.Instance | BindingFlags.NonPublic,
                 null,
-                new[] { typeof(Action) },
+                [typeof(Action)],
                 null);
 
             if (invokeAsyncMethod != null)
@@ -91,7 +91,7 @@ public static class ResultComponentExtensions
                 if (logErrorMethod != null)
                 {
                     logErrorMethod.Invoke(dropBearComponent,
-                        new object[] { "Error handling result", ex, new object[] { } });
+                        ["Error handling result", ex, Array.Empty<object>()]);
                 }
             }
         }
@@ -128,7 +128,7 @@ public static class ResultComponentExtensions
                 "InvokeAsync",
                 BindingFlags.Instance | BindingFlags.NonPublic,
                 null,
-                new[] { typeof(Action) },
+                [typeof(Action)],
                 null);
 
             if (invokeAsyncMethod != null)
@@ -200,7 +200,7 @@ public static class ResultComponentExtensions
                 if (logErrorMethod != null)
                 {
                     logErrorMethod.Invoke(dropBearComponent,
-                        new object[] { "Error handling result", ex, new object[] { } });
+                        ["Error handling result", ex, Array.Empty<object>()]);
                 }
             }
         }

@@ -106,7 +106,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private SortDirection _currentSortDirection = SortDirection.Ascending;
 
     // Backing fields for parameters
-    private IEnumerable<TItem> _data = Array.Empty<TItem>();
+    private IEnumerable<TItem> _data = [];
     private List<ColumnDefinition<TItem>>? _columnDefinitions;
 
     // Cache for filtered data

@@ -294,7 +294,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     ///     If empty, all file types are allowed (except those with blocked extensions).
     /// </summary>
     [Parameter]
-    public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = Array.Empty<string>();
+    public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = [];
 
     /// <summary>
     ///     Event callback triggered when files are successfully uploaded.

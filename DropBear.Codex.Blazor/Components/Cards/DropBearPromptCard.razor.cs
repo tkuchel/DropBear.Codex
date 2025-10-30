@@ -44,7 +44,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     private readonly Dictionary<ButtonConfig, string> _buttonClassCache = new();
 
     // Cache CSS class to avoid rebuilding on each render
-    private IReadOnlyCollection<ButtonConfig?> _lastButtons = Array.Empty<ButtonConfig>();
+    private IReadOnlyCollection<ButtonConfig?> _lastButtons = [];
 
     // Click debounce tracking
     private DateTime _lastClickTime = DateTime.MinValue;
@@ -70,12 +70,12 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
         try
         {
             // Clear collections to prevent memory leaks
-            Buttons = Array.Empty<ButtonConfig>();
+            Buttons = [];
             _buttonClassCache.Clear();
 
             // Clear cached values
             CssClass = string.Empty;
-            _lastButtons = Array.Empty<ButtonConfig>();
+            _lastButtons = [];
         }
         catch (Exception ex)
         {
@@ -337,7 +337,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     ///     The collection of button configurations to display in the prompt's footer.
     /// </summary>
     [Parameter]
-    public IReadOnlyCollection<ButtonConfig?> Buttons { get; set; } = Array.Empty<ButtonConfig>();
+    public IReadOnlyCollection<ButtonConfig?> Buttons { get; set; } = [];
 
     /// <summary>
     ///     Event callback for when a button is clicked in the prompt.

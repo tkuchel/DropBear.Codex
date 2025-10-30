@@ -26,7 +26,7 @@ public static class WorkflowStateRepositoryExtensions
                     .GetMethod(nameof(IWorkflowStateRepository.GetWorkflowStateAsync))!
                     .MakeGenericMethod(type);
 
-                object? result = method.Invoke(repository, new object[] { workflowInstanceId, cancellationToken });
+                object? result = method.Invoke(repository, [workflowInstanceId, cancellationToken]);
 
                 if (result is null)
                 {

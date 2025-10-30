@@ -58,11 +58,12 @@ public static class PersonHelper
 
         try
         {
-            var addressParts = new[] { line1, line2, city, state, postCode }
+            string?[] addressParts = [line1, line2, city, state, postCode];
+            var filteredParts = addressParts
                 .Where(part => !string.IsNullOrWhiteSpace(part))
                 .Select(part => part!.Trim());
 
-            var result = string.Join(separator, addressParts);
+            var result = string.Join(separator, filteredParts);
             return Result<string, PersonError>.Success(result);
         }
         catch (Exception ex)

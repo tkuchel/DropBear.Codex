@@ -84,7 +84,7 @@ public static class AzureOptimizations
         {
             options.EnableForHttps = true;
             options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
-                new[] { "application/octet-stream", "application/json" });
+                ["application/octet-stream", "application/json"]);
         });
 
         services.Configure<BrotliCompressionProviderOptions>(options =>

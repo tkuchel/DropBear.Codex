@@ -55,7 +55,7 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
         try
         {
             // Clear references to prevent memory leaks
-            Buttons = Array.Empty<ButtonConfig>();
+            Buttons = [];
 
             // Clear cached values
             CssClass = string.Empty;
@@ -246,7 +246,7 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
     ///     Button configurations to render in the default footer.
     /// </summary>
     [Parameter]
-    public IReadOnlyCollection<ButtonConfig> Buttons { get; set; } = Array.Empty<ButtonConfig>();
+    public IReadOnlyCollection<ButtonConfig> Buttons { get; set; } = [];
 
     /// <summary>
     ///     Event callback invoked when a footer button is clicked.

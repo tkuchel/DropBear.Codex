@@ -329,7 +329,7 @@ public static class BinaryAndHexConverter
     {
         if (string.IsNullOrEmpty(value))
         {
-            return Result<byte[], BinaryConversionError>.Success(Array.Empty<byte>());
+            return Result<byte[], BinaryConversionError>.Success([]);
         }
 
         try
@@ -379,7 +379,7 @@ public static class BinaryAndHexConverter
     {
         if (string.IsNullOrEmpty(value))
         {
-            return Result<byte[], BinaryConversionError>.Success(Array.Empty<byte>());
+            return Result<byte[], BinaryConversionError>.Success([]);
         }
 
         try

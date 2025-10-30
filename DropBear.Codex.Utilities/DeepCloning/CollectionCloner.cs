@@ -88,7 +88,7 @@ public static class CollectionCloner
 
             // Put it all together
             return Expression.Block(
-                new[] { clonedCollection, index },
+                [clonedCollection, index],
                 Expression.IfThenElse(
                     checkEmptyCollection,
                     Expression.Assign(clonedCollection, emptyCollection),
@@ -222,7 +222,7 @@ public static class CollectionCloner
 
             // Create and populate the temp list
             return Expression.Block(
-                new[] { tempListExpr },
+                [tempListExpr],
                 Expression.Assign(tempListExpr, Expression.New(listType)),
                 PopulateWithClonedElements(collection, tempListExpr, elementType, track, currentDepth + 1, maxDepth),
                 Expression.Call(null, toImmutableMethod, tempListExpr)
@@ -329,7 +329,7 @@ public static class CollectionCloner
 
         // Create the loop
         return Expression.Block(
-            new[] { index },
+            [index],
             Expression.Assign(index, Expression.Constant(0)),
             Expression.Loop(
                 Expression.IfThenElse(
@@ -397,7 +397,7 @@ public static class CollectionCloner
         var loopEnd = Expression.Label("loopEnd");
 
         return Expression.Block(
-            new[] { enumeratorVar },
+            [enumeratorVar],
             Expression.Assign(enumeratorVar, getEnumeratorCall),
             Expression.Loop(
                 Expression.IfThenElse(

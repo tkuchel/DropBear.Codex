@@ -32,7 +32,7 @@ public partial class DropBearContextMenu : DropBearComponentBase
     private double _top;
 
     // Backing fields for parameters
-    private IReadOnlyCollection<ContextMenuItem> _menuItems = Array.Empty<ContextMenuItem>();
+    private IReadOnlyCollection<ContextMenuItem> _menuItems = [];
     private EventCallback<(ContextMenuItem, object?)> _onItemClicked;
     private Func<object?>? _getContext;
     private RenderFragment? _childContent;

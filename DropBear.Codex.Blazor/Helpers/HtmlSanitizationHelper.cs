@@ -102,7 +102,7 @@ public static partial class HtmlSanitizationHelper
         html = IframeTagRegex().Replace(html, string.Empty);
 
         // Remove other dangerous tags
-        var dangerousTags = new[] { "object", "embed", "applet", "link", "style", "meta", "base" };
+        string[] dangerousTags = ["object", "embed", "applet", "link", "style", "meta", "base"];
         foreach (var tag in dangerousTags)
         {
             html = Regex.Replace(html, $@"<{tag}[\s\S]*?</{tag}>", string.Empty, RegexOptions.IgnoreCase);

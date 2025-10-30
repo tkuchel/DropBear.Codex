@@ -43,7 +43,7 @@ public readonly record struct NodeExecutionResult<TContext> where TContext : cla
     public static NodeExecutionResult<TContext> Failure(
         StepResult stepResult,
         StepExecutionTrace? stepTrace = null) =>
-        new() { StepResult = stepResult, NextNodes = Array.Empty<IWorkflowNode<TContext>>(), StepTrace = stepTrace };
+        new() { StepResult = stepResult, NextNodes = [], StepTrace = stepTrace };
 
     /// <summary>
     ///     Creates a completion result (no more nodes to execute).
@@ -54,7 +54,7 @@ public readonly record struct NodeExecutionResult<TContext> where TContext : cla
         new()
         {
             StepResult = StepResult.Success(metadata),
-            NextNodes = Array.Empty<IWorkflowNode<TContext>>(),
+            NextNodes = [],
             StepTrace = stepTrace
         };
 }

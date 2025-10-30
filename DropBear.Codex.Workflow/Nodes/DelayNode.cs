@@ -46,8 +46,8 @@ public sealed class DelayNode<TContext> : WorkflowNodeBase<TContext>, ILinkableN
             await Task.Delay(_delay, cancellationToken).ConfigureAwait(false);
 
             IWorkflowNode<TContext>[] nextNodes = _nextNode is not null
-                ? new[] { _nextNode }
-                : Array.Empty<IWorkflowNode<TContext>>();
+                ? [_nextNode]
+                : [];
 
             var metadata = new Dictionary<string, object> { ["DelayDuration"] = _delay.TotalMilliseconds };
 

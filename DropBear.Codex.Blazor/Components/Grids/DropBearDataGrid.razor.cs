@@ -115,7 +115,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     private string SearchTerm { get; set; } = string.Empty;
     private int CurrentPage { get; set; } = 1;
     private IEnumerable<TItem> FilteredItems => _cachedFilteredItems ?? Enumerable.Empty<TItem>();
-    private IEnumerable<TItem> DisplayedItems { get; set; } = Array.Empty<TItem>();
+    private IEnumerable<TItem> DisplayedItems { get; set; } = [];
     private bool ShowMetrics => EnableDebugMode && _metricsService.IsEnabled;
     private bool IsLoading { get; set; } = true;
     private bool HasData => FilteredItems.Any();
@@ -644,7 +644,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     {
         if (string.IsNullOrWhiteSpace(searchTerm))
         {
-            return Array.Empty<string>();
+            return [];
         }
 
         if (!_searchTermCache.TryGetValue(searchTerm, out string[]? terms))
@@ -754,7 +754,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         var itemsList = items as IList<TItem> ?? items.ToList();
         if (itemsList is null || itemsList.Count == 0)
         {
-            return Array.Empty<TItem>();
+            return [];
         }
 
         return itemsList.Count > ParallelThreshold
@@ -833,7 +833,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     {
         if (_cachedFilteredItems is null || _cachedFilteredItems.Count == 0)
         {
-            DisplayedItems = Array.Empty<TItem>();
+            DisplayedItems = [];
             return;
         }
 
