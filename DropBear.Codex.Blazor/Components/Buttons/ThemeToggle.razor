@@ -1,0 +1,113 @@
+@using DropBear.Codex.Blazor.Interfaces
+@using DropBear.Codex.Blazor.Models
+@inject IThemeService ThemeService
+@implements IAsyncDisposable
+
+<button type="button"
+        class="theme-toggle @CssClass"
+        @onclick="HandleToggleClickAsync"
+        aria-label="@AriaLabel"
+        disabled="@IsLoading"
+        title="@Title">
+    @if (IsLoading)
+    {
+        <span class="theme-toggle-icon loading" aria-hidden="true">⟳</span>
+    }
+    else if (CurrentTheme == "dark")
+    {
+        <span class="theme-toggle-icon theme-toggle-light-icon" aria-hidden="true">☀️</span>
+    }
+    else
+    {
+        <span class="theme-toggle-icon theme-toggle-dark-icon" aria-hidden="true">🌙</span>
+    }
+</button>
+
+@code {
+    /// <summary>
+    ///     Gets or sets additional CSS classes to apply to the button.
+    /// </summary>
+    [Parameter]
+    public string? CssClass { get; set; }
+
+    /// <summary>
+    ///     Gets or sets whether the theme transition should be animated.
+    /// </summary>
+    [Parameter]
+    public bool Animated { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets the callback invoked when the theme changes.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Theme> OnThemeChanged { get; set; }
+
+    private string CurrentTheme { get; set; } = "light";
+    private bool IsLoading { get; set; } = true;
+
+    private string AriaLabel => CurrentTheme == "dark"
+        ? "Switch to light mode"
+        : "Switch to dark mode";
+
+    private string Title => CurrentTheme == "dark"
+        ? "Switch to light mode"
+        : "Switch to dark mode";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            // Subscribe to theme changes
+            ThemeService.ThemeChanged += HandleThemeChanged;
+
+            // Initialize theme service
+            var initResult = await ThemeService.InitializeAsync();
+            if (initResult.IsSuccess && initResult.Value is not null)
+            {
+                CurrentTheme = initResult.Value.Current;
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task HandleToggleClickAsync()
+    {
+        if (IsLoading)
+        {
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            var result = await ThemeService.ToggleThemeAsync(Animated);
+            if (result.IsSuccess)
+            {
+                // Theme will be updated via the ThemeChanged event
+                if (OnThemeChanged.HasDelegate)
+                {
+                    await OnThemeChanged.InvokeAsync(result.Value);
+                }
+            }
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void HandleThemeChanged(object? sender, ThemeChangedEventArgs e)
+    {
+        CurrentTheme = e.Theme;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ThemeService.ThemeChanged -= HandleThemeChanged;
+        await ValueTask.CompletedTask;
+    }
+}

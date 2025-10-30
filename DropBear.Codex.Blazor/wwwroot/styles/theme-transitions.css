@@ -1,0 +1,360 @@
+/**
+ * Enhanced Theme Transitions
+ *
+ * Provides smooth animated transitions between light and dark themes.
+ * Respects user motion preferences and provides accessible theme switching.
+ */
+
+/* =====================================================================
+ * THEME TRANSITION CLASS
+ * ===================================================================== */
+
+/**
+ * Applied during theme transitions for smooth color changes.
+ * Automatically removed after transition completes.
+ */
+.theme-transitioning,
+.theme-transitioning * {
+    transition:
+        background-color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        border-color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        color 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        fill 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        stroke 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        opacity 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        box-shadow 300ms cubic-bezier(0.4, 0, 0.2, 1),
+        transform 300ms cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/* Exclude certain properties from transition */
+.theme-transitioning * {
+    /* Don't transition layout properties */
+    transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow !important;
+}
+
+/* =====================================================================
+ * REDUCED MOTION SUPPORT
+ * ===================================================================== */
+
+/**
+ * Respect user's motion preferences.
+ * If user prefers reduced motion, make transitions near-instant.
+ */
+@media (prefers-reduced-motion: reduce) {
+    .theme-transitioning,
+    .theme-transitioning * {
+        transition-duration: 1ms !important;
+        animation-duration: 1ms !important;
+    }
+}
+
+/* =====================================================================
+ * THEME-SPECIFIC ENHANCEMENTS
+ * ===================================================================== */
+
+/**
+ * Smooth color scheme property for native elements
+ */
+:root {
+    color-scheme: light dark;
+}
+
+[data-theme="light"] {
+    color-scheme: light;
+}
+
+[data-theme="dark"] {
+    color-scheme: dark;
+}
+
+/* =====================================================================
+ * COMPONENT-LEVEL THEME OVERRIDE
+ * ===================================================================== */
+
+/**
+ * Components can have their own theme independent of the global theme.
+ * Use data-theme attribute on any element to override.
+ *
+ * Example:
+ * <div data-theme="dark">
+ *   This will be dark even if global theme is light
+ * </div>
+ */
+
+/* Light theme overrides */
+[data-theme="light"] {
+    /* Surface Colors */
+    --surface-primary: #ffffff;
+    --surface-secondary: var(--color-gray-50);
+    --surface-tertiary: var(--color-gray-100);
+    --surface-inverse: var(--color-gray-900);
+
+    /* Text Colors */
+    --text-primary: var(--color-gray-900);
+    --text-secondary: var(--color-gray-600);
+    --text-tertiary: var(--color-gray-500);
+    --text-disabled: var(--color-gray-400);
+    --text-inverse: var(--color-gray-50);
+    --text-link: var(--color-info-600);
+    --text-link-hover: var(--color-info-700);
+
+    /* Border Colors */
+    --border-default: var(--color-gray-200);
+    --border-hover: var(--color-gray-300);
+    --border-focus: var(--color-primary-500);
+    --border-error: var(--color-error-500);
+}
+
+/* Dark theme overrides */
+[data-theme="dark"] {
+    /* Surface Colors */
+    --surface-primary: var(--color-gray-900);
+    --surface-secondary: var(--color-gray-800);
+    --surface-tertiary: var(--color-gray-700);
+    --surface-inverse: var(--color-gray-50);
+
+    /* Text Colors */
+    --text-primary: var(--color-gray-50);
+    --text-secondary: var(--color-gray-400);
+    --text-tertiary: var(--color-gray-500);
+    --text-disabled: var(--color-gray-600);
+    --text-inverse: var(--color-gray-900);
+    --text-link: var(--color-info-400);
+    --text-link-hover: var(--color-info-300);
+
+    /* Border Colors */
+    --border-default: var(--color-gray-700);
+    --border-hover: var(--color-gray-600);
+    --border-focus: var(--color-primary-400);
+    --border-error: var(--color-error-400);
+}
+
+/* =====================================================================
+ * HIGH CONTRAST MODE SUPPORT
+ * ===================================================================== */
+
+/**
+ * Enhanced contrast for accessibility
+ */
+@media (prefers-contrast: high) {
+    [data-theme="light"] {
+        --text-primary: #000000;
+        --surface-primary: #ffffff;
+        --border-default: #000000;
+    }
+
+    [data-theme="dark"] {
+        --text-primary: #ffffff;
+        --surface-primary: #000000;
+        --border-default: #ffffff;
+    }
+}
+
+/* =====================================================================
+ * THEME TOGGLE BUTTON STYLES
+ * ===================================================================== */
+
+/**
+ * Standard styling for theme toggle buttons
+ */
+.theme-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    padding: 0;
+    background: transparent;
+    border: 1px solid var(--border-default);
+    border-radius: var(--rounded-lg, 0.5rem);
+    cursor: pointer;
+    transition: var(--transition-colors, all 150ms ease-in-out);
+}
+
+.theme-toggle:hover {
+    background: var(--surface-secondary);
+    border-color: var(--border-hover);
+}
+
+.theme-toggle:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+.theme-toggle:active {
+    transform: scale(0.95);
+}
+
+/* Icon styling within toggle */
+.theme-toggle-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    color: var(--text-primary);
+    transition: transform 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-toggle:hover .theme-toggle-icon {
+    transform: rotate(15deg);
+}
+
+/* Hide/show icons based on theme */
+.theme-toggle-light-icon {
+    display: none;
+}
+
+.theme-toggle-dark-icon {
+    display: block;
+}
+
+[data-theme="dark"] .theme-toggle-light-icon {
+    display: block;
+}
+
+[data-theme="dark"] .theme-toggle-dark-icon {
+    display: none;
+}
+
+/* =====================================================================
+ * PRINT STYLES
+ * ===================================================================== */
+
+/**
+ * Always use light theme for printing
+ */
+@media print {
+    :root,
+    [data-theme] {
+        color-scheme: light;
+        --surface-primary: #ffffff !important;
+        --text-primary: #000000 !important;
+        --border-default: #000000 !important;
+    }
+
+    /* Remove all transitions for print */
+    *,
+    *::before,
+    *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+}
+
+/* =====================================================================
+ * LOADING STATE
+ * ===================================================================== */
+
+/**
+ * Prevent flash of unstyled content (FOUC) on page load
+ */
+html:not([data-theme]) {
+    /* Minimal styling until theme is applied */
+    visibility: hidden;
+}
+
+html[data-theme] {
+    visibility: visible;
+}
+
+/* =====================================================================
+ * CUSTOM SCROLLBAR THEMING (WebKit)
+ * ===================================================================== */
+
+/**
+ * Theme-aware scrollbar styling for WebKit browsers
+ */
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--surface-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--color-gray-400);
+    border-radius: var(--rounded, 0.25rem);
+    border: 2px solid var(--surface-secondary);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gray-500);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+    background: var(--color-gray-600);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-gray-500);
+}
+
+/* =====================================================================
+ * SELECTION THEMING
+ * ===================================================================== */
+
+/**
+ * Theme-aware text selection colors
+ */
+::selection {
+    background: var(--color-primary-200);
+    color: var(--color-primary-900);
+}
+
+[data-theme="dark"] ::selection {
+    background: var(--color-primary-800);
+    color: var(--color-primary-100);
+}
+
+/* =====================================================================
+ * FOCUS RING THEMING
+ * ===================================================================== */
+
+/**
+ * Consistent focus indicators across themes
+ */
+*:focus-visible {
+    outline: 2px solid var(--border-focus);
+    outline-offset: 2px;
+}
+
+/* Ensure focus is always visible in high contrast */
+@media (prefers-contrast: high) {
+    *:focus-visible {
+        outline-width: 3px;
+        outline-offset: 3px;
+    }
+}
+
+/* =====================================================================
+ * UTILITY CLASSES
+ * ===================================================================== */
+
+/**
+ * Force light theme on specific elements
+ */
+.theme-light-only {
+    --surface-primary: #ffffff;
+    --text-primary: var(--color-gray-900);
+    --border-default: var(--color-gray-200);
+    color-scheme: light;
+}
+
+/**
+ * Force dark theme on specific elements
+ */
+.theme-dark-only {
+    --surface-primary: var(--color-gray-900);
+    --text-primary: var(--color-gray-50);
+    --border-default: var(--color-gray-700);
+    color-scheme: dark;
+}
+
+/**
+ * Disable theme transitions on specific elements
+ */
+.theme-no-transition,
+.theme-no-transition * {
+    transition: none !important;
+}
