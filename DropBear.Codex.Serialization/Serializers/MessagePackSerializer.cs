@@ -78,7 +78,7 @@ public sealed class MessagePackSerializer : ISerializer
         if (value == null)
         {
             _logger.Warning("Attempted to serialize null value of type {Type}", typeof(T).Name);
-            return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+            return Result<byte[], SerializationError>.Success([]);
         }
 
         // Try cache lookup if enabled

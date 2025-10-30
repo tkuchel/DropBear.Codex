@@ -49,7 +49,7 @@ public sealed class StreamSerializerAdapter : ISerializer
         if (value == null)
         {
             _logger.Warning("Attempted to serialize null value of type {Type}", typeof(T).Name);
-            return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+            return Result<byte[], SerializationError>.Success([]);
         }
 
         _logger.Information("Starting stream-based serialization for type {Type}.", typeof(T).Name);

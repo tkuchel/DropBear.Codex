@@ -105,7 +105,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
 
             if (data.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             // Try cache lookup if enabled
@@ -196,7 +196,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
 
             if (data.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting decryption of data with length {Length} bytes.", data.Length);

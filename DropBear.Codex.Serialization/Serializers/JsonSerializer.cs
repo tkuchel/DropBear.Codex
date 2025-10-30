@@ -87,7 +87,7 @@ public sealed class JsonSerializer : ISerializer
         if (value == null)
         {
             _logger.Warning("Attempted to serialize null value of type {Type}", typeof(T).Name);
-            return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+            return Result<byte[], SerializationError>.Success([]);
         }
 
         // For simple value types, use an optimized path
@@ -243,7 +243,7 @@ public sealed class JsonSerializer : ISerializer
     /// <returns>True if serialization was successful; otherwise, false.</returns>
     private bool TrySerializeSimpleType<T>(T value, out byte[] result)
     {
-        result = Array.Empty<byte>();
+        result = [];
         var type = typeof(T);
 
         // Handle strings specially

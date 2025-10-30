@@ -303,11 +303,11 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
     private static Func<string, ResultError> CreateErrorFactory(Type errorType)
     {
         // Try to find constructor with string parameter
-        var constructor = errorType.GetConstructor(new[] { typeof(string) })
+        var constructor = errorType.GetConstructor([typeof(string)])
             ?? throw new InvalidOperationException(
                 $"Error type {errorType.Name} must have a constructor that accepts a string message.");
 
-        return message => (ResultError)constructor.Invoke(new object[] { message });
+        return message => (ResultError)constructor.Invoke([message]);
     }
 
     /// <summary>
@@ -316,19 +316,19 @@ public sealed class DefaultResultErrorHandler : IResultErrorHandler
     private static Func<string, Exception, ResultError> CreateErrorWithExceptionFactory(Type errorType)
     {
         // Try to find constructor with string and exception parameters
-        var constructor = errorType.GetConstructor(new[] { typeof(string), typeof(Exception) });
+        var constructor = errorType.GetConstructor([typeof(string), typeof(Exception)]);
         if (constructor != null)
         {
             return (message, exception) =>
-                (ResultError)constructor.Invoke(new object[] { message, exception });
+                (ResultError)constructor.Invoke([message, exception]);
         }
 
         // Fallback to message-only constructor
-        var messageConstructor = errorType.GetConstructor(new[] { typeof(string) });
+        var messageConstructor = errorType.GetConstructor([typeof(string)]);
         if (messageConstructor != null)
         {
             return (message, _) =>
-                (ResultError)messageConstructor.Invoke(new object[] { message });
+                (ResultError)messageConstructor.Invoke([message]);
         }
 
         throw new InvalidOperationException(

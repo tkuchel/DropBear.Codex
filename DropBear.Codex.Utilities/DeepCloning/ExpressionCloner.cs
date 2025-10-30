@@ -269,7 +269,7 @@ public static class ExpressionCloner
             return Expression.Block(
                 newArray,
                 Expression.Call(
-                    typeof(Array).GetMethod("Copy", new[] { typeof(Array), typeof(Array), typeof(int) })!,
+                    typeof(Array).GetMethod("Copy", [typeof(Array), typeof(Array), typeof(int)])!,
                     source,
                     newArray,
                     arrayLength),
@@ -297,7 +297,7 @@ public static class ExpressionCloner
         var condition = Expression.LessThan(index, arrayLength);
 
         var loop = Expression.Block(
-            new[] { index },
+            [index],
             Expression.Assign(index, Expression.Constant(0)),
             Expression.Loop(
                 Expression.IfThenElse(

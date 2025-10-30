@@ -58,7 +58,7 @@ public sealed class GZipCompressor : ICompressor
 
             if (data.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting compression of data with length {DataLength} bytes.", data.Length);
@@ -103,7 +103,7 @@ public sealed class GZipCompressor : ICompressor
 
             if (compressedData.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting decompression of data with length {CompressedDataLength} bytes.",

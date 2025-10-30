@@ -55,7 +55,7 @@ public sealed class HexEncoder : IEncoder
 
             if (data.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting hexadecimal encoding of data with length {DataLength} bytes.", data.Length);
@@ -151,7 +151,7 @@ public sealed class HexEncoder : IEncoder
 
             if (encodedData.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting hexadecimal decoding of data with length {EncodedDataLength} bytes.",
@@ -232,7 +232,7 @@ public sealed class HexEncoder : IEncoder
     {
         if (string.IsNullOrEmpty(hexString))
         {
-            return Array.Empty<byte>();
+            return [];
         }
 
         if (hexString.Length % 2 != 0)

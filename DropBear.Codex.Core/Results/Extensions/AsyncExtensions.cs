@@ -76,7 +76,7 @@ public static class AsyncExtensions
 
             if (items.Count == 0)
             {
-                return Result<IReadOnlyList<TResult>, TError>.Success(Array.Empty<TResult>());
+                return Result<IReadOnlyList<TResult>, TError>.Success([]);
             }
 
             var results = new TResult[items.Count];

@@ -41,7 +41,7 @@ public sealed class Base64Encoder : IEncoder
 
             if (data.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting Base64 encoding of data with length {DataLength} bytes.", data.Length);
@@ -103,7 +103,7 @@ public sealed class Base64Encoder : IEncoder
 
             if (encodedData.Length == 0)
             {
-                return Result<byte[], SerializationError>.Success(Array.Empty<byte>());
+                return Result<byte[], SerializationError>.Success([]);
             }
 
             _logger.Information("Starting Base64 decoding of data with length {EncodedDataLength} bytes.",
