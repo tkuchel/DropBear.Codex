@@ -2,20 +2,18 @@
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-
   <!-- Centralized package versions for DropBear.Codex -->
   <ItemGroup>
     <!-- ===== Build Tools & Source Control ===== -->
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.4" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
     <PackageVersion Include="Nerdbank.GitVersioning" Version="3.8.118" />
     <PackageVersion Include="PublicApiAnalyzer" Version="1.0.0-alpha001" />
-
     <!-- ===== Code Analysis & Annotations ===== -->
     <PackageVersion Include="JetBrains.Annotations" Version="2025.2.2" />
     <PackageVersion Include="Meziantou.Analyzer" Version="2.0.227" />
     <PackageVersion Include="Roslynator.Analyzers" Version="4.14.1" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.2.0-beta.556" />
-
     <!-- ===== Testing Frameworks ===== -->
     <PackageVersion Include="bunit" Version="1.34.41" />
     <PackageVersion Include="bunit.web" Version="1.34.41" />
@@ -25,7 +23,6 @@
     <PackageVersion Include="Moq" Version="4.20.72" />
     <PackageVersion Include="xunit" Version="2.9.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
-
     <!-- ===== Logging (Serilog) ===== -->
     <PackageVersion Include="Serilog" Version="4.3.0" />
     <PackageVersion Include="Serilog.Enrichers.Environment" Version="3.0.1" />
@@ -34,12 +31,10 @@
     <PackageVersion Include="Serilog.Formatting.Compact" Version="3.0.0" />
     <PackageVersion Include="Serilog.Sinks.Console" Version="6.0.0" />
     <PackageVersion Include="Serilog.Sinks.File" Version="7.0.0" />
-
     <!-- ===== Serialization ===== -->
     <PackageVersion Include="MessagePack" Version="3.1.4" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageVersion Include="System.Text.Json" Version="9.0.10" />
-
     <!-- ===== Microsoft Extensions ===== -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
@@ -48,43 +43,33 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.10" />
-
     <!-- ===== ASP.NET Core & Blazor ===== -->
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="9.0.10" />
-
     <!-- ===== Entity Framework Core ===== -->
     <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.10" />
     <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.10" />
-
     <!-- ===== Hashing Libraries ===== -->
     <PackageVersion Include="Blake3" Version="2.0.0" />
     <PackageVersion Include="HashDepot" Version="3.1.0" />
     <PackageVersion Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
     <PackageVersion Include="SauceControl.Blake2Fast" Version="2.0.0" />
-
     <!-- ===== Storage & Files ===== -->
     <PackageVersion Include="FluentStorage.Azure.Blobs" Version="6.0.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-
     <!-- ===== Security ===== -->
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.10" />
-
     <!-- ===== Utilities ===== -->
     <PackageVersion Include="ClosedXML" Version="0.105.0" />
     <PackageVersion Include="FuzzySharp" Version="2.0.2" />
-
     <!-- ===== Messaging & Events ===== -->
     <PackageVersion Include="MessagePipe" Version="1.8.1" />
     <PackageVersion Include="MessagePipe.Analyzer" Version="1.8.1" />
-
     <!-- ===== Reactive Extensions ===== -->
     <PackageVersion Include="R3" Version="1.3.0" />
-
     <!-- ===== State Management ===== -->
     <PackageVersion Include="Stateless" Version="5.20.0" />
-
     <!-- ===== Resilience & Retry ===== -->
     <PackageVersion Include="Polly" Version="8.6.4" />
   </ItemGroup>

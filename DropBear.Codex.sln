@@ -40,6 +40,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Workflow.Tes
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Blazor.Tests", "DropBear.Codex.Blazor.Tests\DropBear.Codex.Blazor.Tests.csproj", "{8DAB4A3A-4EDA-432F-B416-51BB170A04E8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DropBear.Codex.Benchmarks", "DropBear.Codex.Benchmarks\DropBear.Codex.Benchmarks.csproj", "{DAB0F705-EF76-48B9-8C03-A066A41599A1}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -290,6 +292,18 @@ Global
 		{8DAB4A3A-4EDA-432F-B416-51BB170A04E8}.Release|x64.Build.0 = Release|Any CPU
 		{8DAB4A3A-4EDA-432F-B416-51BB170A04E8}.Release|x86.ActiveCfg = Release|Any CPU
 		{8DAB4A3A-4EDA-432F-B416-51BB170A04E8}.Release|x86.Build.0 = Release|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Debug|x64.Build.0 = Debug|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Debug|x86.Build.0 = Debug|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Release|x64.ActiveCfg = Release|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Release|x64.Build.0 = Release|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Release|x86.ActiveCfg = Release|Any CPU
+		{DAB0F705-EF76-48B9-8C03-A066A41599A1}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
