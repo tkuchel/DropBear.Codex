@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
@@ -226,7 +226,7 @@ public sealed class SipHasher : BaseHasher
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute SipHash for verification (async).");
-            return Result<Unit, HashingError>.Failure(hashResult.Error);
+            return Result<Unit, HashingError>.Failure(hashResult.Error!);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
@@ -252,7 +252,7 @@ public sealed class SipHasher : BaseHasher
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute SipHash for verification (sync).");
-            return Result<Unit, HashingError>.Failure(hashResult.Error);
+            return Result<Unit, HashingError>.Failure(hashResult.Error!);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);

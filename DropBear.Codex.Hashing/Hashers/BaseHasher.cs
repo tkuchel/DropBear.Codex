@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Buffers;
 using DropBear.Codex.Core.Logging;
@@ -97,7 +97,7 @@ public abstract class BaseHasher : IHasher
             if (!encodeResult.IsSuccess)
             {
                 Logger.Error("Failed to compute {Algorithm} Base64 hash for verification.", AlgorithmName);
-                return Result<Unit, HashingError>.Failure(encodeResult.Error);
+                return Result<Unit, HashingError>.Failure(encodeResult.Error!);
             }
 
             var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);
@@ -138,7 +138,7 @@ public abstract class BaseHasher : IHasher
             if (!encodeResult.IsSuccess)
             {
                 Logger.Error("Failed to compute {Algorithm} Base64 hash for verification.", AlgorithmName);
-                return Result<Unit, HashingError>.Failure(encodeResult.Error);
+                return Result<Unit, HashingError>.Failure(encodeResult.Error!);
             }
 
             var isValid = string.Equals(encodeResult.Value, expectedBase64Hash, StringComparison.Ordinal);

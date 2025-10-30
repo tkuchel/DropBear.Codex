@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Errors;
@@ -34,13 +34,13 @@ public static class BlobStorageFactory
         var validationResult = ValidateInput(accountName, nameof(accountName));
         if (!validationResult.IsSuccess)
         {
-            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error);
+            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error!);
         }
 
         validationResult = ValidateInput(accountKey, nameof(accountKey));
         if (!validationResult.IsSuccess)
         {
-            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error);
+            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error!);
         }
 
         try
@@ -85,13 +85,13 @@ public static class BlobStorageFactory
         var validationResult = ValidateInput(accountName, nameof(accountName));
         if (!validationResult.IsSuccess)
         {
-            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error);
+            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error!);
         }
 
         validationResult = ValidateInput(accountKey, nameof(accountKey));
         if (!validationResult.IsSuccess)
         {
-            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error);
+            return Result<IBlobStorage, StorageError>.Failure(validationResult.Error!);
         }
 
         try

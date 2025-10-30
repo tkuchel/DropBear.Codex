@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -151,7 +151,7 @@ public sealed class ValidationCache : IDisposable
         if (!validationResult.IsSuccess)
         {
             // TaskValidationError extends TaskExecutionError, so we can use it directly
-            return Result<Unit, TaskExecutionError>.Failure(validationResult.Error);
+            return Result<Unit, TaskExecutionError>.Failure(validationResult.Error!);
         }
 
         // Async check

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using System.Collections.Frozen;
@@ -227,7 +227,7 @@ public sealed class HashBuilder : IHashBuilder
         var hasherResult = TryGetHasher(key);
         if (!hasherResult.IsSuccess)
         {
-            return Result<PooledHasher, BuilderError>.Failure(hasherResult.Error);
+            return Result<PooledHasher, BuilderError>.Failure(hasherResult.Error!);
         }
 
         // Create a wrapper that will automatically return the hasher to the pool

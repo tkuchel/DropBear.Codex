@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Text.Json;
 using DropBear.Codex.Core.Results;
@@ -255,7 +255,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
 
             if (!dbPreferencesResult.IsSuccess)
             {
-                return Result<NotificationPreferences?, NotificationError>.Failure(dbPreferencesResult.Error);
+                return Result<NotificationPreferences?, NotificationError>.Failure(dbPreferencesResult.Error!);
             }
 
             var dbPreferences = dbPreferencesResult.Value;
