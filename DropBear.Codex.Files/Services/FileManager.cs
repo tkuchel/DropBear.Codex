@@ -6,6 +6,7 @@ using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
 using DropBear.Codex.Core.Logging;
+using DropBear.Codex.Core.Results.Async;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Extensions;
@@ -680,6 +681,181 @@ public sealed class FileManager
                 FileOperationError.InvalidOperation("Error replacing content container."), ex);
         }
     }
+
+    #region Async Enumerable Streaming Methods
+
+    /// <summary>
+    ///     Streams <see cref="ContentContainer" /> objects from a <see cref="DropBearFile" /> asynchronously,
+    ///     optionally filtered by a predicate. Useful for processing large files with many containers
+    ///     without loading all containers into memory at once.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to stream containers from.</param>
+    /// <param name="predicateAsync">Optional async predicate to filter containers. If null, all containers are streamed.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="AsyncEnumerableResult{T, TError}" /> that yields matching containers incrementally.</returns>
+    /// <remarks>
+    ///     This method is preferred over loading all containers into memory when working with files
+    ///     containing hundreds or thousands of containers. Containers are yielded as they match the predicate.
+    /// </remarks>
+    public AsyncEnumerableResult<ContentContainer, FileOperationError> StreamContainersAsync(
+        DropBearFile file,
+        Func<ContentContainer, ValueTask<bool>>? predicateAsync = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        async IAsyncEnumerable<ContentContainer> StreamInternal(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            foreach (var container in file.ContentContainers)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (predicateAsync == null || await predicateAsync(container).ConfigureAwait(false))
+                {
+                    yield return container;
+                }
+            }
+        }
+
+        return AsyncEnumerableResult<ContentContainer, FileOperationError>.Success(StreamInternal(cancellationToken));
+    }
+
+    /// <summary>
+    ///     Streams distinct content types from a <see cref="DropBearFile" /> asynchronously.
+    ///     This is more memory-efficient than <see cref="ListContainerTypes" /> for files with many containers.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> whose container types are streamed.</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="AsyncEnumerableResult{T, TError}" /> that yields distinct content types incrementally.</returns>
+    /// <remarks>
+    ///     Content types are yielded in the order they are first encountered in the container collection.
+    ///     Duplicates are automatically filtered out using case-insensitive comparison.
+    /// </remarks>
+    public AsyncEnumerableResult<string, FileOperationError> StreamContainerTypesAsync(
+        DropBearFile file,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+
+        async IAsyncEnumerable<string> StreamInternal(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            var seenTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var container in file.ContentContainers)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (seenTypes.Add(container.ContentType))
+                {
+                    yield return container.ContentType;
+                }
+
+                // Allow cooperative cancellation
+                await Task.Yield();
+            }
+        }
+
+        return AsyncEnumerableResult<string, FileOperationError>.Success(StreamInternal(cancellationToken));
+    }
+
+    /// <summary>
+    ///     Streams <see cref="ContentContainer" /> objects that match a specific content type.
+    /// </summary>
+    /// <param name="file">The <see cref="DropBearFile" /> to search.</param>
+    /// <param name="contentType">The content type to match (case-insensitive).</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="AsyncEnumerableResult{T, TError}" /> that yields matching containers.</returns>
+    /// <remarks>
+    ///     Useful for processing containers of a specific type in large files without materializing
+    ///     the entire collection. Matching is case-insensitive.
+    /// </remarks>
+    public AsyncEnumerableResult<ContentContainer, FileOperationError> StreamContainersByTypeAsync(
+        DropBearFile file,
+        string contentType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(contentType);
+
+        async IAsyncEnumerable<ContentContainer> StreamInternal(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            foreach (var container in file.ContentContainers)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (container.ContentType.Equals(contentType, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return container;
+                }
+
+                // Allow cooperative cancellation
+                await Task.Yield();
+            }
+        }
+
+        return AsyncEnumerableResult<ContentContainer, FileOperationError>.Success(StreamInternal(cancellationToken));
+    }
+
+    /// <summary>
+    ///     Streams deserialized data from <see cref="ContentContainer" /> objects of a specific type.
+    ///     This method performs lazy deserialization, processing each container only when enumerated.
+    /// </summary>
+    /// <typeparam name="T">The type to deserialize container data into.</typeparam>
+    /// <param name="file">The <see cref="DropBearFile" /> to stream from.</param>
+    /// <param name="contentType">The content type to match (case-insensitive).</param>
+    /// <param name="cancellationToken">A token to monitor for cancellation requests.</param>
+    /// <returns>An <see cref="AsyncEnumerableResult{T, TError}" /> that yields deserialized data incrementally.</returns>
+    /// <remarks>
+    ///     This method is significantly more memory-efficient than deserializing all containers upfront.
+    ///     Deserialization errors for individual containers are logged but do not stop the stream;
+    ///     failed containers are skipped.
+    /// </remarks>
+    public AsyncEnumerableResult<T, FileOperationError> StreamContainerDataAsync<T>(
+        DropBearFile file,
+        string contentType,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        ArgumentNullException.ThrowIfNull(contentType);
+
+        async IAsyncEnumerable<T> StreamInternal(
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken ct = default)
+        {
+            foreach (var container in file.ContentContainers)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (!container.ContentType.Equals(contentType, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                // Attempt to deserialize the container data
+                var deserializeResult = await container.GetDataAsync<T>(ct).ConfigureAwait(false);
+                if (deserializeResult.IsSuccess && deserializeResult.Value is not null)
+                {
+                    yield return deserializeResult.Value;
+                }
+                else
+                {
+                    _logger.Warning(
+                        "Failed to deserialize container of type {ContentType}. Error: {ErrorMessage}",
+                        contentType, deserializeResult.Error?.Message);
+                    // Skip this container and continue streaming
+                }
+
+                // Allow cooperative cancellation
+                await Task.Yield();
+            }
+        }
+
+        return AsyncEnumerableResult<T, FileOperationError>.Success(StreamInternal(cancellationToken));
+    }
+
+    #endregion
 
     #region Private/Helper Methods
 

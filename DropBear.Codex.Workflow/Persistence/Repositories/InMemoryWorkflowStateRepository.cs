@@ -2,7 +2,10 @@
 
 using System.Collections.Concurrent;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using DropBear.Codex.Core.Results.Async;
 using DropBear.Codex.Workflow.Common;
+using DropBear.Codex.Workflow.Errors;
 using DropBear.Codex.Workflow.Persistence.Interfaces;
 using DropBear.Codex.Workflow.Persistence.Models;
 using Microsoft.Extensions.Logging;
@@ -186,6 +189,47 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
         return ValueTask.FromResult<IEnumerable<WorkflowInstanceState<TContext>>>(waitingWorkflows);
     }
 
+    /// <inheritdoc />
+    public AsyncEnumerableResult<WorkflowInstanceState<TContext>, WorkflowExecutionError> StreamWaitingWorkflowsAsync<TContext>(
+        string? signalName = null,
+        CancellationToken cancellationToken = default) where TContext : class
+    {
+        ThrowIfDisposed();
+
+        string requestedTypeName = typeof(TContext).FullName ?? typeof(TContext).Name;
+
+        async IAsyncEnumerable<WorkflowInstanceState<TContext>> StreamInternal(
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            int count = 0;
+
+            foreach (KeyValuePair<string, WorkflowStateWrapper> kvp in _states)
+            {
+                ct.ThrowIfCancellationRequested();
+
+                if (string.Equals(kvp.Value.ContextTypeName, requestedTypeName, StringComparison.OrdinalIgnoreCase) &&
+                    kvp.Value.State is WorkflowInstanceState<TContext> typedState)
+                {
+                    if ((typedState.Status == WorkflowStatus.WaitingForSignal ||
+                         typedState.Status == WorkflowStatus.WaitingForApproval) &&
+                        (signalName == null ||
+                         string.Equals(typedState.WaitingForSignal, signalName, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        count++;
+                        yield return typedState;
+
+                        // Allow cooperative cancellation
+                        await Task.Yield();
+                    }
+                }
+            }
+
+            LogFoundWaitingWorkflows(count, requestedTypeName, signalName ?? string.Empty);
+        }
+
+        return AsyncEnumerableResult<WorkflowInstanceState<TContext>, WorkflowExecutionError>
+            .Success(StreamInternal(cancellationToken));
+    }
 
     public ValueTask<(string? AssemblyQualifiedName, string? TypeName)> GetWorkflowContextTypeInfoAsync(
         string workflowInstanceId,

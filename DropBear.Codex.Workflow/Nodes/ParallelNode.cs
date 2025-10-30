@@ -1,6 +1,10 @@
 #region
 
+using System.Runtime.CompilerServices;
+using System.Threading.Channels;
+using DropBear.Codex.Core.Results.Async;
 using DropBear.Codex.Workflow.Common;
+using DropBear.Codex.Workflow.Errors;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Results;
 
@@ -124,6 +128,100 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
             var stepResult = StepResult.Failure($"Parallel node execution failed: {ex.Message}");
             return NodeExecutionResult<TContext>.Failure(stepResult);
         }
+    }
+
+    /// <summary>
+    ///     Streams parallel node execution results as they complete, rather than waiting for all branches to finish.
+    ///     This allows consumers to react to branch completions in real-time.
+    /// </summary>
+    /// <param name="context">The workflow context.</param>
+    /// <param name="serviceProvider">Service provider for dependency injection.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>
+    ///     An <see cref="AsyncEnumerableResult{T, TError}" /> that yields <see cref="NodeExecutionResult{TContext}" />
+    ///     instances as parallel branches complete execution.
+    /// </returns>
+    /// <remarks>
+    ///     This method is significantly more responsive than <see cref="ExecuteAsync" /> when dealing with
+    ///     many parallel branches. Results are yielded immediately upon completion, enabling real-time
+    ///     progress tracking and early failure detection. Execution respects the configured degree of parallelism.
+    /// </remarks>
+    public AsyncEnumerableResult<NodeExecutionResult<TContext>, WorkflowExecutionError> StreamParallelResultsAsync(
+        TContext context,
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentNullException.ThrowIfNull(serviceProvider);
+
+        if (ParallelNodes.Count == 0)
+        {
+            // Return empty enumerable for no parallel nodes
+            async IAsyncEnumerable<NodeExecutionResult<TContext>> EmptyResults(
+                [EnumeratorCancellation] CancellationToken ct = default)
+            {
+                await Task.CompletedTask.ConfigureAwait(false);
+                yield break;
+            }
+
+            return AsyncEnumerableResult<NodeExecutionResult<TContext>, WorkflowExecutionError>
+                .Success(EmptyResults(cancellationToken));
+        }
+
+        async IAsyncEnumerable<NodeExecutionResult<TContext>> StreamInternal(
+            [EnumeratorCancellation] CancellationToken ct = default)
+        {
+            // Use unbounded channel for result collection
+            var channel = Channel.CreateUnbounded<NodeExecutionResult<TContext>>(new UnboundedChannelOptions
+            {
+                SingleReader = true,
+                SingleWriter = false // Multiple parallel tasks write to this channel
+            });
+
+            int maxDegreeOfParallelism = WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
+            using var semaphore = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
+
+            // Start all parallel executions
+            _ = Task.Run(async () =>
+            {
+                var tasks = ParallelNodes.Select(async node =>
+                {
+                    await semaphore.WaitAsync(ct).ConfigureAwait(false);
+                    try
+                    {
+                        var result = await ExecuteNodeAsync(node, context, serviceProvider, ct)
+                            .ConfigureAwait(false);
+
+                        // Write result to channel as soon as it's available
+                        await channel.Writer.WriteAsync(result, ct).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }).ToArray();
+
+                // Wait for all to complete
+                try
+                {
+                    await Task.WhenAll(tasks).ConfigureAwait(false);
+                }
+                finally
+                {
+                    // Signal completion
+                    channel.Writer.Complete();
+                }
+            }, ct);
+
+            // Yield results as they arrive
+            await foreach (var result in channel.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+            {
+                yield return result;
+            }
+        }
+
+        return AsyncEnumerableResult<NodeExecutionResult<TContext>, WorkflowExecutionError>
+            .Success(StreamInternal(cancellationToken));
     }
 
     /// <summary>
