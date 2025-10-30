@@ -26,6 +26,11 @@ public abstract class ComponentTestBase : TestContext, IDisposable
     protected Mock<ILogger> MockLogger { get; }
 
     /// <summary>
+    ///     Gets the mock JS initialization service for testing.
+    /// </summary>
+    protected Mock<IJsInitializationService> MockJsInitService { get; }
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="ComponentTestBase"/> class.
     /// </summary>
     protected ComponentTestBase()
@@ -33,6 +38,15 @@ public abstract class ComponentTestBase : TestContext, IDisposable
         // Setup mock logger
         MockLogger = new Mock<ILogger>();
         Services.AddSingleton(MockLogger.Object);
+
+        // Setup mock JS initialization service
+        MockJsInitService = new Mock<IJsInitializationService>();
+        MockJsInitService.Setup(x => x.IsModuleInitialized(It.IsAny<string>())).Returns(true);
+        MockJsInitService.Setup(x => x.EnsureJsModuleInitializedAsync(
+            It.IsAny<string>(),
+            It.IsAny<TimeSpan?>(),
+            It.IsAny<CancellationToken>())).Returns(ValueTask.CompletedTask);
+        Services.AddSingleton(MockJsInitService.Object);
 
         // Setup JSInterop for testing
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -46,6 +60,7 @@ public abstract class ComponentTestBase : TestContext, IDisposable
     protected Mock<IThemeService> AddMockThemeService(Theme initialTheme = Theme.Light)
     {
         var mockThemeService = new Mock<IThemeService>();
+        var currentTheme = initialTheme;
 
         // Setup default behaviors
         mockThemeService.Setup(x => x.IsInitialized).Returns(true);
@@ -53,34 +68,45 @@ public abstract class ComponentTestBase : TestContext, IDisposable
         mockThemeService.Setup(x => x.InitializeAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(Result<ThemeInfo, Errors.JsInteropError>.Success(new ThemeInfo
             {
-                Current = initialTheme.ToString().ToLowerInvariant(),
-                Effective = initialTheme.ToString().ToLowerInvariant(),
+                Current = currentTheme.ToString().ToLowerInvariant(),
+                Effective = currentTheme.ToString().ToLowerInvariant(),
                 UserPreference = "auto",
                 SystemTheme = "light",
                 IsAuto = false,
-                IsDark = initialTheme == Theme.Dark,
-                IsLight = initialTheme == Theme.Light
+                IsDark = currentTheme == Theme.Dark,
+                IsLight = currentTheme == Theme.Light
             }));
 
         mockThemeService.Setup(x => x.GetThemeInfoAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<ThemeInfo, Errors.JsInteropError>.Success(new ThemeInfo
+            .ReturnsAsync(() => Result<ThemeInfo, Errors.JsInteropError>.Success(new ThemeInfo
             {
-                Current = initialTheme.ToString().ToLowerInvariant(),
-                Effective = initialTheme.ToString().ToLowerInvariant(),
+                Current = currentTheme.ToString().ToLowerInvariant(),
+                Effective = currentTheme.ToString().ToLowerInvariant(),
                 UserPreference = "auto",
                 SystemTheme = "light",
                 IsAuto = false,
-                IsDark = initialTheme == Theme.Dark,
-                IsLight = initialTheme == Theme.Light
+                IsDark = currentTheme == Theme.Dark,
+                IsLight = currentTheme == Theme.Light
             }));
 
         mockThemeService.Setup(x => x.SetThemeAsync(It.IsAny<Theme>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(Result<bool, Errors.JsInteropError>.Success(true));
+            .ReturnsAsync((Theme theme, bool animated, CancellationToken ct) =>
+            {
+                var previousTheme = currentTheme.ToString().ToLowerInvariant();
+                currentTheme = theme;
+                mockThemeService.Raise(x => x.ThemeChanged += null, mockThemeService.Object,
+                    new ThemeChangedEventArgs(theme.ToString().ToLowerInvariant(), previousTheme, "auto", animated));
+                return Result<bool, Errors.JsInteropError>.Success(true);
+            });
 
         mockThemeService.Setup(x => x.ToggleThemeAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync((bool animated, CancellationToken ct) =>
             {
-                var newTheme = initialTheme == Theme.Light ? Theme.Dark : Theme.Light;
+                var previousTheme = currentTheme.ToString().ToLowerInvariant();
+                var newTheme = currentTheme == Theme.Light ? Theme.Dark : Theme.Light;
+                currentTheme = newTheme;
+                mockThemeService.Raise(x => x.ThemeChanged += null, mockThemeService.Object,
+                    new ThemeChangedEventArgs(newTheme.ToString().ToLowerInvariant(), previousTheme, "auto", animated));
                 return Result<Theme, Errors.JsInteropError>.Success(newTheme);
             });
 
