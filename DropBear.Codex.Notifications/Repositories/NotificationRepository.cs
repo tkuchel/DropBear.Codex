@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using DropBear.Codex.Core.Results;
 using DropBear.Codex.Core.Results.Base;
@@ -176,7 +176,7 @@ public class NotificationRepository : INotificationRepository
 
             if (!notificationResult.IsSuccess)
             {
-                return Result<Unit, NotificationError>.Failure(notificationResult.Error);
+                return Result<Unit, NotificationError>.Failure(notificationResult.Error!);
             }
 
             var notification = notificationResult.Value;
@@ -247,7 +247,7 @@ public class NotificationRepository : INotificationRepository
 
             if (!notificationResult.IsSuccess)
             {
-                return Result<Unit, NotificationError>.Failure(notificationResult.Error);
+                return Result<Unit, NotificationError>.Failure(notificationResult.Error!);
             }
 
             var notification = notificationResult.Value;

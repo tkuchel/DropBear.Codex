@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
@@ -240,7 +240,7 @@ public sealed class Fnv1AHasher : BaseHasher
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute FNV-1a hash for verification (async).");
-            return Result<Unit, HashingError>.Failure(hashResult.Error);
+            return Result<Unit, HashingError>.Failure(hashResult.Error!);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
@@ -269,7 +269,7 @@ public sealed class Fnv1AHasher : BaseHasher
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute FNV-1a hash for verification (sync).");
-            return Result<Unit, HashingError>.Failure(hashResult.Error);
+            return Result<Unit, HashingError>.Failure(hashResult.Error!);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);

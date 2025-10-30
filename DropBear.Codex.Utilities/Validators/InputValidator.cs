@@ -112,7 +112,7 @@ public static partial class InputValidator
         var nonEmptyResult = ValidateNonEmpty(url, "url");
         if (!nonEmptyResult.IsSuccess)
         {
-            return Result<Uri, UtilityError>.Failure(nonEmptyResult.Error);
+            return Result<Uri, UtilityError>.Failure(nonEmptyResult.Error!);
         }
 
         if (url.Length > MaxUrlLength)

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Buffers;
 using System.Runtime.CompilerServices;
@@ -258,7 +258,7 @@ public sealed class XxHasher : BaseHasher
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute XXHash for verification (async).");
-            return Result<Unit, HashingError>.Failure(hashResult.Error);
+            return Result<Unit, HashingError>.Failure(hashResult.Error!);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);
@@ -287,7 +287,7 @@ public sealed class XxHasher : BaseHasher
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute XXHash for verification (sync).");
-            return Result<Unit, HashingError>.Failure(hashResult.Error);
+            return Result<Unit, HashingError>.Failure(hashResult.Error!);
         }
 
         var isValid = string.Equals(hashResult.Value, expectedHash, StringComparison.OrdinalIgnoreCase);

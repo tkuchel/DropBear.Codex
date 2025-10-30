@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.Errors;
@@ -54,7 +54,7 @@ public sealed class TaskDependencyResolver
             {
                 _listPool.Return(sortedTasks);
                 sortedTasks = new List<ITask>();
-                return Result<Unit, TaskExecutionError>.Failure(sortResult.Error);
+                return Result<Unit, TaskExecutionError>.Failure(sortResult.Error!);
             }
 
             foreach (var name in sortResult.Value!)
