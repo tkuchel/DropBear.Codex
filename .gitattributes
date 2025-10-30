@@ -1,0 +1,20 @@
+* text=auto eol=lf
+
+# Windows-friendly
+*.sln text eol=crlf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Unix-friendly
+*.sh  text eol=lf
+
+# Mark these as text with LF
+*.cs text eol=lf
+*.csproj text eol=lf
+*.props text eol=lf
+*.targets text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.editorconfig text eol=lf
