@@ -1,5 +1,87 @@
+## Build results
 bin/
 obj/
 /packages/
-riderModule.iml
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+## Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.trx
+*.coverage
+*.coveragexml
+
+## IDE files
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+*.pidb
+*.sln.iml
+*.swp
+*~
+.DS_Store
+
+## ReSharper
 /_ReSharper.Caches/
+_ReSharper*/
+*.ReSharper
+*.DotSettings.user
+
+## Rider
+riderModule.iml
+.idea/
+*.sln.iml
+
+## Visual Studio
+.vs/
+*.vsidx
+*.vssscc
+$tf/
+
+## Build logs and temporary files
+build_output.txt
+build_async_changes.txt
+intermediate_build.txt
+release_build_output.txt
+*_output.txt
+*_errors.txt
+*_changes.txt
+workflow_errors.txt
+nul
+
+## Temporary scripts (keep only official release scripts)
+bootstrap-*.ps1
+fix_*.ps1
+convert_*.ps1
+
+## Node.js (if accidentally added to .NET project)
+node_modules/
+package-lock.json
+package.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+## NuGet
+*.nupkg
+*.snupkg
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+## Claude Code (user-specific settings)
+.claude/

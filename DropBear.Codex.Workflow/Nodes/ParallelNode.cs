@@ -68,11 +68,15 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
 
         try
         {
-            Task<NodeExecutionResult<TContext>>[] tasks = ParallelNodes
-                .Select(node => ExecuteNodeAsync(node, context, serviceProvider, cancellationToken))
-                .ToArray();
+            // Execute parallel nodes with throttling to prevent resource exhaustion
+            int maxDegreeOfParallelism = WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
+            NodeExecutionResult<TContext>[] results = await ExecuteParallelWithThrottlingAsync(
+                ParallelNodes,
+                maxDegreeOfParallelism,
+                context,
+                serviceProvider,
+                cancellationToken).ConfigureAwait(false);
 
-            NodeExecutionResult<TContext>[] results = await Task.WhenAll(tasks).ConfigureAwait(false);
             DateTimeOffset endTime = DateTimeOffset.UtcNow;
 
             NodeExecutionResult<TContext>[] failedResults = results.Where(r => !r.StepResult.IsSuccess).ToArray();
@@ -105,6 +109,7 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
                     ["ParallelBranches"] = ParallelNodes.Count,
                     ["SuccessfulBranches"] = ParallelNodes.Count,
                     ["FailedBranches"] = 0,
+                    ["MaxDegreeOfParallelism"] = maxDegreeOfParallelism,
                     ["ExecutionTime"] = (endTime - startTime).TotalMilliseconds
                 };
 
@@ -119,6 +124,42 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
             var stepResult = StepResult.Failure($"Parallel node execution failed: {ex.Message}");
             return NodeExecutionResult<TContext>.Failure(stepResult);
         }
+    }
+
+    /// <summary>
+    ///     Executes parallel nodes with throttling to limit concurrency.
+    /// </summary>
+    /// <param name="nodes">The nodes to execute in parallel</param>
+    /// <param name="maxDegreeOfParallelism">Maximum number of concurrent executions</param>
+    /// <param name="context">The workflow context</param>
+    /// <param name="serviceProvider">Service provider for dependency injection</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Array of execution results</returns>
+    private static async ValueTask<NodeExecutionResult<TContext>[]> ExecuteParallelWithThrottlingAsync(
+        IReadOnlyList<IWorkflowNode<TContext>> nodes,
+        int maxDegreeOfParallelism,
+        TContext context,
+        IServiceProvider serviceProvider,
+        CancellationToken cancellationToken)
+    {
+        // Use semaphore to throttle concurrent execution
+        using var semaphore = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
+
+        var tasks = nodes.Select(async node =>
+        {
+            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                return await ExecuteNodeAsync(node, context, serviceProvider, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                semaphore.Release();
+            }
+        }).ToArray();
+
+        return await Task.WhenAll(tasks).ConfigureAwait(false);
     }
 
     private static async Task<NodeExecutionResult<TContext>> ExecuteNodeAsync(

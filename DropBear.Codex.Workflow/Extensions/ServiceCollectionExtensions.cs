@@ -126,6 +126,11 @@ public static class ServiceCollectionExtensions
         // Ensure base workflow engine is registered
         services.AddWorkflowEngine();
 
+        // Register workflow infrastructure services (Phase 2 refactoring)
+        services.TryAddSingleton<IWorkflowTypeResolver, AppDomainWorkflowTypeResolver>();
+        services.TryAddSingleton<IWorkflowStateCoordinator, DefaultWorkflowStateCoordinator>();
+        // Note: IWorkflowSignalHandler is created internally by PersistentWorkflowEngine
+
         // Register persistent workflow engine
         services.TryAddSingleton<IPersistentWorkflowEngine, PersistentWorkflowEngine>();
 
