@@ -46,18 +46,38 @@ public class SerializationBenchmarks
         // Pre-serialize for deserialization benchmarks - MessagePack
         var msgPackBuilder = new SerializationBuilder();
         msgPackBuilder.WithSerializer<CodexMessagePackSerializer>();
-        var msgPackSerializer = msgPackBuilder.Build().Value!;
+        var msgPackSerializerResult = msgPackBuilder.Build();
+        if (!msgPackSerializerResult.IsSuccess)
+            throw new InvalidOperationException($"Failed to build MessagePack serializer: {msgPackSerializerResult.Error?.Message}");
+        var msgPackSerializer = msgPackSerializerResult.Value!;
 
-        _smallDataMsgPackBytes = msgPackSerializer.SerializeAsync(_smallData).GetAwaiter().GetResult().Value!;
-        _largeDataMsgPackBytes = msgPackSerializer.SerializeAsync(_largeData).GetAwaiter().GetResult().Value!;
+        var smallMsgPackResult = msgPackSerializer.SerializeAsync(_smallData).GetAwaiter().GetResult();
+        if (!smallMsgPackResult.IsSuccess)
+            throw new InvalidOperationException($"Failed to serialize small data with MessagePack: {smallMsgPackResult.Error?.Message}");
+        _smallDataMsgPackBytes = smallMsgPackResult.Value!;
+
+        var largeMsgPackResult = msgPackSerializer.SerializeAsync(_largeData).GetAwaiter().GetResult();
+        if (!largeMsgPackResult.IsSuccess)
+            throw new InvalidOperationException($"Failed to serialize large data with MessagePack: {largeMsgPackResult.Error?.Message}");
+        _largeDataMsgPackBytes = largeMsgPackResult.Value!;
 
         // Pre-serialize for deserialization benchmarks - JSON
         var jsonBuilder = new SerializationBuilder();
         jsonBuilder.WithSerializer<JsonSerializer>();
-        var jsonSerializer = jsonBuilder.Build().Value!;
+        var jsonSerializerResult = jsonBuilder.Build();
+        if (!jsonSerializerResult.IsSuccess)
+            throw new InvalidOperationException($"Failed to build JSON serializer: {jsonSerializerResult.Error?.Message}");
+        var jsonSerializer = jsonSerializerResult.Value!;
 
-        _smallDataJsonBytes = jsonSerializer.SerializeAsync(_smallData).GetAwaiter().GetResult().Value!;
-        _largeDataJsonBytes = jsonSerializer.SerializeAsync(_largeData).GetAwaiter().GetResult().Value!;
+        var smallJsonResult = jsonSerializer.SerializeAsync(_smallData).GetAwaiter().GetResult();
+        if (!smallJsonResult.IsSuccess)
+            throw new InvalidOperationException($"Failed to serialize small data with JSON: {smallJsonResult.Error?.Message}");
+        _smallDataJsonBytes = smallJsonResult.Value!;
+
+        var largeJsonResult = jsonSerializer.SerializeAsync(_largeData).GetAwaiter().GetResult();
+        if (!largeJsonResult.IsSuccess)
+            throw new InvalidOperationException($"Failed to serialize large data with JSON: {largeJsonResult.Error?.Message}");
+        _largeDataJsonBytes = largeJsonResult.Value!;
     }
 
     #region Serialization Benchmarks
