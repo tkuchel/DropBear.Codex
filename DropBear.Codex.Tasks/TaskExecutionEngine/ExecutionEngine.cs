@@ -246,6 +246,9 @@ public sealed class ExecutionEngine : IAsyncDisposable
             _options.StreamingBufferCapacity,
             enableStreaming: true);
 
+        // Wire up the trace to the message publisher
+        _messagePublisher.SetExecutionTrace(eventStream);
+
         // Start execution task
         var executionTask = Task.Run(async () =>
         {
@@ -275,6 +278,11 @@ public sealed class ExecutionEngine : IAsyncDisposable
             {
                 eventStream.CompleteStreaming(ex);
                 throw;
+            }
+            finally
+            {
+                // Clear the trace reference after execution
+                _messagePublisher.SetExecutionTrace(null);
             }
         }, cancellationToken);
 

@@ -26,6 +26,7 @@ public sealed class MessagePublisher : IAsyncDisposable
     private readonly SemaphoreSlim _publishLock;
     private readonly IAsyncPublisher<Guid, TaskStartedMessage> _startedPublisher;
     private bool _disposed;
+    private TaskExecutionTrace? _executionTrace;
 
     public MessagePublisher(
         IAsyncPublisher<Guid, TaskProgressMessage> progressPublisher,
@@ -49,6 +50,15 @@ public sealed class MessagePublisher : IAsyncDisposable
 
         // Start background processing
         _publisherTask = ProcessMessagesAsync();
+    }
+
+    /// <summary>
+    ///     Sets the execution trace for streaming support.
+    ///     When set, messages will also be converted to TaskExecutionEvent and added to the trace.
+    /// </summary>
+    public void SetExecutionTrace(TaskExecutionTrace? trace)
+    {
+        _executionTrace = trace;
     }
 
     public async ValueTask DisposeAsync()
@@ -137,6 +147,10 @@ public sealed class MessagePublisher : IAsyncDisposable
     {
         try
         {
+            // Emit to trace if streaming is enabled
+            EmitToTrace(message, messageType);
+
+            // Publish to MessagePipe subscribers
             if (messageType == typeof(TaskProgressMessage))
             {
                 await _progressPublisher.PublishAsync(channelId, (TaskProgressMessage)message, _publisherCts.Token)
@@ -162,5 +176,88 @@ public sealed class MessagePublisher : IAsyncDisposable
         {
             _logger.Error(ex, "Failed to publish message of type {MessageType}", messageType.Name);
         }
+    }
+
+    private void EmitToTrace(object message, Type messageType)
+    {
+        if (_executionTrace is null || !_executionTrace.IsStreamingEnabled)
+        {
+            return;
+        }
+
+        try
+        {
+            TaskExecutionEvent? executionEvent = messageType switch
+            {
+                var t when t == typeof(TaskStartedMessage) => ConvertToEvent((TaskStartedMessage)message),
+                var t when t == typeof(TaskProgressMessage) => ConvertToEvent((TaskProgressMessage)message),
+                var t when t == typeof(TaskCompletedMessage) => ConvertToEvent((TaskCompletedMessage)message),
+                var t when t == typeof(TaskFailedMessage) => ConvertToEvent((TaskFailedMessage)message),
+                _ => null
+            };
+
+            if (executionEvent is not null)
+            {
+                _executionTrace.Add(executionEvent);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Warning(ex, "Failed to emit event to trace for message type {MessageType}", messageType.Name);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static TaskExecutionEvent ConvertToEvent(TaskStartedMessage message)
+    {
+        return new TaskExecutionEvent
+        {
+            TaskName = message.TaskName,
+            EventType = TaskEventType.Started,
+            Status = Enums.TaskStatus.InProgress,
+            Timestamp = DateTime.UtcNow
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static TaskExecutionEvent ConvertToEvent(TaskProgressMessage message)
+    {
+        return new TaskExecutionEvent
+        {
+            TaskName = message.TaskName,
+            EventType = TaskEventType.Progress,
+            Status = message.Status,
+            TaskProgressPercentage = message.TaskProgressPercentage,
+            OverallCompletedTasks = message.OverallCompletedTasks,
+            OverallTotalTasks = message.OverallTotalTasks,
+            Message = message.Message,
+            Timestamp = DateTime.UtcNow
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static TaskExecutionEvent ConvertToEvent(TaskCompletedMessage message)
+    {
+        return new TaskExecutionEvent
+        {
+            TaskName = message.TaskName,
+            EventType = TaskEventType.Completed,
+            Status = Enums.TaskStatus.Completed,
+            Timestamp = DateTime.UtcNow
+        };
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static TaskExecutionEvent ConvertToEvent(TaskFailedMessage message)
+    {
+        return new TaskExecutionEvent
+        {
+            TaskName = message.TaskName,
+            EventType = TaskEventType.Failed,
+            Status = Enums.TaskStatus.Failed,
+            Message = message.Exception?.Message,
+            Exception = message.Exception,
+            Timestamp = DateTime.UtcNow
+        };
     }
 }
