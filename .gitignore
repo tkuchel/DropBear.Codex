@@ -60,13 +60,29 @@ release_build_output.txt
 *_output.txt
 *_errors.txt
 *_changes.txt
+*_warnings.txt
+*_analysis.txt
 workflow_errors.txt
 nul
+
+## Benchmark results (keep only committed summary files)
+*_results.txt
+*_final.txt
+BenchmarkDotNet.Artifacts/
 
 ## Temporary scripts (keep only official release scripts)
 bootstrap-*.ps1
 fix_*.ps1
+fix-*.ps1
 convert_*.ps1
+analyze-*.ps1
+build-check.ps1
+capture-*.ps1
+count-*.ps1
+show-*.ps1
+verify-*.ps1
+view-*.ps1
+*-warning*.ps1
 
 ## Node.js (if accidentally added to .NET project)
 node_modules/
