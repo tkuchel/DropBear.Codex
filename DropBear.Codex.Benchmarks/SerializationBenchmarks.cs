@@ -45,7 +45,9 @@ public class SerializationBenchmarks
 
         // Pre-serialize for deserialization benchmarks - MessagePack
         var msgPackBuilder = new SerializationBuilder();
-        msgPackBuilder.WithSerializer<CodexMessagePackSerializer>();
+        msgPackBuilder
+            .WithMessagePackSerializerOptions(MessagePack.MessagePackSerializerOptions.Standard)
+            .WithSerializer<CodexMessagePackSerializer>();
         var msgPackSerializerResult = msgPackBuilder.Build();
         if (!msgPackSerializerResult.IsSuccess)
             throw new InvalidOperationException($"Failed to build MessagePack serializer: {msgPackSerializerResult.Error?.Message}");
@@ -86,7 +88,9 @@ public class SerializationBenchmarks
     public async Task<byte[]?> MessagePack_Serialize_Small()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
+        serializerBuilder
+            .WithMessagePackSerializerOptions(MessagePack.MessagePackSerializerOptions.Standard)
+            .WithSerializer<CodexMessagePackSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.SerializeAsync(_smallData);
@@ -108,7 +112,9 @@ public class SerializationBenchmarks
     public async Task<byte[]?> MessagePack_Serialize_Large()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
+        serializerBuilder
+            .WithMessagePackSerializerOptions(MessagePack.MessagePackSerializerOptions.Standard)
+            .WithSerializer<CodexMessagePackSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.SerializeAsync(_largeData);
@@ -134,7 +140,9 @@ public class SerializationBenchmarks
     public async Task<TestData?> MessagePack_Deserialize_Small()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
+        serializerBuilder
+            .WithMessagePackSerializerOptions(MessagePack.MessagePackSerializerOptions.Standard)
+            .WithSerializer<CodexMessagePackSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.DeserializeAsync<TestData>(_smallDataMsgPackBytes);
@@ -156,7 +164,9 @@ public class SerializationBenchmarks
     public async Task<TestData?> MessagePack_Deserialize_Large()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
+        serializerBuilder
+            .WithMessagePackSerializerOptions(MessagePack.MessagePackSerializerOptions.Standard)
+            .WithSerializer<CodexMessagePackSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.DeserializeAsync<TestData>(_largeDataMsgPackBytes);
