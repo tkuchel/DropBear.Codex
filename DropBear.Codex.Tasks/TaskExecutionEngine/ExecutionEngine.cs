@@ -230,6 +230,58 @@ public sealed class ExecutionEngine : IAsyncDisposable
     }
 
     /// <summary>
+    ///     Executes tasks with streaming support, allowing real-time consumption of execution events.
+    ///     Consumers can start consuming the event stream before execution completes.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the operation</param>
+    /// <returns>A tuple containing the event stream (for real-time monitoring) and a task for the execution result</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the engine has been disposed</exception>
+    public (TaskExecutionTrace EventStream, Task<Result<Unit, TaskExecutionError>> ExecutionTask)
+        ExecuteWithStreamingAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        // Create execution trace with streaming enabled
+        var eventStream = new TaskExecutionTrace(
+            _options.StreamingBufferCapacity,
+            enableStreaming: true);
+
+        // Start execution task
+        var executionTask = Task.Run(async () =>
+        {
+            try
+            {
+                var result = await ExecuteAsync(cancellationToken).ConfigureAwait(false);
+
+                // Complete streaming on success or failure
+                if (result.IsSuccess)
+                {
+                    eventStream.CompleteStreaming();
+                }
+                else if (result.Error is not null)
+                {
+                    var exception = result.Error.SourceException
+                                    ?? new InvalidOperationException(result.Error.Message);
+                    eventStream.CompleteStreaming(exception);
+                }
+                else
+                {
+                    eventStream.CompleteStreaming();
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                eventStream.CompleteStreaming(ex);
+                throw;
+            }
+        }, cancellationToken);
+
+        return (eventStream, executionTask);
+    }
+
+    /// <summary>
     ///     Resolves dependencies and executes all tasks in the engine asynchronously,
     ///     using the appropriate execution strategy.
     /// </summary>

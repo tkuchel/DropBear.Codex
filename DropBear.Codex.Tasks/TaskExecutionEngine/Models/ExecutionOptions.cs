@@ -79,6 +79,18 @@ public sealed class ExecutionOptions
     public double DependencyDensityThreshold { get; set; } = 0.5;
 
     /// <summary>
+    ///     If <c>true</c>, enables real-time streaming of task execution events via IAsyncEnumerable.
+    ///     This allows consumers to monitor task progress, status changes, and completion in real-time.
+    /// </summary>
+    public bool EnableEventStreaming { get; set; } = false;
+
+    /// <summary>
+    ///     Maximum number of execution events to buffer in memory when streaming is enabled.
+    ///     Default is 1000 events. Older events are removed when capacity is reached.
+    /// </summary>
+    public int StreamingBufferCapacity { get; set; } = 1000;
+
+    /// <summary>
     ///     Validates the consistency of these options.
     /// </summary>
     /// <exception cref="InvalidOperationException">
