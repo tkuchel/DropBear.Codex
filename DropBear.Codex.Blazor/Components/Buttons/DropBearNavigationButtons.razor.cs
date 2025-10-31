@@ -97,14 +97,14 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             var moduleResult = await GetJsModuleAsync(JsModuleName);
             if (moduleResult.IsSuccess == false)
             {
-                LogError("Failed to load navigation buttons JS module: {Error}", moduleResult.Exception);
+                LogError("Failed to load navigation buttons JS module", moduleResult.Exception ?? new InvalidOperationException("Module load failed"));
                 return;
             }
 
             var module = moduleResult.Value;
 
             // Initialize JS module
-            await module.InvokeVoidAsync($"{JsModuleName}API.initialize", cts.Token);
+            await module!.InvokeVoidAsync($"{JsModuleName}API.initialize", cts.Token);
 
             // Create .NET reference for callbacks
             _dotNetRef = DotNetObjectReference.Create(this);
@@ -142,14 +142,14 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
             var moduleResult = await GetJsModuleAsync(JsModuleName);
             if (moduleResult.IsSuccess == false)
             {
-                LogError("Failed to get JS module for back navigation: {Error}", moduleResult.Exception);
+                LogError("Failed to get JS module for back navigation", moduleResult.Exception ?? new InvalidOperationException("Module retrieval failed"));
                 return;
             }
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ComponentToken);
             cts.CancelAfter(OperationTimeout);
 
-            await moduleResult.Value.InvokeVoidAsync($"{JsModuleName}API.goBack", cts.Token);
+            await moduleResult.Value!.InvokeVoidAsync($"{JsModuleName}API.goBack", cts.Token);
 
             _lastOperationTime = DateTime.UtcNow;
             LogDebug("Back navigation completed");

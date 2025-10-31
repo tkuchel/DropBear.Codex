@@ -287,12 +287,12 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             await JsInitializationService.EnsureJsModuleInitializedAsync(moduleName,
                 cancellationToken: cts.Token);
 
-            LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller);
+            LogDebug("JS module loaded: {Module} (called from {Caller})", moduleName, caller ?? "Unknown");
             return Result<IJSObjectReference, JsInteropError>.Success(module);
         }
         catch (Exception ex)
         {
-            LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller);
+            LogError("Failed to load JS module: {Module} (called from {Caller})", ex, moduleName, caller ?? "Unknown");
             return Result<IJSObjectReference, JsInteropError>.Failure(
                 new JsInteropError($"Failed to load JS module: {moduleName}"), ex);
         }
@@ -649,7 +649,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             _circuitStateChanged?.Invoke(this, false);
         }
 
-        LogWarning("JS operation interrupted: {Operation} (called from {Caller})", identifier, caller);
+        LogWarning("JS operation interrupted: {Operation} (called from {Caller})", identifier, caller ?? "Unknown");
         return true;
     }
 
@@ -658,7 +658,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// </summary>
     private bool LogAndReturnFalse(Exception ex, string identifier, string? caller)
     {
-        LogError("JS operation failed: {Operation} (called from {Caller})", ex, identifier, caller);
+        LogError("JS operation failed: {Operation} (called from {Caller})", ex, identifier, caller ?? "Unknown");
         return false;
     }
 

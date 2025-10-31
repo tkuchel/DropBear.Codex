@@ -474,6 +474,89 @@ result.ExecutionTrace // Optional detailed trace
 result.Error          // Error if failed
 ```
 
+### Real-Time Workflow Streaming
+
+Stream workflow execution traces in real-time for monitoring, logging, or UI updates:
+
+```csharp
+var engine = new WorkflowEngine(serviceProvider, logger);
+
+// Get both the trace stream and execution task
+var (traceStream, executionTask) = engine.ExecuteWithStreamingAsync(
+    workflowDefinition,
+    context,
+    cancellationToken: cancellationToken);
+
+// Start consuming the stream immediately (runs in parallel with workflow)
+var streamingTask = Task.Run(async () =>
+{
+    await foreach (var trace in traceStream.StreamAsync(cancellationToken))
+    {
+        // Process traces as they arrive
+        Console.WriteLine($"Step: {trace.StepName} | Status: {trace.Status} | Duration: {trace.Duration}");
+
+        // Send to monitoring system
+        await telemetry.TrackStepAsync(trace);
+
+        // Update UI
+        await UpdateProgressBar(trace);
+    }
+});
+
+// Wait for workflow to complete
+var result = await executionTask;
+
+// Wait for stream consumption to finish
+await streamingTask;
+
+// Check final result
+if (result.IsSuccess)
+{
+    Console.WriteLine($"Workflow completed successfully in {result.Metrics.TotalDuration}");
+}
+```
+
+**Key Benefits**:
+- Zero-latency monitoring: See steps execute in real-time
+- Memory-efficient: No need to store entire trace in memory
+- Parallel processing: Stream consumption happens concurrently with execution
+- Flexible consumers: Multiple consumers can read the same stream
+
+**Common Use Cases**:
+```csharp
+// Real-time UI updates
+await foreach (var trace in traceStream.StreamAsync(cancellationToken))
+{
+    await InvokeAsync(() =>
+    {
+        progressMessages.Add($"{trace.StepName}: {trace.Status}");
+        StateHasChanged();
+    });
+}
+
+// Live logging to external system
+await foreach (var trace in traceStream.StreamAsync(cancellationToken))
+{
+    await logAggregator.SendAsync(new
+    {
+        WorkflowId = context.WorkflowId,
+        StepName = trace.StepName,
+        Status = trace.Status,
+        Timestamp = trace.StartTime
+    });
+}
+
+// Metrics collection
+var stepDurations = new ConcurrentBag<TimeSpan>();
+await foreach (var trace in traceStream.StreamAsync(cancellationToken))
+{
+    if (trace.Status == StepStatus.Completed)
+    {
+        stepDurations.Add(trace.Duration);
+    }
+}
+```
+
 ### Compensation (Saga Pattern)
 
 Enable compensation in execution options to automatically rollback on failure:
@@ -669,6 +752,97 @@ public User FindUser(int id)
 - Wrappers abstract MessagePack, JSON, and encrypted serialization
 - Use encrypted serialization for sensitive data (ProtectedData API)
 - All serializers return `Result<byte[]>` or `Result<T>`
+
+#### Streaming Deserialization
+
+For large JSON arrays, use streaming deserialization to process elements without loading the entire array into memory:
+
+```csharp
+// Setup (in DI configuration)
+services.AddJsonStreamingDeserializer();
+
+// Usage - Stream large JSON array
+public async Task ProcessLargeDataset(Stream jsonStream, IStreamingSerializer streamingSerializer)
+{
+    var processedCount = 0;
+    var errors = new List<string>();
+
+    await foreach (var result in streamingSerializer.DeserializeAsyncEnumerable<DataRecord>(
+        jsonStream,
+        cancellationToken))
+    {
+        if (result.IsSuccess)
+        {
+            // Process each record as it arrives
+            await ProcessRecord(result.Value);
+            processedCount++;
+
+            if (processedCount % 1000 == 0)
+            {
+                _logger.Information("Processed {Count} records", processedCount);
+            }
+        }
+        else
+        {
+            errors.Add(result.Error.Message);
+        }
+    }
+
+    _logger.Information("Completed processing {Count} records with {ErrorCount} errors",
+        processedCount, errors.Count);
+}
+```
+
+**Key Benefits**:
+- Memory-efficient: Only one element in memory at a time
+- Fast time-to-first-element: Start processing before entire array loads
+- Resilient: Errors don't stop the stream, each element is wrapped in Result
+- Cancellable: Cancel mid-stream without reading remaining data
+
+**Common Use Cases**:
+```csharp
+// Data import with progress tracking
+var totalRecords = 0;
+await foreach (var result in streamingSerializer.DeserializeAsyncEnumerable<Customer>(stream, cancellationToken))
+{
+    if (result.IsSuccess)
+    {
+        await database.InsertAsync(result.Value);
+        totalRecords++;
+        await progressTracker.UpdateAsync(totalRecords);
+    }
+}
+
+// Filtering and transformation
+await foreach (var result in streamingSerializer.DeserializeAsyncEnumerable<Transaction>(stream, cancellationToken))
+{
+    if (result.IsSuccess && result.Value.Amount > 1000)
+    {
+        await SendAlertAsync(result.Value);
+    }
+}
+
+// Batched processing
+var batch = new List<Product>();
+await foreach (var result in streamingSerializer.DeserializeAsyncEnumerable<Product>(stream, cancellationToken))
+{
+    if (result.IsSuccess)
+    {
+        batch.Add(result.Value);
+
+        if (batch.Count >= 100)
+        {
+            await ProcessBatchAsync(batch);
+            batch.Clear();
+        }
+    }
+}
+
+if (batch.Count > 0)
+{
+    await ProcessBatchAsync(batch); // Process remaining items
+}
+```
 
 ### Working with Files
 
