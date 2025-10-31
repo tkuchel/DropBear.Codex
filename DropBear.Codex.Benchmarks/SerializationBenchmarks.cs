@@ -16,8 +16,10 @@ public class SerializationBenchmarks
 {
     private TestData _smallData = null!;
     private TestData _largeData = null!;
-    private byte[] _smallDataBytes = null!;
-    private byte[] _largeDataBytes = null!;
+    private byte[] _smallDataMsgPackBytes = null!;
+    private byte[] _largeDataMsgPackBytes = null!;
+    private byte[] _smallDataJsonBytes = null!;
+    private byte[] _largeDataJsonBytes = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -41,13 +43,21 @@ public class SerializationBenchmarks
             Metadata = Enumerable.Range(0, 50).ToDictionary(i => $"Key{i}", i => $"Value{i}")
         };
 
-        // Pre-serialize for deserialization benchmarks
-        var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
-        var serializer = serializerBuilder.Build().Value!;
+        // Pre-serialize for deserialization benchmarks - MessagePack
+        var msgPackBuilder = new SerializationBuilder();
+        msgPackBuilder.WithSerializer<CodexMessagePackSerializer>();
+        var msgPackSerializer = msgPackBuilder.Build().Value!;
 
-        _smallDataBytes = serializer.SerializeAsync(_smallData).GetAwaiter().GetResult().Value!;
-        _largeDataBytes = serializer.SerializeAsync(_largeData).GetAwaiter().GetResult().Value!;
+        _smallDataMsgPackBytes = msgPackSerializer.SerializeAsync(_smallData).GetAwaiter().GetResult().Value!;
+        _largeDataMsgPackBytes = msgPackSerializer.SerializeAsync(_largeData).GetAwaiter().GetResult().Value!;
+
+        // Pre-serialize for deserialization benchmarks - JSON
+        var jsonBuilder = new SerializationBuilder();
+        jsonBuilder.WithSerializer<JsonSerializer>();
+        var jsonSerializer = jsonBuilder.Build().Value!;
+
+        _smallDataJsonBytes = jsonSerializer.SerializeAsync(_smallData).GetAwaiter().GetResult().Value!;
+        _largeDataJsonBytes = jsonSerializer.SerializeAsync(_largeData).GetAwaiter().GetResult().Value!;
     }
 
     #region Serialization Benchmarks
@@ -107,7 +117,7 @@ public class SerializationBenchmarks
         serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
-        var result = await serializer.DeserializeAsync<TestData>(_smallDataBytes);
+        var result = await serializer.DeserializeAsync<TestData>(_smallDataMsgPackBytes);
         return result.IsSuccess ? result.Value : null;
     }
 
@@ -118,7 +128,7 @@ public class SerializationBenchmarks
         serializerBuilder.WithSerializer<JsonSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
-        var result = await serializer.DeserializeAsync<TestData>(_smallDataBytes);
+        var result = await serializer.DeserializeAsync<TestData>(_smallDataJsonBytes);
         return result.IsSuccess ? result.Value : null;
     }
 
@@ -129,7 +139,7 @@ public class SerializationBenchmarks
         serializerBuilder.WithSerializer<CodexMessagePackSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
-        var result = await serializer.DeserializeAsync<TestData>(_largeDataBytes);
+        var result = await serializer.DeserializeAsync<TestData>(_largeDataMsgPackBytes);
         return result.IsSuccess ? result.Value : null;
     }
 
@@ -140,7 +150,7 @@ public class SerializationBenchmarks
         serializerBuilder.WithSerializer<JsonSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
-        var result = await serializer.DeserializeAsync<TestData>(_largeDataBytes);
+        var result = await serializer.DeserializeAsync<TestData>(_largeDataJsonBytes);
         return result.IsSuccess ? result.Value : null;
     }
 
