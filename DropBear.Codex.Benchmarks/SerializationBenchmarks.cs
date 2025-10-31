@@ -65,7 +65,9 @@ public class SerializationBenchmarks
 
         // Pre-serialize for deserialization benchmarks - JSON
         var jsonBuilder = new SerializationBuilder();
-        jsonBuilder.WithSerializer<JsonSerializer>();
+        jsonBuilder
+            .WithJsonSerializerOptions(new System.Text.Json.JsonSerializerOptions())
+            .WithSerializer<JsonSerializer>();
         var jsonSerializerResult = jsonBuilder.Build();
         if (!jsonSerializerResult.IsSuccess)
             throw new InvalidOperationException($"Failed to build JSON serializer: {jsonSerializerResult.Error?.Message}");
@@ -101,7 +103,9 @@ public class SerializationBenchmarks
     public async Task<byte[]?> Json_Serialize_Small()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<JsonSerializer>();
+        serializerBuilder
+            .WithJsonSerializerOptions(new System.Text.Json.JsonSerializerOptions())
+            .WithSerializer<JsonSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.SerializeAsync(_smallData);
@@ -125,7 +129,9 @@ public class SerializationBenchmarks
     public async Task<byte[]?> Json_Serialize_Large()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<JsonSerializer>();
+        serializerBuilder
+            .WithJsonSerializerOptions(new System.Text.Json.JsonSerializerOptions())
+            .WithSerializer<JsonSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.SerializeAsync(_largeData);
@@ -153,7 +159,9 @@ public class SerializationBenchmarks
     public async Task<TestData?> Json_Deserialize_Small()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<JsonSerializer>();
+        serializerBuilder
+            .WithJsonSerializerOptions(new System.Text.Json.JsonSerializerOptions())
+            .WithSerializer<JsonSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.DeserializeAsync<TestData>(_smallDataJsonBytes);
@@ -177,7 +185,9 @@ public class SerializationBenchmarks
     public async Task<TestData?> Json_Deserialize_Large()
     {
         var serializerBuilder = new SerializationBuilder();
-        serializerBuilder.WithSerializer<JsonSerializer>();
+        serializerBuilder
+            .WithJsonSerializerOptions(new System.Text.Json.JsonSerializerOptions())
+            .WithSerializer<JsonSerializer>();
         var serializer = serializerBuilder.Build().Value!;
 
         var result = await serializer.DeserializeAsync<TestData>(_largeDataJsonBytes);
