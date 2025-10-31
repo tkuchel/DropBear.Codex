@@ -17,7 +17,7 @@ public class HashingBenchmarks
     private byte[] _largeData = null!;
     private IHasher _blake3Hasher = null!;
     private IHasher _xxHashHasher = null!;
-    private IHasher _sha256Hasher = null!;
+    private IHasher _blake2Hasher = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -36,9 +36,9 @@ public class HashingBenchmarks
 
         // Pre-create hashers to avoid overhead in benchmark iterations
         var hashBuilder = new HashBuilder();
-        _blake3Hasher = hashBuilder.GetHasher("Blake3");
-        _xxHashHasher = hashBuilder.GetHasher("XxHash");
-        _sha256Hasher = hashBuilder.GetHasher("SHA256");
+        _blake3Hasher = hashBuilder.GetHasher("blake3");
+        _xxHashHasher = hashBuilder.GetHasher("xxhash");
+        _blake2Hasher = hashBuilder.GetHasher("blake2");
     }
 
     #region Small Data (100 bytes)
@@ -57,10 +57,10 @@ public class HashingBenchmarks
         return result.IsSuccess ? result.Value : null;
     }
 
-    [Benchmark(Description = "SHA256: Small (100 bytes)")]
-    public string? SHA256_Small()
+    [Benchmark(Description = "Blake2: Small (100 bytes)")]
+    public string? Blake2_Small()
     {
-        var result = _sha256Hasher.EncodeToBase64Hash(_smallData);
+        var result = _blake2Hasher.EncodeToBase64Hash(_smallData);
         return result.IsSuccess ? result.Value : null;
     }
 
@@ -82,10 +82,10 @@ public class HashingBenchmarks
         return result.IsSuccess ? result.Value : null;
     }
 
-    [Benchmark(Description = "SHA256: Medium (1 MB)")]
-    public string? SHA256_Medium()
+    [Benchmark(Description = "Blake2: Medium (1 MB)")]
+    public string? Blake2_Medium()
     {
-        var result = _sha256Hasher.EncodeToBase64Hash(_mediumData);
+        var result = _blake2Hasher.EncodeToBase64Hash(_mediumData);
         return result.IsSuccess ? result.Value : null;
     }
 
@@ -107,10 +107,10 @@ public class HashingBenchmarks
         return result.IsSuccess ? result.Value : null;
     }
 
-    [Benchmark(Description = "SHA256: Large (10 MB)")]
-    public string? SHA256_Large()
+    [Benchmark(Description = "Blake2: Large (10 MB)")]
+    public string? Blake2_Large()
     {
-        var result = _sha256Hasher.EncodeToBase64Hash(_largeData);
+        var result = _blake2Hasher.EncodeToBase64Hash(_largeData);
         return result.IsSuccess ? result.Value : null;
     }
 
