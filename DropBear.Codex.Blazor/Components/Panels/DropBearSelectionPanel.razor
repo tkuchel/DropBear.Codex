@@ -12,7 +12,7 @@
 
     <div class="selection-panel-content @(IsCollapsed ? "collapsed" : "")"
          id="panel-content-@ComponentId"
-         aria-hidden="@IsCollapsed">
+         aria-hidden="@(IsCollapsed.ToString().ToLower())">
         @if (SelectedItems != null && SelectedItems.Any())
         {
             <ul class="selection-list" role="list" aria-label="Selected items">
@@ -73,7 +73,7 @@
     <button type="button"
             class="selection-panel-toggle"
             @onclick="ToggleCollapse"
-            aria-expanded="@(!IsCollapsed)"
+            aria-expanded="@((!IsCollapsed).ToString().ToLower())"
             aria-controls="panel-content-@ComponentId"
             aria-label="@(IsCollapsed ? "Expand selection panel" : "Collapse selection panel")">
         <span class="toggle-icon @(IsCollapsed ? "collapsed" : "")" aria-hidden="true"></span>

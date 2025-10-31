@@ -103,6 +103,30 @@ public static class ServiceCollectionExtensions
     }
 
     /// <summary>
+    ///     Adds JSON streaming deserialization services to the specified IServiceCollection.
+    ///     This enables element-by-element deserialization of large JSON arrays.
+    /// </summary>
+    /// <param name="services">The IServiceCollection to add services to.</param>
+    /// <param name="options">Optional JSON serializer options for streaming deserialization.</param>
+    /// <returns>The same service collection for chaining.</returns>
+    public static IServiceCollection AddJsonStreamingDeserializer(this IServiceCollection services,
+        JsonSerializerOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(services, nameof(services));
+
+        Logger.Information("Adding JSON streaming deserializer services.");
+
+        services.AddSingleton<IStreamingSerializer>(provider =>
+        {
+            var logger = provider.GetService<ILogger>() ?? Log.Logger;
+            return new Serializers.JsonStreamingDeserializer(options, logger);
+        });
+
+        Logger.Information("JSON streaming deserializer services successfully added.");
+        return services;
+    }
+
+    /// <summary>
     ///     Gets the JsonSerializerOptions from the ISerializer, if available.
     /// </summary>
     /// <param name="serializer">The serializer to get options from.</param>

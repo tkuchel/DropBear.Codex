@@ -15,6 +15,7 @@
         <div class="modal-content @_modalTransitionClass"
              id="modal-content-@ComponentId"
              style="@ModalStyle"
+             @onclick="@(() => { })"
              @onclick:stopPropagation="true">
             <DynamicComponent Type="ModalService.CurrentComponent"
                               Parameters="ChildParameters"/>

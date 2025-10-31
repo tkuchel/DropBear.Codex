@@ -37,6 +37,12 @@ public sealed class WorkflowExecutionOptions
     public bool EnableTracing { get; set; } = true;
 
     /// <summary>
+    ///     Gets or sets a value indicating whether to enable real-time streaming of execution traces.
+    ///     When enabled, traces can be consumed via IAsyncEnumerable as they are generated.
+    /// </summary>
+    public bool EnableTraceStreaming { get; set; }
+
+    /// <summary>
     ///     Gets or sets additional metadata for the workflow execution.
     /// </summary>
     public IDictionary<string, object> Metadata { get; } = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);

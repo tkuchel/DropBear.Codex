@@ -295,7 +295,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         {
             try
             {
-                ModalService.Close();
+                ModalService.ClearAll();
                 Logger.Debug("Modal closed via Escape key");
             }
             catch (Exception ex)
@@ -324,7 +324,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             cts.CancelAfter(500); // Debounce for 500ms
 
             // Close the modal
-            ModalService.Close();
+            ModalService.ClearAll();
             Logger.Debug("Modal closed via outside click");
         }
         catch (Exception ex)
@@ -347,7 +347,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
 
         try
         {
-            ModalService.Close();
+            ModalService.ClearAll();
             Logger.Debug("Modal closed programmatically");
         }
         catch (Exception ex)

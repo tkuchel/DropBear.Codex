@@ -68,6 +68,111 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         return await ExecuteInternalAsync(definition, context, options, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    ///     Executes a workflow with streaming support, allowing real-time consumption of execution traces.
+    ///     Consumers can start consuming the trace stream before workflow execution completes.
+    /// </summary>
+    /// <typeparam name="TContext">The type of the workflow context</typeparam>
+    /// <param name="definition">The workflow definition to execute</param>
+    /// <param name="context">The workflow execution context</param>
+    /// <param name="options">Execution options (EnableTraceStreaming will be set to true)</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>A tuple containing the execution trace (for streaming) and a task for the workflow result</returns>
+    /// <exception cref="ObjectDisposedException">Thrown when the engine has been disposed</exception>
+    /// <exception cref="ArgumentNullException">Thrown when any required parameter is null</exception>
+    public (CircularExecutionTrace<StepExecutionTrace> TraceStream, ValueTask<WorkflowResult<TContext>> ExecutionTask)
+        ExecuteWithStreamingAsync<TContext>(
+            IWorkflowDefinition<TContext> definition,
+            TContext context,
+            WorkflowExecutionOptions? options = null,
+            CancellationToken cancellationToken = default) where TContext : class
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(definition);
+        ArgumentNullException.ThrowIfNull(context);
+
+        // Ensure streaming is enabled
+        var streamingOptions = options ?? new WorkflowExecutionOptions();
+        streamingOptions.EnableTraceStreaming = true;
+
+        // Create the execution trace with streaming enabled
+        var executionTrace = new CircularExecutionTrace<StepExecutionTrace>(
+            WorkflowConstants.Limits.MaxExecutionTraceEntries,
+            enableStreaming: true);
+
+        // Start execution with the pre-created trace
+        var executionTask = ExecuteWithProvidedTraceAsync(
+            definition,
+            context,
+            streamingOptions,
+            executionTrace,
+            cancellationToken);
+
+        return (executionTrace, executionTask);
+    }
+
+    /// <summary>
+    ///     Internal execution method that uses a provided execution trace.
+    /// </summary>
+    private async ValueTask<WorkflowResult<TContext>> ExecuteWithProvidedTraceAsync<TContext>(
+        IWorkflowDefinition<TContext> definition,
+        TContext context,
+        WorkflowExecutionOptions options,
+        CircularExecutionTrace<StepExecutionTrace> executionTrace,
+        CancellationToken cancellationToken) where TContext : class
+    {
+        string correlationId = options.CorrelationId ?? Guid.NewGuid().ToString("N");
+        using Activity? activity = options.EnableTracing
+            ? CreateActivity(definition.WorkflowId, correlationId)
+            : null;
+
+        LogWorkflowStarting(definition.WorkflowId, definition.DisplayName, correlationId);
+
+        var stopwatch = Stopwatch.StartNew();
+
+        try
+        {
+            IWorkflowNode<TContext> rootNode = definition.BuildWorkflow();
+            TimeSpan? effectiveTimeout = options.WorkflowTimeout ?? definition.WorkflowTimeout;
+
+            NodeExecutionResult result = effectiveTimeout.HasValue
+                ? await ExecuteWithTimeoutAsync(rootNode, context, options, executionTrace, effectiveTimeout.Value,
+                    cancellationToken).ConfigureAwait(false)
+                : await ExecuteNodeInternalAsync(rootNode, context, options, executionTrace, cancellationToken)
+                    .ConfigureAwait(false);
+
+            stopwatch.Stop();
+
+            return result switch
+            {
+                { IsSuspension: true, SuspendedInfo: not null } =>
+                    HandleSuspension(result, context, executionTrace, stopwatch.Elapsed, correlationId, activity,
+                        definition.WorkflowId),
+                { IsSuccess: false } =>
+                    await HandleFailureAsync(result, context, executionTrace, stopwatch.Elapsed, correlationId,
+                        activity, options, definition.WorkflowId, cancellationToken).ConfigureAwait(false),
+                _ =>
+                    HandleSuccess(context, executionTrace, stopwatch.Elapsed, correlationId, activity,
+                        definition.WorkflowId)
+            };
+        }
+        catch (OperationCanceledException)
+        {
+            return HandleCancellation(context, executionTrace, stopwatch, correlationId, activity,
+                definition.WorkflowId);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return HandleInvalidOperation(context, executionTrace, stopwatch, correlationId, activity,
+                definition.WorkflowId, ex);
+        }
+        catch (TimeoutException ex)
+        {
+            return HandleTimeout(context, executionTrace, stopwatch, correlationId, activity, definition.WorkflowId,
+                ex);
+        }
+    }
+
     private async ValueTask<WorkflowResult<TContext>> ExecuteInternalAsync<TContext>(
         IWorkflowDefinition<TContext> definition,
         TContext context,
@@ -87,7 +192,8 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
         var stopwatch = Stopwatch.StartNew();
         var executionTrace = new CircularExecutionTrace<StepExecutionTrace>(
-            WorkflowConstants.Limits.MaxExecutionTraceEntries);
+            WorkflowConstants.Limits.MaxExecutionTraceEntries,
+            options.EnableTraceStreaming);
 
         try
         {
@@ -148,6 +254,9 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         activity?.SetTag("workflow.status", "suspended");
         activity?.SetTag("workflow.signal", signalName);
 
+        // Complete streaming channel (suspended but not failed)
+        executionTrace.CompleteStreaming();
+
         WorkflowMetrics metrics = BuildMetrics(executionTrace.ToList(), duration);
         return WorkflowResult<TContext>.Suspended(
             context,
@@ -187,6 +296,16 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         activity?.SetTag("workflow.status", "failed");
         activity?.SetTag("workflow.error", result.ErrorMessage);
 
+        // Complete streaming channel with exception if available
+        if (result.Exception != null)
+        {
+            executionTrace.CompleteStreaming(result.Exception);
+        }
+        else
+        {
+            executionTrace.CompleteStreaming(new InvalidOperationException(result.ErrorMessage ?? "Unknown error"));
+        }
+
         WorkflowMetrics failureMetrics = BuildMetrics(executionTrace.ToList(), duration);
         return result.Exception != null
             ? WorkflowResult<TContext>.Failure(context, result.Exception, failureMetrics, executionTrace.ToList(),
@@ -207,6 +326,9 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
         activity?.SetTag("workflow.status", "completed");
 
+        // Complete streaming channel successfully
+        executionTrace.CompleteStreaming();
+
         WorkflowMetrics successMetrics = BuildMetrics(executionTrace.ToList(), duration);
         return WorkflowResult<TContext>.Success(context, successMetrics, executionTrace.ToList(), correlationId);
     }
@@ -223,6 +345,9 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         stopwatch.Stop();
 
         activity?.SetTag("workflow.status", "cancelled");
+
+        // Complete streaming channel with cancellation
+        executionTrace.CompleteStreaming(new OperationCanceledException("Workflow execution was cancelled"));
 
         WorkflowMetrics cancelMetrics = BuildMetrics(executionTrace.ToList(), stopwatch.Elapsed);
         return WorkflowResult<TContext>.Failure(context, "Workflow execution was cancelled", cancelMetrics,
@@ -244,6 +369,9 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
         activity?.SetTag("workflow.status", "error");
         activity?.SetTag("workflow.error", ex.Message);
 
+        // Complete streaming channel with exception
+        executionTrace.CompleteStreaming(ex);
+
         WorkflowMetrics errorMetrics = BuildMetrics(executionTrace.ToList(), stopwatch.Elapsed);
         return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace.ToList(), correlationId);
     }
@@ -262,6 +390,9 @@ public sealed partial class WorkflowEngine : IWorkflowEngine, IAsyncDisposable
 
         activity?.SetTag("workflow.status", "timeout");
         activity?.SetTag("workflow.error", ex.Message);
+
+        // Complete streaming channel with timeout exception
+        executionTrace.CompleteStreaming(ex);
 
         WorkflowMetrics errorMetrics = BuildMetrics(executionTrace.ToList(), stopwatch.Elapsed);
         return WorkflowResult<TContext>.Failure(context, ex, errorMetrics, executionTrace.ToList(), correlationId);

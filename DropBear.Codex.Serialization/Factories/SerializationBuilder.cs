@@ -141,6 +141,19 @@ public sealed class SerializationBuilder
     }
 
     /// <summary>
+    ///     Configures the builder to use the specified streaming serializer type
+    ///     for element-by-element JSON array deserialization.
+    /// </summary>
+    /// <typeparam name="T">The type of streaming serializer to use.</typeparam>
+    /// <returns>The builder instance for method chaining.</returns>
+    public SerializationBuilder WithStreamingSerializer<T>() where T : IStreamingSerializer
+    {
+        Logger.Information("Configuring streaming serializer: {Type}", typeof(T).Name);
+        _config.StreamingSerializerType = typeof(T);
+        return this;
+    }
+
+    /// <summary>
     ///     Configures the builder to use the specified compression provider type.
     /// </summary>
     /// <typeparam name="T">The type of compression provider to use.</typeparam>

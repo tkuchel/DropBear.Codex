@@ -60,6 +60,11 @@ public sealed class SerializationConfig
     public Type? StreamSerializerType { get; set; }
 
     /// <summary>
+    ///     Gets or sets the type of streaming serializer for element-by-element JSON array deserialization.
+    /// </summary>
+    public Type? StreamingSerializerType { get; set; }
+
+    /// <summary>
     ///     Gets or sets the JSON serializer options.
     /// </summary>
     public JsonSerializerOptions? JsonSerializerOptions { get; set; }
@@ -224,6 +229,17 @@ public sealed class SerializationConfig
     public SerializationConfig WithStreamSerializerType<T>()
     {
         StreamSerializerType = typeof(T);
+        return this;
+    }
+
+    /// <summary>
+    ///     Sets the streaming serializer type and returns the updated configuration for fluent chaining.
+    /// </summary>
+    /// <typeparam name="T">The type of streaming serializer.</typeparam>
+    /// <returns>The updated configuration.</returns>
+    public SerializationConfig WithStreamingSerializerType<T>()
+    {
+        StreamingSerializerType = typeof(T);
         return this;
     }
 
