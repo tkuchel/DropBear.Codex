@@ -7,7 +7,9 @@ using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Errors;
 using DropBear.Codex.Serialization.Interfaces;
 using DropBear.Codex.Serialization.Serializers;
+using Microsoft.Extensions.Logging;
 using Serilog;
+using ILogger = Serilog.ILogger;
 
 #endregion
 
@@ -19,7 +21,7 @@ namespace DropBear.Codex.Serialization.Factories;
 [SupportedOSPlatform("windows")]
 public static class SerializerFactory
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForStaticClass(typeof(SerializerFactory));
+    private static readonly ILogger Logger = DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForStaticClass(typeof(SerializerFactory));
 
     /// <summary>
     ///     Creates a serializer based on the provided configuration.
@@ -154,15 +156,49 @@ public static class SerializerFactory
     {
         try
         {
+            // First, try to find a constructor with ILogger<T> parameter (new pattern for migrated serializers)
+            var loggerType = typeof(Microsoft.Extensions.Logging.ILogger<>).MakeGenericType(serializerType);
+            var constructorWithLogger = serializerType.GetConstructor([typeof(SerializationConfig), loggerType]);
+
+            if (constructorWithLogger != null)
+            {
+                // Create MEL logger using LoggerFactory
+                var loggerFactoryType = typeof(Microsoft.Extensions.Logging.LoggerFactory);
+                var createMethod = loggerFactoryType.GetMethod(nameof(Microsoft.Extensions.Logging.LoggerFactory.Create),
+                    [typeof(Action<Microsoft.Extensions.Logging.ILoggingBuilder>)]);
+
+                if (createMethod == null)
+                {
+                    throw new InvalidOperationException("Could not find LoggerFactory.Create method");
+                }
+
+                // Create a logger factory that uses Serilog as the provider
+                var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)createMethod.Invoke(null,
+                    [new Action<Microsoft.Extensions.Logging.ILoggingBuilder>(builder =>
+                    {
+                        // Use Serilog logger
+                        builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext(serializerType));
+                        builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                    })])!;
+
+                var melLogger = loggerFactory.CreateLogger(serializerType);
+
+                Logger.Information("Instantiating serializer of type {SerializerType} with MEL logger (migrated pattern)",
+                    serializerType.Name);
+                return (ISerializer)constructorWithLogger.Invoke([config, melLogger]);
+            }
+
+            // Fallback to old constructor pattern (SerializationConfig only)
             var constructor = serializerType.GetConstructor([typeof(SerializationConfig)]);
 
             if (constructor == null)
             {
                 throw new InvalidOperationException(
-                    $"No suitable constructor found for {serializerType.FullName}. Ensure it has a constructor accepting SerializationConfig.");
+                    $"No suitable constructor found for {serializerType.FullName}. " +
+                    "Ensure it has a constructor accepting either (SerializationConfig, ILogger<T>) or (SerializationConfig).");
             }
 
-            Logger.Information("Instantiating serializer of type {SerializerType}", serializerType.Name);
+            Logger.Information("Instantiating serializer of type {SerializerType} (legacy pattern)", serializerType.Name);
             return (ISerializer)constructor.Invoke([config]);
         }
         catch (Exception ex)
