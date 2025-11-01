@@ -1,10 +1,9 @@
 ﻿#region
 
 using System.IO.Compression;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Serialization.Compression;
 using DropBear.Codex.Serialization.Interfaces;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
@@ -13,17 +12,18 @@ namespace DropBear.Codex.Serialization.Providers;
 /// <summary>
 ///     Provides Deflate compression services.
 /// </summary>
-public sealed class DeflateCompressionProvider : ICompressionProvider
+public sealed partial class DeflateCompressionProvider : ICompressionProvider
 {
     private readonly int _bufferSize;
     private readonly CompressionLevel _compressionLevel;
-    private readonly ILogger _logger = LoggerFactory.Logger.ForContext<DeflateCompressionProvider>();
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<DeflateCompressionProvider> _logger;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="DeflateCompressionProvider" /> class with default settings.
     /// </summary>
-    public DeflateCompressionProvider()
-        : this(CompressionLevel.Fastest, 81920) // Default to fastest compression and 80KB buffer
+    public DeflateCompressionProvider(ILoggerFactory loggerFactory)
+        : this(CompressionLevel.Fastest, 81920, loggerFactory) // Default to fastest compression and 80KB buffer
     {
     }
 
@@ -32,14 +32,15 @@ public sealed class DeflateCompressionProvider : ICompressionProvider
     /// </summary>
     /// <param name="compressionLevel">The compression level to use.</param>
     /// <param name="bufferSize">The buffer size for compression operations.</param>
-    public DeflateCompressionProvider(CompressionLevel compressionLevel, int bufferSize)
+    /// <param name="loggerFactory">The logger factory.</param>
+    public DeflateCompressionProvider(CompressionLevel compressionLevel, int bufferSize, ILoggerFactory loggerFactory)
     {
+        _loggerFactory = loggerFactory;
+        _logger = loggerFactory.CreateLogger<DeflateCompressionProvider>();
         _compressionLevel = compressionLevel;
         _bufferSize = bufferSize > 0 ? bufferSize : 81920;
 
-        _logger.Information(
-            "DeflateCompressionProvider initialized with CompressionLevel: {CompressionLevel}, BufferSize: {BufferSize}",
-            _compressionLevel, _bufferSize);
+        LogProviderInitialized(compressionLevel.ToString(), _bufferSize);
     }
 
     /// <summary>
@@ -48,9 +49,9 @@ public sealed class DeflateCompressionProvider : ICompressionProvider
     /// <returns>A Deflate compressor.</returns>
     public ICompressor GetCompressor()
     {
-        _logger.Information("Creating a new instance of DeflateCompressor with CompressionLevel: {CompressionLevel}",
-            _compressionLevel);
-        return new DeflateCompressor(_compressionLevel, _bufferSize);
+        LogCreatingCompressor(_compressionLevel.ToString());
+        return new DeflateCompressor(_compressionLevel, _bufferSize,
+            _loggerFactory.CreateLogger<DeflateCompressor>());
     }
 
     /// <summary>
@@ -67,4 +68,17 @@ public sealed class DeflateCompressionProvider : ICompressionProvider
             ["IsThreadSafe"] = true
         };
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message =
+            "DeflateCompressionProvider initialized with CompressionLevel: {CompressionLevel}, BufferSize: {BufferSize}")]
+    private partial void LogProviderInitialized(string compressionLevel, int bufferSize);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Creating a new instance of DeflateCompressor with CompressionLevel: {CompressionLevel}")]
+    private partial void LogCreatingCompressor(string compressionLevel);
+
+    #endregion
 }
