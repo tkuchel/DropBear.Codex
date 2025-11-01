@@ -340,8 +340,34 @@ public static class SerializerFactory
     {
         try
         {
+            // Try to find a constructor that takes SerializationConfig and ILoggerFactory
+            var constructor = providerType.GetConstructor([typeof(SerializationConfig), typeof(Microsoft.Extensions.Logging.ILoggerFactory)]);
+
+            if (constructor != null)
+            {
+                // Create a logger factory for the provider
+                var loggerFactoryType = typeof(Microsoft.Extensions.Logging.LoggerFactory);
+                var createMethod = loggerFactoryType.GetMethod(nameof(Microsoft.Extensions.Logging.LoggerFactory.Create),
+                    [typeof(Action<Microsoft.Extensions.Logging.ILoggingBuilder>)]);
+
+                if (createMethod == null)
+                {
+                    throw new InvalidOperationException("Could not find LoggerFactory.Create method");
+                }
+
+                var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)createMethod.Invoke(null,
+                    [new Action<Microsoft.Extensions.Logging.ILoggingBuilder>(builder =>
+                    {
+                        builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger);
+                        builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                    })])!;
+
+                Logger.Information("Instantiating provider of type {ProviderType} with logger factory", providerType.Name);
+                return constructor.Invoke([config, loggerFactory]);
+            }
+
             // Try to find a constructor that takes a SerializationConfig
-            var constructor = providerType.GetConstructor([typeof(SerializationConfig)]);
+            constructor = providerType.GetConstructor([typeof(SerializationConfig)]);
 
             // If no such constructor exists, look for a parameterless constructor
             if (constructor == null)

@@ -6,6 +6,7 @@ using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Encryption;
 using DropBear.Codex.Serialization.Interfaces;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -19,7 +20,8 @@ namespace DropBear.Codex.Serialization.Providers;
 public sealed class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
 {
     private readonly bool _enableCaching;
-    private readonly ILogger _logger = LoggerFactory.Logger.ForContext<AESGCMEncryptionProvider>();
+    private readonly Serilog.ILogger _logger = DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<AESGCMEncryptionProvider>();
+    private readonly ILoggerFactory _loggerFactory;
     private readonly int _maxCacheSize;
     private readonly RSA _rsa;
     private bool _disposed;
@@ -28,11 +30,13 @@ public sealed class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
     ///     Initializes a new instance of the <see cref="AESGCMEncryptionProvider" /> class.
     /// </summary>
     /// <param name="config">The serialization configuration.</param>
+    /// <param name="loggerFactory">The logger factory for creating loggers.</param>
     /// <exception cref="ArgumentException">Thrown if required configuration properties are missing.</exception>
     [SupportedOSPlatform("windows")]
-    public AESGCMEncryptionProvider(SerializationConfig config)
+    public AESGCMEncryptionProvider(SerializationConfig config, ILoggerFactory loggerFactory)
     {
         ArgumentNullException.ThrowIfNull(config, nameof(config));
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
 
         _logger.Information("Initializing AESGCMEncryptionProvider.");
 
@@ -94,7 +98,8 @@ public sealed class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
         _logger.Information("Creating AES-GCM encryptor with KeySize: {KeySize}, Caching: {EnableCaching}",
             _rsa.KeySize, _enableCaching);
 
-        return new AesGcmEncryptor(_rsa, _enableCaching, _maxCacheSize);
+        var logger = _loggerFactory.CreateLogger<AesGcmEncryptor>();
+        return new AesGcmEncryptor(_rsa, logger, _enableCaching, _maxCacheSize);
     }
 
     /// <summary>
