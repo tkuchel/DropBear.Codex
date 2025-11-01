@@ -15,6 +15,7 @@ using DropBear.Codex.Serialization.Serializers;
 using MessagePack;
 using MessagePack.Resolvers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -25,9 +26,19 @@ namespace DropBear.Codex.Serialization.Extensions;
 ///     Extension methods for SerializerFactory and SerializationBuilder.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public static class SerializerFactoryExtensions
+public static partial class SerializerFactoryExtensions
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(SerializerFactoryExtensions));
+    private static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Log.ForContext(typeof(SerializerFactoryExtensions)));
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(SerializerFactoryExtensions));
+    }
 
     /// <summary>
     ///     Configures the builder with optimized JSON serialization options.
@@ -38,7 +49,7 @@ public static class SerializerFactoryExtensions
     public static SerializationBuilder WithDefaultJsonOptions(this SerializationBuilder builder,
         bool writeIndented = false)
     {
-        Logger.Information("Configuring JSON serialization with WriteIndented: {WriteIndented}", writeIndented);
+        LogConfiguringJsonSerialization(Logger, writeIndented);
 
         var options = new JsonSerializerOptions
         {
@@ -64,8 +75,7 @@ public static class SerializerFactoryExtensions
     public static SerializationBuilder WithDefaultMessagePackOptions(this SerializationBuilder builder,
         bool resolverEnabled = true)
     {
-        Logger.Information("Configuring MessagePack serialization with ResolverEnabled: {ResolverEnabled}",
-            resolverEnabled);
+        LogConfiguringMessagePackSerialization(Logger, resolverEnabled);
 
         var options = MessagePackSerializerOptions.Standard
             .WithSecurity(MessagePackSecurity.UntrustedData)
@@ -96,12 +106,12 @@ public static class SerializerFactoryExtensions
         try
         {
             var providerType = providerTypeSelector();
-            Logger.Information("Selecting compression provider type: {ProviderType}", providerType.Name);
+            LogSelectingCompressionProvider(Logger, providerType.Name);
 
             if (!typeof(ICompressionProvider).IsAssignableFrom(providerType))
             {
                 var errorMessage = $"Selected type {providerType.Name} does not implement ICompressionProvider.";
-                Logger.Error(errorMessage);
+                LogCompressionProviderError(Logger, errorMessage);
                 throw new ArgumentException(errorMessage, nameof(providerTypeSelector));
             }
 
@@ -110,7 +120,7 @@ public static class SerializerFactoryExtensions
         catch (Exception ex) when (ex is not ArgumentException)
         {
             var errorMessage = "Failed to select compression provider.";
-            Logger.Error(ex, errorMessage);
+            LogCompressionProviderSelectionFailed(Logger, ex, errorMessage);
             throw new InvalidOperationException(errorMessage, ex);
         }
     }
@@ -130,12 +140,12 @@ public static class SerializerFactoryExtensions
         try
         {
             var providerType = providerTypeSelector();
-            Logger.Information("Selecting encryption provider type: {ProviderType}", providerType.Name);
+            LogSelectingEncryptionProvider(Logger, providerType.Name);
 
             if (!typeof(IEncryptionProvider).IsAssignableFrom(providerType))
             {
                 var errorMessage = $"Selected type {providerType.Name} does not implement IEncryptionProvider.";
-                Logger.Error(errorMessage);
+                LogEncryptionProviderError(Logger, errorMessage);
                 throw new ArgumentException(errorMessage, nameof(providerTypeSelector));
             }
 
@@ -144,7 +154,7 @@ public static class SerializerFactoryExtensions
         catch (Exception ex) when (ex is not ArgumentException)
         {
             var errorMessage = "Failed to select encryption provider.";
-            Logger.Error(ex, errorMessage);
+            LogEncryptionProviderSelectionFailed(Logger, ex, errorMessage);
             throw new InvalidOperationException(errorMessage, ex);
         }
     }
@@ -168,7 +178,7 @@ public static class SerializerFactoryExtensions
     /// <returns>True if the configuration is valid; otherwise, false.</returns>
     public static Result<bool, SerializationError> ValidateConfiguration(this SerializationConfig config)
     {
-        Logger.Information("Validating serialization configuration.");
+        LogValidatingConfiguration(Logger);
 
         try
         {
@@ -209,17 +219,17 @@ public static class SerializerFactoryExtensions
 
             if (!hasValidProviders)
             {
-                Logger.Warning("No providers (compression, encryption, or encoding) have been configured.");
+                LogNoProvidersConfigured(Logger);
             }
 
             // Log validation success
-            Logger.Information("Serialization configuration validated successfully.");
+            LogConfigurationValidated(Logger);
             return Result<bool, SerializationError>.Success(true);
         }
         catch (Exception ex)
         {
             var error = new SerializationError($"Configuration validation failed: {ex.Message}");
-            Logger.Error(ex, "Error validating serialization configuration.");
+            LogConfigurationValidationError(Logger, ex);
             return Result<bool, SerializationError>.Failure(error, ex);
         }
     }
@@ -237,7 +247,7 @@ public static class SerializerFactoryExtensions
         ArgumentNullException.ThrowIfNull(services, nameof(services));
         ArgumentNullException.ThrowIfNull(configure, nameof(configure));
 
-        Logger.Information("Registering serialization services.");
+        LogRegisteringSerializationServices(Logger);
 
         var builder = new SerializationBuilder();
         configure(builder);
@@ -250,13 +260,77 @@ public static class SerializerFactoryExtensions
             // Register all dependency services
             services.AddSingleton<IStreamSerializer, JsonStreamSerializer>();
 
-            Logger.Information("Serialization services registered successfully.");
+            LogSerializationServicesRegistered(Logger);
             return services;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to build and register serialization services.");
+            LogSerializationServicesRegistrationFailed(Logger, ex);
             throw new InvalidOperationException("Failed to register serialization services.", ex);
         }
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Configuring JSON serialization with WriteIndented: {WriteIndented}")]
+    static partial void LogConfiguringJsonSerialization(Microsoft.Extensions.Logging.ILogger logger, bool writeIndented);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Configuring MessagePack serialization with ResolverEnabled: {ResolverEnabled}")]
+    static partial void LogConfiguringMessagePackSerialization(Microsoft.Extensions.Logging.ILogger logger, bool resolverEnabled);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Selecting compression provider type: {ProviderType}")]
+    static partial void LogSelectingCompressionProvider(Microsoft.Extensions.Logging.ILogger logger, string providerType);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "{ErrorMessage}")]
+    static partial void LogCompressionProviderError(Microsoft.Extensions.Logging.ILogger logger, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "{ErrorMessage}")]
+    static partial void LogCompressionProviderSelectionFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Selecting encryption provider type: {ProviderType}")]
+    static partial void LogSelectingEncryptionProvider(Microsoft.Extensions.Logging.ILogger logger, string providerType);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "{ErrorMessage}")]
+    static partial void LogEncryptionProviderError(Microsoft.Extensions.Logging.ILogger logger, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "{ErrorMessage}")]
+    static partial void LogEncryptionProviderSelectionFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Validating serialization configuration.")]
+    static partial void LogValidatingConfiguration(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "No providers (compression, encryption, or encoding) have been configured.")]
+    static partial void LogNoProvidersConfigured(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Serialization configuration validated successfully.")]
+    static partial void LogConfigurationValidated(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error validating serialization configuration.")]
+    static partial void LogConfigurationValidationError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Registering serialization services.")]
+    static partial void LogRegisteringSerializationServices(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Serialization services registered successfully.")]
+    static partial void LogSerializationServicesRegistered(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to build and register serialization services.")]
+    static partial void LogSerializationServicesRegistrationFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    #endregion
 }
