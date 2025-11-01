@@ -3,6 +3,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Serialization.ConfigurationPresets;
@@ -22,6 +23,7 @@ public sealed class JsonSerializer : ISerializer
 {
     private readonly int _bufferSize;
     private readonly bool _enableCaching;
+    private readonly JsonSerializerContext? _jsonSerializerContext;
     private readonly ILogger _logger = LoggerFactory.Logger.ForContext<JsonSerializer>();
     private readonly int _maxCacheSize;
     private readonly RecyclableMemoryStreamManager _memoryManager;
@@ -40,6 +42,7 @@ public sealed class JsonSerializer : ISerializer
         ArgumentNullException.ThrowIfNull(config, nameof(config));
 
         Options = config.JsonSerializerOptions ?? new JsonSerializerOptions();
+        _jsonSerializerContext = config.JsonSerializerContext;
         _memoryManager = config.RecyclableMemoryStreamManager ?? throw new ArgumentNullException(
             nameof(config.RecyclableMemoryStreamManager), "RecyclableMemoryStreamManager must be provided.");
 
@@ -53,9 +56,12 @@ public sealed class JsonSerializer : ISerializer
             _logger.Information("Caching enabled with max size: {MaxCacheSize}", _maxCacheSize);
         }
 
+        var contextInfo = _jsonSerializerContext != null
+            ? $", Using source-generated context: {_jsonSerializerContext.GetType().Name}"
+            : "";
         _logger.Information("JsonSerializer initialized with WriteIndented: {WriteIndented}, " +
-                            "PropertyNamingPolicy: {PropertyNamingPolicy}, BufferSize: {BufferSize}",
-            Options.WriteIndented, Options.PropertyNamingPolicy?.GetType().Name ?? "null", _bufferSize);
+                            "PropertyNamingPolicy: {PropertyNamingPolicy}, BufferSize: {BufferSize}{ContextInfo}",
+            Options.WriteIndented, Options.PropertyNamingPolicy?.GetType().Name ?? "null", _bufferSize, contextInfo);
     }
 
     /// <summary>
@@ -116,8 +122,17 @@ public sealed class JsonSerializer : ISerializer
 
             try
             {
-                await System.Text.Json.JsonSerializer.SerializeAsync(memoryStream, value, Options, cancellationToken)
-                    .ConfigureAwait(false);
+                // Use source-generated context if available for better performance
+                if (_jsonSerializerContext != null)
+                {
+                    await System.Text.Json.JsonSerializer.SerializeAsync(memoryStream, value, typeof(T), _jsonSerializerContext, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                else
+                {
+                    await System.Text.Json.JsonSerializer.SerializeAsync(memoryStream, value, Options, cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 var resultBytes = memoryStream.ToArray();
                 stopwatch.Stop();
@@ -188,9 +203,21 @@ public sealed class JsonSerializer : ISerializer
 
             try
             {
-                var result = await System.Text.Json.JsonSerializer
-                    .DeserializeAsync<T>(memoryStream, Options, cancellationToken)
-                    .ConfigureAwait(false);
+                // Use source-generated context if available for better performance
+                T? result;
+                if (_jsonSerializerContext != null)
+                {
+                    var deserializedValue = await System.Text.Json.JsonSerializer
+                        .DeserializeAsync(memoryStream, typeof(T), _jsonSerializerContext, cancellationToken)
+                        .ConfigureAwait(false);
+                    result = deserializedValue is T typed ? typed : default;
+                }
+                else
+                {
+                    result = await System.Text.Json.JsonSerializer
+                        .DeserializeAsync<T>(memoryStream, Options, cancellationToken)
+                        .ConfigureAwait(false);
+                }
 
                 stopwatch.Stop();
 
