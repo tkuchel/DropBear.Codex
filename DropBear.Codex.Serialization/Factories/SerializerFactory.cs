@@ -221,7 +221,27 @@ public static class SerializerFactory
             var compressor = (ICompressionProvider)CreateProvider(config, config.CompressionProviderType);
             Logger.Information("Applying compression provider of type {ProviderType}",
                 config.CompressionProviderType.Name);
-            return new CompressedSerializer(serializer, compressor);
+
+            // Create MEL logger for CompressedSerializer
+            var loggerFactoryType = typeof(Microsoft.Extensions.Logging.LoggerFactory);
+            var createMethod = loggerFactoryType.GetMethod(nameof(Microsoft.Extensions.Logging.LoggerFactory.Create),
+                [typeof(Action<Microsoft.Extensions.Logging.ILoggingBuilder>)]);
+
+            if (createMethod == null)
+            {
+                throw new InvalidOperationException("Could not find LoggerFactory.Create method");
+            }
+
+            var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)createMethod.Invoke(null,
+                [new Action<Microsoft.Extensions.Logging.ILoggingBuilder>(builder =>
+                {
+                    builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<CompressedSerializer>());
+                    builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                })])!;
+
+            var melLogger = loggerFactory.CreateLogger<CompressedSerializer>();
+
+            return new CompressedSerializer(serializer, compressor, melLogger);
         }
         catch (Exception ex)
         {
