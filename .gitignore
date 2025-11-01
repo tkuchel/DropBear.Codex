@@ -65,9 +65,12 @@ release_build_output.txt
 workflow_errors.txt
 nul
 
-## Benchmark results (keep only committed summary files)
+## Benchmark results (keep only curated analysis markdown files)
 *_results.txt
 *_final.txt
+*_corrected.txt
+*_SUCCESS.txt
+*_fixed.txt
 BenchmarkDotNet.Artifacts/
 
 ## Temporary scripts (keep only official release scripts)
