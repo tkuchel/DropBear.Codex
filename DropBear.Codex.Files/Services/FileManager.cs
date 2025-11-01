@@ -12,6 +12,7 @@ using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Extensions;
 using DropBear.Codex.Files.Interfaces;
 using DropBear.Codex.Files.Models;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Serilog;
 
@@ -24,7 +25,7 @@ namespace DropBear.Codex.Files.Services;
 ///     Supports reading, writing, updating, and deleting files (or blobs) via an <see cref="IStorageManager" />.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class FileManager
+public sealed partial class FileManager
 {
     private static readonly RecyclableMemoryStreamManager MemoryStreamManager = new(
         new RecyclableMemoryStreamManager.Options
@@ -36,7 +37,8 @@ public sealed class FileManager
         });
 
     private readonly string _baseDirectory;
-    private readonly ILogger _logger;
+    private readonly ILogger<FileManager> _logger;
+    private readonly Serilog.ILogger _serilogLogger;
     private readonly IStorageManager _storageManager;
 
     /// <summary>
@@ -48,9 +50,10 @@ public sealed class FileManager
     /// <param name="storageManager">
     ///     The <see cref="IStorageManager" /> implementation (local or blob-based).
     /// </param>
+    /// <param name="logger">The logger instance for FileManager.</param>
     /// <exception cref="PlatformNotSupportedException">Thrown when not running on Windows.</exception>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="storageManager" /> is null.</exception>
-    internal FileManager(string baseDirectory, IStorageManager? storageManager)
+    internal FileManager(string baseDirectory, IStorageManager? storageManager, ILogger<FileManager> logger)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -59,8 +62,9 @@ public sealed class FileManager
 
         _baseDirectory = baseDirectory;
         _storageManager = storageManager ?? throw new ArgumentNullException(nameof(storageManager));
-        _logger = LoggerFactory.Logger.ForContext<FileManager>();
-        _logger.Debug("FileManager initialized with {StorageManager}", _storageManager.GetType().Name);
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _serilogLogger = DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<FileManager>();
+        LogFileManagerInitialized(_storageManager.GetType().Name);
     }
 
     /// <summary>
@@ -76,7 +80,7 @@ public sealed class FileManager
         string identifier,
         CancellationToken cancellationToken = default)
     {
-        _logger.Debug("Attempting to write {DataType} to file {FilePath}", typeof(T).Name, identifier);
+        LogAttemptingWrite(typeof(T).Name, identifier);
 
         try
         {
@@ -93,8 +97,7 @@ public sealed class FileManager
             var streamResult = await ConvertToStreamAsync(data, cancellationToken).ConfigureAwait(false);
             if (!streamResult.IsSuccess)
             {
-                _logger.Warning("Failed to convert {DataType} to stream. Error: {ErrorMessage}",
-                    typeof(T).Name, streamResult.Error?.Message);
+                LogFailedToConvertToStream(typeof(T).Name, streamResult.Error?.Message ?? "Unknown error");
                 return Result<Unit, FileOperationError>.Failure(streamResult.Error!);
             }
 
@@ -107,13 +110,11 @@ public sealed class FileManager
 
                 if (writeResult.IsSuccess)
                 {
-                    _logger.Information("Successfully wrote {DataType} to file {FilePath}",
-                        typeof(T).Name, identifier);
+                    LogSuccessfullyWroteToFile(typeof(T).Name, identifier);
                     return Result<Unit, FileOperationError>.Success(Unit.Value);
                 }
 
-                _logger.Warning("Failed to write to file {FilePath}. Error: {ErrorMessage}",
-                    identifier, writeResult.Error?.Message);
+                LogFailedToWriteToFile(identifier, writeResult.Error?.Message ?? "Unknown error");
 
                 return Result<Unit, FileOperationError>.Failure(
                     FileOperationError.InvalidOperation($"Failed to write to file: {writeResult.Error?.Message}"));
@@ -121,12 +122,12 @@ public sealed class FileManager
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Write operation for {FilePath} was cancelled", identifier);
+            LogWriteOperationCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error writing {DataType} to file {FilePath}", typeof(T).Name, identifier);
+            LogErrorWritingToFile(ex, typeof(T).Name, identifier);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error writing to file: {ex.Message}"), ex);
         }
@@ -143,7 +144,7 @@ public sealed class FileManager
         string identifier,
         CancellationToken cancellationToken = default)
     {
-        _logger.Debug("Attempting to read {DataType} from file {FilePath}", typeof(T).Name, identifier);
+        LogAttemptingRead(typeof(T).Name, identifier);
 
         try
         {
@@ -160,8 +161,7 @@ public sealed class FileManager
             var streamResult = await _storageManager.ReadAsync(identifier, cancellationToken).ConfigureAwait(false);
             if (!streamResult.IsSuccess)
             {
-                _logger.Warning("Failed to read from file {FilePath}. Error: {ErrorMessage}",
-                    identifier, streamResult.Error?.Message);
+                LogFailedToReadFromFile(identifier, streamResult.Error?.Message ?? "Unknown error");
 
                 return Result<T, FileOperationError>.Failure(
                     FileOperationError.ReadFailed(identifier, streamResult.Error?.Message ?? "Unknown error"));
@@ -176,12 +176,12 @@ public sealed class FileManager
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Read operation for {FilePath} was cancelled", identifier);
+            LogReadOperationCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error reading from file {FilePath}", identifier);
+            LogErrorReadingFromFile(ex, identifier);
             return Result<T, FileOperationError>.Failure(
                 FileOperationError.ReadFailed(identifier, ex.Message), ex);
         }
@@ -206,7 +206,7 @@ public sealed class FileManager
         bool overwrite = false,
         CancellationToken cancellationToken = default)
     {
-        _logger.Debug("Attempting to update {DataType} in file {FilePath}", typeof(T).Name, identifier);
+        LogAttemptingUpdate(typeof(T).Name, identifier);
 
         try
         {
@@ -232,8 +232,7 @@ public sealed class FileManager
                 }
                 else
                 {
-                    _logger.Warning("No existing file found at {FilePath}. Error: {ErrorMessage}",
-                        identifier, readResult.Error?.Message);
+                    LogNoExistingFileFound(identifier, readResult.Error?.Message ?? "Unknown error");
                 }
             }
 
@@ -249,7 +248,7 @@ public sealed class FileManager
                     {
                         // Add a new content container
                         existingFile.ContentContainers.Add(container);
-                        _logger.Information("Added new content container to DropBearFile.");
+                        LogAddedNewContentContainer();
                     }
                     else if (container.Data == null)
                     {
@@ -262,14 +261,14 @@ public sealed class FileManager
                         }
 
                         existingFile.ContentContainers.Remove(existingContainer);
-                        _logger.Information("Removed content container from DropBearFile.");
+                        LogRemovedContentContainer();
                     }
                     else
                     {
                         // Update existing container
                         existingContainer.Data = container.Data;
                         existingContainer.SetHash(container.Hash);
-                        _logger.Information("Updated existing content container in DropBearFile.");
+                        LogUpdatedExistingContentContainer();
                     }
                 }
             }
@@ -287,8 +286,7 @@ public sealed class FileManager
 
             if (!streamResult.IsSuccess)
             {
-                _logger.Warning("Failed to convert {DataType} to stream for update. Error: {ErrorMessage}",
-                    typeof(T).Name, streamResult.Error?.Message);
+                LogFailedToConvertToStreamForUpdate(typeof(T).Name, streamResult.Error?.Message ?? "Unknown error");
 
                 return Result<Unit, FileOperationError>.Failure(streamResult.Error!);
             }
@@ -302,13 +300,11 @@ public sealed class FileManager
 
                 if (updateResult.IsSuccess)
                 {
-                    _logger.Information("Successfully updated {DataType} in file {FilePath}",
-                        typeof(T).Name, identifier);
+                    LogSuccessfullyUpdatedFile(typeof(T).Name, identifier);
                     return Result<Unit, FileOperationError>.Success(Unit.Value);
                 }
 
-                _logger.Warning("Failed to update file {FilePath}. Error: {ErrorMessage}",
-                    identifier, updateResult.Error?.Message);
+                LogFailedToUpdateFile(identifier, updateResult.Error?.Message ?? "Unknown error");
 
                 return Result<Unit, FileOperationError>.Failure(
                     FileOperationError.UpdateFailed(identifier, updateResult.Error?.Message ?? "Unknown error"));
@@ -316,12 +312,12 @@ public sealed class FileManager
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Update operation for {FilePath} was cancelled", identifier);
+            LogUpdateOperationCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error updating {DataType} in file {FilePath}", typeof(T).Name, identifier);
+            LogErrorUpdatingFile(ex, typeof(T).Name, identifier);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.UpdateFailed(identifier, ex.Message), ex);
         }
@@ -344,7 +340,7 @@ public sealed class FileManager
         ContentContainer? containerToDelete = null,
         CancellationToken cancellationToken = default)
     {
-        _logger.Debug("Attempting to delete file {FilePath} or specific content container", identifier);
+        LogAttemptingDelete(identifier);
 
         try
         {
@@ -364,12 +360,11 @@ public sealed class FileManager
                     await _storageManager.DeleteAsync(identifier, cancellationToken).ConfigureAwait(false);
                 if (deleteResult.IsSuccess)
                 {
-                    _logger.Information("Successfully deleted file {FilePath}", identifier);
+                    LogSuccessfullyDeletedFile(identifier);
                     return Result<Unit, FileOperationError>.Success(Unit.Value);
                 }
 
-                _logger.Warning("Failed to delete file {FilePath}. Error: {ErrorMessage}",
-                    identifier, deleteResult.Error?.Message);
+                LogFailedToDeleteFile(identifier, deleteResult.Error?.Message ?? "Unknown error");
 
                 return Result<Unit, FileOperationError>.Failure(
                     FileOperationError.DeleteFailed(identifier, deleteResult.Error?.Message ?? "Unknown error"));
@@ -398,7 +393,7 @@ public sealed class FileManager
             if (existingContainer != null)
             {
                 dropBearFile.ContentContainers.Remove(existingContainer);
-                _logger.Information("Deleted content container from file {FilePath}", identifier);
+                LogDeletedContentContainer(identifier);
 
                 // Update the file with the new container list
                 return await UpdateFileAsync(dropBearFile, identifier, true, cancellationToken).ConfigureAwait(false);
@@ -409,12 +404,12 @@ public sealed class FileManager
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Delete operation for {FilePath} was cancelled", identifier);
+            LogDeleteOperationCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error deleting file {FilePath}", identifier);
+            LogErrorDeletingFile(ex, identifier);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.DeleteFailed(identifier, ex.Message), ex);
         }
@@ -442,7 +437,7 @@ public sealed class FileManager
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error getting content container by content type: {ContentType}", contentType);
+            LogErrorGettingContainerByContentType(ex, contentType);
             return Result<ContentContainer?, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error retrieving container by content type: {ex.Message}"), ex);
         }
@@ -470,7 +465,7 @@ public sealed class FileManager
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error getting content container by hash: {Hash}", hash);
+            LogErrorGettingContainerByHash(ex, hash);
             return Result<ContentContainer?, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error retrieving container by hash: {ex.Message}"), ex);
         }
@@ -499,7 +494,7 @@ public sealed class FileManager
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error listing content container types.");
+            LogErrorListingContainerTypes(ex);
             return Result<IReadOnlyList<string>, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error listing container types: {ex.Message}"), ex);
         }
@@ -526,17 +521,17 @@ public sealed class FileManager
             {
                 existingContainer.Data = newContainer.Data;
                 existingContainer.SetHash(newContainer.Hash);
-                _logger.Information("Updated existing content container.");
+                LogUpdatedExistingContentContainer();
                 return Result<Unit, FileOperationError>.Success(Unit.Value);
             }
 
             file.ContentContainers.Add(newContainer);
-            _logger.Information("Added new content container.");
+            LogAddedNewContentContainer();
             return Result<Unit, FileOperationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error adding or updating content container.");
+            LogErrorAddingOrUpdatingContainer(ex);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation("Error adding or updating container."), ex);
         }
@@ -578,12 +573,12 @@ public sealed class FileManager
             }
 
             file.ContentContainers.Remove(containerToRemove);
-            _logger.Information("Removed content container with content type: {ContentType}", contentType);
+            LogRemovedContainerByContentType(contentType);
             return Result<Unit, FileOperationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error removing content container by content type: {ContentType}", contentType);
+            LogErrorRemovingContainerByContentType(ex, contentType);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation("Error removing content container."), ex);
         }
@@ -608,7 +603,7 @@ public sealed class FileManager
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error counting content containers.");
+            LogErrorCountingContainers(ex);
             return Result<int, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error counting containers: {ex.Message}"), ex);
         }
@@ -637,7 +632,7 @@ public sealed class FileManager
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error counting content containers by content type: {ContentType}", contentType);
+            LogErrorCountingContainersByType(ex, contentType);
             return Result<int, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error counting containers by type: {ex.Message}"), ex);
         }
@@ -671,12 +666,12 @@ public sealed class FileManager
             file.ContentContainers.Remove(existingContainer);
             file.ContentContainers.Add(newContainer);
 
-            _logger.Information("Replaced content container in DropBearFile.");
+            LogReplacedContentContainer();
             return Result<Unit, FileOperationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error replacing content container.");
+            LogErrorReplacingContainer(ex);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation("Error replacing content container."), ex);
         }
@@ -841,9 +836,7 @@ public sealed class FileManager
                 }
                 else
                 {
-                    _logger.Warning(
-                        "Failed to deserialize container of type {ContentType}. Error: {ErrorMessage}",
-                        contentType, deserializeResult.Error?.Message);
+                    LogFailedToDeserializeContainer(contentType, deserializeResult.Error?.Message ?? "Unknown error");
                     // Skip this container and continue streaming
                 }
 
@@ -883,9 +876,7 @@ public sealed class FileManager
         // This prevents path traversal attacks like "../../etc/passwd"
         if (!fullPath.StartsWith(_baseDirectory, StringComparison.Ordinal))
         {
-            _logger.Warning(
-                "Path traversal attempt blocked: {RequestedPath} resolved to {FullPath}, base: {BaseDirectory}",
-                path, fullPath, _baseDirectory);
+            LogPathTraversalAttemptBlocked(path, fullPath, _baseDirectory);
 
             throw new UnauthorizedAccessException(
                 $"Path traversal detected: '{path}' attempts to access outside base directory");
@@ -913,7 +904,7 @@ public sealed class FileManager
             if (!Directory.Exists(directoryPath))
             {
                 Directory.CreateDirectory(directoryPath);
-                _logger.Information("Directory created successfully: {DirectoryPath}", directoryPath);
+                LogDirectoryCreatedSuccessfully(directoryPath);
             }
 
             if (await HasWritePermissionOnDirAsync(directoryPath, cancellationToken).ConfigureAwait(false))
@@ -921,7 +912,7 @@ public sealed class FileManager
                 return Result<Unit, FileOperationError>.Success(Unit.Value);
             }
 
-            _logger.Information("Setting write permissions on directory: {DirectoryPath}", directoryPath);
+            LogSettingWritePermissions(directoryPath);
             var currentUser = WindowsIdentity.GetCurrent().Name;
             await AddDirectorySecurityAsync(directoryPath, currentUser, FileSystemRights.WriteData,
                 AccessControlType.Allow, cancellationToken).ConfigureAwait(false);
@@ -933,12 +924,12 @@ public sealed class FileManager
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("File path validation was cancelled: {FilePath}", path);
+            LogFilePathValidationCancelled(path);
             throw; // Propagate cancellation
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error validating file path: {FilePath}", path);
+            LogErrorValidatingFilePath(ex, path);
             return Result<Unit, FileOperationError>.Failure(
                 FileOperationError.InvalidOperation($"Error validating file path: {ex.Message}"), ex);
         }
@@ -1008,7 +999,7 @@ public sealed class FileManager
             if (data is DropBearFile file)
             {
                 // If it's a DropBearFile, serialize asynchronously to a stream
-                var result = await file.ToStreamAsync(_logger, cancellationToken).ConfigureAwait(false);
+                var result = await file.ToStreamAsync(_serilogLogger, cancellationToken).ConfigureAwait(false);
                 if (result.IsSuccess)
                 {
                     return Result<Stream, FileOperationError>.Success(result.Value);
@@ -1075,7 +1066,7 @@ public sealed class FileManager
             if (typeof(T) == typeof(DropBearFile))
             {
                 // Use extension method to deserialize
-                var result = await DropBearFileExtensions.FromStreamAsync(stream, _logger, cancellationToken)
+                var result = await DropBearFileExtensions.FromStreamAsync(stream, _serilogLogger, cancellationToken)
                     .ConfigureAwait(false);
 
                 if (result.IsSuccess)
@@ -1100,6 +1091,139 @@ public sealed class FileManager
                 FileOperationError.InvalidOperation($"Error converting stream to {typeof(T).Name}: {ex.Message}"), ex);
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "FileManager initialized with {StorageManager}")]
+    private partial void LogFileManagerInitialized(string storageManager);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Attempting to write {DataType} to file {FilePath}")]
+    private partial void LogAttemptingWrite(string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to convert {DataType} to stream. Error: {ErrorMessage}")]
+    private partial void LogFailedToConvertToStream(string dataType, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully wrote {DataType} to file {FilePath}")]
+    private partial void LogSuccessfullyWroteToFile(string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to write to file {FilePath}. Error: {ErrorMessage}")]
+    private partial void LogFailedToWriteToFile(string filePath, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Write operation for {FilePath} was cancelled")]
+    private partial void LogWriteOperationCancelled(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error writing {DataType} to file {FilePath}")]
+    private partial void LogErrorWritingToFile(Exception ex, string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Attempting to read {DataType} from file {FilePath}")]
+    private partial void LogAttemptingRead(string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to read from file {FilePath}. Error: {ErrorMessage}")]
+    private partial void LogFailedToReadFromFile(string filePath, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Read operation for {FilePath} was cancelled")]
+    private partial void LogReadOperationCancelled(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error reading from file {FilePath}")]
+    private partial void LogErrorReadingFromFile(Exception ex, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Attempting to update {DataType} in file {FilePath}")]
+    private partial void LogAttemptingUpdate(string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "No existing file found at {FilePath}. Error: {ErrorMessage}")]
+    private partial void LogNoExistingFileFound(string filePath, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Added new content container to DropBearFile.")]
+    private partial void LogAddedNewContentContainer();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed content container from DropBearFile.")]
+    private partial void LogRemovedContentContainer();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Updated existing content container in DropBearFile.")]
+    private partial void LogUpdatedExistingContentContainer();
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to convert {DataType} to stream for update. Error: {ErrorMessage}")]
+    private partial void LogFailedToConvertToStreamForUpdate(string dataType, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully updated {DataType} in file {FilePath}")]
+    private partial void LogSuccessfullyUpdatedFile(string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to update file {FilePath}. Error: {ErrorMessage}")]
+    private partial void LogFailedToUpdateFile(string filePath, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Update operation for {FilePath} was cancelled")]
+    private partial void LogUpdateOperationCancelled(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error updating {DataType} in file {FilePath}")]
+    private partial void LogErrorUpdatingFile(Exception ex, string dataType, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Debug, Message = "Attempting to delete file {FilePath} or specific content container")]
+    private partial void LogAttemptingDelete(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully deleted file {FilePath}")]
+    private partial void LogSuccessfullyDeletedFile(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to delete file {FilePath}. Error: {ErrorMessage}")]
+    private partial void LogFailedToDeleteFile(string filePath, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted content container from file {FilePath}")]
+    private partial void LogDeletedContentContainer(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Delete operation for {FilePath} was cancelled")]
+    private partial void LogDeleteOperationCancelled(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error deleting file {FilePath}")]
+    private partial void LogErrorDeletingFile(Exception ex, string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error getting content container by content type: {ContentType}")]
+    private partial void LogErrorGettingContainerByContentType(Exception ex, string contentType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error getting content container by hash: {Hash}")]
+    private partial void LogErrorGettingContainerByHash(Exception ex, string hash);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error listing content container types.")]
+    private partial void LogErrorListingContainerTypes(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error adding or updating content container.")]
+    private partial void LogErrorAddingOrUpdatingContainer(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Removed content container with content type: {ContentType}")]
+    private partial void LogRemovedContainerByContentType(string contentType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error removing content container by content type: {ContentType}")]
+    private partial void LogErrorRemovingContainerByContentType(Exception ex, string contentType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error counting content containers.")]
+    private partial void LogErrorCountingContainers(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error counting content containers by content type: {ContentType}")]
+    private partial void LogErrorCountingContainersByType(Exception ex, string contentType);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Replaced content container in DropBearFile.")]
+    private partial void LogReplacedContentContainer();
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error replacing content container.")]
+    private partial void LogErrorReplacingContainer(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Failed to deserialize container of type {ContentType}. Error: {ErrorMessage}")]
+    private partial void LogFailedToDeserializeContainer(string contentType, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Path traversal attempt blocked: {RequestedPath} resolved to {FullPath}, base: {BaseDirectory}")]
+    private partial void LogPathTraversalAttemptBlocked(string requestedPath, string fullPath, string baseDirectory);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Directory created successfully: {DirectoryPath}")]
+    private partial void LogDirectoryCreatedSuccessfully(string directoryPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Setting write permissions on directory: {DirectoryPath}")]
+    private partial void LogSettingWritePermissions(string directoryPath);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "File path validation was cancelled: {FilePath}")]
+    private partial void LogFilePathValidationCancelled(string filePath);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error validating file path: {FilePath}")]
+    private partial void LogErrorValidatingFilePath(Exception ex, string filePath);
 
     #endregion
 }
