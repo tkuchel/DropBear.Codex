@@ -264,7 +264,27 @@ public static class SerializerFactory
             var encryptor = (IEncryptionProvider)CreateProvider(config, config.EncryptionProviderType);
             Logger.Information("Applying encryption provider of type {ProviderType}",
                 config.EncryptionProviderType.Name);
-            return new EncryptedSerializer(serializer, encryptor);
+
+            // Create MEL logger for EncryptedSerializer
+            var loggerFactoryType = typeof(Microsoft.Extensions.Logging.LoggerFactory);
+            var createMethod = loggerFactoryType.GetMethod(nameof(Microsoft.Extensions.Logging.LoggerFactory.Create),
+                [typeof(Action<Microsoft.Extensions.Logging.ILoggingBuilder>)]);
+
+            if (createMethod == null)
+            {
+                throw new InvalidOperationException("Could not find LoggerFactory.Create method");
+            }
+
+            var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)createMethod.Invoke(null,
+                [new Action<Microsoft.Extensions.Logging.ILoggingBuilder>(builder =>
+                {
+                    builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<EncryptedSerializer>());
+                    builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                })])!;
+
+            var melLogger = loggerFactory.CreateLogger<EncryptedSerializer>();
+
+            return new EncryptedSerializer(serializer, encryptor, melLogger);
         }
         catch (Exception ex)
         {
