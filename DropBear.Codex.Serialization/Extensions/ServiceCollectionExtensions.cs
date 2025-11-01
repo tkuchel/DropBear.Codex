@@ -9,6 +9,7 @@ using DropBear.Codex.Serialization.Factories;
 using DropBear.Codex.Serialization.Interfaces;
 using DropBear.Codex.Serialization.Writers;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using JsonSerializer = DropBear.Codex.Serialization.Serializers.JsonSerializer;
 
@@ -19,9 +20,19 @@ namespace DropBear.Codex.Serialization.Extensions;
 /// <summary>
 ///     Extension methods for registering serialization services with an IServiceCollection.
 /// </summary>
-public static class ServiceCollectionExtensions
+public static partial class ServiceCollectionExtensions
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(ServiceCollectionExtensions));
+    private static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Log.ForContext(typeof(ServiceCollectionExtensions)));
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(ServiceCollectionExtensions));
+    }
 
     /// <summary>
     ///     Adds serialization services to the specified IServiceCollection.
@@ -38,7 +49,7 @@ public static class ServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services, nameof(services));
         ArgumentNullException.ThrowIfNull(configure, nameof(configure));
 
-        Logger.Information("Adding serialization services.");
+        LogAddingSerializationServices(Logger);
 
         try
         {
@@ -57,11 +68,11 @@ public static class ServiceCollectionExtensions
                 new JsonSerializerWriter(
                     provider.GetRequiredService<ISerializer>().GetJsonSerializerOptions()));
 
-            Logger.Information("Serialization services successfully added.");
+            LogSerializationServicesAdded(Logger);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to build and register the serializer.");
+            LogSerializerBuildFailed(Logger, ex);
             throw new InvalidOperationException("Failed to configure serialization services.", ex);
         }
 
@@ -83,7 +94,7 @@ public static class ServiceCollectionExtensions
             ArgumentNullException.ThrowIfNull(services, nameof(services));
             ArgumentNullException.ThrowIfNull(configure, nameof(configure));
 
-            Logger.Information("Adding serialization services with result type handling.");
+            LogAddingSerializationServicesWithResult(Logger);
 
             var builder = new SerializationBuilder();
             configure(builder);
@@ -91,12 +102,12 @@ public static class ServiceCollectionExtensions
             var serializer = builder.Build();
             services.AddSingleton(serializer);
 
-            Logger.Information("Serialization services successfully added with result type handling.");
+            LogSerializationServicesAddedWithResult(Logger);
             return Result<IServiceCollection, SerializationError>.Success(services);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to build and register the serializer with result type handling.");
+            LogSerializerBuildFailedWithResult(Logger, ex);
             return Result<IServiceCollection, SerializationError>.Failure(
                 new SerializationError($"Failed to configure serialization services: {ex.Message}"), ex);
         }
@@ -114,15 +125,15 @@ public static class ServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services, nameof(services));
 
-        Logger.Information("Adding JSON streaming deserializer services.");
+        LogAddingJsonStreamingDeserializer(Logger);
 
         services.AddSingleton<IStreamingSerializer>(provider =>
         {
-            var logger = provider.GetService<ILogger>() ?? Log.Logger;
+            var logger = provider.GetService<Serilog.ILogger>() ?? Log.Logger;
             return new Serializers.JsonStreamingDeserializer(options, logger);
         });
 
-        Logger.Information("JSON streaming deserializer services successfully added.");
+        LogJsonStreamingDeserializerAdded(Logger);
         return services;
     }
 
@@ -145,4 +156,40 @@ public static class ServiceCollectionExtensions
             PropertyNameCaseInsensitive = true, PropertyNamingPolicy = JsonNamingPolicy.CamelCase
         };
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Adding serialization services.")]
+    static partial void LogAddingSerializationServices(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Serialization services successfully added.")]
+    static partial void LogSerializationServicesAdded(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to build and register the serializer.")]
+    static partial void LogSerializerBuildFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Adding serialization services with result type handling.")]
+    static partial void LogAddingSerializationServicesWithResult(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Serialization services successfully added with result type handling.")]
+    static partial void LogSerializationServicesAddedWithResult(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to build and register the serializer with result type handling.")]
+    static partial void LogSerializerBuildFailedWithResult(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Adding JSON streaming deserializer services.")]
+    static partial void LogAddingJsonStreamingDeserializer(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "JSON streaming deserializer services successfully added.")]
+    static partial void LogJsonStreamingDeserializerAdded(Microsoft.Extensions.Logging.ILogger logger);
+
+    #endregion
 }
