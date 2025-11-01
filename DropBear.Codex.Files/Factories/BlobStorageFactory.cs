@@ -4,6 +4,7 @@ using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Errors;
 using FluentStorage;
 using FluentStorage.Blobs;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -14,9 +15,9 @@ namespace DropBear.Codex.Files.Factories;
 ///     Factory class for creating various types of blob storage instances using FluentStorage.
 ///     Supports synchronous and asynchronous creation of Azure Blob Storage instances.
 /// </summary>
-public static class BlobStorageFactory
+public static partial class BlobStorageFactory
 {
-    private static readonly ILogger Logger = Log.ForContext(typeof(BlobStorageFactory));
+    private static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     /// <summary>
     ///     Creates an <see cref="IBlobStorage" /> instance for Azure Blob Storage using shared key authentication.
@@ -29,7 +30,7 @@ public static class BlobStorageFactory
     /// </returns>
     public static Result<IBlobStorage, StorageError> CreateAzureBlobStorage(string accountName, string accountKey)
     {
-        Logger.Debug("Creating Azure Blob Storage with account name: {AccountName}", accountName);
+        LogCreatingAzureBlobStorage(Logger, accountName);
 
         var validationResult = ValidateInput(accountName, nameof(accountName));
         if (!validationResult.IsSuccess)
@@ -52,12 +53,12 @@ public static class BlobStorageFactory
                     StorageError.CreationFailed("Storage factory returned null"));
             }
 
-            Logger.Information("Successfully created Azure Blob Storage for account: {AccountName}", accountName);
+            LogAzureBlobStorageCreated(Logger, accountName);
             return Result<IBlobStorage, StorageError>.Success(storage);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error creating Azure Blob Storage for account: {AccountName}", accountName);
+            LogAzureBlobStorageCreationError(Logger, ex, accountName);
             return Result<IBlobStorage, StorageError>.Failure(
                 StorageError.CreationFailed(ex.Message),
                 ex);
@@ -80,7 +81,7 @@ public static class BlobStorageFactory
         string accountKey,
         CancellationToken cancellationToken = default)
     {
-        Logger.Debug("Creating Azure Blob Storage asynchronously with account name: {AccountName}", accountName);
+        LogCreatingAzureBlobStorageAsync(Logger, accountName);
 
         var validationResult = ValidateInput(accountName, nameof(accountName));
         if (!validationResult.IsSuccess)
@@ -109,21 +110,19 @@ public static class BlobStorageFactory
                     StorageError.CreationFailed("Storage factory returned null"));
             }
 
-            Logger.Information("Successfully created Azure Blob Storage asynchronously for account: {AccountName}",
-                accountName);
+            LogAzureBlobStorageCreatedAsync(Logger, accountName);
             return Result<IBlobStorage, StorageError>.Success(storage);
         }
         catch (OperationCanceledException ex)
         {
-            Logger.Information("Azure Blob Storage creation was canceled for account: {AccountName}", accountName);
+            LogAzureBlobStorageCreationCanceled(Logger, accountName);
             return Result<IBlobStorage, StorageError>.Failure(
                 StorageError.CreationFailed("Operation was canceled"),
                 ex);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error creating Azure Blob Storage asynchronously for account: {AccountName}",
-                accountName);
+            LogAzureBlobStorageCreationErrorAsync(Logger, ex, accountName);
             return Result<IBlobStorage, StorageError>.Failure(
                 StorageError.CreationFailed(ex.Message),
                 ex);
@@ -149,4 +148,46 @@ public static class BlobStorageFactory
 
         return Result<Unit, StorageError>.Success(Unit.Value);
     }
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Log.ForContext(typeof(BlobStorageFactory)));
+            builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(BlobStorageFactory));
+    }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Debug,
+        Message = "Creating Azure Blob Storage with account name: {AccountName}")]
+    static partial void LogCreatingAzureBlobStorage(Microsoft.Extensions.Logging.ILogger logger, string accountName);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Information,
+        Message = "Successfully created Azure Blob Storage for account: {AccountName}")]
+    static partial void LogAzureBlobStorageCreated(Microsoft.Extensions.Logging.ILogger logger, string accountName);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Error,
+        Message = "Error creating Azure Blob Storage for account: {AccountName}")]
+    static partial void LogAzureBlobStorageCreationError(Microsoft.Extensions.Logging.ILogger logger, Exception ex, string accountName);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Debug,
+        Message = "Creating Azure Blob Storage asynchronously with account name: {AccountName}")]
+    static partial void LogCreatingAzureBlobStorageAsync(Microsoft.Extensions.Logging.ILogger logger, string accountName);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Information,
+        Message = "Successfully created Azure Blob Storage asynchronously for account: {AccountName}")]
+    static partial void LogAzureBlobStorageCreatedAsync(Microsoft.Extensions.Logging.ILogger logger, string accountName);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Information,
+        Message = "Azure Blob Storage creation was canceled for account: {AccountName}")]
+    static partial void LogAzureBlobStorageCreationCanceled(Microsoft.Extensions.Logging.ILogger logger, string accountName);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Error,
+        Message = "Error creating Azure Blob Storage asynchronously for account: {AccountName}")]
+    static partial void LogAzureBlobStorageCreationErrorAsync(Microsoft.Extensions.Logging.ILogger logger, Exception ex, string accountName);
+
+    #endregion
 }
