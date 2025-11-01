@@ -306,7 +306,27 @@ public static class SerializerFactory
         {
             var encoder = (IEncodingProvider)CreateProvider(config, config.EncodingProviderType);
             Logger.Information("Applying encoding provider of type {ProviderType}", config.EncodingProviderType.Name);
-            return new EncodedSerializer(serializer, encoder);
+
+            // Create MEL logger for EncodedSerializer
+            var loggerFactoryType = typeof(Microsoft.Extensions.Logging.LoggerFactory);
+            var createMethod = loggerFactoryType.GetMethod(nameof(Microsoft.Extensions.Logging.LoggerFactory.Create),
+                [typeof(Action<Microsoft.Extensions.Logging.ILoggingBuilder>)]);
+
+            if (createMethod == null)
+            {
+                throw new InvalidOperationException("Could not find LoggerFactory.Create method");
+            }
+
+            var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)createMethod.Invoke(null,
+                [new Action<Microsoft.Extensions.Logging.ILoggingBuilder>(builder =>
+                {
+                    builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<EncodedSerializer>());
+                    builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+                })])!;
+
+            var melLogger = loggerFactory.CreateLogger<EncodedSerializer>();
+
+            return new EncodedSerializer(serializer, encoder, melLogger);
         }
         catch (Exception ex)
         {
