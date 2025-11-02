@@ -1,6 +1,7 @@
 using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Serializers;
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IO;
 
 namespace DropBear.Codex.Serialization.Tests.Serializers;
@@ -290,7 +291,8 @@ public sealed class JsonSerializerTests
             MaxCacheSize = 100
         };
 
-        return new JsonSerializer(config);
+        var logger = NullLogger<JsonSerializer>.Instance;
+        return new JsonSerializer(config, logger);
     }
 
     #endregion
