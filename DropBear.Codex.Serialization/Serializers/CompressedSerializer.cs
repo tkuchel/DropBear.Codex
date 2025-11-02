@@ -51,7 +51,7 @@ public sealed partial class CompressedSerializer : ISerializer
         _skipSmallObjects = skipSmallObjects;
         _compressionThreshold = compressionThreshold;
 
-        LogCompressedSerializerInitialized(_skipSmallObjects, _compressionThreshold);
+        LogCompressedSerializerInitialized(_logger, _skipSmallObjects, _compressionThreshold);
     }
 
     /// <inheritdoc />
@@ -59,7 +59,7 @@ public sealed partial class CompressedSerializer : ISerializer
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        LogSerializationStarting(typeof(T).Name);
+        LogSerializationStarting(_logger, typeof(T).Name);
 
         try
         {
@@ -76,7 +76,7 @@ public sealed partial class CompressedSerializer : ISerializer
             // Skip compression for small objects if configured
             if (_skipSmallObjects && serializedData.Length < _compressionThreshold)
             {
-                LogSkippingCompressionForSmallObject(typeof(T).Name, serializedData.Length);
+                LogSkippingCompressionForSmallObject(_logger, typeof(T).Name, serializedData.Length);
 
                 // Add a flag byte to indicate uncompressed data
                 var result = new byte[serializedData.Length + 1];
@@ -84,7 +84,7 @@ public sealed partial class CompressedSerializer : ISerializer
                 Buffer.BlockCopy(serializedData, 0, result, 1, serializedData.Length);
 
                 stopwatch.Stop();
-                LogSerializationCompletedWithoutCompression(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogSerializationCompletedWithoutCompression(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
 
                 return Result<byte[], SerializationError>.Success(result);
             }
@@ -107,7 +107,7 @@ public sealed partial class CompressedSerializer : ISerializer
 
             stopwatch.Stop();
 
-            LogSerializationAndCompressionCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds,
+            LogSerializationAndCompressionCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds,
                 serializedData.Length, compressedData.Length, (float)compressedData.Length / serializedData.Length);
 
             return Result<byte[], SerializationError>.Success(resultWithFlag);
@@ -115,7 +115,7 @@ public sealed partial class CompressedSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogSerializationError(typeof(T).Name, ex.Message, ex);
+            LogSerializationError(_logger, typeof(T).Name, ex.Message, ex);
 
             return Result<byte[], SerializationError>.Failure(
                 SerializationError.ForType<T>($"Error during serialization with compression: {ex.Message}",
@@ -135,7 +135,7 @@ public sealed partial class CompressedSerializer : ISerializer
         }
 
         var stopwatch = Stopwatch.StartNew();
-        LogDeserializationStarting(typeof(T).Name);
+        LogDeserializationStarting(_logger, typeof(T).Name);
 
         try
         {
@@ -161,13 +161,13 @@ public sealed partial class CompressedSerializer : ISerializer
 
                 dataToDeserialize = decompressResult.Value!;
 
-                LogDecompressionCompleted(actualData.Length, dataToDeserialize.Length);
+                LogDecompressionCompleted(_logger, actualData.Length, dataToDeserialize.Length);
             }
             else
             {
                 // Data wasn't compressed
                 dataToDeserialize = actualData;
-                LogDataWasNotCompressed(dataToDeserialize.Length);
+                LogDataWasNotCompressed(_logger, dataToDeserialize.Length);
             }
 
             // Deserialize the data using the inner serializer
@@ -178,11 +178,11 @@ public sealed partial class CompressedSerializer : ISerializer
 
             if (deserializeResult.IsSuccess)
             {
-                LogDeserializationCompletedSuccessfully(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogDeserializationCompletedSuccessfully(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
             }
             else
             {
-                LogDeserializationFailed(typeof(T).Name, stopwatch.ElapsedMilliseconds,
+                LogDeserializationFailed(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds,
                     deserializeResult.Error?.Message ?? "Unknown error");
             }
 
@@ -191,7 +191,7 @@ public sealed partial class CompressedSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogDeserializationError(typeof(T).Name, ex.Message, ex);
+            LogDeserializationError(_logger, typeof(T).Name, ex.Message, ex);
 
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>($"Error during deserialization with decompression: {ex.Message}",
@@ -227,52 +227,52 @@ public sealed partial class CompressedSerializer : ISerializer
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "CompressedSerializer initialized with SkipSmallObjects: {SkipSmallObjects}, CompressionThreshold: {CompressionThreshold} bytes")]
-    partial void LogCompressedSerializerInitialized(bool skipSmallObjects, int compressionThreshold);
+    static partial void LogCompressedSerializerInitialized(ILogger logger, bool skipSmallObjects, int compressionThreshold);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting serialization of type {Type} with compression")]
-    partial void LogSerializationStarting(string type);
+    static partial void LogSerializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Skipping compression for small object of type {Type} with size {Size} bytes")]
-    partial void LogSkippingCompressionForSmallObject(string type, int size);
+    static partial void LogSkippingCompressionForSmallObject(ILogger logger, string type, int size);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Serialization of type {Type} completed without compression in {ElapsedMs}ms")]
-    partial void LogSerializationCompletedWithoutCompression(string type, long elapsedMs);
+    static partial void LogSerializationCompletedWithoutCompression(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "Serialization and compression of type {Type} completed in {ElapsedMs}ms. Original size: {OriginalSize} bytes, Compressed size: {CompressedSize} bytes, Ratio: {CompressionRatio:P2}")]
-    partial void LogSerializationAndCompressionCompleted(string type, long elapsedMs, int originalSize,
+    static partial void LogSerializationAndCompressionCompleted(ILogger logger, string type, long elapsedMs, int originalSize,
         int compressedSize, float compressionRatio);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Error occurred during serialization and compression of type {Type}: {Message}")]
-    partial void LogSerializationError(string type, string message, Exception ex);
+    static partial void LogSerializationError(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting decompression and deserialization of type {Type}")]
-    partial void LogDeserializationStarting(string type);
+    static partial void LogDeserializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Decompression completed. Compressed size: {CompressedSize} bytes, Decompressed size: {DecompressedSize} bytes")]
-    partial void LogDecompressionCompleted(int compressedSize, int decompressedSize);
+    static partial void LogDecompressionCompleted(ILogger logger, int compressedSize, int decompressedSize);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Data was not compressed. Size: {Size} bytes")]
-    partial void LogDataWasNotCompressed(int size);
+    static partial void LogDataWasNotCompressed(ILogger logger, int size);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Decompression and deserialization of type {Type} completed successfully in {ElapsedMs}ms")]
-    partial void LogDeserializationCompletedSuccessfully(string type, long elapsedMs);
+    static partial void LogDeserializationCompletedSuccessfully(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Deserialization of type {Type} failed after decompression in {ElapsedMs}ms: {Error}")]
-    partial void LogDeserializationFailed(string type, long elapsedMs, string error);
+    static partial void LogDeserializationFailed(ILogger logger, string type, long elapsedMs, string error);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Error occurred during decompression and deserialization of type {Type}: {Message}")]
-    partial void LogDeserializationError(string type, string message, Exception ex);
+    static partial void LogDeserializationError(ILogger logger, string type, string message, Exception ex);
 
     #endregion
 }

@@ -53,7 +53,7 @@ public sealed partial class MessagePackSerializer : ISerializer
             _serializationCache = new Dictionary<int, byte[]>(_maxCacheSize);
         }
 
-        LogMessagePackSerializerInitialized(_options.Compression.ToString(), _options.Resolver?.GetType().Name ?? "null", _enableCaching);
+        LogMessagePackSerializerInitialized(_logger, _options.Compression.ToString(), _options.Resolver?.GetType().Name ?? "null", _enableCaching);
     }
 
     /// <inheritdoc />
@@ -78,7 +78,7 @@ public sealed partial class MessagePackSerializer : ISerializer
     {
         if (value == null)
         {
-            LogSerializeNullValue(typeof(T).Name);
+            LogSerializeNullValue(_logger, typeof(T).Name);
             return Result<byte[], SerializationError>.Success([]);
         }
 
@@ -88,12 +88,12 @@ public sealed partial class MessagePackSerializer : ISerializer
             var cacheKey = CalculateCacheKey(value);
             if (_serializationCache.TryGetValue(cacheKey, out var cachedBytes))
             {
-                LogCacheHit(typeof(T).Name);
+                LogCacheHit(_logger, typeof(T).Name);
                 return Result<byte[], SerializationError>.Success(cachedBytes);
             }
         }
 
-        LogSerializationStarting(typeof(T).Name);
+        LogSerializationStarting(_logger, typeof(T).Name);
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -109,7 +109,7 @@ public sealed partial class MessagePackSerializer : ISerializer
                 var resultBytes = memoryStream.ToArray();
 
                 stopwatch.Stop();
-                LogSerializationCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds, resultBytes.Length);
+                LogSerializationCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds, resultBytes.Length);
 
                 // Cache the result if enabled
                 if (_enableCaching && _serializationCache != null)
@@ -122,7 +122,7 @@ public sealed partial class MessagePackSerializer : ISerializer
             catch (MessagePackSerializationException ex) when (ex.InnerException is FormatterNotRegisteredException)
             {
                 stopwatch.Stop();
-                LogSerializationFormatterError(typeof(T).Name, ex);
+                LogSerializationFormatterError(_logger, typeof(T).Name, ex);
                 return Result<byte[], SerializationError>.Failure(
                     SerializationError.ForType<T>("Formatter not registered for type. Ensure all types are registered.",
                         "Serialize"),
@@ -132,7 +132,7 @@ public sealed partial class MessagePackSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogSerializationError(typeof(T).Name, ex.Message, ex);
+            LogSerializationError(_logger, typeof(T).Name, ex.Message, ex);
             return Result<byte[], SerializationError>.Failure(
                 SerializationError.ForType<T>($"MessagePack serialization failed: {ex.Message}", "Serialize"),
                 ex);
@@ -149,7 +149,7 @@ public sealed partial class MessagePackSerializer : ISerializer
                 SerializationError.ForType<T>("Cannot deserialize null or empty data", "Deserialize"));
         }
 
-        LogDeserializationStarting(typeof(T).Name);
+        LogDeserializationStarting(_logger, typeof(T).Name);
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -166,14 +166,14 @@ public sealed partial class MessagePackSerializer : ISerializer
                     .ConfigureAwait(false);
 
                 stopwatch.Stop();
-                LogDeserializationCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogDeserializationCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
 
                 return Result<T, SerializationError>.Success(result);
             }
             catch (MessagePackSerializationException ex)
             {
                 stopwatch.Stop();
-                LogDeserializationMessagePackError(typeof(T).Name, ex.Message, ex);
+                LogDeserializationMessagePackError(_logger, typeof(T).Name, ex.Message, ex);
                 return Result<T, SerializationError>.Failure(
                     SerializationError.ForType<T>($"MessagePack deserialization failed: {ex.Message}", "Deserialize"),
                     ex);
@@ -182,7 +182,7 @@ public sealed partial class MessagePackSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogDeserializationError(typeof(T).Name, ex.Message, ex);
+            LogDeserializationError(_logger, typeof(T).Name, ex.Message, ex);
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>($"MessagePack deserialization error: {ex.Message}", "Deserialize"),
                 ex);
@@ -226,7 +226,7 @@ public sealed partial class MessagePackSerializer : ISerializer
         catch (Exception ex)
         {
             // Don't let caching errors affect the serialization flow
-            LogCachingError(ex.Message, ex);
+            LogCachingError(_logger, ex.Message, ex);
         }
     }
 
@@ -235,40 +235,40 @@ public sealed partial class MessagePackSerializer : ISerializer
     #region LoggerMessage Source Generators
 
     [LoggerMessage(Level = LogLevel.Information, Message = "MessagePackSerializer initialized with Compression: {Compression}, Resolver: {Resolver}, EnableCaching: {EnableCaching}")]
-    partial void LogMessagePackSerializerInitialized(string compression, string resolver, bool enableCaching);
+    static partial void LogMessagePackSerializerInitialized(ILogger logger, string compression, string resolver, bool enableCaching);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Attempted to serialize null value of type {Type}")]
-    partial void LogSerializeNullValue(string type);
+    static partial void LogSerializeNullValue(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Cache hit for type {Type}, returning cached serialized data")]
-    partial void LogCacheHit(string type);
+    static partial void LogCacheHit(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting MessagePack serialization for type {Type}")]
-    partial void LogSerializationStarting(string type);
+    static partial void LogSerializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "MessagePack serialization completed successfully for type {Type} in {ElapsedMs}ms. Result size: {ResultSize} bytes")]
-    partial void LogSerializationCompleted(string type, long elapsedMs, int resultSize);
+    static partial void LogSerializationCompleted(ILogger logger, string type, long elapsedMs, int resultSize);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Serialization error: Formatter not registered for type {Type}")]
-    partial void LogSerializationFormatterError(string type, Exception ex);
+    static partial void LogSerializationFormatterError(ILogger logger, string type, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "General serialization error occurred for type {Type}: {Message}")]
-    partial void LogSerializationError(string type, string message, Exception ex);
+    static partial void LogSerializationError(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting MessagePack deserialization for type {Type}")]
-    partial void LogDeserializationStarting(string type);
+    static partial void LogDeserializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "MessagePack deserialization completed successfully for type {Type} in {ElapsedMs}ms")]
-    partial void LogDeserializationCompleted(string type, long elapsedMs);
+    static partial void LogDeserializationCompleted(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "MessagePack deserialization error for type {Type}: {Message}")]
-    partial void LogDeserializationMessagePackError(string type, string message, Exception ex);
+    static partial void LogDeserializationMessagePackError(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "General deserialization error occurred for type {Type}: {Message}")]
-    partial void LogDeserializationError(string type, string message, Exception ex);
+    static partial void LogDeserializationError(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Error caching serialization result: {Message}")]
-    partial void LogCachingError(string message, Exception ex);
+    static partial void LogCachingError(ILogger logger, string message, Exception ex);
 
     #endregion
 }

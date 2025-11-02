@@ -57,13 +57,13 @@ public sealed partial class JsonSerializer : ISerializer
         if (_enableCaching)
         {
             _serializationCache = new Dictionary<int, byte[]>(_maxCacheSize);
-            LogCachingEnabled(_maxCacheSize);
+            LogCachingEnabled(_logger, _maxCacheSize);
         }
 
         var contextInfo = _jsonSerializerContext != null
             ? $", Using source-generated context: {_jsonSerializerContext.GetType().Name}"
             : "";
-        LogJsonSerializerInitialized(Options.WriteIndented, Options.PropertyNamingPolicy?.GetType().Name ?? "null", _bufferSize, contextInfo);
+        LogJsonSerializerInitialized(_logger, Options.WriteIndented, Options.PropertyNamingPolicy?.GetType().Name ?? "null", _bufferSize, contextInfo);
     }
 
     /// <summary>
@@ -94,7 +94,7 @@ public sealed partial class JsonSerializer : ISerializer
     {
         if (value == null)
         {
-            LogSerializeNullValue(typeof(T).Name);
+            LogSerializeNullValue(_logger, typeof(T).Name);
             return Result<byte[], SerializationError>.Success([]);
         }
 
@@ -110,12 +110,12 @@ public sealed partial class JsonSerializer : ISerializer
             var cacheKey = CalculateCacheKey(value);
             if (_serializationCache.TryGetValue(cacheKey, out var cachedBytes))
             {
-                LogCacheHit(typeof(T).Name);
+                LogCacheHit(_logger, typeof(T).Name);
                 return Result<byte[], SerializationError>.Success(cachedBytes);
             }
         }
 
-        LogSerializationStarting(typeof(T).Name);
+        LogSerializationStarting(_logger, typeof(T).Name);
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -139,7 +139,7 @@ public sealed partial class JsonSerializer : ISerializer
                 var resultBytes = memoryStream.ToArray();
                 stopwatch.Stop();
 
-                LogSerializationCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds, resultBytes.Length);
+                LogSerializationCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds, resultBytes.Length);
 
                 // Cache the result if enabled
                 if (_enableCaching && resultBytes.Length > 0)
@@ -152,14 +152,14 @@ public sealed partial class JsonSerializer : ISerializer
             catch (JsonException ex)
             {
                 stopwatch.Stop();
-                LogSerializationJsonError(typeof(T).Name, ex);
+                LogSerializationJsonError(_logger, typeof(T).Name, ex);
                 return Result<byte[], SerializationError>.Failure(
                     SerializationError.ForType<T>($"JSON serialization failed: {ex.Message}", "Serialize"), ex);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                LogSerializationError(typeof(T).Name, ex);
+                LogSerializationError(_logger, typeof(T).Name, ex);
                 return Result<byte[], SerializationError>.Failure(
                     SerializationError.ForType<T>($"Error during serialization: {ex.Message}", "Serialize"), ex);
             }
@@ -167,7 +167,7 @@ public sealed partial class JsonSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogSerializationStreamError(typeof(T).Name, ex);
+            LogSerializationStreamError(_logger, typeof(T).Name, ex);
             return Result<byte[], SerializationError>.Failure(
                 SerializationError.ForType<T>($"Stream creation error: {ex.Message}", "Serialize"), ex);
         }
@@ -179,7 +179,7 @@ public sealed partial class JsonSerializer : ISerializer
     {
         if (data == null || data.Length == 0)
         {
-            LogDeserializeNullOrEmptyData(typeof(T).Name);
+            LogDeserializeNullOrEmptyData(_logger, typeof(T).Name);
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>("Cannot deserialize null or empty data", "Deserialize"));
         }
@@ -190,7 +190,7 @@ public sealed partial class JsonSerializer : ISerializer
             return Result<T, SerializationError>.Success(simpleResult);
         }
 
-        LogDeserializationStarting(typeof(T).Name, data.Length);
+        LogDeserializationStarting(_logger, typeof(T).Name, data.Length);
         var stopwatch = Stopwatch.StartNew();
 
         try
@@ -220,26 +220,26 @@ public sealed partial class JsonSerializer : ISerializer
 
                 if (result == null)
                 {
-                    LogDeserializationResultedInNull(typeof(T).Name);
+                    LogDeserializationResultedInNull(_logger, typeof(T).Name);
                     return Result<T, SerializationError>.Failure(
                         SerializationError.ForType<T>("Deserialization resulted in null", "Deserialize"));
                 }
 
-                LogDeserializationCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogDeserializationCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
 
                 return Result<T, SerializationError>.Success(result);
             }
             catch (JsonException ex)
             {
                 stopwatch.Stop();
-                LogDeserializationJsonError(typeof(T).Name, ex);
+                LogDeserializationJsonError(_logger, typeof(T).Name, ex);
                 return Result<T, SerializationError>.Failure(
                     SerializationError.ForType<T>($"JSON deserialization failed: {ex.Message}", "Deserialize"), ex);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                LogDeserializationError(typeof(T).Name, ex);
+                LogDeserializationError(_logger, typeof(T).Name, ex);
                 return Result<T, SerializationError>.Failure(
                     SerializationError.ForType<T>($"Error during deserialization: {ex.Message}", "Deserialize"), ex);
             }
@@ -247,7 +247,7 @@ public sealed partial class JsonSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogDeserializationStreamError(typeof(T).Name, ex);
+            LogDeserializationStreamError(_logger, typeof(T).Name, ex);
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>($"Stream creation error: {ex.Message}", "Deserialize"), ex);
         }
@@ -365,7 +365,7 @@ public sealed partial class JsonSerializer : ISerializer
         catch (Exception ex)
         {
             // Don't let caching errors affect the serialization flow
-            LogCachingError(ex);
+            LogCachingError(_logger, ex);
         }
     }
 
@@ -374,66 +374,66 @@ public sealed partial class JsonSerializer : ISerializer
     #region LoggerMessage Source Generators
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Caching enabled with max size: {MaxCacheSize}")]
-    partial void LogCachingEnabled(int maxCacheSize);
+    static partial void LogCachingEnabled(ILogger logger, int maxCacheSize);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "JsonSerializer initialized with WriteIndented: {WriteIndented}, PropertyNamingPolicy: {PropertyNamingPolicy}, BufferSize: {BufferSize}{ContextInfo}")]
-    partial void LogJsonSerializerInitialized(bool writeIndented, string propertyNamingPolicy, int bufferSize,
+    static partial void LogJsonSerializerInitialized(ILogger logger, bool writeIndented, string propertyNamingPolicy, int bufferSize,
         string contextInfo);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Attempted to serialize null value of type {Type}")]
-    partial void LogSerializeNullValue(string type);
+    static partial void LogSerializeNullValue(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Cache hit for type {Type}, returning cached serialized data")]
-    partial void LogCacheHit(string type);
+    static partial void LogCacheHit(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Starting JSON serialization for type {Type}")]
-    partial void LogSerializationStarting(string type);
+    static partial void LogSerializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "JSON serialization completed successfully for type {Type} in {ElapsedMs}ms. Result size: {ResultSize} bytes")]
-    partial void LogSerializationCompleted(string type, long elapsedMs, int resultSize);
+    static partial void LogSerializationCompleted(ILogger logger, string type, long elapsedMs, int resultSize);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "JSON serialization error for type {Type}")]
-    partial void LogSerializationJsonError(string type, JsonException ex);
+    static partial void LogSerializationJsonError(ILogger logger, string type, JsonException ex);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error during JSON serialization for type {Type}")]
-    partial void LogSerializationError(string type, Exception ex);
+    static partial void LogSerializationError(ILogger logger, string type, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Stream creation error during JSON serialization for type {Type}")]
-    partial void LogSerializationStreamError(string type, Exception ex);
+    static partial void LogSerializationStreamError(ILogger logger, string type, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Attempted to deserialize null or empty data to type {Type}")]
-    partial void LogDeserializeNullOrEmptyData(string type);
+    static partial void LogDeserializeNullOrEmptyData(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting JSON deserialization for type {Type}. Data size: {DataSize} bytes")]
-    partial void LogDeserializationStarting(string type, int dataSize);
+    static partial void LogDeserializationStarting(ILogger logger, string type, int dataSize);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "JSON deserialization resulted in null for type {Type}")]
-    partial void LogDeserializationResultedInNull(string type);
+    static partial void LogDeserializationResultedInNull(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "JSON deserialization completed successfully for type {Type} in {ElapsedMs}ms")]
-    partial void LogDeserializationCompleted(string type, long elapsedMs);
+    static partial void LogDeserializationCompleted(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "JSON deserialization error for type {Type}")]
-    partial void LogDeserializationJsonError(string type, JsonException ex);
+    static partial void LogDeserializationJsonError(ILogger logger, string type, JsonException ex);
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error during JSON deserialization for type {Type}")]
-    partial void LogDeserializationError(string type, Exception ex);
+    static partial void LogDeserializationError(ILogger logger, string type, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Stream creation error during JSON deserialization for type {Type}")]
-    partial void LogDeserializationStreamError(string type, Exception ex);
+    static partial void LogDeserializationStreamError(ILogger logger, string type, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Error caching serialization result")]
-    partial void LogCachingError(Exception ex);
+    static partial void LogCachingError(ILogger logger, Exception ex);
 
     #endregion
 }

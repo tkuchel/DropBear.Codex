@@ -51,7 +51,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
         _skipSmallObjects = skipSmallObjects;
         _encryptionThreshold = encryptionThreshold;
 
-        LogEncryptedSerializerInitialized(_skipSmallObjects, _encryptionThreshold);
+        LogEncryptedSerializerInitialized(_logger, _skipSmallObjects, _encryptionThreshold);
     }
 
     /// <summary>
@@ -82,7 +82,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        LogSerializationStarting(typeof(T).Name);
+        LogSerializationStarting(_logger, typeof(T).Name);
 
         try
         {
@@ -99,7 +99,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
             // Skip encryption for small objects if configured
             if (_skipSmallObjects && serializedData.Length < _encryptionThreshold)
             {
-                LogSkippingEncryptionForSmallObject(typeof(T).Name, serializedData.Length);
+                LogSkippingEncryptionForSmallObject(_logger, typeof(T).Name, serializedData.Length);
 
                 // Add a flag byte to indicate unencrypted data
                 var result = new byte[serializedData.Length + 1];
@@ -107,7 +107,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
                 Buffer.BlockCopy(serializedData, 0, result, 1, serializedData.Length);
 
                 stopwatch.Stop();
-                LogSerializationCompletedWithoutEncryption(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogSerializationCompletedWithoutEncryption(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
 
                 return Result<byte[], SerializationError>.Success(result);
             }
@@ -134,7 +134,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
                 Buffer.BlockCopy(encryptedBytes, 0, resultWithFlag, 1, encryptedBytes.Length);
 
                 stopwatch.Stop();
-                LogSerializationAndEncryptionCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds,
+                LogSerializationAndEncryptionCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds,
                     serializedData.Length, encryptedBytes.Length);
 
                 return Result<byte[], SerializationError>.Success(resultWithFlag);
@@ -142,7 +142,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
             catch (CryptographicException ex)
             {
                 stopwatch.Stop();
-                LogCryptographicErrorDuringEncryption(typeof(T).Name, ex.Message, ex);
+                LogCryptographicErrorDuringEncryption(_logger, typeof(T).Name, ex.Message, ex);
 
                 return Result<byte[], SerializationError>.Failure(
                     SerializationError.ForType<T>($"Cryptographic error during encryption: {ex.Message}", "Encrypt"),
@@ -152,7 +152,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogSerializationError(typeof(T).Name, ex.Message, ex);
+            LogSerializationError(_logger, typeof(T).Name, ex.Message, ex);
 
             return Result<byte[], SerializationError>.Failure(
                 SerializationError.ForType<T>($"Error during serialization with encryption: {ex.Message}",
@@ -172,7 +172,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
         }
 
         var stopwatch = Stopwatch.StartNew();
-        LogDeserializationStarting(typeof(T).Name);
+        LogDeserializationStarting(_logger, typeof(T).Name);
 
         try
         {
@@ -199,12 +199,12 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
                     dataToDeserialize = decryptResult.Value!;
 
 
-                    LogDecryptionCompleted(actualData.Length, dataToDeserialize.Length);
+                    LogDecryptionCompleted(_logger, actualData.Length, dataToDeserialize.Length);
                 }
                 catch (CryptographicException ex)
                 {
                     stopwatch.Stop();
-                    LogCryptographicErrorDuringDecryption(typeof(T).Name, ex.Message, ex);
+                    LogCryptographicErrorDuringDecryption(_logger, typeof(T).Name, ex.Message, ex);
 
                     return Result<T, SerializationError>.Failure(
                         SerializationError.ForType<T>($"Cryptographic error during decryption: {ex.Message}",
@@ -216,7 +216,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
             {
                 // Data wasn't encrypted
                 dataToDeserialize = actualData;
-                LogDataWasNotEncrypted(dataToDeserialize.Length);
+                LogDataWasNotEncrypted(_logger, dataToDeserialize.Length);
             }
 
             // Deserialize the data using the inner serializer
@@ -227,11 +227,11 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
 
             if (deserializeResult.IsSuccess)
             {
-                LogDeserializationCompletedSuccessfully(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogDeserializationCompletedSuccessfully(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
             }
             else
             {
-                LogDeserializationFailed(typeof(T).Name, stopwatch.ElapsedMilliseconds,
+                LogDeserializationFailed(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds,
                     deserializeResult.Error?.Message ?? "Unknown error");
             }
 
@@ -240,7 +240,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogDeserializationError(typeof(T).Name, ex.Message, ex);
+            LogDeserializationError(_logger, typeof(T).Name, ex.Message, ex);
 
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>($"Error during deserialization with decryption: {ex.Message}",
@@ -270,61 +270,61 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "EncryptedSerializer initialized with SkipSmallObjects: {SkipSmallObjects}, EncryptionThreshold: {EncryptionThreshold} bytes")]
-    partial void LogEncryptedSerializerInitialized(bool skipSmallObjects, int encryptionThreshold);
+    static partial void LogEncryptedSerializerInitialized(ILogger logger, bool skipSmallObjects, int encryptionThreshold);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting serialization and encryption of type {Type}")]
-    partial void LogSerializationStarting(string type);
+    static partial void LogSerializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Skipping encryption for small object of type {Type} with size {Size} bytes")]
-    partial void LogSkippingEncryptionForSmallObject(string type, int size);
+    static partial void LogSkippingEncryptionForSmallObject(ILogger logger, string type, int size);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Serialization of type {Type} completed without encryption in {ElapsedMs}ms")]
-    partial void LogSerializationCompletedWithoutEncryption(string type, long elapsedMs);
+    static partial void LogSerializationCompletedWithoutEncryption(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "Serialization and encryption of type {Type} completed in {ElapsedMs}ms. Original size: {OriginalSize} bytes, Encrypted size: {EncryptedSize} bytes")]
-    partial void LogSerializationAndEncryptionCompleted(string type, long elapsedMs, int originalSize,
+    static partial void LogSerializationAndEncryptionCompleted(ILogger logger, string type, long elapsedMs, int originalSize,
         int encryptedSize);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Cryptographic error during encryption of type {Type}: {Message}")]
-    partial void LogCryptographicErrorDuringEncryption(string type, string message, Exception ex);
+    static partial void LogCryptographicErrorDuringEncryption(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Error occurred during serialization and encryption of type {Type}: {Message}")]
-    partial void LogSerializationError(string type, string message, Exception ex);
+    static partial void LogSerializationError(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting decryption and deserialization of type {Type}")]
-    partial void LogDeserializationStarting(string type);
+    static partial void LogDeserializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "Decryption completed. Encrypted size: {EncryptedSize} bytes, Decrypted size: {DecryptedSize} bytes")]
-    partial void LogDecryptionCompleted(int encryptedSize, int decryptedSize);
+    static partial void LogDecryptionCompleted(ILogger logger, int encryptedSize, int decryptedSize);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Cryptographic error during decryption for type {Type}: {Message}")]
-    partial void LogCryptographicErrorDuringDecryption(string type, string message, Exception ex);
+    static partial void LogCryptographicErrorDuringDecryption(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Data was not encrypted. Size: {Size} bytes")]
-    partial void LogDataWasNotEncrypted(int size);
+    static partial void LogDataWasNotEncrypted(ILogger logger, int size);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Decryption and deserialization of type {Type} completed successfully in {ElapsedMs}ms")]
-    partial void LogDeserializationCompletedSuccessfully(string type, long elapsedMs);
+    static partial void LogDeserializationCompletedSuccessfully(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Deserialization of type {Type} failed after decryption in {ElapsedMs}ms: {Error}")]
-    partial void LogDeserializationFailed(string type, long elapsedMs, string error);
+    static partial void LogDeserializationFailed(ILogger logger, string type, long elapsedMs, string error);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Error occurred during decryption and deserialization of type {Type}: {Message}")]
-    partial void LogDeserializationError(string type, string message, Exception ex);
+    static partial void LogDeserializationError(ILogger logger, string type, string message, Exception ex);
 
     #endregion
 }

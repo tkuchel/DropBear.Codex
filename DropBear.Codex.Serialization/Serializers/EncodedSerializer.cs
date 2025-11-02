@@ -49,7 +49,7 @@ public sealed partial class EncodedSerializer : ISerializer
         _skipLargeObjects = skipLargeObjects;
         _encodingThreshold = encodingThreshold;
 
-        LogEncodedSerializerInitialized(_skipLargeObjects, _encodingThreshold);
+        LogEncodedSerializerInitialized(_logger, _skipLargeObjects, _encodingThreshold);
     }
 
     /// <inheritdoc />
@@ -79,7 +79,7 @@ public sealed partial class EncodedSerializer : ISerializer
         CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
-        LogSerializationStarting(typeof(T).Name);
+        LogSerializationStarting(_logger, typeof(T).Name);
 
         try
         {
@@ -96,7 +96,7 @@ public sealed partial class EncodedSerializer : ISerializer
             // Skip encoding for large objects if configured
             if (_skipLargeObjects && serializedData.Length > _encodingThreshold)
             {
-                LogSkippingEncodingForLargeObject(typeof(T).Name, serializedData.Length);
+                LogSkippingEncodingForLargeObject(_logger, typeof(T).Name, serializedData.Length);
 
                 // Add a flag byte to indicate unencoded data
                 var result = new byte[serializedData.Length + 1];
@@ -104,7 +104,7 @@ public sealed partial class EncodedSerializer : ISerializer
                 Buffer.BlockCopy(serializedData, 0, result, 1, serializedData.Length);
 
                 stopwatch.Stop();
-                LogSerializationCompletedWithoutEncoding(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogSerializationCompletedWithoutEncoding(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
 
                 return Result<byte[], SerializationError>.Success(result);
             }
@@ -126,7 +126,7 @@ public sealed partial class EncodedSerializer : ISerializer
 
             stopwatch.Stop();
 
-            LogSerializationAndEncodingCompleted(typeof(T).Name, stopwatch.ElapsedMilliseconds,
+            LogSerializationAndEncodingCompleted(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds,
                 serializedData.Length, encodedData.Length, (float)encodedData.Length / serializedData.Length);
 
             return Result<byte[], SerializationError>.Success(resultWithFlag);
@@ -134,7 +134,7 @@ public sealed partial class EncodedSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogSerializationError(typeof(T).Name, ex.Message, ex);
+            LogSerializationError(_logger, typeof(T).Name, ex.Message, ex);
 
             return Result<byte[], SerializationError>.Failure(
                 SerializationError.ForType<T>($"Error during serialization with encoding: {ex.Message}",
@@ -154,7 +154,7 @@ public sealed partial class EncodedSerializer : ISerializer
         }
 
         var stopwatch = Stopwatch.StartNew();
-        LogDeserializationStarting(typeof(T).Name);
+        LogDeserializationStarting(_logger, typeof(T).Name);
 
         try
         {
@@ -179,13 +179,13 @@ public sealed partial class EncodedSerializer : ISerializer
 
                 dataToDeserialize = decodeResult.Value!;
 
-                LogDecodingCompleted(actualData.Length, dataToDeserialize.Length);
+                LogDecodingCompleted(_logger, actualData.Length, dataToDeserialize.Length);
             }
             else
             {
                 // Data wasn't encoded
                 dataToDeserialize = actualData;
-                LogDataWasNotEncoded(dataToDeserialize.Length);
+                LogDataWasNotEncoded(_logger, dataToDeserialize.Length);
             }
 
             // Deserialize the data using the inner serializer
@@ -196,11 +196,11 @@ public sealed partial class EncodedSerializer : ISerializer
 
             if (deserializeResult.IsSuccess)
             {
-                LogDeserializationCompletedSuccessfully(typeof(T).Name, stopwatch.ElapsedMilliseconds);
+                LogDeserializationCompletedSuccessfully(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds);
             }
             else
             {
-                LogDeserializationFailed(typeof(T).Name, stopwatch.ElapsedMilliseconds,
+                LogDeserializationFailed(_logger, typeof(T).Name, stopwatch.ElapsedMilliseconds,
                     deserializeResult.Error?.Message ?? "Unknown error");
             }
 
@@ -209,7 +209,7 @@ public sealed partial class EncodedSerializer : ISerializer
         catch (Exception ex)
         {
             stopwatch.Stop();
-            LogDeserializationError(typeof(T).Name, ex.Message, ex);
+            LogDeserializationError(_logger, typeof(T).Name, ex.Message, ex);
 
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>($"Error during deserialization with decoding: {ex.Message}",
@@ -223,53 +223,53 @@ public sealed partial class EncodedSerializer : ISerializer
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "EncodedSerializer initialized with SkipLargeObjects: {SkipLargeObjects}, EncodingThreshold: {EncodingThreshold} bytes")]
-    partial void LogEncodedSerializerInitialized(bool skipLargeObjects, int encodingThreshold);
+    static partial void LogEncodedSerializerInitialized(ILogger logger, bool skipLargeObjects, int encodingThreshold);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting serialization of type {Type} with encoding")]
-    partial void LogSerializationStarting(string type);
+    static partial void LogSerializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Skipping encoding for large object of type {Type} with size {Size} bytes")]
-    partial void LogSkippingEncodingForLargeObject(string type, int size);
+    static partial void LogSkippingEncodingForLargeObject(ILogger logger, string type, int size);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Serialization of type {Type} completed without encoding in {ElapsedMs}ms")]
-    partial void LogSerializationCompletedWithoutEncoding(string type, long elapsedMs);
+    static partial void LogSerializationCompletedWithoutEncoding(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "Serialization and encoding of type {Type} completed in {ElapsedMs}ms. Original size: {OriginalSize} bytes, Encoded size: {EncodedSize} bytes, Ratio: {EncodingRatio:P2}")]
-    partial void LogSerializationAndEncodingCompleted(string type, long elapsedMs, int originalSize,
+    static partial void LogSerializationAndEncodingCompleted(ILogger logger, string type, long elapsedMs, int originalSize,
         int encodedSize, float encodingRatio);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Error occurred during serialization and encoding of type {Type}: {Message}")]
-    partial void LogSerializationError(string type, string message, Exception ex);
+    static partial void LogSerializationError(ILogger logger, string type, string message, Exception ex);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting decoding and deserialization of type {Type}")]
-    partial void LogDeserializationStarting(string type);
+    static partial void LogDeserializationStarting(ILogger logger, string type);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
             "Decoding completed. Encoded size: {EncodedSize} bytes, Decoded size: {DecodedSize} bytes")]
-    partial void LogDecodingCompleted(int encodedSize, int decodedSize);
+    static partial void LogDecodingCompleted(ILogger logger, int encodedSize, int decodedSize);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Data was not encoded. Size: {Size} bytes")]
-    partial void LogDataWasNotEncoded(int size);
+    static partial void LogDataWasNotEncoded(ILogger logger, int size);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Decoding and deserialization of type {Type} completed successfully in {ElapsedMs}ms")]
-    partial void LogDeserializationCompletedSuccessfully(string type, long elapsedMs);
+    static partial void LogDeserializationCompletedSuccessfully(ILogger logger, string type, long elapsedMs);
 
     [LoggerMessage(Level = LogLevel.Warning,
         Message = "Deserialization of type {Type} failed after decoding in {ElapsedMs}ms: {Error}")]
-    partial void LogDeserializationFailed(string type, long elapsedMs, string error);
+    static partial void LogDeserializationFailed(ILogger logger, string type, long elapsedMs, string error);
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Error occurred during decoding and deserialization of type {Type}: {Message}")]
-    partial void LogDeserializationError(string type, string message, Exception ex);
+    static partial void LogDeserializationError(ILogger logger, string type, string message, Exception ex);
 
     #endregion
 }
