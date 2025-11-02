@@ -28,6 +28,14 @@ jobs:
         with:
           dotnet-version: ${{ matrix.dotnet }}
 
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
       - name: Validate Version Alignment
         shell: pwsh
         run: |
@@ -75,7 +83,7 @@ jobs:
 
       - name: Annotate Test Results
         if: always()
-        uses: dorny/test-reporter@v1
+        uses: dorny/test-reporter@v1.9.1
         with:
           name: ".NET Tests (${{ matrix.os }})"
           path: "TestResults/collected/*.trx"
