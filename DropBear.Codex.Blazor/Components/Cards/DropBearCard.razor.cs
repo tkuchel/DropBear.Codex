@@ -4,7 +4,10 @@ using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
+using Serilog;
 
 #endregion
 
@@ -16,6 +19,9 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 /// </summary>
 public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
 {
+    // Logger for this component
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
     // Cache button mappings to avoid dictionary lookups
     private static readonly IReadOnlyDictionary<ButtonColor, string> ButtonClasses = new Dictionary<ButtonColor, string>
     {
@@ -62,7 +68,7 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error disposing DropBearCard");
+            LogCardDisposeError(Logger, ex);
         }
     }
 
@@ -106,13 +112,13 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
     {
         if (IsDisposed)
         {
-            Logger.Warning("Button click ignored - component is disposed");
+            LogButtonClickIgnoredDisposed(Logger);
             return;
         }
 
         if (!OnButtonClicked.HasDelegate)
         {
-            Logger.Warning("No button click handler provided for: {ButtonText}", button.Text);
+            LogNoButtonClickHandler(Logger, button.Text);
             return;
         }
 
@@ -120,13 +126,13 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
         {
             await QueueStateHasChangedAsync((Func<Task>)(async () =>
             {
-                Logger.Debug("Button clicked: {ButtonText}", button.Text);
+                LogButtonClicked(Logger, button.Text);
                 await OnButtonClicked.InvokeAsync(button);
             }));
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling button click: {ButtonText}", button.Text);
+            LogButtonClickError(Logger, button.Text, ex);
         }
     }
 
@@ -182,7 +188,7 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
     {
         if (!string.IsNullOrEmpty(ImageSource) && string.IsNullOrEmpty(ImageAlt))
         {
-            Logger.Warning("Image source provided without alt text: {ImageSource}", ImageSource);
+            LogImageMissingAltText(Logger, ImageSource);
         }
     }
 
@@ -253,6 +259,48 @@ public sealed partial class DropBearCard : DropBearComponentBase, IDisposable
     /// </summary>
     [Parameter]
     public EventCallback<ButtonConfig> OnButtonClicked { get; set; }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearCard>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearCard));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error disposing DropBearCard")]
+    static partial void LogCardDisposeError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Button click ignored - component is disposed")]
+    static partial void LogButtonClickIgnoredDisposed(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "No button click handler provided for: {ButtonText}")]
+    static partial void LogNoButtonClickHandler(Microsoft.Extensions.Logging.ILogger logger, string buttonText);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Button clicked: {ButtonText}")]
+    static partial void LogButtonClicked(Microsoft.Extensions.Logging.ILogger logger, string buttonText);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling button click: {ButtonText}")]
+    static partial void LogButtonClickError(Microsoft.Extensions.Logging.ILogger logger, string buttonText, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Image source provided without alt text: {ImageSource}")]
+    static partial void LogImageMissingAltText(Microsoft.Extensions.Logging.ILogger logger, string imageSource);
 
     #endregion
 }

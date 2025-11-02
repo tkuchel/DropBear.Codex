@@ -3,8 +3,11 @@
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Errors;
+using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
+using Serilog;
 using Exception = System.Exception;
 
 #endregion
@@ -18,6 +21,9 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// </summary>
 public sealed partial class DropBearSectionComponent : DropBearComponentBase
 {
+    // Logger for this component
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
     private const string PREDICATE_CONFLICT_MESSAGE = "Cannot specify both AsyncPredicate and Predicate.";
     private const string MISSING_CONTENT_MESSAGE = "ChildContent must be provided and cannot be null.";
     private static readonly TimeSpan MinEvaluationInterval = TimeSpan.FromMilliseconds(100);
@@ -166,7 +172,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during throttled evaluation");
+            LogThrottledEvaluationError(Logger, ex);
             _renderQueued = false;
         }
     }
@@ -207,12 +213,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
 
             if (previousState != _shouldRenderContent)
             {
-                Logger.Debug(
-                    "Render state changed from {PreviousState} to {CurrentState} in {Caller}",
-                    previousState,
-                    _shouldRenderContent,
-                    caller
-                );
+                LogRenderStateChanged(Logger, previousState, _shouldRenderContent, caller);
 
                 await NotifyStateChangeAsync(_shouldRenderContent);
             }
@@ -245,7 +246,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
             if (_isPredicateValid && _wasAsyncPredicate != isCurrentlyAsyncPredicate)
             {
                 _isPredicateValid = false;
-                Logger.Debug("Predicate type changed, forcing re-evaluation");
+                LogPredicateTypeChanged(Logger);
             }
 
             _wasAsyncPredicate = isCurrentlyAsyncPredicate;
@@ -263,7 +264,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     /// </summary>
     private async Task<Result<Unit, ComponentError>> HandleExceptionAsync(Exception ex, string context)
     {
-        Logger.Error(ex, "{Context}: {Message}", context, ex.Message);
+        LogExceptionContext(Logger, context, ex.Message, ex);
 
         if (!OnError.HasDelegate)
         {
@@ -279,7 +280,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         }
         catch (Exception callbackEx)
         {
-            Logger.Error(callbackEx, "Error callback failed");
+            LogErrorCallbackFailed(Logger, callbackEx);
             return Result<Unit, ComponentError>.Failure(
                 new ComponentError($"Error callback failed: {callbackEx.Message}")
             );
@@ -324,7 +325,7 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error disposing section component");
+            LogSectionComponentDisposeError(Logger, ex);
         }
 
         await base.DisposeAsync();
@@ -368,6 +369,48 @@ public sealed partial class DropBearSectionComponent : DropBearComponentBase
     /// </summary>
     [Parameter]
     public EventCallback<Exception> OnError { get; set; }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearSectionComponent>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearSectionComponent));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error during throttled evaluation")]
+    static partial void LogThrottledEvaluationError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Render state changed from {PreviousState} to {CurrentState} in {Caller}")]
+    static partial void LogRenderStateChanged(Microsoft.Extensions.Logging.ILogger logger, bool previousState, bool currentState, string caller);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Predicate type changed, forcing re-evaluation")]
+    static partial void LogPredicateTypeChanged(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "{Context}: {Message}")]
+    static partial void LogExceptionContext(Microsoft.Extensions.Logging.ILogger logger, string context, string message, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error callback failed")]
+    static partial void LogErrorCallbackFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error disposing section component")]
+    static partial void LogSectionComponentDisposeError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
 
     #endregion
 }

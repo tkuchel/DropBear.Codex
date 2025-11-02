@@ -7,6 +7,7 @@ using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using Serilog;
 
@@ -62,7 +63,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     protected bool IsDisposed => Volatile.Read(ref _isDisposed) == 1;
 
     [Inject] protected IJSRuntime JsRuntime { get; set; } = null!;
-    [Inject] protected ILogger Logger { get; set; } = null!;
+    [Inject] protected Microsoft.Extensions.Logging.ILogger Logger { get; set; } = null!;
     [Inject] protected IJsInitializationService JsInitializationService { get; set; } = null!;
 
     /// <summary>
@@ -690,7 +691,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="args">Additional message format arguments.</param>
     protected void LogError(string message, Exception ex, params object[] args)
     {
-        Logger.Error(ex, $"{GetType().Name}: {message}", args);
+        Logger.LogError(ex, $"{GetType().Name}: {message}", args);
     }
 
     /// <summary>
@@ -701,7 +702,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="args">Additional message format arguments.</param>
     protected void LogError(Exception ex, string message, params object[] args)
     {
-        Logger.Error(ex, $"{GetType().Name}: {message}", args);
+        Logger.LogError(ex, $"{GetType().Name}: {message}", args);
     }
 
     /// <summary>
@@ -711,7 +712,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="args">Additional message format arguments.</param>
     protected void LogWarning(string message, params object[] args)
     {
-        Logger.Warning($"{GetType().Name}: {message}", args);
+        Logger.LogWarning($"{GetType().Name}: {message}", args);
     }
 
     /// <summary>
@@ -721,7 +722,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     /// <param name="args">Additional message format arguments.</param>
     protected void LogDebug(string message, params object[] args)
     {
-        Logger.Debug($"{GetType().Name}: {message}", args);
+        Logger.LogDebug($"{GetType().Name}: {message}", args);
     }
 
     #endregion

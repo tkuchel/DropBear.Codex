@@ -5,7 +5,10 @@ using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Models;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
+using Serilog;
 
 #endregion
 
@@ -17,6 +20,9 @@ namespace DropBear.Codex.Blazor.Components.Cards;
 /// </summary>
 public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposable
 {
+    // Logger for this component
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
     // Cache mappings to avoid dictionary lookups in render loops
     private static readonly IReadOnlyDictionary<ButtonColor, string> ButtonClasses =
         new Dictionary<ButtonColor, string>
@@ -79,7 +85,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error disposing prompt card.");
+            LogPromptCardDisposeError(Logger, ex);
         }
     }
 
@@ -214,7 +220,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     {
         if (IsDisposed)
         {
-            Logger.Warning("Button click ignored - component is disposed.");
+            LogButtonClickIgnoredDisposed(Logger);
             return;
         }
 
@@ -229,8 +235,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
 
         if (!OnButtonClicked.HasDelegate)
         {
-            Logger.Warning("No click handler provided for button: {ButtonId} {ButtonText}",
-                button.Id, button.Text);
+            LogNoClickHandlerProvided(Logger, button.Id, button.Text);
             return;
         }
 
@@ -238,15 +243,13 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
         {
             await QueueStateHasChangedAsync((Func<Task>)(async () =>
             {
-                Logger.Debug("Button clicked: {ButtonId} {ButtonText} {ButtonColor}",
-                    button.Id, button.Text, button.Color);
+                LogButtonClicked(Logger, button.Id, button.Text, button.Color);
                 await OnButtonClicked.InvokeAsync(button);
             }));
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling button click: {ButtonId} {ButtonText}",
-                button.Id, button.Text);
+            LogButtonClickError(Logger, button.Id, button.Text, ex);
         }
     }
 
@@ -257,12 +260,12 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     {
         if (string.IsNullOrWhiteSpace(Title))
         {
-            Logger.Warning("Prompt card created without title.");
+            LogPromptCardWithoutTitle(Logger);
         }
 
         if (string.IsNullOrWhiteSpace(Message))
         {
-            Logger.Warning("Prompt card created without description.");
+            LogPromptCardWithoutDescription(Logger);
         }
 
         foreach (var button in Buttons)
@@ -270,8 +273,7 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
             if (string.IsNullOrWhiteSpace(button?.Id) ||
                 string.IsNullOrWhiteSpace(button.Text))
             {
-                Logger.Warning("Button configuration missing required properties: {ButtonId}",
-                    button?.Id ?? "null");
+                LogButtonConfigMissingProperties(Logger, button?.Id ?? "null");
             }
         }
     }
@@ -356,6 +358,56 @@ public sealed partial class DropBearPromptCard : DropBearComponentBase, IDisposa
     /// </summary>
     [Parameter]
     public bool Subtle { get; set; }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearPromptCard>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearPromptCard));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error disposing prompt card")]
+    static partial void LogPromptCardDisposeError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Button click ignored - component is disposed")]
+    static partial void LogButtonClickIgnoredDisposed(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "No click handler provided for button: {ButtonId} {ButtonText}")]
+    static partial void LogNoClickHandlerProvided(Microsoft.Extensions.Logging.ILogger logger, string buttonId, string buttonText);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Button clicked: {ButtonId} {ButtonText} {ButtonColor}")]
+    static partial void LogButtonClicked(Microsoft.Extensions.Logging.ILogger logger, string buttonId, string buttonText, ButtonColor buttonColor);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling button click: {ButtonId} {ButtonText}")]
+    static partial void LogButtonClickError(Microsoft.Extensions.Logging.ILogger logger, string buttonId, string buttonText, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Prompt card created without title")]
+    static partial void LogPromptCardWithoutTitle(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Prompt card created without description")]
+    static partial void LogPromptCardWithoutDescription(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Button configuration missing required properties: {ButtonId}")]
+    static partial void LogButtonConfigMissingProperties(Microsoft.Extensions.Logging.ILogger logger, string buttonId);
 
     #endregion
 }
