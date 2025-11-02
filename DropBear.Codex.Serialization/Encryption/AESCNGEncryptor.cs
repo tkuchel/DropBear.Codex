@@ -25,7 +25,7 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     private readonly bool _enableCaching;
 
     // Cache for encrypted/decrypted results
-    private readonly Dictionary<int, byte[]> _encryptionCache;
+    private readonly Dictionary<int, byte[]>? _encryptionCache;
     private readonly ILogger _logger;
     private readonly int _maxCacheSize;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
@@ -115,7 +115,7 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
             }
 
             // Try cache lookup if enabled
-            if (_enableCaching)
+            if (_enableCaching && _encryptionCache != null)
             {
                 var dataHash = CalculateHash(data);
 

@@ -28,7 +28,7 @@ public sealed partial class MessagePackSerializer : ISerializer
     private readonly MessagePackSerializerOptions _options;
 
     // Cache for frequently serialized objects
-    private readonly Dictionary<int, byte[]> _serializationCache;
+    private readonly Dictionary<int, byte[]>? _serializationCache;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="MessagePackSerializer" /> class.
@@ -211,6 +211,11 @@ public sealed partial class MessagePackSerializer : ISerializer
     /// <param name="serializedData">The serialized data to cache.</param>
     private void CacheSerializedResult<T>(T value, byte[] serializedData)
     {
+        if (!_enableCaching || _serializationCache == null)
+        {
+            return;
+        }
+
         try
         {
             if (_serializationCache.Count >= _maxCacheSize)

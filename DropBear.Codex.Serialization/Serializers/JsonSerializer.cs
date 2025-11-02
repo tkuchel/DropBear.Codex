@@ -31,7 +31,7 @@ public sealed partial class JsonSerializer : ISerializer
     private readonly RecyclableMemoryStreamManager _memoryManager;
 
     // Cache for frequently serialized objects
-    private readonly Dictionary<int, byte[]> _serializationCache;
+    private readonly Dictionary<int, byte[]>? _serializationCache;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="JsonSerializer" /> class.
@@ -105,7 +105,7 @@ public sealed partial class JsonSerializer : ISerializer
         }
 
         // Try cache lookup if enabled
-        if (_enableCaching)
+        if (_enableCaching && _serializationCache != null)
         {
             var cacheKey = CalculateCacheKey(value);
             if (_serializationCache.TryGetValue(cacheKey, out var cachedBytes))
@@ -350,6 +350,11 @@ public sealed partial class JsonSerializer : ISerializer
     /// <param name="serializedData">The serialized data to cache.</param>
     private void CacheSerializedResult<T>(T value, byte[] serializedData)
     {
+        if (!_enableCaching || _serializationCache == null)
+        {
+            return;
+        }
+
         try
         {
             if (_serializationCache.Count >= _maxCacheSize)
