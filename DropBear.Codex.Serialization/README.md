@@ -31,6 +31,7 @@ The library is built with a focus on performance and memory efficiency, making i
 - **Async/Await First**: Fully asynchronous API with proper cancellation token support
 - **Performance Optimized**: Uses .NET 9 features for maximum performance
 - **Stream Support**: Direct stream serialization for large data sets
+- **IAsyncEnumerable Streaming**: Memory-efficient deserialization of large collections using async streams
 
 ## Installation
 
@@ -173,6 +174,41 @@ if (serializerBuilder.IsSuccess)
 }
 ```
 
+### IAsyncEnumerable Streaming
+
+```csharp
+// Stream large JSON arrays efficiently without loading everything into memory
+var jsonSerializer = new JsonSerializer();
+
+// Process large collections one item at a time
+await foreach (var item in jsonSerializer.DeserializeAsyncEnumerable<DataRecord>(
+    largeJsonStream,
+    cancellationToken))
+{
+    // Process each item as it's deserialized
+    await ProcessRecordAsync(item);
+
+    // Memory usage remains constant - only one item in memory at a time
+}
+
+// Perfect for processing large API responses, files, or database exports
+using var fileStream = File.OpenRead("large-export.json");
+var processedCount = 0;
+
+await foreach (var record in jsonSerializer.DeserializeAsyncEnumerable<Record>(fileStream))
+{
+    await _repository.SaveAsync(record);
+    processedCount++;
+
+    if (processedCount % 1000 == 0)
+    {
+        Console.WriteLine($"Processed {processedCount} records...");
+    }
+}
+
+Console.WriteLine($"Total processed: {processedCount} records");
+```
+
 ## Architecture
 
 The library follows a layered architecture:
@@ -227,6 +263,7 @@ The library includes several optimizations for performance:
 
 - `ISerializer`: Main interface for serialization operations
 - `IStreamSerializer`: Interface for stream-based serialization
+- `IStreamingSerializer`: Interface for IAsyncEnumerable-based streaming deserialization
 - `ICompressor`: Interface for compression operations
 - `IEncoder`: Interface for encoding operations
 - `IEncryptor`: Interface for encryption operations

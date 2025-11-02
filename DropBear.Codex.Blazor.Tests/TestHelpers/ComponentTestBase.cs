@@ -35,9 +35,13 @@ public abstract class ComponentTestBase : TestContext, IDisposable
     /// </summary>
     protected ComponentTestBase()
     {
-        // Setup mock logger
+        // Setup mock Serilog logger
         MockLogger = new Mock<ILogger>();
         Services.AddSingleton(MockLogger.Object);
+
+        // Setup mock Microsoft.Extensions.Logging.ILogger for Blazor components
+        var mockMsLogger = new Mock<Microsoft.Extensions.Logging.ILogger>();
+        Services.AddSingleton(mockMsLogger.Object);
 
         // Setup mock JS initialization service
         MockJsInitService = new Mock<IJsInitializationService>();

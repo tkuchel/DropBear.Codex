@@ -304,8 +304,8 @@ services.AddSingleton<IWorkflowStateRepository, YourStateRepository>();
 ## 📦 Related Packages
 
 - **DropBear.Codex.Core** - Core functionality and Result pattern
-- **DropBear.Codex.StateManagement** - Advanced state management
 - **DropBear.Codex.Serialization** - Advanced serialization support
+- **DropBear.Codex.Tasks** - Task/operation management with retry support
 
 ## 📝 Example Scenarios
 

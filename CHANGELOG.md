@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Performance Benchmarking Infrastructure** (Priority 3.3 - 2025-11-02):
+  - Added `DropBear.Codex.Benchmarks` project using BenchmarkDotNet 0.14.0
+  - Created benchmarks for Serialization, Hashing, Result Pattern, and AsyncStreaming operations
+  - Benchmark results captured in artifact text files for performance tracking
+- **IAsyncEnumerable Streaming Support** (Priority 3.2 - 2025-11-02):
+  - Added `IStreamingSerializer` interface for memory-efficient data processing
+  - Implemented `JsonStreamingDeserializer` with async streaming deserialization
+  - Added `DeserializeAsyncEnumerable<T>` method to JsonSerializer
+  - Supports large dataset processing without loading entire content into memory
 - **Workflow Engine Architecture Improvements** (Session 6 Phase 2 - 2025-10-29):
   - Created `IWorkflowTypeResolver` interface and `AppDomainWorkflowTypeResolver` implementation for workflow context type discovery
   - Created `IWorkflowStateCoordinator` interface and `DefaultWorkflowStateCoordinator` implementation for state persistence operations
@@ -51,6 +60,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DropBear.Codex.Core`: Added `Result<T>` return type to standardize API responses across all libraries.
 
 ### Changed
+- **C# 12 Collection Expression Modernization** (Priority 3.1 - 2025-11-02):
+  - Migrated all collection initializations to C# 12 collection expressions
+  - Replaced `new List<T>()`, `new[]`, and `Array.Empty<T>()` with `[]` syntax
+  - Applied to all projects: Core, Utilities, Serialization, Hashing, Files, Workflow, Notifications, Blazor
+  - Improved code consistency and readability across entire solution
+- **LoggerMessage Source Generator Migration** (In Progress - 78.7% Complete - 2025-11-02):
+  - Migrated 398 of 506 logging statements to LoggerMessage source generators
+  - Eliminated runtime reflection overhead from logging operations
+  - Applied to: Core (36/43), Utilities (6/6), Serialization (49/55), Hashing (17/17), Files (69/75), Workflow (120/147), Notifications (21/23), Blazor (80/140)
+  - Performance improvements in logging-heavy operations
+  - Remaining work: Blazor (60 logs), Workflow (27 logs), Files (6 logs), Core (7 logs), Serialization (6 logs), Notifications (2 logs)
 - **Workflow Engine Refactoring** (Session 6 Phase 2 - 2025-10-29):
   - Refactored `PersistentWorkflowEngine` to extract specialized services following Single Responsibility Principle
   - `PersistentWorkflowEngine` now creates `DefaultWorkflowSignalHandler` internally with callback to avoid circular dependency
@@ -72,6 +92,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DropBear.Codex.Serialization`: Updated `JsonSerializer` to handle circular references.
 
 ### Fixed
+- **Blazor Component Test Infrastructure** (2025-11-02):
+  - Fixed missing `Microsoft.Extensions.Logging.ILogger` registration in `ComponentTestBase`
+  - All Blazor component tests now properly inject required logger dependency
+  - Resolved `System.InvalidOperationException` in component tests that inherit from `DropBearComponentBase`
+  - All 161 Blazor tests now passing successfully
+- **.NET Framework Version Correction** (2025-11-02):
+  - Fixed incorrect `net10.0` target framework references across all projects
+  - Updated to correct `net9.0` target framework (current stable release)
+  - Applied to all .csproj files in solution
 - **DropBear.Codex.Workflow Performance & Robustness** (Session 6 - 2025-10-29):
   - Fixed unbounded parallel execution that could exhaust system resources with 10+ parallel branches
   - Fixed inefficient O(n) trace truncation using `RemoveRange(0, n)` that shifted all elements
@@ -113,6 +142,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Migration**: See "AntiForgeryHelper Migration Guide" section below
 - `DropBear.Codex.Files`: Fixed an issue where file verification hashes were incorrectly calculated under certain conditions.
 - `DropBear.Codex.Operation`: Corrected a bug in the advanced operation manager that caused recovery steps to be skipped.
+
+### Removed
+- **DropBear.Codex.StateManagement** (2025-11-02):
+  - Removed StateManagement project from solution
+  - StateManagement functionality (Stateless library wrapper) moved to separate repository for focused maintenance
+  - Updated documentation to remove StateManagement references
+  - Solution now contains 9 core projects instead of 10
 
 ### Deprecated
 - `DropBear.Codex.Utilities`: Deprecated `LegacyStringHelper` in favor of the new `StringExtensions` class.
