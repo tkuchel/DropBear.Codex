@@ -31,6 +31,11 @@ public abstract class ComponentTestBase : TestContext, IDisposable
     protected Mock<IJsInitializationService> MockJsInitService { get; }
 
     /// <summary>
+    ///     Gets the mock Microsoft.Extensions.Logging.ILogger for testing.
+    /// </summary>
+    protected Mock<Microsoft.Extensions.Logging.ILogger> MockExtensionsLogger { get; }
+
+    /// <summary>
     ///     Initializes a new instance of the <see cref="ComponentTestBase"/> class.
     /// </summary>
     protected ComponentTestBase()
@@ -40,8 +45,8 @@ public abstract class ComponentTestBase : TestContext, IDisposable
         Services.AddSingleton(MockLogger.Object);
 
         // Setup mock Microsoft.Extensions.Logging.ILogger for Blazor components
-        var mockMsLogger = new Mock<Microsoft.Extensions.Logging.ILogger>();
-        Services.AddSingleton(mockMsLogger.Object);
+        MockExtensionsLogger = new Mock<Microsoft.Extensions.Logging.ILogger>();
+        Services.AddSingleton(MockExtensionsLogger.Object);
 
         // Setup mock JS initialization service
         MockJsInitService = new Mock<IJsInitializationService>();
