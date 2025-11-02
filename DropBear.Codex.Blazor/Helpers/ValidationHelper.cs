@@ -1,6 +1,7 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Logging;
+using Microsoft.Extensions.Logging;
 using Serilog;
 using CoreValidationResult = DropBear.Codex.Core.Results.Validations.ValidationResult;
 using CoreValidationError = DropBear.Codex.Core.Results.Validations.ValidationError;
@@ -10,9 +11,9 @@ namespace DropBear.Codex.Blazor.Helpers;
 /// <summary>
 ///     Provides validation helpers optimized for performance and immutability.
 /// </summary>
-public static class ValidationHelper
+public static partial class ValidationHelper
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(ValidationHelper));
+    private static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     /// <summary>
     ///     Validates a model using data annotations.
@@ -45,7 +46,7 @@ public static class ValidationHelper
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Validation failed for {Type}", model.GetType().Name);
+            LogValidationFailed(Logger, model.GetType().Name, ex);
             return CoreValidationResult.Failed(
                 CoreValidationError.ForProperty("Validation", $"Validation failed: {ex.Message}")
             );
@@ -80,7 +81,7 @@ public static class ValidationHelper
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Custom validation failed for {Type}", model.GetType().Name);
+                LogCustomValidationFailed(Logger, model.GetType().Name, ex);
                 return CoreValidationResult.Failed(
                     CoreValidationError.ForProperty("CustomValidation", $"Custom validation failed: {ex.Message}")
                 );
@@ -96,7 +97,7 @@ public static class ValidationHelper
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Validation failed for {Type}", model.GetType().Name);
+            LogValidationWithCustomRulesFailed(Logger, model.GetType().Name, ex);
             return CoreValidationResult.Failed(
                 CoreValidationError.ForProperty("Validation", $"Validation failed: {ex.Message}")
             );
@@ -131,7 +132,7 @@ public static class ValidationHelper
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Batch validation failed");
+            LogBatchValidationFailed(Logger, ex);
             return CoreValidationResult.Failed(
                 CoreValidationError.ForProperty("BatchValidation", $"Batch validation failed: {ex.Message}")
             );
@@ -164,4 +165,38 @@ public static class ValidationHelper
             yield return CoreValidationError.ForProperty(member, result.ErrorMessage);
         }
     }
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext(typeof(ValidationHelper)));
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(ValidationHelper));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Validation failed for {Type}")]
+    static partial void LogValidationFailed(Microsoft.Extensions.Logging.ILogger logger, string type, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Custom validation failed for {Type}")]
+    static partial void LogCustomValidationFailed(Microsoft.Extensions.Logging.ILogger logger, string type, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Validation failed for {Type}")]
+    static partial void LogValidationWithCustomRulesFailed(Microsoft.Extensions.Logging.ILogger logger, string type, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Batch validation failed")]
+    static partial void LogBatchValidationFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    #endregion
 }

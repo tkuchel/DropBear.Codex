@@ -324,7 +324,8 @@ public sealed class ExecutionEngine : IAsyncDisposable
 
                     // Initialize execution context
                     using var rootScope = _scopeFactory.CreateScope();
-                    var executionContext = new ExecutionContext(_options, _scopeFactory)
+                    var contextLogger = rootScope.ServiceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<ExecutionContext>>();
+                    var executionContext = new ExecutionContext(_options, _scopeFactory, contextLogger)
                     {
                         TotalTaskCount = _tasks.Count
                     };

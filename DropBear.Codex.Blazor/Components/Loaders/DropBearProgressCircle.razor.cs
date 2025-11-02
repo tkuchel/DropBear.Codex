@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -29,18 +30,28 @@ public sealed partial class DropBearProgressCircle : DropBearComponentBase
         if (clampedProgress != originalProgress)
         {
             _progress = clampedProgress;
-            Logger.Warning("Progress clamped: {Original} -> {Progress}", originalProgress, _progress);
+            LogProgressClamped(Logger, originalProgress, _progress);
             _shouldRender = true;
         }
 
         if (_size <= 0)
         {
             _size = DEFAULT_VIEWBOX_SIZE;
-            Logger.Warning("Invalid size value corrected to default: {Size}", _size);
+            LogInvalidSizeCorrected(Logger, _size);
             _shouldRender = true;
         }
 
-        Logger.Debug("Circle parameters: Progress={Progress}, Size={Size}", _progress, _size);
+        LogCircleParameters(Logger, _progress, _size);
+    }
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearProgressCircle>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearProgressCircle));
     }
 
     #endregion
@@ -48,7 +59,7 @@ public sealed partial class DropBearProgressCircle : DropBearComponentBase
     #region Fields and Constants
 
     // Logger for this component.
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearProgressCircle>();
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     private const int DEFAULT_VIEWBOX_SIZE = 60;
     private const int STROKE_WIDTH = 4;
@@ -143,6 +154,22 @@ public sealed partial class DropBearProgressCircle : DropBearComponentBase
             }
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Progress clamped: {Original} -> {Progress}")]
+    static partial void LogProgressClamped(Microsoft.Extensions.Logging.ILogger logger, int original, int progress);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Invalid size value corrected to default: {Size}")]
+    static partial void LogInvalidSizeCorrected(Microsoft.Extensions.Logging.ILogger logger, int size);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Circle parameters: Progress={Progress}, Size={Size}")]
+    static partial void LogCircleParameters(Microsoft.Extensions.Logging.ILogger logger, int progress, int size);
 
     #endregion
 }

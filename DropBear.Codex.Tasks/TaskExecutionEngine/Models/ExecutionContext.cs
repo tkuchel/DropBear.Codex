@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Logging;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -13,7 +14,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine.Models;
 /// <summary>
 ///     Holds data and services related to the current task execution environment.
 /// </summary>
-public sealed class ExecutionContext
+public sealed partial class ExecutionContext
 {
     private readonly ConcurrentDictionary<string, object?> _sharedResources;
     private int _completedTaskCount;
@@ -21,9 +22,9 @@ public sealed class ExecutionContext
     /// <summary>
     ///     Initializes an <see cref="ExecutionContext" /> with the specified options and scope factory.
     /// </summary>
-    public ExecutionContext(ExecutionOptions options, IServiceScopeFactory scopeFactory)
+    public ExecutionContext(ExecutionOptions options, IServiceScopeFactory scopeFactory, ILogger<ExecutionContext> logger)
     {
-        Logger = LoggerFactory.Logger.ForContext<ExecutionContext>();
+        Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         Options = options ?? throw new ArgumentNullException(nameof(options));
         ScopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _sharedResources = new ConcurrentDictionary<string, object?>(StringComparer.Ordinal);
@@ -32,7 +33,7 @@ public sealed class ExecutionContext
     /// <summary>
     ///     Gets the logger for the execution context.
     /// </summary>
-    public ILogger Logger { get; }
+    public ILogger<ExecutionContext> Logger { get; }
 
     /// <summary>
     ///     Gets the execution options being used.
@@ -109,8 +110,16 @@ public sealed class ExecutionContext
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to create service scope");
+            LogFailedToCreateServiceScope(Logger, ex);
             throw;
         }
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to create service scope")]
+    partial void LogFailedToCreateServiceScope(ILogger<ExecutionContext> logger, Exception ex);
+
+    #endregion
 }

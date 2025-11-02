@@ -1,12 +1,11 @@
 ﻿#region
 
 using System.Buffers;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Interfaces;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
-using Serilog;
 
 #endregion
 
@@ -16,25 +15,25 @@ namespace DropBear.Codex.Files.StorageManagers;
 ///     Manages local file storage operations, providing methods to write, read, update, and delete files on disk.
 ///     Uses a <see cref="RecyclableMemoryStreamManager" /> for memory efficiency.
 /// </summary>
-public sealed class LocalStorageManager : IStorageManager
+public sealed partial class LocalStorageManager : IStorageManager
 {
     // Optimal buffer size for file operations
     private const int BufferSize = 81920; // 80KB buffer for file operations
-    private readonly ILogger _logger;
+    private readonly ILogger<LocalStorageManager> _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="LocalStorageManager" /> class.
     /// </summary>
     /// <param name="memoryStreamManager">A <see cref="RecyclableMemoryStreamManager" /> for efficient memory usage.</param>
-    /// <param name="logger">An optional logger instance for logging.</param>
-    /// <exception cref="ArgumentNullException">Thrown if <paramref name="memoryStreamManager" /> is null.</exception>
+    /// <param name="logger">The logger instance for logging operations.</param>
+    /// <exception cref="ArgumentNullException">Thrown if <paramref name="memoryStreamManager" /> or <paramref name="logger" /> is null.</exception>
     public LocalStorageManager(
         RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger? logger = null)
+        ILogger<LocalStorageManager> logger)
     {
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
-        _logger = logger ?? LoggerFactory.Logger.ForContext<LocalStorageManager>();
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <inheritdoc />
@@ -74,18 +73,18 @@ public sealed class LocalStorageManager : IStorageManager
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
 
                 await seekableStream.CopyToAsync(fileStream, BufferSize, cancellationToken).ConfigureAwait(false);
-                _logger.Information("Successfully wrote file {FileName} to {FullPath}", identifier, identifier);
+                LogWriteSuccessful(identifier);
                 return Result<Unit, StorageError>.Success(Unit.Value);
             }
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Write operation for {FileName} was cancelled", identifier);
+            LogWriteCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error writing file {FileName} to {FullPath}", identifier, identifier);
+            LogWriteFailed(ex, identifier);
             return Result<Unit, StorageError>.Failure(
                 StorageError.WriteFailed(identifier, ex.Message), ex);
         }
@@ -100,7 +99,7 @@ public sealed class LocalStorageManager : IStorageManager
         {
             if (!File.Exists(identifier))
             {
-                _logger.Error("File not found: {FullPath}", identifier);
+                LogFileNotFound(identifier);
                 return Result<Stream, StorageError>.Failure(
                     StorageError.ReadFailed(identifier, "The specified file does not exist."));
             }
@@ -142,18 +141,18 @@ public sealed class LocalStorageManager : IStorageManager
 
                 memoryStream.Position = 0;
 
-                _logger.Information("Successfully read file {FileName} from {FullPath}", identifier, identifier);
+                LogReadSuccessful(identifier);
                 return Result<Stream, StorageError>.Success(memoryStream);
             }
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Read operation for {FileName} was cancelled", identifier);
+            LogReadCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error reading file {FileName} from {FullPath}", identifier, identifier);
+            LogReadFailed(ex, identifier);
             return Result<Stream, StorageError>.Failure(
                 StorageError.ReadFailed(identifier, ex.Message), ex);
         }
@@ -169,27 +168,26 @@ public sealed class LocalStorageManager : IStorageManager
         {
             if (!File.Exists(identifier))
             {
-                _logger.Error("File {FileName} does not exist for update in {FullPath}", identifier, identifier);
+                LogFileNotFoundForUpdate(identifier);
                 return Result<Unit, StorageError>.Failure(
                     StorageError.UpdateFailed(identifier, "The specified file does not exist for update."));
             }
 
             // First delete the existing file
             File.Delete(identifier);
-            _logger.Information("Deleted existing file {FileName} from {FullPath} before update", identifier,
-                identifier);
+            LogDeletedBeforeUpdate(identifier);
 
             // Then write the new data
             return await WriteAsync(identifier, newDataStream, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Update operation for {FileName} was cancelled", identifier);
+            LogUpdateCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error updating file {FileName} in {FullPath}", identifier, identifier);
+            LogUpdateFailed(ex, identifier);
             return Result<Unit, StorageError>.Failure(
                 StorageError.UpdateFailed(identifier, ex.Message), ex);
         }
@@ -206,23 +204,23 @@ public sealed class LocalStorageManager : IStorageManager
 
             if (!File.Exists(identifier))
             {
-                _logger.Error("File not found for deletion: {FullPath}", identifier);
+                LogFileNotFoundForDeletion(identifier);
                 return Task.FromResult(Result<Unit, StorageError>.Failure(
                     StorageError.DeleteFailed(identifier, "The specified file does not exist.")));
             }
 
             File.Delete(identifier);
-            _logger.Information("Successfully deleted file {FileName} from {FullPath}", identifier, identifier);
+            LogDeleteSuccessful(identifier);
             return Task.FromResult(Result<Unit, StorageError>.Success(Unit.Value));
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Delete operation for {FileName} was cancelled", identifier);
+            LogDeleteCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error deleting file {FileName} from {FullPath}", identifier, identifier);
+            LogDeleteFailed(ex, identifier);
             return Task.FromResult(Result<Unit, StorageError>.Failure(
                 StorageError.DeleteFailed(identifier, ex.Message), ex));
         }
@@ -281,8 +279,60 @@ public sealed class LocalStorageManager : IStorageManager
         }
 
         Directory.CreateDirectory(directoryPath);
-        _logger.Information("Created directory: {DirectoryPath}", directoryPath);
+        LogDirectoryCreated(directoryPath);
     }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully wrote file {fileName} to local storage")]
+    private partial void LogWriteSuccessful(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Write operation for {fileName} was cancelled")]
+    private partial void LogWriteCancelled(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error writing file {fileName} to local storage")]
+    private partial void LogWriteFailed(Exception ex, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully read file {fileName} from local storage")]
+    private partial void LogReadSuccessful(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Read operation for {fileName} was cancelled")]
+    private partial void LogReadCancelled(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "File not found: {fileName}")]
+    private partial void LogFileNotFound(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error reading file {fileName} from local storage")]
+    private partial void LogReadFailed(Exception ex, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Deleted existing file {fileName} before update")]
+    private partial void LogDeletedBeforeUpdate(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Update operation for {fileName} was cancelled")]
+    private partial void LogUpdateCancelled(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "File {fileName} does not exist for update")]
+    private partial void LogFileNotFoundForUpdate(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error updating file {fileName}")]
+    private partial void LogUpdateFailed(Exception ex, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully deleted file {fileName} from local storage")]
+    private partial void LogDeleteSuccessful(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Delete operation for {fileName} was cancelled")]
+    private partial void LogDeleteCancelled(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "File not found for deletion: {fileName}")]
+    private partial void LogFileNotFoundForDeletion(string fileName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error deleting file {fileName} from local storage")]
+    private partial void LogDeleteFailed(Exception ex, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Created directory: {directoryPath}")]
+    private partial void LogDirectoryCreated(string directoryPath);
 
     #endregion
 }

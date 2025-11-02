@@ -10,6 +10,7 @@ using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Utilities.Exporters;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
 using Serilog;
 
@@ -31,11 +32,11 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     /// </summary>
     private async Task ExportToExcelAsync()
     {
-        Logger.Debug("Exporting data to Excel.");
+        LogExportingToExcel(Logger);
 
         if (_downloadModule == null)
         {
-            Logger.Error("Download module not initialized");
+            LogDownloadModuleNotInitialized(Logger);
             return;
         }
 
@@ -44,7 +45,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         if (exportStreamResult.IsSuccess == false)
         {
-            Logger.Error("Failed to export data to Excel: {ErrorMessage}", exportStreamResult.Error!.Message);
+            LogExportToExcelFailed(Logger, exportStreamResult.Error!.Message);
             return;
         }
 
@@ -52,11 +53,11 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
         if (ms.Length == 0)
         {
-            Logger.Error("Excel export resulted in an empty file.");
+            LogExcelExportEmptyFile(Logger);
             return;
         }
 
-        Logger.Debug("Data exported to Excel successfully.");
+        LogDataExportedToExcelSuccessfully(Logger);
         ms.Position = 0;
 
         // Use a DotNetStreamReference for JavaScript-based file download.
@@ -71,11 +72,11 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
                 streamRef,
                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-            Logger.Debug("File download initiated successfully");
+            LogFileDownloadInitiatedSuccessfully(Logger);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to invoke download function with API namespace, trying direct function");
+            LogDownloadFunctionApiNamespaceFailed(Logger, ex);
 
             // Fall back to direct function if first approach fails
             try
@@ -86,11 +87,11 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
                     streamRef,
                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 
-                Logger.Debug("File download initiated successfully with direct function");
+                LogFileDownloadInitiatedDirectFunction(Logger);
             }
             catch (Exception innerEx)
             {
-                Logger.Error(innerEx, "All download function attempts failed");
+                LogAllDownloadAttemptsFailed(Logger, innerEx);
             }
         }
     }
@@ -99,7 +100,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
 
     #region Private Fields & Dependencies
 
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearReportViewer<TItem>>();
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
     private readonly ExcelExporter<TItem> _excelExporter = new();
     private List<ColumnDefinition<TItem>> _columns = new();
     private ColumnDefinition<TItem>? _currentSortColumn;
@@ -259,7 +260,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error disposing report viewer");
+            LogReportViewerDisposeError(Logger, ex);
         }
 
         await base.DisposeAsyncCore();
@@ -274,7 +275,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     /// </summary>
     private void InitializeColumns()
     {
-        Logger.Debug("Initializing columns for type {TItem}.", typeof(TItem).Name);
+        LogInitializingColumns(Logger, typeof(TItem).Name);
 
         // Only initialize if columns haven't been generated yet
         if (_columns.Count == 0)
@@ -326,8 +327,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             _currentSortDirection = SortDirection.Ascending;
         }
 
-        Logger.Debug("Sorting by column '{ColumnName}' in {SortDirection} order.",
-            column.PropertyName, _currentSortDirection);
+        LogSortingByColumn(Logger, column.PropertyName, _currentSortDirection.ToString());
 
         // Mark the filter cache as dirty and trigger a render
         _filteredDataDirty = true;
@@ -451,6 +451,72 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
         var indicator = _currentSortDirection == SortDirection.Ascending ? "?" : "?";
         return new MarkupString($"<span>{indicator}</span>");
     }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearReportViewer<TItem>>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearReportViewer<TItem>));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Exporting data to Excel")]
+    static partial void LogExportingToExcel(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Download module not initialized")]
+    static partial void LogDownloadModuleNotInitialized(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to export data to Excel: {ErrorMessage}")]
+    static partial void LogExportToExcelFailed(Microsoft.Extensions.Logging.ILogger logger, string errorMessage);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Excel export resulted in an empty file")]
+    static partial void LogExcelExportEmptyFile(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Data exported to Excel successfully")]
+    static partial void LogDataExportedToExcelSuccessfully(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "File download initiated successfully")]
+    static partial void LogFileDownloadInitiatedSuccessfully(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to invoke download function with API namespace, trying direct function")]
+    static partial void LogDownloadFunctionApiNamespaceFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "File download initiated successfully with direct function")]
+    static partial void LogFileDownloadInitiatedDirectFunction(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "All download function attempts failed")]
+    static partial void LogAllDownloadAttemptsFailed(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error disposing report viewer")]
+    static partial void LogReportViewerDisposeError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Initializing columns for type {TypeName}")]
+    static partial void LogInitializingColumns(Microsoft.Extensions.Logging.ILogger logger, string typeName);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Sorting by column '{ColumnName}' in {SortDirection} order")]
+    static partial void LogSortingByColumn(Microsoft.Extensions.Logging.ILogger logger, string columnName, string sortDirection);
 
     #endregion
 }

@@ -15,10 +15,12 @@ using DropBear.Codex.Serialization.Serializers;
 using MessagePack;
 using MessagePack.ImmutableCollection;
 using MessagePack.Resolvers;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Serilog;
 using JsonSerializer = DropBear.Codex.Serialization.Serializers.JsonSerializer;
 using MessagePackSerializer = DropBear.Codex.Serialization.Serializers.MessagePackSerializer;
+using ILogger = Microsoft.Extensions.Logging.ILogger<DropBear.Codex.Serialization.Factories.SerializationBuilder>;
 
 #endregion
 
@@ -28,18 +30,33 @@ namespace DropBear.Codex.Serialization.Factories;
 ///     Builder class for configuring serialization settings and creating serializers.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class SerializationBuilder
+public sealed partial class SerializationBuilder
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<SerializationBuilder>();
     private readonly SerializationConfig _config;
+    private readonly ILogger _logger;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SerializationBuilder" /> class.
     /// </summary>
-    public SerializationBuilder()
+    /// <param name="logger">The logger instance. If null, creates a default logger.</param>
+    public SerializationBuilder(ILogger? logger = null)
     {
         _config = new SerializationConfig();
-        Logger.Information("SerializationBuilder initialized.");
+
+        // Create logger if not provided
+        _logger = logger ?? CreateDefaultLogger();
+
+        LogSerializationBuilderInitialized();
+    }
+
+    private static ILogger CreateDefaultLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<SerializationBuilder>());
+            builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger<SerializationBuilder>();
     }
 
     /// <summary>
@@ -49,7 +66,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithSerializer<T>() where T : ISerializer
     {
-        Logger.Information("Configuring serializer type: {Type}", typeof(T).Name);
+        LogConfiguringSerializerType(typeof(T).Name);
         _config.SerializerType = typeof(T);
         return this;
     }
@@ -68,11 +85,11 @@ public sealed class SerializationBuilder
         if (!typeof(ISerializer).IsAssignableFrom(serializerType))
         {
             var message = $"The type {serializerType.Name} must implement the ISerializer interface.";
-            Logger.Error(message);
+            LogSerializerTypeValidationError(message);
             throw new ArgumentException(message, nameof(serializerType));
         }
 
-        Logger.Information("Configuring serializer type: {Type}", serializerType.Name);
+        LogConfiguringSerializerType(serializerType.Name);
         _config.SerializerType = serializerType;
         return this;
     }
@@ -85,7 +102,7 @@ public sealed class SerializationBuilder
     public SerializationBuilder WithCompression(Type compressionType)
     {
         ValidateProviderType<ICompressionProvider>(compressionType, nameof(compressionType));
-        Logger.Information("Configuring compression provider: {Type}", compressionType.Name);
+        LogConfiguringCompressionProvider(compressionType.Name);
         _config.CompressionProviderType = compressionType;
         return this;
     }
@@ -98,7 +115,7 @@ public sealed class SerializationBuilder
     public SerializationBuilder WithEncoding(Type encodingType)
     {
         ValidateProviderType<IEncodingProvider>(encodingType, nameof(encodingType));
-        Logger.Information("Configuring encoding provider: {Type}", encodingType.Name);
+        LogConfiguringEncodingProvider(encodingType.Name);
         _config.EncodingProviderType = encodingType;
         return this;
     }
@@ -111,7 +128,7 @@ public sealed class SerializationBuilder
     public SerializationBuilder WithEncryption(Type encryptionType)
     {
         ValidateProviderType<IEncryptionProvider>(encryptionType, nameof(encryptionType));
-        Logger.Information("Configuring encryption provider: {Type}", encryptionType.Name);
+        LogConfiguringEncryptionProvider(encryptionType.Name);
         _config.EncryptionProviderType = encryptionType;
         return this;
     }
@@ -123,7 +140,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithEncryption<T>() where T : IEncryptionProvider
     {
-        Logger.Information("Configuring encryption provider: {Type}", typeof(T).Name);
+        LogConfiguringEncryptionProvider(typeof(T).Name);
         _config.EncryptionProviderType = typeof(T);
         return this;
     }
@@ -135,7 +152,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithStreamSerializer<T>() where T : IStreamSerializer
     {
-        Logger.Information("Configuring stream serializer: {Type}", typeof(T).Name);
+        LogConfiguringStreamSerializer(typeof(T).Name);
         _config.StreamSerializerType = typeof(T);
         return this;
     }
@@ -148,7 +165,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithStreamingSerializer<T>() where T : IStreamingSerializer
     {
-        Logger.Information("Configuring streaming serializer: {Type}", typeof(T).Name);
+        LogConfiguringStreamingSerializer(typeof(T).Name);
         _config.StreamingSerializerType = typeof(T);
         return this;
     }
@@ -160,7 +177,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithCompression<T>() where T : ICompressionProvider
     {
-        Logger.Information("Configuring compression provider: {Type}", typeof(T).Name);
+        LogConfiguringCompressionProvider(typeof(T).Name);
         _config.CompressionProviderType = typeof(T);
         return this;
     }
@@ -172,7 +189,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithEncoding<T>() where T : IEncodingProvider
     {
-        Logger.Information("Configuring encoding provider: {Type}", typeof(T).Name);
+        LogConfiguringEncodingProvider(typeof(T).Name);
         _config.EncodingProviderType = typeof(T);
         return this;
     }
@@ -188,7 +205,7 @@ public sealed class SerializationBuilder
         ValidateFileExists(publicKeyPath, "Public key file");
         ValidateFileExists(privateKeyPath, "Private key file");
 
-        Logger.Information("Configuring key paths for encryption.");
+        LogConfiguringKeyPaths();
         _config.PublicKeyPath = publicKeyPath;
         _config.PrivateKeyPath = privateKeyPath;
 
@@ -206,7 +223,7 @@ public sealed class SerializationBuilder
 
         _config.SerializerType ??= typeof(JsonSerializer);
         _config.JsonSerializerOptions = options;
-        Logger.Information("Configured JSON serializer options.");
+        LogJsonSerializerOptionsConfigured();
         return this;
     }
 
@@ -222,8 +239,7 @@ public sealed class SerializationBuilder
 
         _config.SerializerType ??= typeof(JsonSerializer);
         _config.JsonSerializerContext = context;
-        Logger.Information("Configured JSON serializer context for source-generated serialization: {ContextType}",
-            context.GetType().Name);
+        LogJsonSerializerContextConfigured(context.GetType().Name);
         return this;
     }
 
@@ -253,7 +269,7 @@ public sealed class SerializationBuilder
 
         _config.SerializerType ??= typeof(JsonSerializer);
         _config.JsonSerializerOptions = options;
-        Logger.Information("Configured default JSON serializer options.");
+        LogDefaultJsonSerializerOptionsConfigured();
         return this;
     }
 
@@ -267,7 +283,7 @@ public sealed class SerializationBuilder
         ArgumentNullException.ThrowIfNull(options, nameof(options));
 
         _config.MessagePackSerializerOptions = options;
-        Logger.Information("Configured MessagePack serializer options.");
+        LogMessagePackSerializerOptionsConfigured();
         return this;
     }
 
@@ -287,7 +303,7 @@ public sealed class SerializationBuilder
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
         _config.MessagePackSerializerOptions = options;
-        Logger.Information("Configured default MessagePack serializer options.");
+        LogDefaultMessagePackSerializerOptionsConfigured();
         return this;
     }
 
@@ -322,9 +338,7 @@ public sealed class SerializationBuilder
                 MaximumBufferSize = (int)maxMemoryThreshold
             });
 
-        Logger.Information(
-            "Configured memory settings. BufferSize: {BufferSize}, MaxMemoryThreshold: {MaxMemoryThreshold}",
-            bufferSize, maxMemoryThreshold);
+        LogMemorySettingsConfigured(bufferSize, maxMemoryThreshold);
         return this;
     }
 
@@ -344,8 +358,7 @@ public sealed class SerializationBuilder
         _config.EnableCaching = enableCaching;
         _config.MaxCacheSize = maxCacheSize;
 
-        Logger.Information("Configured caching. EnableCaching: {EnableCaching}, MaxCacheSize: {MaxCacheSize}",
-            enableCaching, maxCacheSize);
+        LogCachingConfigured(enableCaching, maxCacheSize);
         return this;
     }
 
@@ -355,7 +368,7 @@ public sealed class SerializationBuilder
     /// <returns>The builder instance for method chaining.</returns>
     public SerializationBuilder WithDefaultConfiguration()
     {
-        Logger.Information("Configuring default serialization settings.");
+        LogConfiguringDefaultSettings();
         return WithJsonSerializerOptions(new JsonSerializerOptions { WriteIndented = true })
             .WithCompression<GZipCompressionProvider>()
             .WithEncoding<Base64EncodingProvider>()
@@ -369,7 +382,7 @@ public sealed class SerializationBuilder
     /// <returns>A Result containing the configured serializer or an error.</returns>
     public Result<ISerializer, SerializationError> Build()
     {
-        Logger.Information("Building the serializer.");
+        LogBuildingSerializer();
 
         try
         {
@@ -391,12 +404,12 @@ public sealed class SerializationBuilder
             // Create the serializer using the factory
             var serializer = SerializerFactory.CreateSerializer(_config);
 
-            Logger.Information($"Serializer built successfully with type: {_config.SerializerType?.Name}");
+            LogSerializerBuiltSuccessfully(_config.SerializerType?.Name ?? "Unknown");
             return Result<ISerializer, SerializationError>.Success(serializer);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error building serializer: {Message}", ex.Message);
+            LogErrorBuildingSerializer(ex, ex.Message);
             return Result<ISerializer, SerializationError>.Failure(
                 new SerializationError($"Failed to build serializer: {ex.Message}"), ex);
         }
@@ -409,7 +422,7 @@ public sealed class SerializationBuilder
         if (!typeof(T).IsAssignableFrom(providerType))
         {
             var message = $"The type {providerType.Name} must implement the {typeof(T).Name} interface.";
-            Logger.Error(message);
+            LogProviderTypeValidationError(message);
             throw new ArgumentException(message, paramName);
         }
     }
@@ -436,14 +449,14 @@ public sealed class SerializationBuilder
             if (_config.SerializerType == typeof(JsonSerializer) && _config.JsonSerializerOptions is null)
             {
                 const string message = "JsonSerializerOptions must be specified for JsonSerializer.";
-                Logger.Error(message);
+                LogValidationErrorJsonSerializerOptions(message);
                 return Result<Unit, SerializationError>.Failure(new SerializationError(message));
             }
 
             if (_config.SerializerType == typeof(MessagePackSerializer) && _config.MessagePackSerializerOptions is null)
             {
                 const string message = "MessagePackSerializerOptions must be specified for MessagePackSerializer.";
-                Logger.Error(message);
+                LogValidationErrorMessagePackSerializerOptions(message);
                 return Result<Unit, SerializationError>.Failure(new SerializationError(message));
             }
 
@@ -452,7 +465,7 @@ public sealed class SerializationBuilder
                 (string.IsNullOrEmpty(_config.PublicKeyPath) || string.IsNullOrEmpty(_config.PrivateKeyPath)))
             {
                 const string message = "PublicKeyPath and PrivateKeyPath must be specified when using encryption.";
-                Logger.Error(message);
+                LogValidationErrorEncryptionKeyPaths(message);
                 return Result<Unit, SerializationError>.Failure(new SerializationError(message));
             }
 
@@ -460,14 +473,14 @@ public sealed class SerializationBuilder
             if (_config.BufferSize <= 0)
             {
                 const string message = "BufferSize must be greater than zero.";
-                Logger.Error(message);
+                LogValidationErrorBufferSize(message);
                 return Result<Unit, SerializationError>.Failure(new SerializationError(message));
             }
 
             if (_config.MaxMemoryThreshold <= 0)
             {
                 const string message = "MaxMemoryThreshold must be greater than zero.";
-                Logger.Error(message);
+                LogValidationErrorMaxMemoryThreshold(message);
                 return Result<Unit, SerializationError>.Failure(new SerializationError(message));
             }
 
@@ -475,9 +488,94 @@ public sealed class SerializationBuilder
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Validation error: {Message}", ex.Message);
+            LogValidationError(ex, ex.Message);
             return Result<Unit, SerializationError>.Failure(
                 new SerializationError($"Configuration validation failed: {ex.Message}"), ex);
         }
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "SerializationBuilder initialized")]
+    private partial void LogSerializationBuilderInitialized();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring serializer type: {Type}")]
+    private partial void LogConfiguringSerializerType(string type);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogSerializerTypeValidationError(string message);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring compression provider: {Type}")]
+    private partial void LogConfiguringCompressionProvider(string type);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring encoding provider: {Type}")]
+    private partial void LogConfiguringEncodingProvider(string type);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring encryption provider: {Type}")]
+    private partial void LogConfiguringEncryptionProvider(string type);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring stream serializer: {Type}")]
+    private partial void LogConfiguringStreamSerializer(string type);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring streaming serializer: {Type}")]
+    private partial void LogConfiguringStreamingSerializer(string type);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring key paths for encryption.")]
+    private partial void LogConfiguringKeyPaths();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured JSON serializer options.")]
+    private partial void LogJsonSerializerOptionsConfigured();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured JSON serializer context for source-generated serialization: {ContextType}")]
+    private partial void LogJsonSerializerContextConfigured(string contextType);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured default JSON serializer options.")]
+    private partial void LogDefaultJsonSerializerOptionsConfigured();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured MessagePack serializer options.")]
+    private partial void LogMessagePackSerializerOptionsConfigured();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured default MessagePack serializer options.")]
+    private partial void LogDefaultMessagePackSerializerOptionsConfigured();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured memory settings. BufferSize: {BufferSize}, MaxMemoryThreshold: {MaxMemoryThreshold}")]
+    private partial void LogMemorySettingsConfigured(int bufferSize, long maxMemoryThreshold);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configured caching. EnableCaching: {EnableCaching}, MaxCacheSize: {MaxCacheSize}")]
+    private partial void LogCachingConfigured(bool enableCaching, int maxCacheSize);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Configuring default serialization settings.")]
+    private partial void LogConfiguringDefaultSettings();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Building the serializer.")]
+    private partial void LogBuildingSerializer();
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Serializer built successfully with type: {SerializerType}")]
+    private partial void LogSerializerBuiltSuccessfully(string serializerType);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error building serializer: {Message}")]
+    private partial void LogErrorBuildingSerializer(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogProviderTypeValidationError(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogValidationErrorJsonSerializerOptions(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogValidationErrorMessagePackSerializerOptions(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogValidationErrorEncryptionKeyPaths(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogValidationErrorBufferSize(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "{Message}")]
+    private partial void LogValidationErrorMaxMemoryThreshold(string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Validation error: {Message}")]
+    private partial void LogValidationError(Exception ex, string message);
+
+    #endregion
 }

@@ -13,6 +13,7 @@ using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -38,7 +39,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     private const int CircuitReconnectTimeoutMs = 30000;
     private const int ErrorDisplayTimeMs = 5000;
 
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>();
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     // Use a strongly typed array for performance.
     private static readonly int[] ItemsPerPageOptions = [10, 25, 50, 100];
@@ -194,7 +195,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during DropBearDataGrid disposal");
+            LogErrorDuringDisposal(Logger, ex);
         }
 
         await base.DisposeAsync();
@@ -207,7 +208,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         // Add detailed logging to track the state
         if (EnableDebugMode)
         {
-            Logger.Debug("OnParametersSetAsync - Previous Items: {PreviousItems}, New Items: {NewItems}",
+            LogParametersSetAsync(Logger,
                 _previousItems != null ? "not null" : "null",
                 Items != null ? "not null" : "null");
 
@@ -215,7 +216,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             {
                 // Force evaluation of Items to check if it contains data
                 var count = Items.Count();
-                Logger.Debug("Items count: {Count}", count);
+                LogItemsCount(Logger, count);
             }
         }
 
@@ -233,14 +234,14 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
                     if (EnableDebugMode)
                     {
-                        Logger.Debug("Created cached items list with {Count} items", tempList.Count);
+                        LogCreatedCachedItemsList(Logger, tempList.Count);
                     }
 
                     _cachedItems = tempList;
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error(ex, "Error converting Items to List");
+                    LogErrorConvertingItemsToList(Logger, ex);
                     _cachedItems = new List<TItem>();
                 }
             }
@@ -250,7 +251,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
                 if (EnableDebugMode)
                 {
-                    Logger.Debug("Items was null, created empty cached items list");
+                    LogItemsWasNull(Logger);
                 }
             }
 
@@ -261,7 +262,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             // Safety check: if _cachedItems is empty but Items contains data, refresh it
             if (Items != null && Items.Any())
             {
-                Logger.Debug("Items contains data but _cachedItems is empty, refreshing cache");
+                LogRefreshingCache(Logger);
                 _cachedItems = Items.ToList();
                 await LoadDataAsync();
             }
@@ -292,7 +293,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
                 if (EnableDebugMode)
                 {
-                    Logger.Debug("LoadDataAsync - Cached Items: {CachedItems}",
+                    LogLoadDataAsync(Logger,
                         _cachedItems != null ? $"not null (Count: {_cachedItems.Count})" : "null");
                 }
 
@@ -317,7 +318,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 }
                 else if (EnableDebugMode)
                 {
-                    Logger.Debug("_cachedItems is null in LoadDataAsync");
+                    LogCachedItemsIsNull(Logger);
                 }
 
                 // Ensure we set _cachedFilteredItems with data if available
@@ -326,7 +327,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                     _cachedFilteredItems = _cachedItems;
                     if (EnableDebugMode)
                     {
-                        Logger.Debug("Set _cachedFilteredItems with {Count} items", _cachedFilteredItems.Count);
+                        LogSetCachedFilteredItems(Logger, _cachedFilteredItems.Count);
                     }
                 }
                 else
@@ -334,7 +335,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                     _cachedFilteredItems = new List<TItem>();
                     if (EnableDebugMode)
                     {
-                        Logger.Debug("No cached items available, using empty list for _cachedFilteredItems");
+                        LogNoCachedItemsAvailable(Logger);
                     }
                 }
 
@@ -342,7 +343,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
                 if (EnableDebugMode)
                 {
-                    Logger.Debug("After UpdateDisplayedItems: DisplayedItems count = {Count}", DisplayedItems.Count());
+                    LogAfterUpdateDisplayedItems(Logger, DisplayedItems.Count());
                 }
 
                 await _metricsService.StopSearchTimerAsync(
@@ -354,7 +355,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error loading data in DropBearDataGrid.");
+                LogErrorLoadingData(Logger, ex);
                 await _metricsService.ResetAsync();
 
                 _lastOperationResult = Result<bool, DataGridError>.Failure(
@@ -463,7 +464,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error(ex, "Failed to compile selector for {PropertyName}", column.PropertyName);
+                        LogFailedToCompileSelector(Logger, column.PropertyName, ex);
                         continue;
                     }
                 }
@@ -483,12 +484,12 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 }
                 catch (Exception ex)
                 {
-                    Logger.Error(ex, "Error extracting value for column {PropertyName}", column.PropertyName);
+                    LogErrorExtractingValue(Logger, column.PropertyName, ex);
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error processing column {Column}", column.PropertyName);
+                LogErrorProcessingColumn(Logger, column.PropertyName, ex);
                 // Continue with other columns instead of failing completely
             }
         }
@@ -552,7 +553,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error pre-computing search values for item sequentially");
+                LogErrorPreComputingSearchValuesSequentially(Logger, ex);
             }
         }
     }
@@ -608,8 +609,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                             var processed = Interlocked.Increment(ref itemsProcessed);
                             if (EnableDebugMode && processed % 1000 == 0)
                             {
-                                Logger.Debug("Processed {Count} of {Total} items for search indexing",
-                                    processed, totalItems);
+                                LogProcessedItemsForSearchIndexing(Logger, processed, totalItems);
                             }
                         }
                         catch (ArgumentException)
@@ -620,19 +620,19 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error(ex, "Error pre-computing search values for item");
+                        LogErrorPreComputingSearchValuesForItem(Logger, ex);
                     }
                 });
 
                 if (EnableDebugMode)
                 {
-                    Logger.Debug("Completed processing {Count} items for search indexing",
+                    LogCompletedProcessingItemsForSearchIndexing(Logger,
                         Volatile.Read(ref itemsProcessed));
                 }
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error during parallel pre-computation of search values");
+                LogErrorDuringParallelPreComputation(Logger, ex);
             }
         });
     }
@@ -688,7 +688,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error accessing searchable values for item");
+            LogErrorAccessingSearchableValues(Logger, ex);
             needsComputation = true;
         }
 
@@ -711,7 +711,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error computing searchable values during search");
+                LogErrorComputingSearchableValues(Logger, ex);
                 return false; // If we can't compute values, consider it a non-match
             }
         }
@@ -801,7 +801,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error during search in DropBearDataGrid.");
+                LogErrorDuringSearch(Logger, ex);
                 await _metricsService.ResetAsync();
 
                 _lastOperationResult = Result<bool, DataGridError>.Failure(
@@ -863,7 +863,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error sorting column {Column}", _currentSortColumn.PropertyName);
+                LogErrorSortingColumn(Logger, _currentSortColumn.PropertyName, ex);
 
                 // Fall back to unsorted list
                 items = _cachedFilteredItems;
@@ -905,7 +905,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         // Debug logging if needed
         if (EnableDebugMode)
         {
-            Logger.Debug("Updated displayed items: {Count} items shown out of {TotalCount} filtered items",
+            LogUpdatedDisplayedItems(Logger,
                 DisplayedItems.Count(), _cachedFilteredItems.Count);
         }
     }
@@ -929,7 +929,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             if (_columns.Any(c => c.PropertyName == column.PropertyName))
             {
-                Logger.Warning("Column with property name {PropertyName} already exists.", column.PropertyName);
+                LogColumnAlreadyExists(Logger, column.PropertyName);
                 return;
             }
 
@@ -956,7 +956,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Failed to compile selector for column {Column}", column.PropertyName);
+                LogFailedToCompileSelectorForColumn(Logger, column.PropertyName, ex);
             }
         }
 
@@ -1035,7 +1035,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error getting formatted value for column {Column}", column.PropertyName);
+            LogErrorGettingFormattedValue(Logger, column.PropertyName, ex);
             return "Error";
         }
     }
@@ -1057,7 +1057,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error clearing selection");
+            LogErrorClearingSelection(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to clear selection: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1094,7 +1094,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling selection change for item");
+            LogErrorHandlingSelectionChange(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to change selection: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1129,7 +1129,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling select all operation");
+            LogErrorHandlingSelectAll(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to select/deselect all items: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1147,7 +1147,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             if (!OnExportData.HasDelegate)
             {
-                Logger.Warning("Export attempted but no handler is registered");
+                LogExportAttemptedButNoHandler(Logger);
                 return;
             }
 
@@ -1163,7 +1163,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error exporting data");
+            LogErrorExportingData(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 DataGridError.ExportFailed(ex.Message), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1187,7 +1187,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             if (!OnAddItem.HasDelegate)
             {
-                Logger.Warning("Add attempted but no handler is registered");
+                LogAddAttemptedButNoHandler(Logger);
                 return;
             }
 
@@ -1202,7 +1202,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error adding item");
+            LogErrorAddingItem(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to add item: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1221,7 +1221,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             if (!OnEditItem.HasDelegate)
             {
-                Logger.Warning("Edit attempted but no handler is registered");
+                LogEditAttemptedButNoHandler(Logger);
                 return;
             }
 
@@ -1236,7 +1236,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error editing item");
+            LogErrorEditingItem(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to edit item: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1255,7 +1255,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             if (!OnDeleteItem.HasDelegate)
             {
-                Logger.Warning("Delete attempted but no handler is registered");
+                LogDeleteAttemptedButNoHandler(Logger);
                 return;
             }
 
@@ -1270,7 +1270,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error deleting item");
+            LogErrorDeletingItem(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to delete item: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1289,7 +1289,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             if (!OnDownloadItem.HasDelegate)
             {
-                Logger.Warning("Download attempted but no handler is registered");
+                LogDownloadAttemptedButNoHandler(Logger);
                 return;
             }
 
@@ -1304,7 +1304,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error downloading item");
+            LogErrorDownloadingItem(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 new DataGridError($"Failed to download item: {ex.Message}"), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1328,7 +1328,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling row click");
+            LogErrorHandlingRowClick(Logger, ex);
         }
     }
 
@@ -1348,7 +1348,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling row double-click");
+            LogErrorHandlingRowDoubleClick(Logger, ex);
         }
     }
 
@@ -1387,13 +1387,13 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             {
                 if (_selectedItems.Add(item))
                 {
-                    Logger.Debug("Item selected: {Item}", item);
+                    LogItemSelected(Logger, item?.ToString() ?? "null");
                 }
             }
             else
             {
                 _selectedItems.Remove(item);
-                Logger.Debug("Item deselected: {Item}", item);
+                LogItemDeselected(Logger, item?.ToString() ?? "null");
             }
 
             if (OnSelectionChanged.HasDelegate)
@@ -1403,7 +1403,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to toggle selection");
+            LogFailedToToggleSelection(Logger, ex);
         }
 
         StateHasChanged();
@@ -1426,11 +1426,11 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                     _selectedItems.Add(item);
                 }
 
-                Logger.Debug("All items selected.");
+                LogAllItemsSelected(Logger);
             }
             else
             {
-                Logger.Debug("All items deselected.");
+                LogAllItemsDeselected(Logger);
             }
 
             if (OnSelectionChanged.HasDelegate)
@@ -1440,7 +1440,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to toggle select all");
+            LogFailedToToggleSelectAll(Logger, ex);
         }
 
         StateHasChanged();
@@ -1496,7 +1496,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error changing items per page");
+            LogErrorChangingItemsPerPage(Logger, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 DataGridError.PaginationFailed(ex.Message), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1519,7 +1519,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
             if (column.PropertySelector == null)
             {
-                Logger.Warning("Cannot sort by column {Column} - property selector is null", column.PropertyName);
+                LogCannotSortByColumn(Logger, column.PropertyName);
                 return;
             }
 
@@ -1533,7 +1533,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error sorting by column {Column}", column.PropertyName);
+            LogErrorSortingByColumn(Logger, column.PropertyName, ex);
             _lastOperationResult = Result<bool, DataGridError>.Failure(
                 DataGridError.SortingFailed(column.PropertyName, ex.Message), ex);
             _errorDisplayUntil = DateTime.UtcNow.AddMilliseconds(ErrorDisplayTimeMs);
@@ -1665,6 +1665,236 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 }
                 break;
         }
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error during DropBearDataGrid disposal")]
+    static partial void LogErrorDuringDisposal(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "OnParametersSetAsync - Previous Items: {PreviousItems}, New Items: {NewItems}")]
+    static partial void LogParametersSetAsync(Microsoft.Extensions.Logging.ILogger logger, string previousItems, string newItems);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Items count: {Count}")]
+    static partial void LogItemsCount(Microsoft.Extensions.Logging.ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Created cached items list with {Count} items")]
+    static partial void LogCreatedCachedItemsList(Microsoft.Extensions.Logging.ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error converting Items to List")]
+    static partial void LogErrorConvertingItemsToList(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Items was null, created empty cached items list")]
+    static partial void LogItemsWasNull(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Items contains data but _cachedItems is empty, refreshing cache")]
+    static partial void LogRefreshingCache(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "LoadDataAsync - Cached Items: {CachedItems}")]
+    static partial void LogLoadDataAsync(Microsoft.Extensions.Logging.ILogger logger, string cachedItems);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "_cachedItems is null in LoadDataAsync")]
+    static partial void LogCachedItemsIsNull(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Set _cachedFilteredItems with {Count} items")]
+    static partial void LogSetCachedFilteredItems(Microsoft.Extensions.Logging.ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "No cached items available, using empty list for _cachedFilteredItems")]
+    static partial void LogNoCachedItemsAvailable(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "After UpdateDisplayedItems: DisplayedItems count = {Count}")]
+    static partial void LogAfterUpdateDisplayedItems(Microsoft.Extensions.Logging.ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error loading data in DropBearDataGrid.")]
+    static partial void LogErrorLoadingData(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to compile selector for {PropertyName}")]
+    static partial void LogFailedToCompileSelector(Microsoft.Extensions.Logging.ILogger logger, string propertyName, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error extracting value for column {PropertyName}")]
+    static partial void LogErrorExtractingValue(Microsoft.Extensions.Logging.ILogger logger, string propertyName, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error processing column {Column}")]
+    static partial void LogErrorProcessingColumn(Microsoft.Extensions.Logging.ILogger logger, string column, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error pre-computing search values for item sequentially")]
+    static partial void LogErrorPreComputingSearchValuesSequentially(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Processed {Count} of {Total} items for search indexing")]
+    static partial void LogProcessedItemsForSearchIndexing(Microsoft.Extensions.Logging.ILogger logger, int count, int total);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error pre-computing search values for item")]
+    static partial void LogErrorPreComputingSearchValuesForItem(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Completed processing {Count} items for search indexing")]
+    static partial void LogCompletedProcessingItemsForSearchIndexing(Microsoft.Extensions.Logging.ILogger logger, int count);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error during parallel pre-computation of search values")]
+    static partial void LogErrorDuringParallelPreComputation(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error accessing searchable values for item")]
+    static partial void LogErrorAccessingSearchableValues(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error computing searchable values during search")]
+    static partial void LogErrorComputingSearchableValues(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error during search in DropBearDataGrid.")]
+    static partial void LogErrorDuringSearch(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error sorting column {Column}")]
+    static partial void LogErrorSortingColumn(Microsoft.Extensions.Logging.ILogger logger, string column, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Updated displayed items: {Count} items shown out of {TotalCount} filtered items")]
+    static partial void LogUpdatedDisplayedItems(Microsoft.Extensions.Logging.ILogger logger, int count, int totalCount);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Column with property name {PropertyName} already exists.")]
+    static partial void LogColumnAlreadyExists(Microsoft.Extensions.Logging.ILogger logger, string propertyName);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to compile selector for column {Column}")]
+    static partial void LogFailedToCompileSelectorForColumn(Microsoft.Extensions.Logging.ILogger logger, string column, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error getting formatted value for column {Column}")]
+    static partial void LogErrorGettingFormattedValue(Microsoft.Extensions.Logging.ILogger logger, string column, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error clearing selection")]
+    static partial void LogErrorClearingSelection(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling selection change for item")]
+    static partial void LogErrorHandlingSelectionChange(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling select all operation")]
+    static partial void LogErrorHandlingSelectAll(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Export attempted but no handler is registered")]
+    static partial void LogExportAttemptedButNoHandler(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error exporting data")]
+    static partial void LogErrorExportingData(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Add attempted but no handler is registered")]
+    static partial void LogAddAttemptedButNoHandler(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error adding item")]
+    static partial void LogErrorAddingItem(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Edit attempted but no handler is registered")]
+    static partial void LogEditAttemptedButNoHandler(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error editing item")]
+    static partial void LogErrorEditingItem(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Delete attempted but no handler is registered")]
+    static partial void LogDeleteAttemptedButNoHandler(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error deleting item")]
+    static partial void LogErrorDeletingItem(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Download attempted but no handler is registered")]
+    static partial void LogDownloadAttemptedButNoHandler(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error downloading item")]
+    static partial void LogErrorDownloadingItem(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling row click")]
+    static partial void LogErrorHandlingRowClick(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling row double-click")]
+    static partial void LogErrorHandlingRowDoubleClick(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Item selected: {Item}")]
+    static partial void LogItemSelected(Microsoft.Extensions.Logging.ILogger logger, string item);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Item deselected: {Item}")]
+    static partial void LogItemDeselected(Microsoft.Extensions.Logging.ILogger logger, string item);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to toggle selection")]
+    static partial void LogFailedToToggleSelection(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "All items selected.")]
+    static partial void LogAllItemsSelected(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "All items deselected.")]
+    static partial void LogAllItemsDeselected(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to toggle select all")]
+    static partial void LogFailedToToggleSelectAll(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error changing items per page")]
+    static partial void LogErrorChangingItemsPerPage(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Cannot sort by column {Column} - property selector is null")]
+    static partial void LogCannotSortByColumn(Microsoft.Extensions.Logging.ILogger logger, string column);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error sorting by column {Column}")]
+    static partial void LogErrorSortingByColumn(Microsoft.Extensions.Logging.ILogger logger, string column, Exception ex);
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearDataGrid<TItem>>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(typeof(DropBearDataGrid<TItem>).Name);
     }
 
     #endregion

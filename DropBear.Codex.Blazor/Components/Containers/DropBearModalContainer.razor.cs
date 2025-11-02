@@ -3,9 +3,12 @@
 using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Microsoft.JSInterop;
+using Serilog;
 
 #endregion
 
@@ -17,6 +20,8 @@ namespace DropBear.Codex.Blazor.Components.Containers;
 /// </summary>
 public sealed partial class DropBearModalContainer : DropBearComponentBase
 {
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
     private const string DEFAULT_TRANSITION_DURATION = "0.3s";
     private const string DEFAULT_DIMENSION = "auto";
     private const string ENTER_TRANSITION_CLASS = "enter";
@@ -84,7 +89,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error initializing modal container");
+            LogErrorInitializingModalContainer(Logger, ex);
             throw;
         }
     }
@@ -104,11 +109,11 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             ModalService.OnChange += HandleModalServiceChange;
             _isSubscribed = true;
             UpdateCustomParameters();
-            Logger.Debug("Subscribed to ModalService events");
+            LogSubscribedToModalServiceEvents(Logger);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Failed to subscribe to modal service");
+            LogFailedToSubscribeToModalService(Logger, ex);
             throw;
         }
     }
@@ -151,12 +156,12 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error handling modal service change");
+                LogErrorHandlingModalServiceChange(Logger, ex);
             }
         }
         catch (Exception e)
         {
-            Logger.Error(e, "Error handling modal service change");
+            LogErrorHandlingModalServiceChange(Logger, e);
         }
     }
 
@@ -175,8 +180,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         _customHeight = GetParameterValue("CustomHeight", DEFAULT_DIMENSION);
         _transitionDuration = GetParameterValue("TransitionDuration", DEFAULT_TRANSITION_DURATION);
 
-        Logger.Debug("Modal parameters updated: Width={Width}, Height={Height}, Duration={Duration}",
-            _customWidth, _customHeight, _transitionDuration);
+        LogModalParametersUpdated(Logger, _customWidth, _customHeight, _transitionDuration);
     }
 
     /// <summary>
@@ -281,7 +285,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Failed to focus modal");
+                LogFailedToFocusModal(Logger, ex);
             }
         }
     }
@@ -296,11 +300,11 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             try
             {
                 ModalService.ClearAll();
-                Logger.Debug("Modal closed via Escape key");
+                LogModalClosedViaEscapeKey(Logger);
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error closing modal with Escape key");
+                LogErrorClosingModalWithEscapeKey(Logger, ex);
             }
         }
 
@@ -325,11 +329,11 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
 
             // Close the modal
             ModalService.ClearAll();
-            Logger.Debug("Modal closed via outside click");
+            LogModalClosedViaOutsideClick(Logger);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error handling modal outside click");
+            LogErrorHandlingModalOutsideClick(Logger, ex);
         }
 
         return Task.CompletedTask;
@@ -348,11 +352,11 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         try
         {
             ModalService.ClearAll();
-            Logger.Debug("Modal closed programmatically");
+            LogModalClosedProgrammatically(Logger);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error closing modal programmatically");
+            LogErrorClosingModalProgrammatically(Logger, ex);
         }
     }
 
@@ -369,7 +373,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
                 {
                     ModalService.OnChange -= HandleModalServiceChange;
                     _isSubscribed = false;
-                    Logger.Debug("Unsubscribed from modal service events");
+                    LogUnsubscribedFromModalServiceEvents(Logger);
                 }
 
                 await _modalCts.CancelAsync();
@@ -380,10 +384,84 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
             }
             catch (Exception ex)
             {
-                Logger.Error(ex, "Error during modal container disposal");
+                LogErrorDuringModalContainerDisposal(Logger, ex);
             }
         }
 
         await base.DisposeAsync();
     }
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearModalContainer>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearModalContainer));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error initializing modal container")]
+    static partial void LogErrorInitializingModalContainer(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Subscribed to ModalService events")]
+    static partial void LogSubscribedToModalServiceEvents(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to subscribe to modal service")]
+    static partial void LogFailedToSubscribeToModalService(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling modal service change")]
+    static partial void LogErrorHandlingModalServiceChange(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Modal parameters updated: Width={Width}, Height={Height}, Duration={Duration}")]
+    static partial void LogModalParametersUpdated(Microsoft.Extensions.Logging.ILogger logger, string width, string height, string duration);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Failed to focus modal")]
+    static partial void LogFailedToFocusModal(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Modal closed via Escape key")]
+    static partial void LogModalClosedViaEscapeKey(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error closing modal with Escape key")]
+    static partial void LogErrorClosingModalWithEscapeKey(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Modal closed via outside click")]
+    static partial void LogModalClosedViaOutsideClick(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error handling modal outside click")]
+    static partial void LogErrorHandlingModalOutsideClick(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Modal closed programmatically")]
+    static partial void LogModalClosedProgrammatically(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error closing modal programmatically")]
+    static partial void LogErrorClosingModalProgrammatically(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Unsubscribed from modal service events")]
+    static partial void LogUnsubscribedFromModalServiceEvents(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error during modal container disposal")]
+    static partial void LogErrorDuringModalContainerDisposal(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    #endregion
 }

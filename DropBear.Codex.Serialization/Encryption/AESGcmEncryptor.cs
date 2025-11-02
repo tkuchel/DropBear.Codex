@@ -5,11 +5,10 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Serialization.Errors;
 using DropBear.Codex.Serialization.Interfaces;
-using Serilog;
+using Microsoft.Extensions.Logging;
 
 #endregion
 
@@ -18,7 +17,7 @@ namespace DropBear.Codex.Serialization.Encryption;
 /// <summary>
 ///     Provides methods to encrypt and decrypt data using AES-GCM encryption.
 /// </summary>
-public sealed class AesGcmEncryptor : IEncryptor, IDisposable
+public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
 {
     private const int KeySize = 32; // AES-256 key size in bytes
     private const int TagSize = 16; // GCM tag size in bytes
@@ -31,7 +30,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
 
     private readonly byte[] _key;
 
-    private readonly ILogger _logger;
+    private readonly ILogger<AesGcmEncryptor> _logger;
     private readonly int _maxCacheSize;
     private readonly RSA _rsa;
     private bool _disposed;
@@ -40,11 +39,13 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
     ///     Initializes a new instance of the <see cref="AesGcmEncryptor" /> class with the specified RSA key pair.
     /// </summary>
     /// <param name="rsa">The RSA key pair used for encryption.</param>
+    /// <param name="logger">The logger instance.</param>
     /// <param name="enableCaching">Whether to enable caching of encryption results.</param>
     /// <param name="maxCacheSize">The maximum number of encryption results to cache.</param>
-    public AesGcmEncryptor(RSA rsa, bool enableCaching = false, int maxCacheSize = 100)
+    public AesGcmEncryptor(RSA rsa, ILogger<AesGcmEncryptor> logger, bool enableCaching = false, int maxCacheSize = 100)
     {
         _rsa = rsa ?? throw new ArgumentNullException(nameof(rsa), "RSA key pair cannot be null.");
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _key = GenerateKey();
         _enableCaching = enableCaching;
         _maxCacheSize = maxCacheSize > 0 ? maxCacheSize : 100;
@@ -52,16 +53,10 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
         if (_enableCaching)
         {
             _encryptionCache = new ConcurrentDictionary<int, byte[]>();
-            _logger = LoggerFactory.Logger.ForContext<AesGcmEncryptor>();
-            _logger.Warning("Encryption caching is enabled. This may have security implications due to nonce reuse patterns.");
-        }
-        else
-        {
-            _logger = LoggerFactory.Logger.ForContext<AesGcmEncryptor>();
+            LogCachingWarning(_logger);
         }
 
-        _logger.Information("AesGcmEncryptor initialized with caching: {EnableCaching}, MaxCacheSize: {MaxCacheSize}.",
-            _enableCaching, _maxCacheSize);
+        LogEncryptorInitialized(_logger, _enableCaching, _maxCacheSize);
     }
 
     /// <inheritdoc />
@@ -72,7 +67,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             return;
         }
 
-        _logger.Information("Disposing AesGcmEncryptor and securely erasing the key.");
+        LogDisposingEncryptor(_logger);
 
         // Securely erase the key
         if (_key.Length > 0)
@@ -115,12 +110,12 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
 
                 if (_encryptionCache?.TryGetValue(dataHash, out var cachedResult) == true)
                 {
-                    _logger.Information("Cache hit for encryption, returning cached result.");
+                    LogCacheHit(_logger);
                     return Result<byte[], SerializationError>.Success(cachedResult!);
                 }
             }
 
-            _logger.Information("Starting encryption of data with length {Length} bytes.", data.Length);
+            LogEncryptionStarting(_logger, data.Length);
             var stopwatch = Stopwatch.StartNew();
 
             // Rent buffers from ArrayPool for better performance
@@ -145,9 +140,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                 var combinedData = CombineEncryptedComponents(encryptedKey, encryptedNonce, tag.AsSpan(0, TagSize), ciphertext.AsSpan(0, data.Length));
 
                 stopwatch.Stop();
-                _logger.Information("Encryption completed successfully in {ElapsedMs}ms. " +
-                                    "Original size: {OriginalSize}, Encrypted size: {EncryptedSize}",
-                    stopwatch.ElapsedMilliseconds, data.Length, combinedData.Length);
+                LogEncryptionCompleted(_logger, stopwatch.ElapsedMilliseconds, data.Length, combinedData.Length);
 
                 // Cache the result if enabled
                 if (_enableCaching)
@@ -160,7 +153,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             catch (CryptographicException ex)
             {
                 stopwatch.Stop();
-                _logger.Error(ex, "Cryptographic error during encryption: {Message}", ex.Message);
+                LogCryptographicErrorEncryption(_logger, ex, ex.Message);
                 return Result<byte[], SerializationError>.Failure(
                     new SerializationError($"AES-GCM encryption failed: {ex.Message}") { Operation = "Encrypt" }, ex);
             }
@@ -178,7 +171,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error occurred during encryption: {Message}", ex.Message);
+            LogEncryptionError(_logger, ex, ex.Message);
             return Result<byte[], SerializationError>.Failure(
                 new SerializationError($"Encryption error: {ex.Message}") { Operation = "Encrypt" }, ex);
         }
@@ -199,7 +192,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                 return Result<byte[], SerializationError>.Success([]);
             }
 
-            _logger.Information("Starting decryption of data with length {Length} bytes.", data.Length);
+            LogDecryptionStarting(_logger, data.Length);
             var stopwatch = Stopwatch.StartNew();
 
             byte[]? decryptedKey = null;
@@ -244,9 +237,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
                     plaintextBuffer.AsSpan(0, ciphertextLength).CopyTo(plaintext);
 
                     stopwatch.Stop();
-                    _logger.Information("Decryption completed successfully in {ElapsedMs}ms. " +
-                                        "Encrypted size: {EncryptedSize}, Decrypted size: {DecryptedSize}",
-                        stopwatch.ElapsedMilliseconds, data.Length, plaintext.Length);
+                    LogDecryptionCompleted(_logger, stopwatch.ElapsedMilliseconds, data.Length, plaintext.Length);
 
                     return Result<byte[], SerializationError>.Success(plaintext);
                 }
@@ -260,7 +251,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             catch (CryptographicException ex)
             {
                 stopwatch.Stop();
-                _logger.Error(ex, "Cryptographic error during decryption: {Message}", ex.Message);
+                LogCryptographicErrorDecryption(_logger, ex, ex.Message);
                 return Result<byte[], SerializationError>.Failure(
                     new SerializationError($"AES-GCM decryption failed: {ex.Message}") { Operation = "Decrypt" }, ex);
             }
@@ -279,7 +270,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error occurred during decryption: {Message}", ex.Message);
+            LogDecryptionError(_logger, ex, ex.Message);
             return Result<byte[], SerializationError>.Failure(
                 new SerializationError($"Decryption error: {ex.Message}") { Operation = "Decrypt" }, ex);
         }
@@ -414,7 +405,7 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
         catch (Exception ex)
         {
             // Don't let caching errors affect the core functionality
-            _logger.Warning(ex, "Error while caching encryption result: {Message}", ex.Message);
+            LogCachingError(_logger, ex, ex.Message);
         }
     }
 
@@ -428,4 +419,47 @@ public sealed class AesGcmEncryptor : IEncryptor, IDisposable
             throw new ObjectDisposedException(nameof(AesGcmEncryptor));
         }
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "AesGcmEncryptor initialized with caching: {EnableCaching}, MaxCacheSize: {MaxCacheSize}.")]
+    static partial void LogEncryptorInitialized(ILogger<AesGcmEncryptor> logger, bool enableCaching, int maxCacheSize);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Encryption caching is enabled. This may have security implications due to nonce reuse patterns.")]
+    static partial void LogCachingWarning(ILogger<AesGcmEncryptor> logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Disposing AesGcmEncryptor and securely erasing the key.")]
+    static partial void LogDisposingEncryptor(ILogger<AesGcmEncryptor> logger);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting encryption of data with length {Length} bytes.")]
+    static partial void LogEncryptionStarting(ILogger<AesGcmEncryptor> logger, int length);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Encryption completed successfully in {ElapsedMs}ms. Original size: {OriginalSize}, Encrypted size: {EncryptedSize}")]
+    static partial void LogEncryptionCompleted(ILogger<AesGcmEncryptor> logger, long elapsedMs, int originalSize, int encryptedSize);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Starting decryption of data with length {Length} bytes.")]
+    static partial void LogDecryptionStarting(ILogger<AesGcmEncryptor> logger, int length);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Decryption completed successfully in {ElapsedMs}ms. Encrypted size: {EncryptedSize}, Decrypted size: {DecryptedSize}")]
+    static partial void LogDecryptionCompleted(ILogger<AesGcmEncryptor> logger, long elapsedMs, int encryptedSize, int decryptedSize);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Cache hit for encryption, returning cached result.")]
+    static partial void LogCacheHit(ILogger<AesGcmEncryptor> logger);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Cryptographic error during encryption: {Message}")]
+    static partial void LogCryptographicErrorEncryption(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Cryptographic error during decryption: {Message}")]
+    static partial void LogCryptographicErrorDecryption(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error occurred during encryption: {Message}")]
+    static partial void LogEncryptionError(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error occurred during decryption: {Message}")]
+    static partial void LogDecryptionError(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Error while caching encryption result: {Message}")]
+    static partial void LogCachingError(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
+
+    #endregion
 }

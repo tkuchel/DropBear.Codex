@@ -1,13 +1,12 @@
 ﻿#region
 
 using System.Buffers;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Files.Interfaces;
 using FluentStorage.Blobs;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
-using Serilog;
 
 #endregion
 
@@ -17,13 +16,13 @@ namespace DropBear.Codex.Files.StorageManagers;
 ///     Manages blob storage operations using FluentStorage's <see cref="IBlobStorage" />,
 ///     providing methods to write, read, update, and delete blobs in a specified container.
 /// </summary>
-public sealed class BlobStorageManager : IStorageManager
+public sealed partial class BlobStorageManager : IStorageManager
 {
     // Optimal buffer size for blob operations
     private const int BufferSize = 81920; // 80KB buffer for blob operations
     private readonly IBlobStorage _blobStorage;
     private readonly string _containerName;
-    private readonly ILogger _logger;
+    private readonly ILogger<BlobStorageManager> _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
     /// <summary>
@@ -31,20 +30,20 @@ public sealed class BlobStorageManager : IStorageManager
     /// </summary>
     /// <param name="blobStorage">The underlying FluentStorage <see cref="IBlobStorage" /> provider.</param>
     /// <param name="memoryStreamManager">A <see cref="RecyclableMemoryStreamManager" /> for efficient memory usage.</param>
-    /// <param name="logger">An optional logger instance for logging operations.</param>
+    /// <param name="logger">The logger instance for logging operations.</param>
     /// <param name="containerName">The default container name in the blob storage account.</param>
     /// <exception cref="ArgumentNullException">
-    ///     Thrown if <paramref name="blobStorage" /> or <paramref name="memoryStreamManager" /> is null.
+    ///     Thrown if <paramref name="blobStorage" />, <paramref name="memoryStreamManager" />, or <paramref name="logger" /> is null.
     /// </exception>
     public BlobStorageManager(
         IBlobStorage blobStorage,
         RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger? logger = null,
+        ILogger<BlobStorageManager> logger,
         string containerName = "default-container")
     {
         _blobStorage = blobStorage ?? throw new ArgumentNullException(nameof(blobStorage));
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
-        _logger = logger ?? LoggerFactory.Logger.ForContext<BlobStorageManager>();
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _containerName = containerName;
     }
 
@@ -75,20 +74,18 @@ public sealed class BlobStorageManager : IStorageManager
                 await _blobStorage.WriteAsync(fullPath, seekableStream, false, cancellationToken)
                     .ConfigureAwait(false);
 
-                _logger.Information("Successfully wrote blob {BlobName} to container {ContainerName}",
-                    identifier, _containerName);
+                LogWriteSuccessful(identifier, _containerName);
                 return Result<Unit, StorageError>.Success(Unit.Value);
             }
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Write operation for {BlobName} was cancelled", identifier);
+            LogWriteCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error writing blob {BlobName} to container {ContainerName}", identifier,
-                _containerName);
+            LogWriteFailed(ex, identifier, _containerName);
             return Result<Unit, StorageError>.Failure(
                 StorageError.WriteFailed(identifier, ex.Message), ex);
         }
@@ -106,8 +103,7 @@ public sealed class BlobStorageManager : IStorageManager
             var readStream = await _blobStorage.OpenReadAsync(fullPath, cancellationToken).ConfigureAwait(false);
             if (readStream == null)
             {
-                _logger.Error("Blob not found or no access: {BlobName} in container {ContainerName}",
-                    identifier, _containerName);
+                LogBlobNotFound(identifier, _containerName);
                 return Result<Stream, StorageError>.Failure(
                     StorageError.ReadFailed(identifier, "Blob not found or no access."));
             }
@@ -137,19 +133,17 @@ public sealed class BlobStorageManager : IStorageManager
 
             memoryStream.Position = 0;
 
-            _logger.Information("Successfully read blob {BlobName} from container {ContainerName}",
-                identifier, _containerName);
+            LogReadSuccessful(identifier, _containerName);
             return Result<Stream, StorageError>.Success(memoryStream);
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Read operation for {BlobName} was cancelled", identifier);
+            LogReadCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error reading blob {BlobName} from container {ContainerName}",
-                identifier, _containerName);
+            LogReadFailed(ex, identifier, _containerName);
             return Result<Stream, StorageError>.Failure(
                 StorageError.ReadFailed(identifier, ex.Message), ex);
         }
@@ -165,19 +159,17 @@ public sealed class BlobStorageManager : IStorageManager
         try
         {
             await _blobStorage.DeleteAsync([fullPath], cancellationToken).ConfigureAwait(false);
-            _logger.Information("Successfully deleted blob {BlobName} from container {ContainerName}",
-                identifier, _containerName);
+            LogDeleteSuccessful(identifier, _containerName);
             return Result<Unit, StorageError>.Success(Unit.Value);
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Delete operation for {BlobName} was cancelled", identifier);
+            LogDeleteCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error deleting blob {BlobName} from container {ContainerName}",
-                identifier, _containerName);
+            LogDeleteFailed(ex, identifier, _containerName);
             return Result<Unit, StorageError>.Failure(
                 StorageError.DeleteFailed(identifier, ex.Message), ex);
         }
@@ -197,8 +189,7 @@ public sealed class BlobStorageManager : IStorageManager
             var exists = await _blobStorage.ExistsAsync([fullPath], cancellationToken).ConfigureAwait(false);
             if (!exists.FirstOrDefault())
             {
-                _logger.Error("Blob {BlobName} does not exist in container {ContainerName}",
-                    identifier, _containerName);
+                LogBlobNotFoundForUpdate(identifier, _containerName);
                 return Result<Unit, StorageError>.Failure(
                     StorageError.UpdateFailed(identifier, "The specified blob does not exist."));
             }
@@ -209,13 +200,12 @@ public sealed class BlobStorageManager : IStorageManager
         }
         catch (OperationCanceledException)
         {
-            _logger.Information("Update operation for {BlobName} was cancelled", identifier);
+            LogUpdateCancelled(identifier);
             throw; // Propagate cancellation
         }
         catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
         {
-            _logger.Error(ex, "Error updating blob {BlobName} in container {ContainerName}",
-                identifier, _containerName);
+            LogUpdateFailed(ex, identifier, _containerName);
             return Result<Unit, StorageError>.Failure(
                 StorageError.UpdateFailed(identifier, ex.Message), ex);
         }
@@ -292,6 +282,49 @@ public sealed class BlobStorageManager : IStorageManager
 
         return blobName;
     }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully wrote blob {blobName} to container {containerName}")]
+    private partial void LogWriteSuccessful(string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Write operation for {blobName} was cancelled")]
+    private partial void LogWriteCancelled(string blobName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error writing blob {blobName} to container {containerName}")]
+    private partial void LogWriteFailed(Exception ex, string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully read blob {blobName} from container {containerName}")]
+    private partial void LogReadSuccessful(string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Read operation for {blobName} was cancelled")]
+    private partial void LogReadCancelled(string blobName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Blob not found or no access: {blobName} in container {containerName}")]
+    private partial void LogBlobNotFound(string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error reading blob {blobName} from container {containerName}")]
+    private partial void LogReadFailed(Exception ex, string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Successfully deleted blob {blobName} from container {containerName}")]
+    private partial void LogDeleteSuccessful(string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Delete operation for {blobName} was cancelled")]
+    private partial void LogDeleteCancelled(string blobName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error deleting blob {blobName} from container {containerName}")]
+    private partial void LogDeleteFailed(Exception ex, string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Blob {blobName} does not exist in container {containerName}")]
+    private partial void LogBlobNotFoundForUpdate(string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Information, Message = "Update operation for {blobName} was cancelled")]
+    private partial void LogUpdateCancelled(string blobName);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error updating blob {blobName} in container {containerName}")]
+    private partial void LogUpdateFailed(Exception ex, string blobName, string containerName);
 
     #endregion
 }

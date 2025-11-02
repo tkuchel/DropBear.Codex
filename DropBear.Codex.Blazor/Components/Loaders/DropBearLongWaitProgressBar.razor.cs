@@ -1,7 +1,10 @@
 ﻿#region
 
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
+using Serilog;
 
 #endregion
 
@@ -13,6 +16,9 @@ namespace DropBear.Codex.Blazor.Components.Loaders;
 /// </summary>
 public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
 {
+    // Logger for this component
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
+
     #region Progress Update
 
     /// <summary>
@@ -56,13 +62,13 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
                     StopTimer();
                 }
 
-                Logger.Debug("Progress updated: {Progress}%", _currentProgress);
+                LogProgressUpdated(Logger, _currentProgress);
                 return Task.CompletedTask;
             });
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error updating progress");
+            LogProgressUpdateError(Logger, ex);
         }
         finally
         {
@@ -90,11 +96,11 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
             _isCanceled = true;
             StopTimer();
             await OnCancel.InvokeAsync();
-            Logger.Debug("Progress canceled");
+            LogProgressCanceled(Logger);
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error canceling progress");
+            LogProgressCancelError(Logger, ex);
         }
     }
 
@@ -188,7 +194,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
     {
         base.OnInitialized();
         _currentProgress = Progress;
-        Logger.Debug("Progress initialized: {Progress}%", _currentProgress);
+        LogProgressInitialized(Logger, _currentProgress);
     }
 
     /// <inheritdoc />
@@ -208,7 +214,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
         if (Progress >= 100)
         {
             StopTimer();
-            Logger.Debug("Progress complete");
+            LogProgressComplete(Logger);
             _shouldRender = true;
         }
     }
@@ -225,7 +231,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
         // Dispose any existing timer before creating a new one.
         _timer?.Dispose();
         _timer = new Timer(UpdateProgress, null, DEFAULT_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL);
-        Logger.Debug("Progress timer started");
+        LogProgressTimerStarted(Logger);
     }
 
     /// <summary>
@@ -236,7 +242,7 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
         if (_timer != null)
         {
             _timer.Change(Timeout.Infinite, Timeout.Infinite);
-            Logger.Debug("Progress timer stopped");
+            LogProgressTimerStopped(Logger);
         }
     }
 
@@ -334,6 +340,56 @@ public sealed partial class DropBearLongWaitProgressBar : DropBearComponentBase
     /// </summary>
     [Parameter]
     public EventCallback OnCancel { get; set; }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearLongWaitProgressBar>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearLongWaitProgressBar));
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Progress updated: {Progress}%")]
+    static partial void LogProgressUpdated(Microsoft.Extensions.Logging.ILogger logger, int progress);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error updating progress")]
+    static partial void LogProgressUpdateError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Progress canceled")]
+    static partial void LogProgressCanceled(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Error canceling progress")]
+    static partial void LogProgressCancelError(Microsoft.Extensions.Logging.ILogger logger, Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Progress initialized: {Progress}%")]
+    static partial void LogProgressInitialized(Microsoft.Extensions.Logging.ILogger logger, int progress);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Progress complete")]
+    static partial void LogProgressComplete(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Progress timer started")]
+    static partial void LogProgressTimerStarted(Microsoft.Extensions.Logging.ILogger logger);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Progress timer stopped")]
+    static partial void LogProgressTimerStopped(Microsoft.Extensions.Logging.ILogger logger);
 
     #endregion
 }

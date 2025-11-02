@@ -4,6 +4,7 @@ using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -20,7 +21,7 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
     #region Fields
 
     // Logger for this component
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearList<T>>();
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     // Track if a re-render is needed
     private bool _shouldRender = true;
@@ -64,7 +65,7 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
 
         // Initialize collapsed state based on parameter
         IsCollapsed = CollapsedByDefault;
-        Logger.Debug("DropBearList {ComponentId} initialized with Collapsed={Collapsed}", ComponentId, IsCollapsed);
+        LogListInitialized(Logger, ComponentId, IsCollapsed);
 
         // Set flag to track initialization
         IsInitialized = true;
@@ -109,8 +110,7 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
         }
 
         IsCollapsed = !IsCollapsed;
-        Logger.Debug("List {Title} ({ComponentId}) collapsed state toggled to {IsCollapsed}",
-            Title, ComponentId, IsCollapsed);
+        LogListToggled(Logger, Title, ComponentId, IsCollapsed);
 
         _shouldRender = true;
 
@@ -146,7 +146,7 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
             return;
         }
 
-        Logger.Debug("Item clicked: {Item} at index {Index}", item, index);
+        LogItemClicked(Logger, item?.ToString() ?? "null", index);
 
         if (OnItemClick.HasDelegate)
         {
@@ -432,6 +432,36 @@ public sealed partial class DropBearList<T> : DropBearComponentBase where T : cl
     ///     Flag to track if the component has been initialized.
     /// </summary>
     private bool IsInitialized { get; set; }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearList<T>>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(typeof(DropBearList<T>).Name);
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "DropBearList {ComponentId} initialized with Collapsed={Collapsed}")]
+    static partial void LogListInitialized(Microsoft.Extensions.Logging.ILogger logger, string componentId, bool collapsed);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "List {Title} ({ComponentId}) collapsed state toggled to {IsCollapsed}")]
+    static partial void LogListToggled(Microsoft.Extensions.Logging.ILogger logger, string title, string componentId, bool isCollapsed);
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Item clicked: {Item} at index {Index}")]
+    static partial void LogItemClicked(Microsoft.Extensions.Logging.ILogger logger, string item, int index);
 
     #endregion
 }

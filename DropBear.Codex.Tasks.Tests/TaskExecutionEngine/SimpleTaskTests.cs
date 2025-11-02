@@ -326,9 +326,11 @@ public sealed class SimpleTaskTests
     private static ExecutionContext CreateTestContext()
     {
         var mockScopeFactory = new Mock<IServiceScopeFactory>();
+        var mockLogger = new Mock<Microsoft.Extensions.Logging.ILogger<ExecutionContext>>();
         return new ExecutionContext(
             new ExecutionOptions(),
-            mockScopeFactory.Object);
+            mockScopeFactory.Object,
+            mockLogger.Object);
     }
 
     #endregion

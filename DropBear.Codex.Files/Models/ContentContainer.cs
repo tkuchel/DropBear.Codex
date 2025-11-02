@@ -11,6 +11,7 @@ using DropBear.Codex.Hashing;
 using DropBear.Codex.Hashing.Interfaces;
 using DropBear.Codex.Serialization.Factories;
 using DropBear.Codex.Utilities.Extensions;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -22,11 +23,9 @@ namespace DropBear.Codex.Files.Models;
 ///     along with information about how it should be processed (compression, encryption, etc.).
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class ContentContainer
+public sealed partial class ContentContainer
 {
-    private static readonly ILogger Logger =
-        LoggerFactory.Logger.ForContext<SerializationBuilder>();
-
+    private readonly ILogger<ContentContainer> _logger;
     private readonly IHasher _hasher;
     private readonly Dictionary<string, Type> _providers = new(StringComparer.OrdinalIgnoreCase);
 
@@ -35,7 +34,7 @@ public sealed class ContentContainer
     ///     Defaults to <see cref="Flags" /> = <see cref="ContentContainerFlags.NoOperation" />.
     /// </summary>
     public ContentContainer()
-        : this(new HashBuilder().GetHasher("XxHash"))
+        : this(new HashBuilder().GetHasher("XxHash"), null)
     {
     }
 
@@ -43,12 +42,24 @@ public sealed class ContentContainer
     ///     Initializes a new instance of the <see cref="ContentContainer" /> class with a custom hasher.
     /// </summary>
     /// <param name="hasher">The hasher to use for hash computations.</param>
+    /// <param name="logger">Optional logger instance for logging operations.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="hasher" /> is null.</exception>
-    public ContentContainer(IHasher hasher)
+    public ContentContainer(IHasher hasher, ILogger<ContentContainer>? logger = null)
     {
         _hasher = hasher ?? throw new ArgumentNullException(nameof(hasher));
+        _logger = logger ?? CreateDefaultLogger();
         Flags = ContentContainerFlags.NoOperation;
         ContentType = "Unsupported/Unknown DataType";
+    }
+
+    private static ILogger<ContentContainer> CreateDefaultLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<ContentContainer>());
+            builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger<ContentContainer>();
     }
 
     /// <summary>
@@ -215,8 +226,7 @@ public sealed class ContentContainer
         }
         else
         {
-            Logger.Warning("Failed to compute hash for data: {ErrorMessage}",
-                hashResult.Error?.Message ?? "Unknown error");
+            LogHashComputationFailed(hashResult.Error?.Message ?? "Unknown error");
             Hash = null;
         }
     }
@@ -329,7 +339,7 @@ public sealed class ContentContainer
         }
         catch (KeyNotFoundException ex)
         {
-            Logger.Error(ex, "Error while configuring ContentContainer serializer: {Message}", ex.Message);
+            LogSerializerConfigurationError(ex, ex.Message);
             throw; // rethrow to preserve original exception details
         }
     }
@@ -344,12 +354,12 @@ public sealed class ContentContainer
     {
         if (_providers.TryGetValue(keyName, out var type))
         {
-            Logger.Debug("Provider for {ProviderKey} found: {ProviderType}", keyName, type.Name);
+            LogProviderFound(keyName, type.Name);
             return type;
         }
 
         var errorMessage = $"Provider for {keyName} not found.";
-        Logger.Error(errorMessage);
+        LogProviderNotFound(errorMessage);
         throw new KeyNotFoundException(errorMessage);
     }
 
@@ -386,7 +396,7 @@ public sealed class ContentContainer
     /// </summary>
     public void PrintFlags()
     {
-        Logger.Information("Current Features Enabled:");
+        LogCurrentFeaturesEnabled();
         foreach (ContentContainerFlags flag in Enum.GetValues(typeof(ContentContainerFlags)))
         {
             if (IsFlagEnabled(flag))
@@ -432,4 +442,28 @@ public sealed class ContentContainer
         // Using extension methods to ensure read-only usage
         return HashCode.Combine(Hash.GetReadOnlyVersion(), Data.GetReadOnlyVersion());
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Warning,
+        Message = "Failed to compute hash for data: {ErrorMessage}")]
+    private partial void LogHashComputationFailed(string errorMessage);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Error,
+        Message = "Error while configuring ContentContainer serializer: {Message}")]
+    private partial void LogSerializerConfigurationError(Exception ex, string message);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Debug,
+        Message = "Provider for {ProviderKey} found: {ProviderType}")]
+    private partial void LogProviderFound(string providerKey, string providerType);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Error,
+        Message = "{ErrorMessage}")]
+    private partial void LogProviderNotFound(string errorMessage);
+
+    [LoggerMessage(Level = Microsoft.Extensions.Logging.LogLevel.Information,
+        Message = "Current Features Enabled:")]
+    private partial void LogCurrentFeaturesEnabled();
+
+    #endregion
 }

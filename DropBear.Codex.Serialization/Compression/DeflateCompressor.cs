@@ -2,12 +2,11 @@
 
 using System.Buffers;
 using System.IO.Compression;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Serialization.Errors;
 using DropBear.Codex.Serialization.Interfaces;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
-using Serilog;
 
 #endregion
 
@@ -16,18 +15,18 @@ namespace DropBear.Codex.Serialization.Compression;
 /// <summary>
 ///     Provides methods to compress and decompress data using the Deflate algorithm.
 /// </summary>
-public sealed class DeflateCompressor : ICompressor
+public sealed partial class DeflateCompressor : ICompressor
 {
     private readonly int _bufferSize;
     private readonly CompressionLevel _compressionLevel;
-    private readonly ILogger _logger;
+    private readonly ILogger<DeflateCompressor> _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="DeflateCompressor" /> class with default settings.
     /// </summary>
-    public DeflateCompressor()
-        : this(CompressionLevel.Fastest, 81920) // Default to fastest compression and 80KB buffer
+    public DeflateCompressor(ILogger<DeflateCompressor> logger)
+        : this(CompressionLevel.Fastest, 81920, logger) // Default to fastest compression and 80KB buffer
     {
     }
 
@@ -36,16 +35,15 @@ public sealed class DeflateCompressor : ICompressor
     /// </summary>
     /// <param name="compressionLevel">The compression level to use.</param>
     /// <param name="bufferSize">The buffer size for compression operations.</param>
-    public DeflateCompressor(CompressionLevel compressionLevel, int bufferSize)
+    /// <param name="logger">The logger instance.</param>
+    public DeflateCompressor(CompressionLevel compressionLevel, int bufferSize, ILogger<DeflateCompressor> logger)
     {
+        _logger = logger;
         _compressionLevel = compressionLevel;
         _bufferSize = bufferSize > 0 ? bufferSize : 81920; // Default to 80KB if invalid
         _memoryStreamManager = new RecyclableMemoryStreamManager();
-        _logger = LoggerFactory.Logger.ForContext<DeflateCompressor>();
 
-        _logger.Information(
-            "DeflateCompressor initialized with CompressionLevel: {CompressionLevel}, BufferSize: {BufferSize}",
-            compressionLevel, _bufferSize);
+        LogCompressorInitialized(compressionLevel.ToString(), _bufferSize);
     }
 
     /// <inheritdoc />
@@ -61,7 +59,7 @@ public sealed class DeflateCompressor : ICompressor
                 return Result<byte[], SerializationError>.Success([]);
             }
 
-            _logger.Information("Starting compression of data with length {DataLength} bytes.", data.Length);
+            LogCompressionStarting(data.Length);
 
             using var compressedStream = _memoryStreamManager.GetStream("DeflateCompressor-Compress");
 
@@ -80,15 +78,13 @@ public sealed class DeflateCompressor : ICompressor
 
             var result = compressedStream.ToArray();
 
-            _logger.Information(
-                "Compression completed. Data compressed from {OriginalSize} to {CompressedSize} bytes. Ratio: {Ratio:P2}",
-                data.Length, result.Length, (float)result.Length / data.Length);
+            LogCompressionCompleted(data.Length, result.Length, (float)result.Length / data.Length);
 
             return Result<byte[], SerializationError>.Success(result);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error occurred while compressing data: {Message}", ex.Message);
+            LogCompressionError(ex, ex.Message);
             return Result<byte[], SerializationError>.Failure(
                 new SerializationError($"Deflate compression failed: {ex.Message}") { Operation = "Compress" }, ex);
         }
@@ -107,8 +103,7 @@ public sealed class DeflateCompressor : ICompressor
                 return Result<byte[], SerializationError>.Success([]);
             }
 
-            _logger.Information("Starting decompression of data with length {CompressedDataLength} bytes.",
-                compressedData.Length);
+            LogDecompressionStarting(compressedData.Length);
 
             // Create input stream with compressed data
             using var compressedStream =
@@ -145,15 +140,13 @@ public sealed class DeflateCompressor : ICompressor
 
             var result = decompressedStream.ToArray();
 
-            _logger.Information(
-                "Decompression completed. Data decompressed from {CompressedSize} to {DecompressedSize} bytes.",
-                compressedData.Length, result.Length);
+            LogDecompressionCompleted(compressedData.Length, result.Length);
 
             return Result<byte[], SerializationError>.Success(result);
         }
         catch (Exception ex)
         {
-            _logger.Error(ex, "Error occurred while decompressing data: {Message}", ex.Message);
+            LogDecompressionError(ex, ex.Message);
             return Result<byte[], SerializationError>.Failure(
                 new SerializationError($"Deflate decompression failed: {ex.Message}") { Operation = "Decompress" }, ex);
         }
@@ -171,4 +164,36 @@ public sealed class DeflateCompressor : ICompressor
             ["IsThreadSafe"] = true
         };
     }
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message =
+            "DeflateCompressor initialized with CompressionLevel: {CompressionLevel}, BufferSize: {BufferSize}")]
+    private partial void LogCompressorInitialized(string compressionLevel, int bufferSize);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Starting compression of data with length {DataLength} bytes.")]
+    private partial void LogCompressionStarting(int dataLength);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message =
+            "Compression completed. Data compressed from {OriginalSize} to {CompressedSize} bytes. Ratio: {Ratio:P2}")]
+    private partial void LogCompressionCompleted(int originalSize, int compressedSize, float ratio);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Starting decompression of data with length {CompressedDataLength} bytes.")]
+    private partial void LogDecompressionStarting(int compressedDataLength);
+
+    [LoggerMessage(Level = LogLevel.Information,
+        Message = "Decompression completed. Data decompressed from {CompressedSize} to {DecompressedSize} bytes.")]
+    private partial void LogDecompressionCompleted(int compressedSize, int decompressedSize);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error occurred while compressing data: {Message}")]
+    private partial void LogCompressionError(Exception ex, string message);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Error occurred while decompressing data: {Message}")]
+    private partial void LogDecompressionError(Exception ex, string message);
+
+    #endregion
 }

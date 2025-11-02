@@ -8,8 +8,10 @@ using DropBear.Codex.Files.Factories;
 using DropBear.Codex.Files.Interfaces;
 using DropBear.Codex.Files.Services;
 using DropBear.Codex.Files.StorageManagers;
+using Microsoft.Extensions.Logging;
 using Microsoft.IO;
 using Serilog;
+using ILogger = Serilog.ILogger;
 
 #endregion
 
@@ -22,6 +24,8 @@ namespace DropBear.Codex.Files.Builders;
 public class FileManagerBuilder
 {
     private readonly ILogger _logger;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<FileManager> _msLogger;
     private string? _baseDirectory;
     private RecyclableMemoryStreamManager? _memoryStreamManager;
     private IStorageManager? _storageManager; // Could be local or blob-based
@@ -29,9 +33,13 @@ public class FileManagerBuilder
     /// <summary>
     ///     Initializes a new instance of the <see cref="FileManagerBuilder" /> class.
     /// </summary>
-    public FileManagerBuilder()
+    /// <param name="loggerFactory">The logger factory for creating typed loggers.</param>
+    /// <param name="logger">The logger instance for FileManager.</param>
+    public FileManagerBuilder(ILoggerFactory loggerFactory, ILogger<FileManager> logger)
     {
-        _logger = LoggerFactory.Logger.ForContext<FileManagerBuilder>();
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _logger = DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<FileManagerBuilder>();
+        _msLogger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     /// <summary>
@@ -92,7 +100,7 @@ public class FileManagerBuilder
         }
 
         _baseDirectory = baseDirectory;
-        _storageManager = new LocalStorageManager(_memoryStreamManager, _logger);
+        _storageManager = new LocalStorageManager(_memoryStreamManager, _loggerFactory.CreateLogger<LocalStorageManager>());
         _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
             baseDirectory);
         return this;
@@ -148,7 +156,7 @@ public class FileManagerBuilder
                 blobStorageResult.Exception);
         }
 
-        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -217,7 +225,7 @@ public class FileManagerBuilder
                 blobStorageResult.Exception);
         }
 
-        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -287,7 +295,7 @@ public class FileManagerBuilder
             }
 
             _baseDirectory = baseDirectory;
-            _storageManager = new LocalStorageManager(_memoryStreamManager, _logger);
+            _storageManager = new LocalStorageManager(_memoryStreamManager, _loggerFactory.CreateLogger<LocalStorageManager>());
             _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
                 baseDirectory);
             return Result<FileManagerBuilder, BuilderError>.Success(this);
@@ -342,7 +350,7 @@ public class FileManagerBuilder
                 blobStorageResult.Exception);
         }
 
-        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -400,7 +408,7 @@ public class FileManagerBuilder
                     blobStorageResult.Exception);
             }
 
-            _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _logger, containerName);
+            _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
             _logger.Information(
                 "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
                 accountName, containerName);
@@ -440,7 +448,7 @@ public class FileManagerBuilder
             }
 
             _logger.Information("Building FileManager with configured storage manager.");
-            var fileManager = new FileManager(_baseDirectory ?? string.Empty, _storageManager);
+            var fileManager = new FileManager(_baseDirectory ?? string.Empty, _storageManager, _msLogger);
             return Result<FileManager, BuilderError>.Success(fileManager);
         }
         catch (Exception ex)
