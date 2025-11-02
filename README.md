@@ -38,7 +38,6 @@ The solution includes the following libraries:
 
 ### Workflow & State Management
 - **DropBear.Codex.Workflow**: DAG-based workflow engine with compensation support (Saga pattern) for complex multi-step processes.
-- **DropBear.Codex.StateManagement**: State machine implementation using the Stateless library with snapshot management.
 - **DropBear.Codex.Tasks**: Task/operation managers with retry, fallback, and resilience support.
 
 ### UI & Notifications
@@ -134,17 +133,6 @@ builder
     .Build();
 
 var result = await engine.ExecuteAsync(workflow, context);
-```
-
-**State Machine:**
-```csharp
-var builder = new StateMachineBuilder<State, Trigger>(State.Initial, logger);
-builder
-    .ConfigureState(State.Initial)
-        .Permit(Trigger.Start, State.Running)
-    .Build();
-
-await stateMachine.FireAsync(Trigger.Start);
 ```
 
 For detailed examples and advanced usage, see the [CLAUDE.md](CLAUDE.md) file and individual project documentation.
