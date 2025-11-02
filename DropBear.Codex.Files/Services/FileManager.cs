@@ -5,7 +5,6 @@ using System.Collections.Frozen;
 using System.Runtime.Versioning;
 using System.Security.AccessControl;
 using System.Security.Principal;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Async;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Files.Errors;
@@ -27,7 +26,7 @@ namespace DropBear.Codex.Files.Services;
 [SupportedOSPlatform("windows")]
 public sealed partial class FileManager
 {
-    private static readonly RecyclableMemoryStreamManager MemoryStreamManager = new(
+    private static readonly RecyclableMemoryStreamManager _memoryStreamManager = new(
         new RecyclableMemoryStreamManager.Options
         {
             ThrowExceptionOnToArray = true,
@@ -63,7 +62,7 @@ public sealed partial class FileManager
         _baseDirectory = baseDirectory;
         _storageManager = storageManager ?? throw new ArgumentNullException(nameof(storageManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _serilogLogger = DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext<FileManager>();
+        _serilogLogger = Core.Logging.LoggerFactory.Logger.ForContext<FileManager>();
         LogFileManagerInitialized(_logger, _storageManager.GetType().Name);
     }
 
@@ -944,7 +943,7 @@ public sealed partial class FileManager
             cancellationToken.ThrowIfCancellationRequested();
 
             var dInfo = new DirectoryInfo(path);
-            var dSecurity = await Task.Run(() => dInfo.GetAccessControl(), cancellationToken).ConfigureAwait(false);
+            var dSecurity = await Task.Run(() => FileSystemAclExtensions.GetAccessControl(dInfo), cancellationToken).ConfigureAwait(false);
             var rules = dSecurity.GetAccessRules(true, true, typeof(SecurityIdentifier));
 
             return rules.Cast<FileSystemAccessRule>().Any(rule =>
@@ -970,7 +969,7 @@ public sealed partial class FileManager
             cancellationToken.ThrowIfCancellationRequested();
 
             var dInfo = new DirectoryInfo(path);
-            var dSecurity = await Task.Run(() => dInfo.GetAccessControl(), cancellationToken).ConfigureAwait(false);
+            var dSecurity = await Task.Run(() => FileSystemAclExtensions.GetAccessControl(dInfo), cancellationToken).ConfigureAwait(false);
 
             dSecurity.AddAccessRule(new FileSystemAccessRule(
                 account,
@@ -979,7 +978,7 @@ public sealed partial class FileManager
                 PropagationFlags.None,
                 controlType));
 
-            await Task.Run(() => dInfo.SetAccessControl(dSecurity), cancellationToken).ConfigureAwait(false);
+            await Task.Run(() => FileSystemAclExtensions.SetAccessControl(dInfo, dSecurity), cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -1011,7 +1010,7 @@ public sealed partial class FileManager
             if (data is byte[] byteArray)
             {
                 // If it's a byte array, create a RecyclableMemoryStream
-                var memoryStream = MemoryStreamManager.GetStream();
+                var memoryStream = _memoryStreamManager.GetStream();
                 await memoryStream.WriteAsync(byteArray, cancellationToken).ConfigureAwait(false);
                 memoryStream.Position = 0;
                 return Result<Stream, FileOperationError>.Success(memoryStream);
