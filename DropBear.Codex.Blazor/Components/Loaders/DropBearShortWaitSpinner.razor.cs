@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Core.Logging;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -18,7 +19,7 @@ public sealed partial class DropBearShortWaitSpinner : DropBearComponentBase
     #region Fields
 
     // Logger for this component.
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearShortWaitSpinner>();
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     // Backing fields for parameters
     private string _title = "Please Wait";
@@ -56,7 +57,17 @@ public sealed partial class DropBearShortWaitSpinner : DropBearComponentBase
     {
         base.OnInitialized();
         UpdateAriaLabel();
-        Logger.Debug("Spinner initialized: Title='{Title}', Message='{Message}'", _title, _message);
+        LogSpinnerInitialized(Logger, _title, _message);
+    }
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearShortWaitSpinner>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(nameof(DropBearShortWaitSpinner));
     }
 
     /// <inheritdoc />
@@ -159,6 +170,14 @@ public sealed partial class DropBearShortWaitSpinner : DropBearComponentBase
             }
         }
     }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Debug,
+        Message = "Spinner initialized: Title='{Title}', Message='{Message}'")]
+    static partial void LogSpinnerInitialized(Microsoft.Extensions.Logging.ILogger logger, string title, string message);
 
     #endregion
 }
