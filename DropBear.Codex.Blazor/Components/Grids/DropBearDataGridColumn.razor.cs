@@ -7,6 +7,7 @@ using DropBear.Codex.Blazor.Models;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using Microsoft.AspNetCore.Components;
+using Microsoft.Extensions.Logging;
 using Serilog;
 
 #endregion
@@ -23,7 +24,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
     #region Fields
 
     // Use "new" if DropBearComponentBase already defines a Logger.
-    private new static readonly ILogger Logger = LoggerFactory.Logger.ForContext<DropBearDataGridColumn<TItem>>();
+    private new static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
     #endregion
 
@@ -38,7 +39,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
         if (!result.IsSuccess)
         {
             // Log the error and fail gracefully or throw based on context
-            Logger.Error("{Error}", result.Error?.Message);
+            LogColumnValidationError(Logger, result.Error?.Message ?? "Unknown error");
 
             if (result.Exception is InvalidOperationException ex)
             {
@@ -83,7 +84,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
                 var error = DataGridError.InvalidColumnConfiguration(
                     PropertyName, $"Either {nameof(PropertySelector)} or {nameof(Template)} must be provided.");
 
-                Logger.Warning("{Error}", error.Message);
+                LogMissingPropertySelectorOrTemplate(Logger, error.Message);
 
                 // Continue with a warning instead of failing completely
                 return Result<bool, DataGridError>.Warning(false,error);
@@ -91,8 +92,7 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
 
             if (string.IsNullOrWhiteSpace(Title))
             {
-                Logger.Warning("Column {PropertyName} has no {Title}. Consider providing a Title for clarity.",
-                    PropertyName, nameof(Title));
+                LogMissingColumnTitle(Logger, PropertyName, nameof(Title));
 
                 // Use PropertyName as a fallback for Title
                 Title = PropertyName.Replace("_", " "); // Simple clean-up
@@ -240,6 +240,36 @@ public sealed partial class DropBearDataGridColumn<TItem> : DropBearComponentBas
     /// </summary>
     [Parameter]
     public EventCallback<Result<bool, DataGridError>> OnColumnError { get; set; }
+
+    #endregion
+
+    #region Helper Methods (Logger)
+
+    private static Microsoft.Extensions.Logging.ILogger CreateLogger()
+    {
+        var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(Core.Logging.LoggerFactory.Logger.ForContext<DropBearDataGridColumn<TItem>>());
+            builder.SetMinimumLevel(LogLevel.Trace);
+        });
+        return loggerFactory.CreateLogger(typeof(DropBearDataGridColumn<TItem>).Name);
+    }
+
+    #endregion
+
+    #region LoggerMessage Source Generators
+
+    [LoggerMessage(Level = LogLevel.Error,
+        Message = "Column validation error: {Error}")]
+    static partial void LogColumnValidationError(Microsoft.Extensions.Logging.ILogger logger, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Missing PropertySelector or Template: {Error}")]
+    static partial void LogMissingPropertySelectorOrTemplate(Microsoft.Extensions.Logging.ILogger logger, string error);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Column {PropertyName} has no {TitleParameter}. Consider providing a Title for clarity.")]
+    static partial void LogMissingColumnTitle(Microsoft.Extensions.Logging.ILogger logger, string propertyName, string titleParameter);
 
     #endregion
 }
