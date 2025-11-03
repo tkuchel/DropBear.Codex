@@ -5,7 +5,7 @@
   <!-- Centralized package versions for DropBear.Codex -->
   <ItemGroup>
     <!-- ===== Build Tools & Source Control ===== -->
-    <PackageVersion Include="BenchmarkDotNet" Version="0.15.4" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.5" />
     <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
     <PackageVersion Include="Nerdbank.GitVersioning" Version="3.8.118" />
     <PackageVersion Include="PublicApiAnalyzer" Version="1.0.0-alpha001" />
