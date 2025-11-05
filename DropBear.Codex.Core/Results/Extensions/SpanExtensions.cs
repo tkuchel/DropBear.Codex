@@ -18,9 +18,14 @@ public static class SpanExtensions
     ///     Filters successful results using span-based operations.
     ///     Uses ArrayPool to minimize allocations.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to filter.</param>
+    /// <param name="destination">The destination span to write successful values to.</param>
+    /// <returns>The number of successful values written to the destination span.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int FilterSuccessValues<T, TError>(
-        this ReadOnlySpan<Result<T, TError>> results, 
+        this ReadOnlySpan<Result<T, TError>> results,
         Span<T> destination)
         where TError : ResultError
     {
@@ -41,6 +46,11 @@ public static class SpanExtensions
     /// <summary>
     ///     Filters errors from results into a destination span.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to filter.</param>
+    /// <param name="destination">The destination span to write errors to.</param>
+    /// <returns>The number of errors written to the destination span.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int FilterErrors<T, TError>(
         this ReadOnlySpan<Result<T, TError>> results, // ADD 'this' keyword
@@ -64,6 +74,10 @@ public static class SpanExtensions
     /// <summary>
     ///     Counts successful results without allocation.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to count.</param>
+    /// <returns>The number of successful results.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CountSuccesses<T, TError>(
         this ReadOnlySpan<Result<T, TError>> results) // ADD 'this' keyword
@@ -85,6 +99,10 @@ public static class SpanExtensions
     /// <summary>
     ///     Counts failures without allocation.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to count.</param>
+    /// <returns>The number of failed results.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int CountFailures<T, TError>(
         this ReadOnlySpan<Result<T, TError>> results) // ADD 'this' keyword
@@ -106,6 +124,10 @@ public static class SpanExtensions
     /// <summary>
     ///     Checks if all results are successful.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to check.</param>
+    /// <returns>True if all results are successful; otherwise, false.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool AllSuccess<T, TError>(
         this ReadOnlySpan<Result<T, TError>> results)
@@ -125,6 +147,10 @@ public static class SpanExtensions
     /// <summary>
     ///     Checks if any result is successful.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to check.</param>
+    /// <returns>True if any result is successful; otherwise, false.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool AnySuccess<T, TError>(
         this ReadOnlySpan<Result<T, TError>> results)
@@ -145,6 +171,14 @@ public static class SpanExtensions
     ///     Partitions results using rented arrays from ArrayPool.
     ///     Returns rented arrays that must be returned to pool after use.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to partition.</param>
+    /// <returns>
+    ///     A tuple containing the rented arrays of successes and errors,
+    ///     along with their respective counts. Arrays must be returned to the pool using
+    ///     <see cref="ReturnPooledArrays{T,TError}"/>.
+    /// </returns>
     public static (T[] Successes, int SuccessCount, TError[] Errors, int ErrorCount) PartitionPooled<T, TError>(
         this ReadOnlySpan<Result<T, TError>> results) // ADD 'this' keyword
         where TError : ResultError
@@ -176,6 +210,10 @@ public static class SpanExtensions
     ///     Returns rented arrays to the pool.
     ///     Helper method to ensure proper cleanup.
     /// </summary>
+    /// <typeparam name="T">The type of the success array elements.</typeparam>
+    /// <typeparam name="TError">The type of the error array elements.</typeparam>
+    /// <param name="successes">The rented array of successful values to return to the pool.</param>
+    /// <param name="errors">The rented array of errors to return to the pool.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void ReturnPooledArrays<T, TError>(T[] successes, TError[] errors)
     {
@@ -186,6 +224,10 @@ public static class SpanExtensions
     /// <summary>
     ///     Applies a transformation using pooled intermediate storage.
     /// </summary>
+    /// <typeparam name="T">The type of the result value.</typeparam>
+    /// <typeparam name="TError">The type of the result error.</typeparam>
+    /// <param name="results">The span of results to transform in place.</param>
+    /// <param name="transformer">The function to apply to each successful result value.</param>
     public static void TransformInPlace<T, TError>(
         Span<Result<T, TError>> results, // This one should NOT have 'this' - it mutates
         Func<T, T> transformer)

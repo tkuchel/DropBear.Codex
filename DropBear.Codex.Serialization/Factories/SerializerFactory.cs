@@ -23,6 +23,11 @@ public static partial class SerializerFactory
 {
     private static readonly Microsoft.Extensions.Logging.ILogger Logger = CreateLogger();
 
+    /// <summary>
+    ///     Creates and configures a logger instance for the SerializerFactory.
+    ///     Uses Serilog as the logging provider with trace-level logging enabled.
+    /// </summary>
+    /// <returns>A configured Microsoft.Extensions.Logging.ILogger instance.</returns>
     private static Microsoft.Extensions.Logging.ILogger CreateLogger()
     {
         var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
@@ -111,25 +116,42 @@ public static partial class SerializerFactory
         }
     }
 
+    /// <summary>
+    ///     Validates the serialization configuration for required properties.
+    ///     Ensures that SerializerType and RecyclableMemoryStreamManager are properly configured.
+    /// </summary>
+    /// <param name="config">The serialization configuration to validate.</param>
+    /// <exception cref="ArgumentException">
+    ///     Thrown when SerializerType is null or RecyclableMemoryStreamManager is not specified.
+    /// </exception>
     private static void ValidateConfiguration(SerializationConfig config)
     {
         if (config.SerializerType == null)
         {
             var message = "Serializer type must be specified.";
             LogValidationError(Logger, message);
-            throw new ArgumentException(message, nameof(config.SerializerType));
+            throw new ArgumentException(message, nameof(config));
         }
 
         if (config.RecyclableMemoryStreamManager is null)
         {
             var message = "RecyclableMemoryStreamManager must be specified.";
             LogValidationError(Logger, message);
-            throw new ArgumentException(message, nameof(config.RecyclableMemoryStreamManager));
+            throw new ArgumentException(message, nameof(config));
         }
 
         LogConfigurationValidatedSuccessfully(Logger);
     }
 
+    /// <summary>
+    ///     Validates the serialization configuration using the Result pattern for error handling.
+    ///     This method provides the same validation as <see cref="ValidateConfiguration"/> but returns
+    ///     a Result instead of throwing exceptions.
+    /// </summary>
+    /// <param name="config">The serialization configuration to validate.</param>
+    /// <returns>
+    ///     A Result containing Unit on success, or a SerializationError describing the validation failure.
+    /// </returns>
     private static Result<Unit, SerializationError> ValidateConfigurationWithResult(SerializationConfig config)
     {
         if (config.SerializerType == null)
@@ -149,6 +171,14 @@ public static partial class SerializerFactory
         return Result<Unit, SerializationError>.Success(Unit.Value);
     }
 
+    /// <summary>
+    ///     Creates the base serializer instance based on the configured serializer type.
+    ///     This method extracts the serializer type from the configuration and delegates
+    ///     instantiation to <see cref="InstantiateSerializer"/>.
+    /// </summary>
+    /// <param name="config">The serialization configuration containing the serializer type.</param>
+    /// <returns>The instantiated base serializer instance.</returns>
+    /// <exception cref="InvalidOperationException">Thrown when the serializer type is not set in the configuration.</exception>
     private static ISerializer CreateBaseSerializer(SerializationConfig config)
     {
         var serializerType = config.SerializerType ?? throw new InvalidOperationException("Serializer type not set.");
@@ -157,6 +187,25 @@ public static partial class SerializerFactory
         return InstantiateSerializer(config, serializerType);
     }
 
+    /// <summary>
+    ///     Instantiates a serializer using reflection, supporting both modern and legacy constructor patterns.
+    ///     Attempts to find a constructor that accepts (SerializationConfig, ILogger&lt;T&gt;) first,
+    ///     then falls back to a constructor that only accepts SerializationConfig.
+    /// </summary>
+    /// <param name="config">The serialization configuration to pass to the serializer constructor.</param>
+    /// <param name="serializerType">The Type of the serializer to instantiate.</param>
+    /// <returns>The instantiated serializer instance.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when no suitable constructor is found or instantiation fails.
+    /// </exception>
+    /// <remarks>
+    ///     This method supports two constructor patterns:
+    ///     <list type="number">
+    ///         <item>Modern pattern: (SerializationConfig config, ILogger&lt;T&gt; logger) - preferred for new serializers</item>
+    ///         <item>Legacy pattern: (SerializationConfig config) - supported for backward compatibility</item>
+    ///     </list>
+    ///     The logger is created using Serilog as the provider with trace-level logging enabled.
+    /// </remarks>
     private static ISerializer InstantiateSerializer(SerializationConfig config, Type serializerType)
     {
         try
@@ -335,6 +384,25 @@ public static partial class SerializerFactory
         }
     }
 
+    /// <summary>
+    ///     Creates a provider instance (compression, encryption, or encoding) using reflection.
+    ///     Supports multiple constructor patterns for maximum flexibility.
+    /// </summary>
+    /// <param name="config">The serialization configuration to pass to the provider constructor.</param>
+    /// <param name="providerType">The Type of the provider to instantiate.</param>
+    /// <returns>The instantiated provider instance.</returns>
+    /// <exception cref="InvalidOperationException">
+    ///     Thrown when no suitable constructor is found or instantiation fails.
+    /// </exception>
+    /// <remarks>
+    ///     This method supports three constructor patterns in order of preference:
+    ///     <list type="number">
+    ///         <item>(SerializationConfig config, ILoggerFactory loggerFactory) - modern pattern with logging support</item>
+    ///         <item>(SerializationConfig config) - configuration-based pattern</item>
+    ///         <item>Parameterless constructor - simplest pattern for stateless providers</item>
+    ///     </list>
+    ///     The logger factory, if used, is configured with Serilog and trace-level logging.
+    /// </remarks>
     private static object CreateProvider(SerializationConfig config, Type providerType)
     {
         try

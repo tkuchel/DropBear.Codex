@@ -24,6 +24,10 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Serializes the envelope to a string using JSON.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default JSON serializer is used.</param>
+    /// <returns>A JSON string representation of the envelope.</returns>
     public static string ToSerializedString<T>(
         this Envelope<T> envelope,
         IEnvelopeSerializer? serializer = null)
@@ -36,6 +40,10 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Deserializes an envelope from a JSON string.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="data">The JSON string to deserialize.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default JSON serializer is used.</param>
+    /// <returns>The deserialized envelope.</returns>
     public static Envelope<T> FromSerializedString<T>(
         string data,
         IEnvelopeSerializer? serializer = null)
@@ -52,6 +60,10 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Serializes the envelope to binary using MessagePack.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <returns>A byte array containing the serialized envelope.</returns>
     public static byte[] ToSerializedBinary<T>(
         this Envelope<T> envelope,
         IEnvelopeSerializer? serializer = null)
@@ -64,6 +76,10 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Deserializes an envelope from binary MessagePack data.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="data">The byte array containing the serialized envelope.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <returns>The deserialized envelope.</returns>
     public static Envelope<T> FromSerializedBinary<T>(
         byte[] data,
         IEnvelopeSerializer? serializer = null)
@@ -80,6 +96,12 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Serializes the envelope to a span of bytes using MessagePack.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize.</param>
+    /// <param name="destination">The destination span to write the serialized data to.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <returns>The number of bytes written to the destination span.</returns>
+    /// <exception cref="ArgumentException">Thrown when the destination span is too small to hold the serialized data.</exception>
     public static int SerializeToSpan<T>(
         this Envelope<T> envelope,
         Span<byte> destination,
@@ -102,6 +124,11 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Deserializes an envelope from a readonly span of bytes.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="data">The readonly span containing the serialized data.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <returns>The deserialized envelope.</returns>
+    /// <exception cref="ArgumentException">Thrown when the data span is empty.</exception>
     public static Envelope<T> FromSerializedSpan<T>(
         ReadOnlySpan<byte> data,
         IEnvelopeSerializer? serializer = null)
@@ -122,6 +149,12 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Serializes and saves the envelope to a file asynchronously.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize and save.</param>
+    /// <param name="filePath">The path to the file where the envelope will be saved.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous save operation.</returns>
     public static async ValueTask SaveToFileAsync<T>(
         this Envelope<T> envelope,
         string filePath,
@@ -138,6 +171,11 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Loads and deserializes an envelope from a file asynchronously.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="filePath">The path to the file to load from.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task containing the deserialized envelope.</returns>
     public static async ValueTask<Envelope<T>> LoadFromFileAsync<T>(
         string filePath,
         IEnvelopeSerializer? serializer = null,
@@ -156,6 +194,12 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Serializes the envelope to a stream.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize.</param>
+    /// <param name="stream">The stream to write the serialized data to.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous serialize operation.</returns>
     public static async ValueTask SerializeToStreamAsync<T>(
         this Envelope<T> envelope,
         Stream stream,
@@ -172,6 +216,11 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Deserializes an envelope from a stream.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="stream">The stream to read the serialized data from.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task containing the deserialized envelope.</returns>
     public static async ValueTask<Envelope<T>> DeserializeFromStreamAsync<T>(
         Stream stream,
         IEnvelopeSerializer? serializer = null,
@@ -193,6 +242,11 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Serializes and compresses the envelope using GZip.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize and compress.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task containing the compressed binary data.</returns>
     public static async ValueTask<byte[]> ToCompressedBinaryAsync<T>(
         this Envelope<T> envelope,
         IEnvelopeSerializer? serializer = null,
@@ -217,6 +271,11 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Decompresses and deserializes an envelope from GZip compressed data.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="compressedData">The compressed binary data to decompress and deserialize.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, the default MessagePack serializer is used.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task containing the deserialized envelope.</returns>
     public static async ValueTask<Envelope<T>> FromCompressedBinaryAsync<T>(
         byte[] compressedData,
         IEnvelopeSerializer? serializer = null,
@@ -247,6 +306,13 @@ public static class EnvelopeSerializationExtensions
     ///     Serializes envelope to a pooled buffer for memory efficiency.
     ///     Caller must return the buffer to the pool after use.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, creates a new MessagePack serializer.</param>
+    /// <returns>
+    ///     A tuple containing the rented buffer and the number of bytes written.
+    ///     The buffer must be returned to the pool using <see cref="ArrayPool{T}.Shared"/> after use.
+    /// </returns>
     public static (byte[] Buffer, int BytesWritten) SerializeToPooledBuffer<T>(
         this Envelope<T> envelope,
         IEnvelopeSerializer? serializer = null)
@@ -266,6 +332,10 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Deserializes from a memory segment without additional allocation.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="data">The readonly memory segment containing the serialized data.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, creates a new MessagePack serializer.</param>
+    /// <returns>The deserialized envelope.</returns>
     public static Envelope<T> DeserializeFromMemory<T>(
         ReadOnlyMemory<byte> data,
         IEnvelopeSerializer? serializer = null)
@@ -280,6 +350,12 @@ public static class EnvelopeSerializationExtensions
     /// <summary>
     ///     Streams serialization to avoid large buffer allocations.
     /// </summary>
+    /// <typeparam name="T">The type of the payload contained in the envelope.</typeparam>
+    /// <param name="envelope">The envelope to serialize.</param>
+    /// <param name="stream">The stream to write the serialized data to in chunks.</param>
+    /// <param name="serializer">Optional custom serializer to use. If null, creates a new MessagePack serializer.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>A task representing the asynchronous streaming operation.</returns>
     public static async ValueTask SerializeToStreamOptimizedAsync<T>(
         this Envelope<T> envelope,
         Stream stream,

@@ -201,8 +201,13 @@ public sealed class HashBuilder : IHashBuilder
     ///     Returns a hasher to the pool when it's no longer needed.
     ///     This can improve performance in high-throughput scenarios.
     /// </summary>
-    /// <param name="key">The key used to retrieve the hasher.</param>
-    /// <param name="hasher">The hasher instance to return to the pool.</param>
+    /// <param name="key">The key used to retrieve the hasher. Must match the key used with <see cref="EnablePoolingForHasher"/>.</param>
+    /// <param name="hasher">The hasher instance to return to the pool. Must not be null and should have been obtained from <see cref="GetHasher"/> or <see cref="TryGetHasher"/>.</param>
+    /// <remarks>
+    ///     This method is safe to call even if the hasher was not obtained from a pool - it will
+    ///     simply be ignored if no pool exists for the given key. This allows for defensive programming
+    ///     patterns where pooling can be enabled or disabled without changing calling code.
+    /// </remarks>
     public void ReturnHasher(string key, IHasher hasher)
     {
         if (string.IsNullOrWhiteSpace(key) || hasher == null)
@@ -219,9 +224,35 @@ public sealed class HashBuilder : IHashBuilder
 
     /// <summary>
     ///     Tries to get a hasher from the pool if available, otherwise creates a new one.
+    ///     Returns a <see cref="PooledHasher"/> wrapper that automatically returns the hasher to the pool when disposed.
     /// </summary>
-    /// <param name="key">The hasher key.</param>
-    /// <returns>A result containing the hasher or an error.</returns>
+    /// <param name="key">
+    ///     The hasher key identifying which hasher type to retrieve.
+    ///     Must match a registered hasher key (either default or custom).
+    /// </param>
+    /// <returns>
+    ///     A <see cref="Result{TValue,TError}"/> containing either:
+    ///     <list type="bullet">
+    ///         <item><description>Success: A <see cref="PooledHasher"/> wrapper that should be disposed after use to return the hasher to the pool.</description></item>
+    ///         <item><description>Failure: A <see cref="BuilderError"/> if the key is invalid or no hasher is registered for the key.</description></item>
+    ///     </list>
+    /// </returns>
+    /// <remarks>
+    ///     This method is the recommended way to use hashers with pooling enabled. The returned
+    ///     <see cref="PooledHasher"/> implements IDisposable and will automatically return the
+    ///     underlying hasher to the pool when disposed, ensuring proper resource management.
+    ///     Use within a using statement for automatic cleanup.
+    /// </remarks>
+    /// <example>
+    ///     <code>
+    ///     var result = hashBuilder.GetPooledHasher("blake3");
+    ///     if (result.IsSuccess)
+    ///     {
+    ///         using var pooledHasher = result.Value;
+    ///         var hash = pooledHasher.Hasher.ComputeHash(data);
+    ///     }
+    ///     </code>
+    /// </example>
     public Result<PooledHasher, BuilderError> GetPooledHasher(string key)
     {
         var hasherResult = TryGetHasher(key);
@@ -231,7 +262,7 @@ public sealed class HashBuilder : IHashBuilder
         }
 
         // Create a wrapper that will automatically return the hasher to the pool
-        var pooledHasher = new PooledHasher(hasherResult.Value, key, this);
+        var pooledHasher = new PooledHasher(hasherResult.Value!, key, this);
         return Result<PooledHasher, BuilderError>.Success(pooledHasher);
     }
 
