@@ -201,7 +201,7 @@ public sealed partial class CompressedSerializer : ISerializer
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         var innerCapabilities = _innerSerializer.GetCapabilities();
         var compressorInfo = _compressor.GetCompressionInfo();

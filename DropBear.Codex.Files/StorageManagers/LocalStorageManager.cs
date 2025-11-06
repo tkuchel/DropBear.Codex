@@ -64,7 +64,7 @@ public sealed partial class LocalStorageManager : IStorageManager
             await using (seekableStream.ConfigureAwait(false))
             {
                 // Use file options for optimal performance
-                await using var fileStream = new FileStream(
+                var fileStream = new FileStream(
                     identifier,
                     FileMode.Create,
                     FileAccess.Write,
@@ -72,9 +72,16 @@ public sealed partial class LocalStorageManager : IStorageManager
                     BufferSize,
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-                await seekableStream.CopyToAsync(fileStream, BufferSize, cancellationToken).ConfigureAwait(false);
-                LogWriteSuccessful(identifier);
-                return Result<Unit, StorageError>.Success(Unit.Value);
+                try
+                {
+                    await seekableStream.CopyToAsync(fileStream, BufferSize, cancellationToken).ConfigureAwait(false);
+                    LogWriteSuccessful(identifier);
+                    return Result<Unit, StorageError>.Success(Unit.Value);
+                }
+                finally
+                {
+                    await fileStream.DisposeAsync().ConfigureAwait(false);
+                }
             }
         }
         catch (OperationCanceledException)

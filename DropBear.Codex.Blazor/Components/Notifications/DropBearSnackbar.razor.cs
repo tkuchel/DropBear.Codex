@@ -12,7 +12,7 @@ using Microsoft.JSInterop;
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
 /// <summary>
-///     Modern snackbar component optimized for .NET 8+ and Blazor Server.
+///     Modern snackbar component optimized for .NET 9+ and Blazor Server.
 ///     Provides smooth animations, accessibility support, and responsive design.
 /// </summary>
 public sealed partial class DropBearSnackbar : DropBearComponentBase
@@ -34,7 +34,6 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 
     private volatile bool _isInitialized;
     private volatile bool _isVisible;
-    private int _retryCount;
 
     // Cached values for performance
     private string? _cachedCssClasses;

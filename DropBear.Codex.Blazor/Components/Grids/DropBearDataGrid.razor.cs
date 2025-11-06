@@ -82,32 +82,172 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
     #region Parameters
 
-    [Parameter] public IEnumerable<TItem>? Items { get; set; }
-    [Parameter] public string Title { get; set; } = "Data Grid";
-    [Parameter] public bool EnableSearch { get; set; } = true;
-    [Parameter] public bool EnablePagination { get; set; } = true;
-    [Parameter] public int ItemsPerPage { get; set; } = 10;
-    [Parameter] public bool EnableMultiSelect { get; set; }
-    [Parameter] public bool AllowAdd { get; set; } = true;
-    [Parameter] public bool AllowEdit { get; set; } = true;
-    [Parameter] public bool AllowDelete { get; set; } = true;
-    [Parameter] public bool AllowDownload { get; set; }
-    [Parameter] public bool AllowExport { get; set; }
-    [Parameter] public bool EnableDebugMode { get; set; }
-    [Parameter] public bool ShowErrorNotifications { get; set; } = true;
-    [Parameter] public EventCallback OnExportData { get; set; }
-    [Parameter] public EventCallback OnAddItem { get; set; }
-    [Parameter] public EventCallback<TItem> OnEditItem { get; set; }
-    [Parameter] public EventCallback<TItem> OnDeleteItem { get; set; }
-    [Parameter] public EventCallback<TItem> OnDownloadItem { get; set; }
-    [Parameter] public EventCallback<List<TItem>> OnSelectionChanged { get; set; }
-    [Parameter] public EventCallback<TItem> OnRowClicked { get; set; }
-    [Parameter] public EventCallback<TItem> OnRowDoubleClicked { get; set; }
-    [Parameter] public EventCallback<Result<bool, DataGridError>> OnOperationError { get; set; }
-    [Parameter] public RenderFragment Columns { get; set; } = null!;
-    [Parameter] public RenderFragment? LoadingTemplate { get; set; }
-    [Parameter] public RenderFragment? NoDataTemplate { get; set; }
-    [Parameter] public RenderFragment<DataGridError>? ErrorTemplate { get; set; }
+    /// <summary>
+    ///     Gets or sets the collection of items to display in the data grid.
+    /// </summary>
+    [Parameter]
+    public IEnumerable<TItem>? Items { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the title displayed at the top of the data grid.
+    /// </summary>
+    [Parameter]
+    public string Title { get; set; } = "Data Grid";
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to enable the search functionality for filtering items.
+    /// </summary>
+    [Parameter]
+    public bool EnableSearch { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to enable pagination controls for navigating through pages of data.
+    /// </summary>
+    [Parameter]
+    public bool EnablePagination { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets the number of items to display per page when pagination is enabled.
+    /// </summary>
+    [Parameter]
+    public int ItemsPerPage { get; set; } = 10;
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to allow selecting multiple rows simultaneously.
+    /// </summary>
+    [Parameter]
+    public bool EnableMultiSelect { get; set; }
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to show the add new item button in the toolbar.
+    /// </summary>
+    [Parameter]
+    public bool AllowAdd { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to allow editing existing items via the edit button.
+    /// </summary>
+    [Parameter]
+    public bool AllowEdit { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to allow deleting items via the delete button.
+    /// </summary>
+    [Parameter]
+    public bool AllowDelete { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to show the download button for individual items.
+    /// </summary>
+    [Parameter]
+    public bool AllowDownload { get; set; }
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to enable exporting data via the export button.
+    /// </summary>
+    [Parameter]
+    public bool AllowExport { get; set; }
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to enable debug mode with additional logging and performance metrics.
+    /// </summary>
+    [Parameter]
+    public bool EnableDebugMode { get; set; }
+
+    /// <summary>
+    ///     Gets or sets a value indicating whether to display error notifications when operations fail.
+    /// </summary>
+    [Parameter]
+    public bool ShowErrorNotifications { get; set; } = true;
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when data export is requested via the export button.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnExportData { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when adding a new item via the add button.
+    /// </summary>
+    [Parameter]
+    public EventCallback OnAddItem { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when editing an item via the edit button.
+    ///     The callback receives the item being edited.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TItem> OnEditItem { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when deleting an item via the delete button.
+    ///     The callback receives the item being deleted.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TItem> OnDeleteItem { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when downloading an item via the download button.
+    ///     The callback receives the item being downloaded.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TItem> OnDownloadItem { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when row selection changes.
+    ///     The callback receives the updated list of all selected items.
+    /// </summary>
+    [Parameter]
+    public EventCallback<List<TItem>> OnSelectionChanged { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when a row is clicked.
+    ///     The callback receives the item in the clicked row.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TItem> OnRowClicked { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when a row is double-clicked.
+    ///     The callback receives the item in the double-clicked row.
+    /// </summary>
+    [Parameter]
+    public EventCallback<TItem> OnRowDoubleClicked { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the event callback fired when an operation encounters an error.
+    ///     The callback receives a Result containing the error details wrapped in a DataGridError.
+    /// </summary>
+    [Parameter]
+    public EventCallback<Result<bool, DataGridError>> OnOperationError { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the render fragment that defines the grid columns using DataGridColumn components.
+    /// </summary>
+    [Parameter]
+    public RenderFragment Columns { get; set; } = null!;
+
+    /// <summary>
+    ///     Gets or sets the optional template displayed while data is being loaded.
+    ///     If not specified, a default loading indicator is shown.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? LoadingTemplate { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the optional template displayed when there is no data to show.
+    ///     If not specified, a default "No data available" message is shown.
+    /// </summary>
+    [Parameter]
+    public RenderFragment? NoDataTemplate { get; set; }
+
+    /// <summary>
+    ///     Gets or sets the optional template displayed when an error occurs.
+    ///     The template receives a DataGridError parameter with error details.
+    ///     If not specified, a default error message is shown.
+    /// </summary>
+    [Parameter]
+    public RenderFragment<DataGridError>? ErrorTemplate { get; set; }
 
     #endregion
 
@@ -503,8 +643,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         {
             DateTime date => string.IsNullOrEmpty(format)
                 ? date.ToString(CultureInfo.InvariantCulture)
-                : date.ToString(format),
-            DateTimeOffset dto => string.IsNullOrEmpty(format) ? dto.ToString() : dto.ToString(format),
+                : date.ToString(format, CultureInfo.InvariantCulture),
+            DateTimeOffset dto => string.IsNullOrEmpty(format) ? dto.ToString(CultureInfo.InvariantCulture) : dto.ToString(format, CultureInfo.InvariantCulture),
             IFormattable formattable => formattable.ToString(format, null),
             _ => value.ToString() ?? string.Empty
         };
@@ -767,7 +907,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
     private async Task DebounceSearchAsync()
     {
-        if (_previousSearchTerm == SearchTerm)
+        if (string.Equals(_previousSearchTerm, SearchTerm, StringComparison.Ordinal))
         {
             return;
         }
@@ -927,7 +1067,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         var columnAdded = false;
         lock (_columns)
         {
-            if (_columns.Any(c => c.PropertyName == column.PropertyName))
+            if (_columns.Any(c => string.Equals(c.PropertyName, column.PropertyName, StringComparison.Ordinal)))
             {
                 LogColumnAlreadyExists(Logger, column.PropertyName);
                 return;
@@ -1486,7 +1626,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     {
         try
         {
-            if (int.TryParse(e.Value?.ToString(), out var newItemsPerPage) &&
+            if (int.TryParse(e.Value?.ToString(), CultureInfo.InvariantCulture, out var newItemsPerPage) &&
                 ItemsPerPageOptions.Contains(newItemsPerPage))
             {
                 ItemsPerPage = newItemsPerPage;
@@ -1611,7 +1751,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
     {
         lock (_columns)
         {
-            return _columns.FirstOrDefault(c => c.PropertyName == propertyName);
+            return _columns.FirstOrDefault(c => string.Equals(c.PropertyName, propertyName, StringComparison.Ordinal));
         }
     }
 

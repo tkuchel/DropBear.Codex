@@ -16,14 +16,14 @@ using Microsoft.AspNetCore.Components.Web;
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
 /// <summary>
-/// Modern alert container optimized for .NET 8+ with improved performance and accessibility.
+/// Modern alert container optimized for .NET 9+ with improved performance and accessibility.
 /// </summary>
 public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 {
     private const int MaxVisibleAlerts = 5;
     private const int DefaultDuration = 5000;
 
-    // Use FrozenSet for better performance in .NET 8+
+    // Use FrozenSet for better performance in .NET 9+
     private static readonly FrozenSet<string> CriticalSeverities = new[]
     {
         nameof(NotificationSeverity.Critical), nameof(NotificationSeverity.Error)
@@ -43,7 +43,7 @@ public sealed partial class DropBearPageAlertContainer : DropBearComponentBase
 
     public DropBearPageAlertContainer()
     {
-        // Use channels for better async processing in .NET 8+
+        // Use channels for better async processing in .NET 9+
         var options = new BoundedChannelOptions(MaxVisibleAlerts * 2)
         {
             FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true, SingleWriter = false

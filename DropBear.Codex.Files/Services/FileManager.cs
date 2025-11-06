@@ -101,7 +101,7 @@ public sealed partial class FileManager
             }
 
             // Write the stream via the storage manager
-            var stream = streamResult.Value;
+            var stream = streamResult.Value!;
             await using (stream.ConfigureAwait(false))
             {
                 var writeResult = await _storageManager.WriteAsync(identifier, stream, cancellationToken)
@@ -166,7 +166,7 @@ public sealed partial class FileManager
                     FileOperationError.ReadFailed(identifier, streamResult.Error?.Message ?? "Unknown error"));
             }
 
-            var stream = streamResult.Value;
+            var stream = streamResult.Value!;
             await using (stream.ConfigureAwait(false))
             {
                 // Convert the stream back into T
@@ -290,7 +290,7 @@ public sealed partial class FileManager
                 return Result<Unit, FileOperationError>.Failure(streamResult.Error!);
             }
 
-            var stream = streamResult.Value;
+            var stream = streamResult.Value!;
             await using (stream.ConfigureAwait(false))
             {
                 // Use storage manager to update the file
@@ -555,7 +555,7 @@ public sealed partial class FileManager
             var getResult = GetContainerByContentType(file, contentType);
             if (!getResult.IsSuccess)
             {
-                return Result<Unit, FileOperationError>.Failure(getResult.Error, getResult.Exception);
+                return Result<Unit, FileOperationError>.Failure(getResult.Error!, getResult.Exception);
             }
 
             var containerToRemove = getResult.Value;
@@ -851,11 +851,13 @@ public sealed partial class FileManager
 
     #region Private/Helper Methods
 
-    // Builds full path within base directory
     /// <summary>
-    /// Gets the full path for a file, ensuring it stays within the base directory (prevents path traversal).
-    /// SECURITY: Validates against directory traversal attacks (../, absolute paths, etc.)
+    ///     Gets the full path for a file, ensuring it stays within the base directory (prevents path traversal).
+    ///     SECURITY: Validates against directory traversal attacks (../, absolute paths, etc.)
     /// </summary>
+    /// <param name="path">The relative or absolute file path to resolve.</param>
+    /// <returns>The fully qualified path within the base directory.</returns>
+    /// <exception cref="UnauthorizedAccessException">Thrown when path traversal is detected.</exception>
     private string GetFullPath(string path)
     {
         // Get the absolute path
@@ -884,7 +886,17 @@ public sealed partial class FileManager
         return fullPath;
     }
 
-    // Validates directory existence and permissions
+    /// <summary>
+    ///     Validates that the directory for a file path exists and has write permissions.
+    ///     Creates the directory if it doesn't exist and sets permissions if needed.
+    /// </summary>
+    /// <param name="path">The file path to validate.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>
+    ///     A Result indicating success if the directory exists with write permissions,
+    ///     or failure with error details if validation fails.
+    /// </returns>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
     private async Task<Result<Unit, FileOperationError>> ValidateFilePathAsync(
         string path,
         CancellationToken cancellationToken = default)
@@ -934,6 +946,12 @@ public sealed partial class FileManager
         }
     }
 
+    /// <summary>
+    ///     Checks if the current user has write permissions on the specified directory.
+    /// </summary>
+    /// <param name="path">The directory path to check.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>True if write permissions exist, false otherwise.</returns>
     private static async Task<bool> HasWritePermissionOnDirAsync(
         string path,
         CancellationToken cancellationToken = default)
@@ -957,6 +975,15 @@ public sealed partial class FileManager
         }
     }
 
+    /// <summary>
+    ///     Adds access control rules to a directory for a specific user account.
+    /// </summary>
+    /// <param name="path">The directory path to modify.</param>
+    /// <param name="account">The user account to grant permissions to.</param>
+    /// <param name="rights">The file system rights to grant.</param>
+    /// <param name="controlType">The type of access control (Allow or Deny).</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
     private static async Task AddDirectorySecurityAsync(
         string path,
         string account,
@@ -987,6 +1014,18 @@ public sealed partial class FileManager
         }
     }
 
+    /// <summary>
+    ///     Converts data of type <typeparamref name="T" /> to a stream for writing operations.
+    ///     Supports <see cref="DropBearFile" /> and <c>byte[]</c> types.
+    /// </summary>
+    /// <typeparam name="T">The type of data to convert (DropBearFile or byte[]).</typeparam>
+    /// <param name="data">The data to convert to a stream.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>
+    ///     A Result containing the stream on success, or a FileOperationError if conversion fails
+    ///     or the type is not supported.
+    /// </returns>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
     private async Task<Result<Stream, FileOperationError>> ConvertToStreamAsync<T>(
         T data,
         CancellationToken cancellationToken = default)
@@ -1001,10 +1040,10 @@ public sealed partial class FileManager
                 var result = await file.ToStreamAsync(_serilogLogger, cancellationToken).ConfigureAwait(false);
                 if (result.IsSuccess)
                 {
-                    return Result<Stream, FileOperationError>.Success(result.Value);
+                    return Result<Stream, FileOperationError>.Success(result.Value!);
                 }
 
-                return Result<Stream, FileOperationError>.Failure(result.Error);
+                return Result<Stream, FileOperationError>.Failure(result.Error!);
             }
 
             if (data is byte[] byteArray)
@@ -1031,6 +1070,18 @@ public sealed partial class FileManager
         }
     }
 
+    /// <summary>
+    ///     Converts a stream to data of type <typeparamref name="T" /> for reading operations.
+    ///     Supports <see cref="DropBearFile" /> and <c>byte[]</c> types.
+    /// </summary>
+    /// <typeparam name="T">The type of data to convert to (DropBearFile or byte[]).</typeparam>
+    /// <param name="stream">The stream to convert from.</param>
+    /// <param name="cancellationToken">Token to monitor for cancellation requests.</param>
+    /// <returns>
+    ///     A Result containing the deserialized data on success, or a FileOperationError if conversion fails
+    ///     or the type is not supported.
+    /// </returns>
+    /// <exception cref="OperationCanceledException">Thrown when the operation is cancelled.</exception>
     private async Task<Result<T, FileOperationError>> ConvertFromStreamAsync<T>(
         Stream stream,
         CancellationToken cancellationToken = default)

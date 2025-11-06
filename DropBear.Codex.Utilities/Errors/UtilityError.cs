@@ -22,7 +22,7 @@ public sealed record UtilityError : ResultError
     /// <summary>
     ///     Gets the error code.
     /// </summary>
-    public string? Code { get; init; }
+    public new string? Code { get; init; }
 
     /// <summary>
     ///     Gets the time to wait before retrying (for rate limit errors).

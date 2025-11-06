@@ -24,7 +24,7 @@ public class NotificationRecord
     // public virtual User? User { get; set; } //Todo: Implement User entity or link to existing one
 
     // Helper methods for data
-    public Dictionary<string, object?> GetData()
+    public IReadOnlyDictionary<string, object?> GetData()
     {
         if (string.IsNullOrEmpty(SerializedData))
         {
@@ -37,7 +37,7 @@ public class NotificationRecord
                ?? new Dictionary<string, object?>(StringComparer.Ordinal);
     }
 
-    public void SetData(Dictionary<string, object?> data)
+    public void SetData(IDictionary<string, object?> data)
     {
         SerializedData = JsonSerializer.Serialize(data);
     }

@@ -191,7 +191,7 @@ public sealed class DropBearButtonTests : ComponentTestBase
     }
 
     [Fact]
-    public async Task DropBearButton_Should_NotInvokeOnClick_WhenDisabled()
+    public void DropBearButton_Should_NotInvokeOnClick_WhenDisabled()
     {
         // Arrange
         var clicked = false;
@@ -214,7 +214,7 @@ public sealed class DropBearButtonTests : ComponentTestBase
     }
 
     [Fact]
-    public async Task DropBearButton_Should_NotInvokeOnClick_WhenLoading()
+    public void DropBearButton_Should_NotInvokeOnClick_WhenLoading()
     {
         // Arrange
         var clicked = false;

@@ -295,8 +295,8 @@ public sealed partial class ContentContainer
             var result = await serializer.Value!.DeserializeAsync<T>(Data, cancellationToken).ConfigureAwait(false);
 
             return !result.IsSuccess
-                ? Result<T, ContentContainerError>.Failure(new ContentContainerError(result.Exception?.Message))
-                : Result<T, ContentContainerError>.Success(result.Value);
+                ? Result<T, ContentContainerError>.Failure(new ContentContainerError(result.Exception?.Message ?? "Deserialization error"))
+                : Result<T, ContentContainerError>.Success(result.Value!);
         }
         catch (OperationCanceledException)
         {

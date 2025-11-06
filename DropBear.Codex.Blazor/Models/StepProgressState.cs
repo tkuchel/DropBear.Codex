@@ -159,7 +159,7 @@ public class StepProgressState : IAsyncDisposable
             _startTime = DateTimeOffset.UtcNow;
         }
 
-        OnStatusChanged(previousStatus, newStatus)
+        _ = OnStatusChanged(previousStatus, newStatus)
             .ContinueWith(
                 t => Console.WriteLine($"Status change error: {t.Exception}"),
                 TaskContinuationOptions.OnlyOnFaulted

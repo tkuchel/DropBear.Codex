@@ -268,7 +268,9 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
 
         try
         {
+#pragma warning disable CA1416 // Blazor Server context - browser warning not applicable
             _operationSemaphore.Wait(TimeSpan.FromSeconds(5));
+#pragma warning restore CA1416
             try
             {
                 _activeSnackbars.Clear();

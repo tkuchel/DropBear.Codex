@@ -13,18 +13,6 @@ using Serilog;
 namespace DropBear.Codex.Utilities.Converters;
 
 /// <summary>
-///     Contains error details for binary and hex conversion operations.
-/// </summary>
-public sealed record BinaryConversionError : ResultError
-{
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="BinaryConversionError" /> record.
-    /// </summary>
-    /// <param name="message">The error message.</param>
-    public BinaryConversionError(string message) : base(message) { }
-}
-
-/// <summary>
 ///     Provides methods to convert between string, binary, and hexadecimal representations
 ///     with optimized performance and memory usage.
 /// </summary>

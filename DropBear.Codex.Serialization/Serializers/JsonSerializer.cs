@@ -48,7 +48,7 @@ public sealed partial class JsonSerializer : ISerializer
         Options = config.JsonSerializerOptions ?? new JsonSerializerOptions();
         _jsonSerializerContext = config.JsonSerializerContext;
         _memoryManager = config.RecyclableMemoryStreamManager ?? throw new ArgumentNullException(
-            nameof(config.RecyclableMemoryStreamManager), "RecyclableMemoryStreamManager must be provided.");
+            nameof(config), "RecyclableMemoryStreamManager must be provided.");
 
         _bufferSize = config.BufferSize;
         _enableCaching = config.EnableCaching;
@@ -72,7 +72,7 @@ public sealed partial class JsonSerializer : ISerializer
     public JsonSerializerOptions Options { get; }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         return new Dictionary<string, object>
 (StringComparer.Ordinal)

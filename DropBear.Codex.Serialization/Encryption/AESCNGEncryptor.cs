@@ -76,7 +76,9 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
         InitializeCryptoComponents();
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Disposes the encryptor and releases cryptographic resources.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -99,7 +101,15 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Encrypts the specified data using AES encryption with CNG.
+    /// </summary>
+    /// <param name="data">The data to encrypt.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the encrypted data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the encryptor has been disposed.</exception>
+    /// <exception cref="CryptographicException">Thrown when encryption fails.</exception>
     public async Task<Result<byte[], SerializationError>> EncryptAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -178,7 +188,15 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Decrypts the specified AES-CNG encrypted data.
+    /// </summary>
+    /// <param name="data">The encrypted data to decrypt.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the decrypted data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the encryptor has been disposed.</exception>
+    /// <exception cref="CryptographicException">Thrown when decryption fails or data is corrupted.</exception>
     public async Task<Result<byte[], SerializationError>> DecryptAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -294,6 +312,10 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     /// <summary>
     ///     Combines multiple byte arrays into a single array.
     /// </summary>
+    /// <param name="encryptedKey">The RSA-encrypted AES key.</param>
+    /// <param name="encryptedIV">The RSA-encrypted initialization vector.</param>
+    /// <param name="encryptedData">The AES-encrypted data.</param>
+    /// <returns>A single byte array containing all components.</returns>
     private static byte[] CombineEncryptedComponents(byte[] encryptedKey, byte[] encryptedIV, byte[] encryptedData)
     {
         var totalLength = encryptedKey.Length + encryptedIV.Length + encryptedData.Length;
@@ -315,6 +337,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     /// <summary>
     ///     Calculates a hash of the given data for caching purposes.
     /// </summary>
+    /// <param name="data">The data to hash.</param>
+    /// <returns>An integer hash value for the data.</returns>
     private int CalculateHash(byte[] data)
     {
         // For small data, use the built-in hash code
@@ -350,6 +374,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     /// <summary>
     ///     Caches an encryption result.
     /// </summary>
+    /// <param name="original">The original data before encryption.</param>
+    /// <param name="encrypted">The encrypted result to cache.</param>
     private void CacheEncryptionResult(byte[] original, byte[] encrypted)
     {
         if (!_enableCaching || _encryptionCache == null)

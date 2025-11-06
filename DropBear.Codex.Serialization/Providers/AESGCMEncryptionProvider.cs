@@ -68,7 +68,9 @@ public sealed class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Disposes the encryption provider and releases RSA resources.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)

@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using BenchmarkDotNet.Attributes;
 using DropBear.Codex.Serialization.Factories;
 using DropBear.Codex.Serialization.Serializers;
@@ -12,6 +13,7 @@ namespace DropBear.Codex.Benchmarks;
 /// </summary>
 [MemoryDiagnoser]
 [SimpleJob(iterationCount: 50)]
+[SupportedOSPlatform("windows")]
 public class SerializationBenchmarks
 {
     private TestData _smallData = null!;

@@ -165,5 +165,5 @@ public class ActionButton<T>
     /// <summary>
     ///     The action to execute when the button is clicked
     /// </summary>
-    public EventCallback<List<T>> OnClick { get; set; }
+    public EventCallback<IList<T>> OnClick { get; set; }
 }

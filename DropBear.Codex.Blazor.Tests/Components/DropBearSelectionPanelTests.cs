@@ -258,7 +258,7 @@ public sealed class DropBearSelectionPanelTests : ComponentTestBase
             new()
             {
                 Text = "Test Action",
-                OnClick = EventCallback.Factory.Create<List<string>>(this, items =>
+                OnClick = EventCallback.Factory.Create<IList<string>>(this, items =>
                 {
                     buttonClicked = true;
                 })
@@ -286,7 +286,7 @@ public sealed class DropBearSelectionPanelTests : ComponentTestBase
             new()
             {
                 Text = "Test Action",
-                OnClick = EventCallback.Factory.Create<List<string>>(this, _ => { })
+                OnClick = EventCallback.Factory.Create<IList<string>>(this, _ => { })
             }
         };
 

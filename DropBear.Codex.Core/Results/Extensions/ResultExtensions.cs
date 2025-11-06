@@ -21,6 +21,17 @@ public static class ResultExtensions
     ///     Retries an operation with exponential backoff.
     ///     Uses modern TimeProvider for testability.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="operation">The operation to retry.</param>
+    /// <param name="maxAttempts">The maximum number of retry attempts.</param>
+    /// <param name="initialDelay">The initial delay before the first retry.</param>
+    /// <param name="backoffMultiplier">The multiplier for exponential backoff.</param>
+    /// <param name="timeProvider">The time provider for delays (defaults to TimeProvider.System).</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>The result of the operation after retrying.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when operation is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when maxAttempts is less than or equal to zero.</exception>
     public static async ValueTask<Result<T, TError>> RetryAsync<T, TError>(
         this Func<CancellationToken, ValueTask<Result<T, TError>>> operation,
         int maxAttempts = 3,
@@ -72,6 +83,14 @@ public static class ResultExtensions
     ///     Matches the result to one of two functions based on success/failure.
     ///     Modern pattern matching with expression-bodied members.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <typeparam name="TResult">The type of the matched result.</typeparam>
+    /// <param name="result">The result to match.</param>
+    /// <param name="onSuccess">The function to execute if the result is successful.</param>
+    /// <param name="onFailure">The function to execute if the result is a failure.</param>
+    /// <returns>The result of executing either onSuccess or onFailure.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result, onSuccess, or onFailure is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TResult Match<T, TError, TResult>(
         this Result<T, TError> result,
@@ -91,6 +110,12 @@ public static class ResultExtensions
     /// <summary>
     ///     Matches the result to one of two actions based on success/failure.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to match.</param>
+    /// <param name="onSuccess">The action to execute if the result is successful.</param>
+    /// <param name="onFailure">The action to execute if the result is a failure.</param>
+    /// <exception cref="ArgumentNullException">Thrown when result, onSuccess, or onFailure is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Match<T, TError>(
         this Result<T, TError> result,
@@ -120,6 +145,13 @@ public static class ResultExtensions
     ///     Maps the value of a successful result to a new value.
     ///     Uses aggressive inlining for optimal performance.
     /// </summary>
+    /// <typeparam name="T">The type of the source value.</typeparam>
+    /// <typeparam name="TResult">The type of the mapped result value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to map.</param>
+    /// <param name="mapper">The function to map the success value.</param>
+    /// <returns>A new result with the mapped value if successful, otherwise the original failure.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or mapper is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<TResult, TError> Map<T, TResult, TError>(
         this Result<T, TError> result,
@@ -138,6 +170,13 @@ public static class ResultExtensions
     ///     Binds the value of a successful result to a new result-returning function.
     ///     Flattens nested results automatically.
     /// </summary>
+    /// <typeparam name="T">The type of the source value.</typeparam>
+    /// <typeparam name="TResult">The type of the bound result value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to bind.</param>
+    /// <param name="binder">The function that returns a new result based on the success value.</param>
+    /// <returns>The result returned by the binder if successful, otherwise the original failure.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or binder is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<TResult, TError> Bind<T, TResult, TError>(
         this Result<T, TError> result,
@@ -157,6 +196,12 @@ public static class ResultExtensions
     ///     The action receives the unwrapped value.
     ///     Use this when you want to operate on the value itself.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to tap.</param>
+    /// <param name="action">The action to execute with the success value.</param>
+    /// <returns>The original result unchanged.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or action is null.</exception>
     /// <example>
     ///     <code>
     /// result.Tap(value => Console.WriteLine($"Got value: {value}"));
@@ -185,6 +230,13 @@ public static class ResultExtensions
     /// <summary>
     ///     Transforms a Result using an async function, optimized with ValueTask.
     /// </summary>
+    /// <typeparam name="TSource">The type of the source value.</typeparam>
+    /// <typeparam name="TResult">The type of the transformed result value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to transform.</param>
+    /// <param name="transform">The async function to transform the success value.</param>
+    /// <returns>A new result with the transformed value if successful, otherwise the original failure.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or transform is null.</exception>
     public static async ValueTask<Result<TResult, TError>> MapAsync<TSource, TResult, TError>(
         this Result<TSource, TError> result,
         Func<TSource, ValueTask<TResult>> transform)
@@ -201,6 +253,13 @@ public static class ResultExtensions
     /// <summary>
     ///     Transforms a Result using an async function that can fail.
     /// </summary>
+    /// <typeparam name="TSource">The type of the source value.</typeparam>
+    /// <typeparam name="TResult">The type of the bound result value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to bind.</param>
+    /// <param name="transform">The async function that returns a new result based on the success value.</param>
+    /// <returns>The result returned by the transform if successful, otherwise the original failure.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or transform is null.</exception>
     public static async ValueTask<Result<TResult, TError>> BindAsync<TSource, TResult, TError>(
         this Result<TSource, TError> result,
         Func<TSource, ValueTask<Result<TResult, TError>>> transform)
@@ -217,6 +276,12 @@ public static class ResultExtensions
     /// <summary>
     ///     Executes an async action if the result is successful, without changing the result.
     /// </summary>
+    /// <typeparam name="TValue">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to tap.</param>
+    /// <param name="action">The async action to execute with the success value.</param>
+    /// <returns>The original result unchanged.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or action is null.</exception>
     public static async ValueTask<Result<TValue, TError>> TapAsync<TValue, TError>(
         this Result<TValue, TError> result,
         Func<TValue, ValueTask> action)
@@ -236,6 +301,12 @@ public static class ResultExtensions
     /// <summary>
     ///     Provides a fallback value if the result is a failure.
     /// </summary>
+    /// <typeparam name="TValue">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to check.</param>
+    /// <param name="fallbackProvider">The async function to provide a fallback value if the result is a failure.</param>
+    /// <returns>The original result if successful, otherwise a success result with the fallback value.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or fallbackProvider is null.</exception>
     public static async ValueTask<Result<TValue, TError>> OrElseAsync<TValue, TError>(
         this Result<TValue, TError> result,
         Func<TError, ValueTask<TValue>> fallbackProvider)
@@ -257,6 +328,15 @@ public static class ResultExtensions
     ///     Executes an async operation for each item in parallel with enhanced performance.
     ///     Uses modern Parallel.ForAsync patterns for optimal throughput.
     /// </summary>
+    /// <typeparam name="T">The type of the source items.</typeparam>
+    /// <typeparam name="TResult">The type of the mapped result values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="source">The source collection to process.</param>
+    /// <param name="mapper">The async function to map each item.</param>
+    /// <param name="maxDegreeOfParallelism">The maximum degree of parallelism (-1 for unlimited).</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A result containing all mapped values if successful, otherwise a combined error.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when source or mapper is null.</exception>
     public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> ParallelMapAsync<T, TResult, TError>(
         this IEnumerable<T> source,
         Func<T, CancellationToken, ValueTask<Result<TResult, TError>>> mapper,
@@ -293,6 +373,16 @@ public static class ResultExtensions
     ///     Executes operations in batches with configurable batch size.
     ///     Optimized for .NET 9 with collection expressions and Chunk().
     /// </summary>
+    /// <typeparam name="T">The type of the source items.</typeparam>
+    /// <typeparam name="TResult">The type of the mapped result values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="source">The source collection to process.</param>
+    /// <param name="mapper">The async function to map each item.</param>
+    /// <param name="batchSize">The size of each batch to process.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A result containing all mapped values if successful, otherwise a combined error.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when source or mapper is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when batchSize is less than or equal to zero.</exception>
     public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> BatchMapAsync<T, TResult, TError>(
         this IEnumerable<T> source,
         Func<T, CancellationToken, ValueTask<Result<TResult, TError>>> mapper,
@@ -333,6 +423,12 @@ public static class ResultExtensions
     ///     Safely executes an operation that might throw, converting the result to a Result type.
     ///     Optimized for .NET 9 with better exception handling.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="operation">The operation to execute safely.</param>
+    /// <param name="onError">The function to convert an exception to an error.</param>
+    /// <returns>A success result if the operation succeeds, otherwise a failure result with the converted error.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when operation or onError is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, TError> Try<T, TError>(
         Func<T> operation,
@@ -355,6 +451,12 @@ public static class ResultExtensions
     /// <summary>
     ///     Safely executes an async operation that might throw.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="operation">The async operation to execute safely.</param>
+    /// <param name="onError">The function to convert an exception to an error.</param>
+    /// <returns>A success result if the operation succeeds, otherwise a failure result with the converted error.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when operation or onError is null.</exception>
     public static async ValueTask<Result<T, TError>> TryAsync<T, TError>(
         Func<ValueTask<T>> operation,
         Func<Exception, TError> onError)
@@ -382,6 +484,12 @@ public static class ResultExtensions
     ///     Combines multiple results into a single result.
     ///     Optimized with Span and modern collection expressions (.NET 9).
     /// </summary>
+    /// <typeparam name="T">The type of the success values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="results">The collection of results to combine.</param>
+    /// <param name="errorAggregator">The function to aggregate multiple errors into a single error.</param>
+    /// <returns>A success result with all values, a failure result with aggregated errors, or a partial success result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when results or errorAggregator is null.</exception>
     public static Result<IReadOnlyList<T>, TError> Combine<T, TError>(
         this IEnumerable<Result<T, TError>> results,
         Func<IEnumerable<TError>, TError> errorAggregator)
@@ -429,6 +537,13 @@ public static class ResultExtensions
     ///     Combines multiple async results into a single result with enhanced parallelism.
     ///     Uses modern async patterns for optimal performance.
     /// </summary>
+    /// <typeparam name="T">The type of the success values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="results">The collection of async results to combine.</param>
+    /// <param name="errorAggregator">The function to aggregate multiple errors into a single error.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A success result with all values, a failure result with aggregated errors, or a partial success result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when results or errorAggregator is null.</exception>
     public static async ValueTask<Result<IReadOnlyList<T>, TError>> CombineAsync<T, TError>(
         this IEnumerable<ValueTask<Result<T, TError>>> results,
         Func<IEnumerable<TError>, TError> errorAggregator,
@@ -459,6 +574,13 @@ public static class ResultExtensions
     /// <summary>
     ///     Combines Task-based results with efficient awaiting.
     /// </summary>
+    /// <typeparam name="T">The type of the success values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="results">The collection of task-based results to combine.</param>
+    /// <param name="errorAggregator">The function to aggregate multiple errors into a single error.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A success result with all values, a failure result with aggregated errors, or a partial success result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when results or errorAggregator is null.</exception>
     public static async ValueTask<Result<IReadOnlyList<T>, TError>> CombineAsync<T, TError>(
         this IEnumerable<Task<Result<T, TError>>> results,
         Func<IEnumerable<TError>, TError> errorAggregator,
@@ -482,6 +604,12 @@ public static class ResultExtensions
     ///     Combines results using ArrayPool to reduce allocations.
     ///     Performance-optimized version for hot paths.
     /// </summary>
+    /// <typeparam name="T">The type of the success values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="results">The span of results to combine.</param>
+    /// <param name="errorAggregator">The function to aggregate multiple errors into a single error.</param>
+    /// <returns>A success result with all values, a failure result with aggregated errors, or a partial success result.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when errorAggregator is null.</exception>
     public static Result<IReadOnlyList<T>, TError> CombineOptimized<T, TError>(
         ReadOnlySpan<Result<T, TError>> results,
         Func<ReadOnlySpan<TError>, TError> errorAggregator)
@@ -548,6 +676,13 @@ public static class ResultExtensions
     ///     Fast path for mapping when the mapper is known to not throw.
     ///     Uses aggressive inlining for maximum performance.
     /// </summary>
+    /// <typeparam name="T">The type of the source value.</typeparam>
+    /// <typeparam name="TResult">The type of the mapped result value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to map.</param>
+    /// <param name="mapper">The function to map the success value (must not throw).</param>
+    /// <returns>A new result with the mapped value if successful, otherwise the original failure.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when result or mapper is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<TResult, TError> MapUnchecked<T, TResult, TError>(
         this Result<T, TError> result,
@@ -567,6 +702,16 @@ public static class ResultExtensions
     ///     Batches items using ArrayPool for memory efficiency.
     ///     Uses collection-based processing for optimal performance.
     /// </summary>
+    /// <typeparam name="T">The type of the source items.</typeparam>
+    /// <typeparam name="TResult">The type of the mapped result values.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="source">The source collection to process.</param>
+    /// <param name="mapper">The async function to map each item.</param>
+    /// <param name="batchSize">The size of each batch to process.</param>
+    /// <param name="cancellationToken">The cancellation token.</param>
+    /// <returns>A result containing all mapped values if successful, otherwise a combined error.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when source or mapper is null.</exception>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when batchSize is less than or equal to zero.</exception>
     public static async ValueTask<Result<IReadOnlyList<TResult>, TError>> BatchMapOptimizedAsync<T, TResult, TError>(
         this IEnumerable<T> source,
         Func<T, CancellationToken, ValueTask<Result<TResult, TError>>> mapper,
@@ -637,6 +782,12 @@ public static class ResultExtensions
     ///     Converts a Task to a Result, handling exceptions.
     ///     Modern async pattern with ValueTask return.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="task">The task to convert to a result.</param>
+    /// <param name="onError">The function to convert an exception to an error.</param>
+    /// <returns>A success result if the task succeeds, otherwise a failure result with the converted error.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when task or onError is null.</exception>
     public static async ValueTask<Result<T, TError>> ToResultAsync<T, TError>(
         this Task<T> task,
         Func<Exception, TError> onError)
@@ -659,6 +810,13 @@ public static class ResultExtensions
     /// <summary>
     ///     Deconstructs a result into its components for pattern matching.
     /// </summary>
+    /// <typeparam name="T">The type of the success value.</typeparam>
+    /// <typeparam name="TError">The type of error that can occur.</typeparam>
+    /// <param name="result">The result to deconstruct.</param>
+    /// <param name="success">Outputs whether the result is successful.</param>
+    /// <param name="value">Outputs the success value if successful, otherwise default.</param>
+    /// <param name="error">Outputs the error if failed, otherwise null.</param>
+    /// <exception cref="ArgumentNullException">Thrown when result is null.</exception>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Deconstruct<T, TError>(
         this Result<T, TError> result,

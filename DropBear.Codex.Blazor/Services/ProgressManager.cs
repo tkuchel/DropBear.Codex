@@ -31,7 +31,8 @@ public sealed class ProgressManager : IProgressManager
         _disposalCts = new CancellationTokenSource();
         _stepStates = new ConcurrentDictionary<string, StepState>(
             Environment.ProcessorCount * 2,
-            20); // Assume ~20 steps max in typical scenarios
+            20,
+            StringComparer.Ordinal); // Assume ~20 steps max in typical scenarios
         _taskProgress = new ConcurrentDictionary<string, double>(
             StringComparer.Ordinal);
         _updateLock = new SemaphoreSlim(1, 1);
@@ -329,7 +330,7 @@ public sealed class ProgressManager : IProgressManager
     /// </summary>
     /// <param name="steps">Step configurations.</param>
     /// <returns>A Result indicating success or failure.</returns>
-    public Result<Unit, ProgressManagerError> StartStepsWithResult(List<ProgressStepConfig> steps)
+    public Result<Unit, ProgressManagerError> StartStepsWithResult(IReadOnlyList<ProgressStepConfig> steps)
     {
         try
         {
@@ -511,7 +512,7 @@ public sealed class ProgressManager : IProgressManager
         {
             ThrowIfDisposed();
 
-            var metrics = new Dictionary<string, object>
+            var metrics = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["Progress"] = Progress,
                 ["IsIndeterminate"] = IsIndeterminate,
@@ -777,7 +778,7 @@ internal static class TaskExtensions
     /// <param name="logger">The logger for error handling.</param>
     public static void FireAndForget(this Task task, ILogger logger)
     {
-        task.ContinueWith(
+        _ = task.ContinueWith(
             t => logger.Error(t.Exception!, "Unhandled task error"),
             TaskContinuationOptions.OnlyOnFaulted
         );

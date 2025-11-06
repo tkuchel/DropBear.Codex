@@ -40,7 +40,6 @@ public partial class DropBearSectionContainer : DropBearComponentBase
     private string? _maxWidth;
     private string _maxWidthStyle = DefaultMaxWidth;
     private IJSObjectReference? _module;
-    private bool _parametersChanged;
 
     // Debounce state
     private CancellationTokenSource? _resizeDebouncer;
@@ -77,7 +76,6 @@ public partial class DropBearSectionContainer : DropBearComponentBase
             }
 
             _maxWidth = value;
-            _parametersChanged = true;
         }
     }
 
@@ -113,7 +111,6 @@ public partial class DropBearSectionContainer : DropBearComponentBase
         if (horizontalChanged || verticalChanged || _containerClassCache == null)
         {
             _containerClassCache = null;
-            _parametersChanged = true;
         }
 
         base.OnParametersSet();

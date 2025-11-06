@@ -43,7 +43,7 @@ public sealed partial class MessagePackSerializer : ISerializer
 
         _options = config.MessagePackSerializerOptions ?? MessagePackSerializerOptions.Standard;
         _memoryManager = config.RecyclableMemoryStreamManager ?? throw new ArgumentNullException(
-            nameof(config.RecyclableMemoryStreamManager), "RecyclableMemoryStreamManager must be provided.");
+            nameof(config), "RecyclableMemoryStreamManager must be provided.");
 
         _enableCaching = config.EnableCaching;
         _maxCacheSize = config.MaxCacheSize;
@@ -57,7 +57,7 @@ public sealed partial class MessagePackSerializer : ISerializer
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         return new Dictionary<string, object>
 (StringComparer.Ordinal)
@@ -65,7 +65,7 @@ public sealed partial class MessagePackSerializer : ISerializer
             ["SerializerType"] = "MessagePack",
             ["Compression"] = _options.Compression.ToString(),
             ["Resolver"] = _options.Resolver?.GetType().Name ?? "Default",
-            ["Security"] = _options.Security.ToString(),
+            ["Security"] = _options.Security.ToString() ?? "Unknown",
             ["CacheEnabled"] = _enableCaching,
             ["MaxCacheSize"] = _maxCacheSize,
             ["IsThreadSafe"] = true

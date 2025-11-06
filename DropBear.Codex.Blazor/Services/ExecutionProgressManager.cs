@@ -192,7 +192,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _currentMessage = steps.Count > 0 ? $"Step 1 of {steps.Count}" : "No steps";
 
                 // Initialize step states efficiently using .NET 9 collection builders
-                var stepStatesBuilder = new Dictionary<string, StepState>(steps.Count);
+                var stepStatesBuilder = new Dictionary<string, StepState>(steps.Count, StringComparer.Ordinal);
                 foreach (var step in steps)
                 {
                     stepStatesBuilder[step.Id] = new StepState(step.Id, 0, StepStatus.NotStarted);
@@ -297,14 +297,14 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 updatedStep = existingStep with { Progress = clampedProgress, Status = status };
 
                 // Create new frozen dictionary with updated step using .NET 9 optimizations
-                var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates);
+                var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates, StringComparer.Ordinal);
                 stepStatesBuilder[stepId] = updatedStep;
                 _stepStates = stepStatesBuilder.ToFrozenDictionary();
 
                 // Update overall message
                 if (_steps is { Count: > 0 })
                 {
-                    var stepIndex = _steps.ToList().FindIndex(s => s.Id == stepId);
+                    var stepIndex = _steps.ToList().FindIndex(s => string.Equals(s.Id, stepId, StringComparison.Ordinal));
                     if (stepIndex >= 0)
                     {
                         _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
@@ -344,7 +344,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 if (_currentMode == ProgressMode.Stepped)
                 {
                     // Complete any incomplete steps using .NET 9 collection improvements
-                    var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates);
+                    var stepStatesBuilder = new Dictionary<string, StepState>(_stepStates, StringComparer.Ordinal);
                     foreach (var (stepId, stepState) in _stepStates)
                     {
                         if (stepState.Status is not (StepStatus.Completed or StepStatus.Failed or StepStatus.Skipped))

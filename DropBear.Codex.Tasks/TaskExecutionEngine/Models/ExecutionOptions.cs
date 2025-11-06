@@ -105,13 +105,13 @@ public sealed class ExecutionOptions
 
         if (MinimumCoresForParallelExecution < 1)
         {
-            throw new ArgumentOutOfRangeException(nameof(MinimumCoresForParallelExecution),
+            throw new ArgumentOutOfRangeException(null,
                 "Minimum cores for parallel execution must be at least 1.");
         }
 
         if (DependencyDensityThreshold < 0.0 || DependencyDensityThreshold > 1.0)
         {
-            throw new ArgumentOutOfRangeException(nameof(DependencyDensityThreshold),
+            throw new ArgumentOutOfRangeException(null,
                 "Dependency density threshold must be between 0.0 and 1.0.");
         }
     }

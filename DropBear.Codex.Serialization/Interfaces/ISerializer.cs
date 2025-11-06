@@ -34,5 +34,5 @@ public interface ISerializer
     ///     Gets the serializer's capabilities and configuration.
     /// </summary>
     /// <returns>A dictionary of capabilities and their values.</returns>
-    Dictionary<string, object> GetCapabilities();
+    IReadOnlyDictionary<string, object> GetCapabilities();
 }

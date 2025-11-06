@@ -67,7 +67,9 @@ public sealed class AESCNGEncryptionProvider : IEncryptionProvider, IDisposable
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Disposes the encryption provider and releases RSA resources.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -107,7 +109,7 @@ public sealed class AESCNGEncryptionProvider : IEncryptionProvider, IDisposable
     /// <returns>A dictionary of information about the encryption provider.</returns>
     public IDictionary<string, object> GetProviderInfo()
     {
-        return new Dictionary<string, object>
+        return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["Algorithm"] = "AES-CNG",
             ["KeySize"] = _rsa.KeySize,

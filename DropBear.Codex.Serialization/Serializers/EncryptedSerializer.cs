@@ -250,7 +250,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         var innerCapabilities = _innerSerializer.GetCapabilities();
 

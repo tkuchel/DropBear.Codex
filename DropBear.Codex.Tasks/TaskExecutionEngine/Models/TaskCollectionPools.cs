@@ -50,7 +50,7 @@ internal static class TaskCollectionPools
     }
 
     /// <summary>
-    ///     Rents a pooled <see cref="HashSet{string}" />.
+    ///     Rents a pooled <see cref="HashSet{T}" />.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static HashSet<string> RentStringSet()
@@ -59,7 +59,7 @@ internal static class TaskCollectionPools
     }
 
     /// <summary>
-    ///     Rents a pooled <see cref="Dictionary{string, bool}" />.
+    ///     Rents a pooled <see cref="Dictionary{TKey, TValue}" />.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Dictionary<string, bool> RentBoolDictionary()
@@ -68,7 +68,7 @@ internal static class TaskCollectionPools
     }
 
     /// <summary>
-    ///     Rents a pooled <see cref="Dictionary{string, TaskExecutionMetrics}" />.
+    ///     Rents a pooled <see cref="Dictionary{TKey, TValue}" />.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Dictionary<string, TaskExecutionMetrics> RentMetricsDictionary()
@@ -98,7 +98,7 @@ internal static class TaskCollectionPools
     }
 
     /// <summary>
-    ///     Clears and returns a <see cref="HashSet{string}" /> to the pool.
+    ///     Clears and returns a <see cref="HashSet{T}" /> to the pool.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Return(HashSet<string>? set)
@@ -113,7 +113,7 @@ internal static class TaskCollectionPools
     }
 
     /// <summary>
-    ///     Clears and returns a <see cref="Dictionary{string, TValue}" /> to the pool.
+    ///     Clears and returns a <see cref="Dictionary{TKey, TValue}" /> to the pool.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Return<TValue>(Dictionary<string, TValue>? dict)

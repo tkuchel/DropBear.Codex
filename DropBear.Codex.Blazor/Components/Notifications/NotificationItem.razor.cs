@@ -2,6 +2,7 @@
 
 using System.Text.Json;
 using DropBear.Codex.Blazor.Components.Bases;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Notifications.Entities;
 using DropBear.Codex.Notifications.Enums;
 using Microsoft.AspNetCore.Components;
@@ -24,14 +25,14 @@ public partial class NotificationItem : DropBearComponentBase
                                  $"{(Notification.DismissedAt.HasValue ? "dismissed" : "")} " +
                                  $"{(IsExpanded ? "expanded" : "")}";
 
-    private string IconType => Notification.Severity switch
+    private SnackbarType IconType => Notification.Severity switch
     {
-        NotificationSeverity.Success => "success",
-        NotificationSeverity.Information => "info",
-        NotificationSeverity.Warning => "warning",
-        NotificationSeverity.Error => "error",
-        NotificationSeverity.Critical => "critical",
-        _ => "info"
+        NotificationSeverity.Success => SnackbarType.Success,
+        NotificationSeverity.Information => SnackbarType.Information,
+        NotificationSeverity.Warning => SnackbarType.Warning,
+        NotificationSeverity.Error => SnackbarType.Error,
+        NotificationSeverity.Critical => SnackbarType.Error, // Map Critical to Error since SnackbarType doesn't have Critical
+        _ => SnackbarType.Information // Default for NotSpecified or any other case
     };
 
     private string RelativeTime
@@ -74,7 +75,7 @@ public partial class NotificationItem : DropBearComponentBase
         }
     }
 
-    private string FormatData(Dictionary<string, object?> data)
+    private string FormatData(IReadOnlyDictionary<string, object?> data)
     {
         try
         {

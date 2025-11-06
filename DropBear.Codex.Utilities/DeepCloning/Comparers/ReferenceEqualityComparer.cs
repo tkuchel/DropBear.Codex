@@ -59,7 +59,7 @@ public sealed class ReferenceEqualityComparer : EqualityComparer<object>
     /// <typeparam name="TValue">The type of values stored in the dictionary.</typeparam>
     /// <param name="capacity">The initial capacity of the dictionary.</param>
     /// <returns>A new dictionary that uses reference equality for keys.</returns>
-    public static Dictionary<object, TValue> CreateDictionary<TValue>(int capacity = 0)
+    public static IDictionary<object, TValue> CreateDictionary<TValue>(int capacity = 0)
     {
         return capacity > 0
             ? new Dictionary<object, TValue>(capacity, Instance)

@@ -14,18 +14,6 @@ using Serilog;
 namespace DropBear.Codex.Utilities.AccessCodes;
 
 /// <summary>
-///     Represents specific errors that can occur during time-based code operations.
-/// </summary>
-public sealed record TimeBasedCodeError : ResultError
-{
-    /// <summary>
-    ///     Initializes a new instance of the <see cref="TimeBasedCodeError" /> record.
-    /// </summary>
-    /// <param name="message">The error message.</param>
-    public TimeBasedCodeError(string message) : base(message) { }
-}
-
-/// <summary>
 ///     Generates and validates time-based security codes.
 ///     Useful for scenarios like two-factor authentication or other time-sensitive token generation.
 /// </summary>

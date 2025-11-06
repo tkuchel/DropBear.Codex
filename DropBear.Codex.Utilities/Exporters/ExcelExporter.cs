@@ -47,7 +47,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <param name="filePath">The file path where the Excel file will be saved.</param>
     /// <param name="options">Optional export configuration.</param>
     /// <returns>A result containing the file path or an error.</returns>
-    public Result<string, ExportError> ExportToExcel(List<T> data, string filePath, ExcelExportOptions? options = null)
+    public Result<string, ExportError> ExportToExcel(IReadOnlyList<T> data, string filePath, ExcelExportOptions? options = null)
     {
         options ??= new ExcelExportOptions();
 
@@ -85,7 +85,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A result containing the file path or an error.</returns>
     public async Task<Result<string, ExportError>> ExportToExcelAsync(
-        List<T> data,
+        IReadOnlyList<T> data,
         string filePath,
         ExcelExportOptions? options = null,
         CancellationToken cancellationToken = default)
@@ -109,7 +109,7 @@ public sealed class ExcelExporter<T> where T : class
                 using var workbook = CreateWorkbook(data, options);
                 workbook.SaveAs(filePath);
                 return filePath;
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
 
             Logger.Information("Data exported to Excel file at '{FilePath}' successfully.", filePath);
             return Result<string, ExportError>.Success(result);
@@ -132,7 +132,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <param name="data">The list of objects to export.</param>
     /// <param name="options">Optional export configuration.</param>
     /// <returns>A result containing a memory stream with the Excel file or an error.</returns>
-    public Result<MemoryStream, ExportError> ExportToExcelStream(List<T> data, ExcelExportOptions? options = null)
+    public Result<MemoryStream, ExportError> ExportToExcelStream(IReadOnlyList<T> data, ExcelExportOptions? options = null)
     {
         options ??= new ExcelExportOptions();
 
@@ -167,7 +167,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A result containing a memory stream with the Excel file or an error.</returns>
     public async Task<Result<MemoryStream, ExportError>> ExportToExcelStreamAsync(
-        List<T> data,
+        IReadOnlyList<T> data,
         ExcelExportOptions? options = null,
         CancellationToken cancellationToken = default)
     {
@@ -187,7 +187,7 @@ public sealed class ExcelExporter<T> where T : class
                 workbook.SaveAs(memoryStream);
                 memoryStream.Position = 0;
                 return Result<MemoryStream, ExportError>.Success(memoryStream);
-            }, cancellationToken);
+            }, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -208,7 +208,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <param name="data">The list of objects to include in the workbook.</param>
     /// <param name="options">Export options.</param>
     /// <returns>An XLWorkbook containing the data.</returns>
-    private XLWorkbook CreateWorkbook(List<T> data, ExcelExportOptions options)
+    private XLWorkbook CreateWorkbook(IReadOnlyList<T> data, ExcelExportOptions options)
     {
         try
         {
@@ -242,7 +242,11 @@ public sealed class ExcelExporter<T> where T : class
             for (var rowOffset = 0; rowOffset < rowCount; rowOffset += chunkSize)
             {
                 var chunkEnd = Math.Min(rowOffset + chunkSize, rowCount);
-                var chunk = data.GetRange(rowOffset, chunkEnd - rowOffset);
+                var chunk = new List<T>(chunkEnd - rowOffset);
+                for (var i = rowOffset; i < chunkEnd; i++)
+                {
+                    chunk.Add(data[i]);
+                }
 
                 ProcessDataChunk(worksheet, chunk, rowOffset + (options.IncludeHeaders ? 2 : 1));
             }

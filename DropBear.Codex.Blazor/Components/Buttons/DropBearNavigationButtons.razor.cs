@@ -13,13 +13,13 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 
 /// <summary>
 /// Modern navigation buttons component with enhanced performance for Blazor Server.
-/// Leverages .NET 8+ features and implements improved accessibility and UX patterns.
+/// Leverages .NET 9+ features and implements improved accessibility and UX patterns.
 /// </summary>
 public sealed partial class DropBearNavigationButtons : DropBearComponentBase
 {
     private const string JsModuleName = JsModuleNames.NavigationButtons;
 
-    // Use frozen collections for better performance in .NET 8+
+    // Use frozen collections for better performance in .NET 9+
     private static readonly FrozenDictionary<NavigationButtonPosition, string> PositionClasses =
         new Dictionary<NavigationButtonPosition, string>
         {
@@ -313,7 +313,7 @@ public sealed partial class DropBearNavigationButtons : DropBearComponentBase
     }
 
     /// <summary>
-    /// Enhanced disposal following .NET 8 patterns
+    /// Enhanced disposal following .NET 9 patterns
     /// </summary>
     protected override async ValueTask DisposeAsyncCore()
     {

@@ -9,11 +9,10 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Alerts;
 
 /// <summary>
-/// A modern, accessible page-level alert component optimized for .NET 8+ and Blazor Server.
+/// A modern, accessible page-level alert component optimized for .NET 9+ and Blazor Server.
 /// </summary>
 public partial class DropBearPageAlert : DropBearComponentBase
 {
-    private readonly PeriodicTimer? _progressTimer;
     private readonly CancellationTokenSource _alertCts = new();
     private bool _isVisible;
     private double _progressPercentage = 100.0;

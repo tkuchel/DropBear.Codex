@@ -6,7 +6,7 @@ using DropBear.Codex.Workflow.Persistence.Models;
 
 #endregion
 
-namespace DropBear.Codex.Workflow.Persistence.Examples;
+namespace DropBear.Codex.Workflow.Examples;
 
 /// <summary>
 ///     Usage examples for persistent workflows

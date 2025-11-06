@@ -50,7 +50,12 @@ public class AsyncStreamingBenchmarks
     {
         var stream = StreamNumbersAsResult(ItemCount);
         var listResult = await stream.ToListAsync();
-        return listResult.IsSuccess ? listResult.Value.ToList() : [];
+        if (listResult.Value != null)
+        {
+            return listResult.IsSuccess ? listResult.Value.ToList() : [];
+        }
+
+        return [];
     }
 
     [Benchmark(Description = "AsyncEnumerableResult: Stream + Filter + Take")]

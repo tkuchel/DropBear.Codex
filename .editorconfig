@@ -240,3 +240,12 @@ dotnet_naming_style.begins_with_underscore.required_prefix = _
 dotnet_naming_style.begins_with_underscore.required_suffix =
 dotnet_naming_style.begins_with_underscore.word_separator =
 dotnet_naming_style.begins_with_underscore.capitalization = camel_case
+
+#### Analyzer Rules ####
+
+# Meziantou.Analyzer suppressions
+# MA0048: File name must match type name - suppress for files with multiple types or helper classes
+dotnet_diagnostic.MA0048.severity = none
+
+# MA0051: Method is too long - suppress for complex methods where splitting would reduce readability
+dotnet_diagnostic.MA0051.severity = none

@@ -14,7 +14,7 @@ namespace DropBear.Codex.Tasks.TaskManagement;
 public sealed class SharedCache
 {
     private readonly Dictionary<string, object> _cache = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     /// <summary>
     ///     Sets a value in the cache for the specified key.

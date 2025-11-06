@@ -281,7 +281,7 @@ public static class AsyncExtensions
     /// <typeparam name="T">The value type.</typeparam>
     /// <typeparam name="TError">The error type.</typeparam>
     /// <param name="resultTask">The value task to flatten.</param>
-    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
     /// <returns>The flattened Result.</returns>
     public static async ValueTask<Result<T, TError>> FlattenAsync<T, TError>(
         this ValueTask<Result<T, TError>> resultTask,

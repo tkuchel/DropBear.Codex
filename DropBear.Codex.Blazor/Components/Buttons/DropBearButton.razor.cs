@@ -14,11 +14,11 @@ namespace DropBear.Codex.Blazor.Components.Buttons;
 
 /// <summary>
 ///     A modern, optimized Blazor button component with enhanced accessibility and performance.
-///     Leverages .NET 8+ features and optimized for Blazor Server applications.
+///     Leverages .NET 9+ features and optimized for Blazor Server applications.
 /// </summary>
 public sealed partial class DropBearButton : DropBearComponentBase
 {
-    // Use frozen collections for better performance in .NET 8+
+    // Use frozen collections for better performance in .NET 9+
     private static readonly Dictionary<ButtonStyle, string> StyleClasses = new()
     {
         [ButtonStyle.Solid] = "dropbear-btn--solid",
@@ -230,7 +230,7 @@ public sealed partial class DropBearButton : DropBearComponentBase
     private string AriaDisabled => (IsDisabled || IsLoading).ToString().ToLowerInvariant();
 
     /// <summary>
-    /// Clean disposal following .NET 8 patterns
+    /// Clean disposal following .NET 9 patterns
     /// </summary>
     protected override async ValueTask DisposeAsyncCore()
     {

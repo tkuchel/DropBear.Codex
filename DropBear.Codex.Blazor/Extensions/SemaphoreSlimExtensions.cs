@@ -4,7 +4,7 @@ namespace DropBear.Codex.Blazor.Extensions;
 
 /// <summary>
 /// Extension methods for SemaphoreSlim to provide async disposable lock pattern
-/// Leverages .NET 8+ features for improved performance
+/// Leverages .NET 9+ features for improved performance
 /// </summary>
 public static class SemaphoreSlimExtensions
 {

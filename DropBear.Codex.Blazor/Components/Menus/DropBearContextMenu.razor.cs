@@ -31,12 +31,6 @@ public partial class DropBearContextMenu : DropBearComponentBase
     private double _left;
     private double _top;
 
-    // Backing fields for parameters
-    private IReadOnlyCollection<ContextMenuItem> _menuItems = [];
-    private EventCallback<(ContextMenuItem, object?)> _onItemClicked;
-    private Func<object?>? _getContext;
-    private RenderFragment? _childContent;
-
     // Flag to track if component should render
     private bool _shouldRender = true;
 
@@ -53,75 +47,27 @@ public partial class DropBearContextMenu : DropBearComponentBase
     ///     Gets or sets the collection of menu items to display in the context menu.
     /// </summary>
     [Parameter]
-    public IReadOnlyCollection<ContextMenuItem> MenuItems
-    {
-        get => _menuItems;
-        set
-        {
-            if (!ReferenceEquals(_menuItems, value))
-            {
-                _menuItems = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public IReadOnlyCollection<ContextMenuItem> MenuItems { get; set; } = [];
 
     /// <summary>
     ///     Gets or sets the callback that is invoked when a menu item is clicked.
     ///     Provides both the clicked item and the optional context object.
     /// </summary>
     [Parameter]
-    public EventCallback<(ContextMenuItem, object?)> OnItemClicked
-    {
-        get => _onItemClicked;
-        set
-        {
-            if (_onItemClicked.Equals(value))
-            {
-                return;
-            }
-
-            _onItemClicked = value;
-        }
-    }
+    public EventCallback<(ContextMenuItem, object?)> OnItemClicked { get; set; }
 
     /// <summary>
     ///     Gets or sets a function that returns a context object to be passed to the OnItemClicked callback.
     ///     This allows for dynamic context to be provided at the time of interaction.
     /// </summary>
     [Parameter]
-    public Func<object?>? GetContext
-    {
-        get => _getContext;
-        set
-        {
-            if (_getContext == value)
-            {
-                return;
-            }
-
-            _getContext = value;
-        }
-    }
+    public Func<object?>? GetContext { get; set; }
 
     /// <summary>
     ///     Gets or sets the content that will trigger the context menu when right-clicked.
     /// </summary>
     [Parameter]
-    public RenderFragment? ChildContent
-    {
-        get => _childContent;
-        set
-        {
-            if (_childContent == value)
-            {
-                return;
-            }
-
-            _childContent = value;
-            _shouldRender = true;
-        }
-    }
+    public RenderFragment? ChildContent { get; set; }
 
     #endregion
 
@@ -460,11 +406,11 @@ public partial class DropBearContextMenu : DropBearComponentBase
         {
             await _menuStateSemaphore.WaitAsync(ComponentToken);
 
-            var context = _getContext?.Invoke();
+            var context = GetContext?.Invoke();
 
-            if (_onItemClicked.HasDelegate)
+            if (OnItemClicked.HasDelegate)
             {
-                await _onItemClicked.InvokeAsync((item, context));
+                await OnItemClicked.InvokeAsync((item, context));
             }
 
             // Don't auto-hide if item has submenu

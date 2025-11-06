@@ -35,13 +35,14 @@ public sealed class TaskDependencyResolver
     /// <returns>A success or failure result with a relevant <see cref="TaskExecutionError" />.</returns>
     public Result<Unit, TaskExecutionError> ResolveDependencies(
         IReadOnlyDictionary<string, ITask> tasks,
-        out List<ITask>? sortedTasks)
+        out IList<ITask>? sortedTasks)
     {
-        sortedTasks = _listPool.Get(); // Initialize the out parameter
+        var pooledList = _listPool.Get(); // Get from pool
 
         // *** CHANGE *** Short-circuit if no tasks
         if (tasks.Count == 0)
         {
+            sortedTasks = pooledList;
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
 
@@ -52,7 +53,7 @@ public sealed class TaskDependencyResolver
 
             if (!sortResult.IsSuccess)
             {
-                _listPool.Return(sortedTasks);
+                _listPool.Return(pooledList);
                 sortedTasks = new List<ITask>();
                 return Result<Unit, TaskExecutionError>.Failure(sortResult.Error!);
             }
@@ -61,15 +62,16 @@ public sealed class TaskDependencyResolver
             {
                 if (tasks.TryGetValue(name, out var task))
                 {
-                    sortedTasks.Add(task);
+                    pooledList.Add(task);
                 }
             }
 
+            sortedTasks = pooledList;
             return Result<Unit, TaskExecutionError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _listPool.Return(sortedTasks);
+            _listPool.Return(pooledList);
             sortedTasks = new List<ITask>();
 
             return Result<Unit, TaskExecutionError>.Failure(
@@ -134,7 +136,7 @@ public sealed class TaskDependencyResolver
         if (result.Count != _graph.Count)
         {
             // Circular dependency detected - identify the tasks involved
-            var unprocessedTasks = _graph.Keys.Except(result).ToList();
+            var unprocessedTasks = _graph.Keys.Except(result, StringComparer.Ordinal).ToList();
             var message = $"Circular dependency detected among tasks: {string.Join(", ", unprocessedTasks)}";
             return Result<List<string>, TaskExecutionError>.Failure(
                 new TaskExecutionError(message));

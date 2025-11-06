@@ -9,10 +9,10 @@ public class NotificationPreferences
     public bool EnableInboxNotifications { get; set; } = true;
     public bool EnableEmailNotifications { get; set; } = false;
 
-    public Dictionary<string, NotificationTypePreference> TypePreferences { get; set; } = new();
+    public IDictionary<string, NotificationTypePreference> TypePreferences { get; set; } = new Dictionary<string, NotificationTypePreference>(StringComparer.Ordinal);
     public string SerializedTypePreferences
     {
         get => JsonSerializer.Serialize(TypePreferences);
-        set => TypePreferences = JsonSerializer.Deserialize<Dictionary<string, NotificationTypePreference>>(value) ?? new();
+        set => TypePreferences = JsonSerializer.Deserialize<Dictionary<string, NotificationTypePreference>>(value) ?? new Dictionary<string, NotificationTypePreference>(StringComparer.Ordinal);
     }
 }
