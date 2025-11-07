@@ -10,6 +10,11 @@ namespace DropBear.Codex.Benchmarks;
 ///     Benchmarks for comparing async streaming patterns:
 ///     Full materialization vs incremental streaming with IAsyncEnumerable.
 /// </summary>
+/// <remarks>
+///     <strong>Important</strong>: Run benchmarks SEQUENTIALLY, not in parallel.
+///     Parallel execution causes file locking issues with BenchmarkDotNet's auto-generated code.
+///     Use: <code>dotnet run -c Release -- --filter "*AsyncStreamingBenchmarks*"</code>
+/// </remarks>
 [MemoryDiagnoser]
 [SimpleJob(iterationCount: 50)]
 public class AsyncStreamingBenchmarks

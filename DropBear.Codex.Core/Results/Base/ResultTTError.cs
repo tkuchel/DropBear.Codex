@@ -21,6 +21,35 @@ namespace DropBear.Codex.Core.Results.Base;
 /// </summary>
 /// <typeparam name="T">The type of the successful value.</typeparam>
 /// <typeparam name="TError">A type inheriting from <see cref="ResultError" />.</typeparam>
+/// <remarks>
+///     <para><strong>Performance Characteristics (from ResultPatternBenchmarks):</strong></para>
+///     <list type="bullet">
+///         <item>
+///             <description>
+///                 <strong>Happy Path</strong>: ~30,618 ns with 96 KB allocation.
+///                 136x slower than raw exceptions, but provides type-safe error handling.
+///             </description>
+///         </item>
+///         <item>
+///             <description>
+///                 <strong>Error Path</strong>: ~113,159 ns vs exceptions at 2,370,806 ns.
+///                 Result pattern is <strong>21x faster</strong> than throwing exceptions for error scenarios.
+///             </description>
+///         </item>
+///         <item>
+///             <description>
+///                 <strong>Trade-off</strong>: Happy path overhead is trivial compared to typical I/O operations (milliseconds).
+///                 Error path performance is dramatically better, making this ideal for error-expected scenarios.
+///             </description>
+///         </item>
+///     </list>
+///     <para>
+///     <strong>Future Optimization Opportunity</strong>: Struct-based Result for ultra-hot paths could
+///     reduce allocations in happy path. However, current class-based design provides better ergonomics,
+///     inheritance support, and async/await compatibility. Internal ValueContainer struct already
+///     provides value-type storage optimization.
+///     </para>
+/// </remarks>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [JsonConverter(typeof(ResultJsonConverterFactory))]
 #pragma warning disable MA0048
