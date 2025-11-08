@@ -72,15 +72,11 @@ public sealed partial class LocalStorageManager : IStorageManager
                     BufferSize,
                     FileOptions.Asynchronous | FileOptions.SequentialScan);
 
-                try
+                await using (fileStream.ConfigureAwait(false))
                 {
                     await seekableStream.CopyToAsync(fileStream, BufferSize, cancellationToken).ConfigureAwait(false);
                     LogWriteSuccessful(identifier);
                     return Result<Unit, StorageError>.Success(Unit.Value);
-                }
-                finally
-                {
-                    await fileStream.DisposeAsync().ConfigureAwait(false);
                 }
             }
         }
