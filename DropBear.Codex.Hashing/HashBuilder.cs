@@ -19,8 +19,50 @@ namespace DropBear.Codex.Hashing;
 ///     Pre-registers a set of default hasher services, and allows custom registration.
 /// </summary>
 /// <remarks>
+///     <para>
 ///     This implementation includes object pooling for frequently used hashers to improve performance
 ///     and reduce GC pressure in high-throughput scenarios.
+///     </para>
+///     <para><strong>Algorithm Selection Guidance (Based on Benchmarks):</strong></para>
+///     <list type="bullet">
+///         <item>
+///             <description>
+///                 <strong>XxHash ("xxhash")</strong> - Fastest non-cryptographic hash (2.75x faster than Blake3 for large data).
+///                 Use for: checksums, deduplication, cache keys, hash tables. Memory: 152 B allocated.
+///                 Performance: 56.57 ns (100 bytes), 1.47 ms (10 MB).
+///             </description>
+///         </item>
+///         <item>
+///             <description>
+///                 <strong>Blake3 ("blake3")</strong> - Best balance of speed and cryptographic strength.
+///                 Use for: general-purpose cryptographic hashing, file integrity, digital signatures.
+///                 Memory: 272 B allocated. Performance: 155.85 ns (100 bytes), 1.73 ms (10 MB).
+///             </description>
+///         </item>
+///         <item>
+///             <description>
+///                 <strong>Blake2 ("blake2")</strong> - Cryptographically secure but 3.68x slower than Blake3 for large data.
+///                 Use for: compatibility requirements, specific security protocols requiring Blake2.
+///                 Memory: 272 B allocated. Performance: 137.43 ns (100 bytes), 6.37 ms (10 MB).
+///             </description>
+///         </item>
+///         <item>
+///             <description>
+///                 <strong>Argon2 ("argon2")</strong> - Password hashing function resistant to GPU cracking.
+///                 Use for: password storage, key derivation. Do not use for general-purpose hashing (intentionally slow).
+///             </description>
+///         </item>
+///         <item>
+///             <description>
+///                 <strong>Others</strong> - FNV1a, Murmur3, SipHash available for specialized use cases or compatibility.
+///             </description>
+///         </item>
+///     </list>
+///     <para>
+///     <strong>Recommendation:</strong> Use "xxhash" for performance-critical non-cryptographic scenarios,
+///     "blake3" for cryptographic needs, and enable pooling via <see cref="EnablePoolingForHasher"/>
+///     for high-throughput workloads.
+///     </para>
 /// </remarks>
 public sealed class HashBuilder : IHashBuilder
 {
@@ -201,8 +243,13 @@ public sealed class HashBuilder : IHashBuilder
     ///     Returns a hasher to the pool when it's no longer needed.
     ///     This can improve performance in high-throughput scenarios.
     /// </summary>
-    /// <param name="key">The key used to retrieve the hasher.</param>
-    /// <param name="hasher">The hasher instance to return to the pool.</param>
+    /// <param name="key">The key used to retrieve the hasher. Must match the key used with <see cref="EnablePoolingForHasher"/>.</param>
+    /// <param name="hasher">The hasher instance to return to the pool. Must not be null and should have been obtained from <see cref="GetHasher"/> or <see cref="TryGetHasher"/>.</param>
+    /// <remarks>
+    ///     This method is safe to call even if the hasher was not obtained from a pool - it will
+    ///     simply be ignored if no pool exists for the given key. This allows for defensive programming
+    ///     patterns where pooling can be enabled or disabled without changing calling code.
+    /// </remarks>
     public void ReturnHasher(string key, IHasher hasher)
     {
         if (string.IsNullOrWhiteSpace(key) || hasher == null)
@@ -219,9 +266,35 @@ public sealed class HashBuilder : IHashBuilder
 
     /// <summary>
     ///     Tries to get a hasher from the pool if available, otherwise creates a new one.
+    ///     Returns a <see cref="PooledHasher"/> wrapper that automatically returns the hasher to the pool when disposed.
     /// </summary>
-    /// <param name="key">The hasher key.</param>
-    /// <returns>A result containing the hasher or an error.</returns>
+    /// <param name="key">
+    ///     The hasher key identifying which hasher type to retrieve.
+    ///     Must match a registered hasher key (either default or custom).
+    /// </param>
+    /// <returns>
+    ///     A <see cref="Result{TValue,TError}"/> containing either:
+    ///     <list type="bullet">
+    ///         <item><description>Success: A <see cref="PooledHasher"/> wrapper that should be disposed after use to return the hasher to the pool.</description></item>
+    ///         <item><description>Failure: A <see cref="BuilderError"/> if the key is invalid or no hasher is registered for the key.</description></item>
+    ///     </list>
+    /// </returns>
+    /// <remarks>
+    ///     This method is the recommended way to use hashers with pooling enabled. The returned
+    ///     <see cref="PooledHasher"/> implements IDisposable and will automatically return the
+    ///     underlying hasher to the pool when disposed, ensuring proper resource management.
+    ///     Use within a using statement for automatic cleanup.
+    /// </remarks>
+    /// <example>
+    ///     <code>
+    ///     var result = hashBuilder.GetPooledHasher("blake3");
+    ///     if (result.IsSuccess)
+    ///     {
+    ///         using var pooledHasher = result.Value;
+    ///         var hash = pooledHasher.Hasher.ComputeHash(data);
+    ///     }
+    ///     </code>
+    /// </example>
     public Result<PooledHasher, BuilderError> GetPooledHasher(string key)
     {
         var hasherResult = TryGetHasher(key);
@@ -231,7 +304,7 @@ public sealed class HashBuilder : IHashBuilder
         }
 
         // Create a wrapper that will automatically return the hasher to the pool
-        var pooledHasher = new PooledHasher(hasherResult.Value, key, this);
+        var pooledHasher = new PooledHasher(hasherResult.Value!, key, this);
         return Result<PooledHasher, BuilderError>.Success(pooledHasher);
     }
 

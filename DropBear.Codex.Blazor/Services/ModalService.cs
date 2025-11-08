@@ -260,7 +260,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        parameters ??= new Dictionary<string, object>();
+        parameters ??= new Dictionary<string, object>(StringComparer.Ordinal);
         var componentType = typeof(T);
 
         _logger.LogDebug("ShowAsync called for modal of type {ComponentType}", componentType.Name);
@@ -300,7 +300,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
                         componentType.Name);
 
                     // Create a copy of parameters to avoid modification while queued
-                    var parametersCopy = new Dictionary<string, object>(parameters);
+                    var parametersCopy = new Dictionary<string, object>(parameters, StringComparer.Ordinal);
                     _modalQueue.Enqueue(new ModalQueueItem(componentType, parametersCopy));
                 }
                 else
@@ -310,7 +310,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
                         componentType.Name);
 
                     CurrentComponent = componentType;
-                    CurrentParameters = new Dictionary<string, object>(parameters);
+                    CurrentParameters = new Dictionary<string, object>(parameters, StringComparer.Ordinal);
                     _isModalVisible = true;
 
                     // Trigger notification
@@ -363,7 +363,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
             ));
         }
 
-        var parameters = new Dictionary<string, object> { { parameterName, parameterValue } };
+        var parameters = new Dictionary<string, object>(StringComparer.Ordinal) { { parameterName, parameterValue } };
         return ShowAsync<T>(parameters, cancellationToken);
     }
 
@@ -554,7 +554,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
 
         try
         {
-            var metrics = new Dictionary<string, object>
+            var metrics = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["QueueSize"] = _modalQueue.Count,
                 ["IsModalVisible"] = _isModalVisible,

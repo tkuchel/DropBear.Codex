@@ -13,7 +13,7 @@ public partial class DropBearSelectionPanel<T> : DropBearComponentBase
     ///     The collection of items selected from the DataGrid
     /// </summary>
     [Parameter]
-    public List<T> SelectedItems { get; set; }
+    public required List<T> SelectedItems { get; set; }
 
     /// <summary>
     ///     Event callback that is triggered when an item is removed from the selection
@@ -43,19 +43,19 @@ public partial class DropBearSelectionPanel<T> : DropBearComponentBase
     ///     List of action buttons (maximum of 3) to display
     /// </summary>
     [Parameter]
-    public List<ActionButton<T>> ActionButtons { get; set; }
+    public List<ActionButton<T>>? ActionButtons { get; set; }
 
     /// <summary>
     ///     Optional function to determine how to display each item
     /// </summary>
     [Parameter]
-    public Func<T, string> ItemDisplayExpression { get; set; }
+    public Func<T, string>? ItemDisplayExpression { get; set; }
 
     /// <summary>
     ///     Optional template for customizing how items are displayed
     /// </summary>
     [Parameter]
-    public RenderFragment<T> ItemTemplate { get; set; }
+    public RenderFragment<T>? ItemTemplate { get; set; }
 
     /// <summary>
     ///     Determines if the panel is initially collapsed
@@ -67,7 +67,7 @@ public partial class DropBearSelectionPanel<T> : DropBearComponentBase
     ///     CSS class to be applied to the component
     /// </summary>
     [Parameter]
-    public string CssClass { get; set; }
+    public string CssClass { get; set; } = string.Empty;
 
     /// <summary>
     ///     Gets whether the panel is currently collapsed
@@ -145,12 +145,12 @@ public class ActionButton<T>
     /// <summary>
     ///     The text to display on the button
     /// </summary>
-    public string Text { get; set; }
+    public required string Text { get; set; }
 
     /// <summary>
     ///     Optional CSS class for an icon (e.g., Font Awesome)
     /// </summary>
-    public string IconClass { get; set; }
+    public string? IconClass { get; set; }
 
     /// <summary>
     ///     CSS class to apply to the button
@@ -165,5 +165,5 @@ public class ActionButton<T>
     /// <summary>
     ///     The action to execute when the button is clicked
     /// </summary>
-    public EventCallback<List<T>> OnClick { get; set; }
+    public EventCallback<IList<T>> OnClick { get; set; }
 }

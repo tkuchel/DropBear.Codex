@@ -248,7 +248,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
             if (buffer.Length - offset < count)
             {
-                throw new ArgumentException("Invalid offset or count");
+                throw new ArgumentException("Invalid offset or count", nameof(count));
             }
 
             var bytesRemaining = Length - _position;

@@ -10,6 +10,11 @@ namespace DropBear.Codex.Benchmarks;
 ///     Benchmarks for comparing async streaming patterns:
 ///     Full materialization vs incremental streaming with IAsyncEnumerable.
 /// </summary>
+/// <remarks>
+///     <strong>Important</strong>: Run benchmarks SEQUENTIALLY, not in parallel.
+///     Parallel execution causes file locking issues with BenchmarkDotNet's auto-generated code.
+///     Use: <code>dotnet run -c Release -- --filter "*AsyncStreamingBenchmarks*"</code>
+/// </remarks>
 [MemoryDiagnoser]
 [SimpleJob(iterationCount: 50)]
 public class AsyncStreamingBenchmarks
@@ -50,7 +55,12 @@ public class AsyncStreamingBenchmarks
     {
         var stream = StreamNumbersAsResult(ItemCount);
         var listResult = await stream.ToListAsync();
-        return listResult.IsSuccess ? listResult.Value.ToList() : [];
+        if (listResult.Value != null)
+        {
+            return listResult.IsSuccess ? listResult.Value.ToList() : [];
+        }
+
+        return [];
     }
 
     [Benchmark(Description = "AsyncEnumerableResult: Stream + Filter + Take")]

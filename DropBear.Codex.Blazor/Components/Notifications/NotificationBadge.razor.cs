@@ -48,7 +48,7 @@ public partial class NotificationBadge : DropBearComponentBase, IDisposable
         await UpdateUnreadCountAsync();
 
         // Set up timer to periodically refresh the count (every 2 minutes)
-        _refreshTimer = new Timer(async _ => await RefreshCountAsync(), null,
+        _refreshTimer = new Timer(_ => _ = RefreshCountAsync(), null,
             TimeSpan.FromMinutes(2), TimeSpan.FromMinutes(2));
     }
 

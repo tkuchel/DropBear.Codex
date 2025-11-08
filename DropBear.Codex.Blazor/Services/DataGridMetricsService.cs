@@ -113,7 +113,9 @@ public sealed class DataGridMetricsService
 
         try
         {
+#pragma warning disable CA1416 // Blazor Server context - browser warning not applicable
             _lock.Wait();
+#pragma warning restore CA1416
             try
             {
                 _searchTimer.Reset();
@@ -148,7 +150,9 @@ public sealed class DataGridMetricsService
 
         try
         {
+#pragma warning disable CA1416 // Blazor Server context - browser warning not applicable
             _lock.Wait();
+#pragma warning restore CA1416
             try
             {
                 _searchTimer.Stop();
@@ -298,7 +302,9 @@ public sealed class DataGridMetricsService
     {
         try
         {
+#pragma warning disable CA1416 // Blazor Server context - browser warning not applicable
             _lock.Wait();
+#pragma warning restore CA1416
             try
             {
                 _searchTimer.Reset();
@@ -370,10 +376,12 @@ public sealed class DataGridMetricsService
     {
         try
         {
+#pragma warning disable CA1416 // Blazor Server context - browser warning not applicable
             _lock.Wait();
+#pragma warning restore CA1416
             try
             {
-                var metrics = new Dictionary<string, object>
+                var metrics = new Dictionary<string, object>(StringComparer.Ordinal)
                 {
                     ["LastSearchTime"] = LastSearchTime,
                     ["AverageSearchTime"] = GetAverageSearchTime(),
@@ -411,7 +419,7 @@ public sealed class DataGridMetricsService
             await _lock.WaitAsync(cancellationToken);
             try
             {
-                var metrics = new Dictionary<string, object>
+                var metrics = new Dictionary<string, object>(StringComparer.Ordinal)
                 {
                     ["LastSearchTime"] = LastSearchTime,
                     ["AverageSearchTime"] = GetAverageSearchTime(),

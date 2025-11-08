@@ -46,7 +46,13 @@ public sealed partial class GZipCompressor : ICompressor
         LogCompressorInitialized(compressionLevel.ToString(), _bufferSize);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Compresses the specified data using GZip compression.
+    /// </summary>
+    /// <param name="data">The data to compress.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the compressed data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
     public async Task<Result<byte[], SerializationError>> CompressAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -89,7 +95,13 @@ public sealed partial class GZipCompressor : ICompressor
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Decompresses the specified GZip compressed data.
+    /// </summary>
+    /// <param name="compressedData">The compressed data to decompress.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the decompressed data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when compressedData is null.</exception>
     public async Task<Result<byte[], SerializationError>> DecompressAsync(byte[] compressedData,
         CancellationToken cancellationToken = default)
     {
@@ -151,7 +163,10 @@ public sealed partial class GZipCompressor : ICompressor
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets information about the compressor configuration.
+    /// </summary>
+    /// <returns>A dictionary containing compressor information.</returns>
     public IDictionary<string, object> GetCompressionInfo()
     {
         return new Dictionary<string, object>

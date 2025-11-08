@@ -41,7 +41,7 @@ public static class StringHelper
 
     /// <summary>
     ///     Converts a string to a SHA256 hash.
-    ///     Optimized with <see cref="Span{T}" /> and <see cref="stackalloc" />.
+    ///     Optimized with <see cref="Span{T}" /> and stackalloc.
     /// </summary>
     public static Result<string, StringError> ToSha256(ReadOnlySpan<char> input)
     {

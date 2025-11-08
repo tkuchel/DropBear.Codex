@@ -132,7 +132,7 @@ public sealed class Blake2Hasher : BaseHasher
                 hashBytes = HashWithBlake2(input, _salt);
             }
 
-            var combinedBytes = CombineBytes(_salt, hashBytes);
+            var combinedBytes = CombineBytes(_salt!, hashBytes);
             return Result<string, HashingError>.Success(Convert.ToBase64String(combinedBytes));
         }
         catch (OperationCanceledException)
@@ -163,7 +163,7 @@ public sealed class Blake2Hasher : BaseHasher
             _salt ??= HashingHelper.GenerateRandomSalt(32);
 
             var hashBytes = HashWithBlake2(input, _salt);
-            var combinedBytes = CombineBytes(_salt, hashBytes);
+            var combinedBytes = CombineBytes(_salt!, hashBytes);
 
             return Result<string, HashingError>.Success(Convert.ToBase64String(combinedBytes));
         }

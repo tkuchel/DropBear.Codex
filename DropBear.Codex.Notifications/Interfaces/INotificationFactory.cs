@@ -30,7 +30,7 @@ public interface INotificationFactory
         NotificationSeverity severity,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null);
+        IDictionary<string, object?>? data = null);
 
     /// <summary>
     ///     Creates a new information notification.
@@ -44,7 +44,7 @@ public interface INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null);
+        IDictionary<string, object?>? data = null);
 
     /// <summary>
     ///     Creates a new success notification.
@@ -58,7 +58,7 @@ public interface INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null);
+        IDictionary<string, object?>? data = null);
 
     /// <summary>
     ///     Creates a new warning notification.
@@ -72,7 +72,7 @@ public interface INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null);
+        IDictionary<string, object?>? data = null);
 
     /// <summary>
     ///     Creates a new error notification.
@@ -86,5 +86,5 @@ public interface INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null);
+        IDictionary<string, object?>? data = null);
 }

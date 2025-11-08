@@ -17,7 +17,7 @@ public sealed class TypeConverter : JsonConverter<Type>
 {
     // Use Dictionary<string, Type> for caching Type lookups to improve performance
     private static readonly Dictionary<string, Type> TypeCache = new(StringComparer.Ordinal);
-    private static readonly object SyncLock = new();
+    private static readonly Lock SyncLock = new();
     private readonly ILogger _logger;
 
     /// <summary>

@@ -71,13 +71,41 @@ public interface INotificationCenterService
     Task<Result<Unit, NotificationError>> SavePreferencesAsync(
         NotificationPreferences preferences, CancellationToken cancellationToken = default);
 
-    // Event raising methods
+    /// <summary>
+    ///     Raises the notification received event for subscribers.
+    /// </summary>
+    /// <param name="notification">The notification that was received.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     Task RaiseNotificationReceivedEvent(NotificationRecord notification);
+
+    /// <summary>
+    ///     Raises the notification read event for subscribers.
+    /// </summary>
+    /// <param name="notificationId">The ID of the notification that was read.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     Task RaiseNotificationReadEvent(Guid notificationId);
+
+    /// <summary>
+    ///     Raises the notification dismissed event for subscribers.
+    /// </summary>
+    /// <param name="notificationId">The ID of the notification that was dismissed.</param>
+    /// <returns>A task representing the asynchronous operation.</returns>
     Task RaiseNotificationDismissedEvent(Guid notificationId);
 
-    // Events for real-time updates
+    /// <summary>
+    ///     Event fired when a notification is received. Subscribers receive the notification record.
+    /// </summary>
+#pragma warning disable MA0046 // Async event handlers are intentional for UI integration
     event Func<NotificationRecord, Task> OnNotificationReceived;
+
+    /// <summary>
+    ///     Event fired when a notification is marked as read. Subscribers receive the notification ID.
+    /// </summary>
     event Func<Guid, Task> OnNotificationRead;
+
+    /// <summary>
+    ///     Event fired when a notification is dismissed. Subscribers receive the notification ID.
+    /// </summary>
     event Func<Guid, Task> OnNotificationDismissed;
+#pragma warning restore MA0046
 }

@@ -28,9 +28,9 @@ public sealed class HexEncodingProvider : IEncodingProvider
     }
 
     /// <summary>
-    ///     Gets a hexadecimal encoder.
+    ///     Gets a hexadecimal encoder instance.
     /// </summary>
-    /// <returns>A hexadecimal encoder.</returns>
+    /// <returns>A new hexadecimal encoder configured with the provider's settings.</returns>
     public IEncoder GetEncoder()
     {
         _logger.Information("Creating a new instance of HexEncoder with UpperCase: {UpperCase}", _upperCase);
@@ -43,7 +43,7 @@ public sealed class HexEncodingProvider : IEncodingProvider
     /// <returns>A dictionary of information about the encoding provider.</returns>
     public IDictionary<string, object> GetProviderInfo()
     {
-        return new Dictionary<string, object>
+        return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["EncodingType"] = "Hexadecimal", ["UpperCase"] = _upperCase, ["IsThreadSafe"] = true
         };

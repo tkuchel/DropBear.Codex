@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Components.Web;
 namespace DropBear.Codex.Blazor.Components.Validations;
 
 /// <summary>
-///     Modern validation errors component optimized for .NET 8+ and Blazor Server.
+///     Modern validation errors component optimized for .NET 9+ and Blazor Server.
 ///     Features responsive design, smooth animations, and enhanced accessibility.
 /// </summary>
 public sealed partial class DropBearValidationErrorsComponent : DropBearComponentBase
@@ -26,7 +26,6 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     #region Fields
 
     private readonly CancellationTokenSource _componentCts = new();
-    private readonly PeriodicTimer? _autoCollapseTimer;
 
     private ValidationResult? _previousValidationResult;
     private bool _isCollapsed = true; // Start collapsed by default
@@ -192,7 +191,6 @@ public sealed partial class DropBearValidationErrorsComponent : DropBearComponen
     protected override async ValueTask DisposeAsyncCore()
     {
         await _componentCts.CancelAsync();
-        _autoCollapseTimer?.Dispose();
         _componentCts.Dispose();
 
         await base.DisposeAsyncCore();

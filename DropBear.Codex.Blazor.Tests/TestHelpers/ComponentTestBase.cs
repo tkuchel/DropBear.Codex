@@ -147,7 +147,7 @@ public abstract class ComponentTestBase : TestContext, IDisposable
     ///     Disposes test resources.
     /// </summary>
     /// <param name="disposing">Whether to dispose managed resources.</param>
-    protected virtual void Dispose(bool disposing)
+    protected new virtual void Dispose(bool disposing)
     {
         if (disposing)
         {

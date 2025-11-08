@@ -53,12 +53,12 @@ public sealed partial class EncodedSerializer : ISerializer
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         var innerCapabilities = _innerSerializer.GetCapabilities();
         var encoderInfo = _encoder.GetEncoderInfo();
 
-        var capabilities = new Dictionary<string, object>(innerCapabilities)
+        var capabilities = new Dictionary<string, object>(innerCapabilities, StringComparer.Ordinal)
         {
             ["EncodingEnabled"] = true,
             ["SkipLargeObjects"] = _skipLargeObjects,

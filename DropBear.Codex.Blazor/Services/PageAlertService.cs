@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 namespace DropBear.Codex.Blazor.Services;
 
 /// <summary>
-/// High-performance page alert service optimized for .NET 8+ and Blazor Server.
+/// High-performance page alert service optimized for .NET 9+ and Blazor Server.
 /// </summary>
 public sealed class PageAlertService : IPageAlertService
 {
@@ -23,7 +23,7 @@ public sealed class PageAlertService : IPageAlertService
     private const int MaxQueueSize = 100;
     private const int OperationTimeoutMs = 5000;
 
-    // Use FrozenDictionary for better performance in .NET 8+
+    // Use FrozenDictionary for better performance in .NET 9+
     private static readonly FrozenDictionary<PageAlertType, int> DefaultDurations =
         new Dictionary<PageAlertType, int>
         {

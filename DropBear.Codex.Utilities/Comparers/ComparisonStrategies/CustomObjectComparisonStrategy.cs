@@ -21,7 +21,7 @@ public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
 
     // Cache for property lookups to improve performance
     private static readonly Dictionary<Type, PropertyInfo[]> PropertyCache = new();
-    private static readonly object PropertyCacheLock = new();
+    private static readonly Lock PropertyCacheLock = new();
 
     /// <inheritdoc />
     public bool CanCompare(Type type)

@@ -29,9 +29,9 @@ public sealed class Base64EncodingProvider : IEncodingProvider
     }
 
     /// <summary>
-    ///     Gets a Base64 encoder.
+    ///     Gets a Base64 encoder instance.
     /// </summary>
-    /// <returns>A Base64 encoder.</returns>
+    /// <returns>A new Base64 encoder configured with the provider's settings.</returns>
     public IEncoder GetEncoder()
     {
         _logger.Information("Creating a new instance of Base64Encoder with UrlSafeEncoding: {UseUrlSafeEncoding}",
@@ -45,7 +45,7 @@ public sealed class Base64EncodingProvider : IEncodingProvider
     /// <returns>A dictionary of information about the encoding provider.</returns>
     public IDictionary<string, object> GetProviderInfo()
     {
-        return new Dictionary<string, object>
+        return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["EncodingType"] = "Base64", ["UrlSafeEncoding"] = _useUrlSafeEncoding, ["IsThreadSafe"] = true
         };

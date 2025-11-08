@@ -37,7 +37,8 @@ public sealed class JsInitializationService : IJsInitializationService
         // Initialize with capacity hints to reduce resizing
         _moduleStates = new ConcurrentDictionary<string, ModuleInitializationState>(
             Environment.ProcessorCount * 2,
-            20); // Assume ~20 modules max in typical apps
+            20,
+            StringComparer.Ordinal); // Assume ~20 modules max in typical apps
     }
 
     #endregion
@@ -355,7 +356,7 @@ public sealed class JsInitializationService : IJsInitializationService
 
         try
         {
-            var metrics = new Dictionary<string, object>();
+            var metrics = new Dictionary<string, object>(StringComparer.Ordinal);
 
             if (!string.IsNullOrWhiteSpace(moduleName))
             {
@@ -376,7 +377,7 @@ public sealed class JsInitializationService : IJsInitializationService
             metrics["TotalModules"] = _moduleStates.Count;
             metrics["PreInitializedModules"] = _preInitializedModules.Count;
 
-            var moduleMetrics = new Dictionary<string, object>();
+            var moduleMetrics = new Dictionary<string, object>(StringComparer.Ordinal);
             foreach (var (name, state) in _moduleStates)
             {
                 moduleMetrics[name] = new

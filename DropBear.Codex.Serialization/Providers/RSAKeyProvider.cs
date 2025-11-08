@@ -282,6 +282,7 @@ public sealed class RSAKeyProvider
     /// <param name="parameters">The RSA parameters to convert.</param>
     /// <param name="isPrivate">Whether this is a private key.</param>
     /// <returns>A PEM format string containing the key.</returns>
+    /// <exception cref="CryptographicException">Thrown if there is an error exporting the key.</exception>
     private string ConvertToPemString(RSAParameters parameters, bool isPrivate)
     {
         using var rsa = RSA.Create();
@@ -303,6 +304,7 @@ public sealed class RSAKeyProvider
     /// <param name="pem">The PEM string to convert.</param>
     /// <param name="isPrivate">Whether this is a private key.</param>
     /// <returns>The RSA parameters.</returns>
+    /// <exception cref="CryptographicException">Thrown if the PEM format is invalid or cannot be parsed.</exception>
     private RSAParameters ConvertFromPemString(string pem, bool isPrivate)
     {
         var base64Key = pem
@@ -378,6 +380,7 @@ public sealed class RSAKeyProvider
     /// <param name="parameters">The RSA parameters to convert.</param>
     /// <param name="includePrivateParameters">Whether to include private parameters.</param>
     /// <returns>An XML string containing the key.</returns>
+    /// <exception cref="CryptographicException">Thrown if there is an error exporting the key.</exception>
     private static string ConvertToXmlString(RSAParameters parameters, bool includePrivateParameters)
     {
         using var rsa = RSA.Create();
@@ -391,6 +394,7 @@ public sealed class RSAKeyProvider
     /// <param name="xml">The XML string to convert.</param>
     /// <param name="includePrivateParameters">Whether to include private parameters.</param>
     /// <returns>The RSA parameters.</returns>
+    /// <exception cref="CryptographicException">Thrown if the XML format is invalid or cannot be parsed.</exception>
     private static RSAParameters ConvertFromXmlString(string xml, bool includePrivateParameters)
     {
         using var rsa = RSA.Create();

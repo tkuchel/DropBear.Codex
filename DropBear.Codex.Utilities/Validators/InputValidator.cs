@@ -28,7 +28,7 @@ public static partial class InputValidator
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<string, UtilityError> ValidateNonEmpty(
-        [NotNull] string? value,
+        string? value,
         string parameterName = "value")
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -37,7 +37,7 @@ public static partial class InputValidator
                 UtilityError.ValidationFailed($"Parameter '{parameterName}' cannot be null, empty, or whitespace"));
         }
 
-        return Result<string, UtilityError>.Success(value);
+        return Result<string, UtilityError>.Success(value!);
     }
 
     /// <summary>
@@ -345,24 +345,24 @@ public static partial class InputValidator
     }
 
     // Compiled regex patterns for performance
-    [GeneratedRegex(@"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex EmailRegex();
 
-    [GeneratedRegex(@"^[a-zA-Z0-9]+$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^[a-zA-Z0-9]+$", RegexOptions.Compiled | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AlphanumericRegex();
 
-    [GeneratedRegex(@"^[a-zA-Z0-9\s]+$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^[a-zA-Z0-9\s]+$", RegexOptions.Compiled | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AlphanumericWithSpacesRegex();
 
-    [GeneratedRegex(@"(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute|script|javascript|onerror|onload)\s*[\(\[]", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?i)(union|select|insert|update|delete|drop|create|alter|exec|execute|script|javascript|onerror|onload)\s*[\(\[]", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SqlInjectionRegex();
 
-    [GeneratedRegex(@"(?i)<\s*script|javascript:|onerror\s*=|onload\s*=|<\s*iframe", RegexOptions.Compiled | RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?i)<\s*script|javascript:|onerror\s*=|onload\s*=|<\s*iframe", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex XssPatternRegex();
 
-    [GeneratedRegex(@"[;&|`$\(\)><]", RegexOptions.Compiled)]
+    [GeneratedRegex(@"[;&|`$\(\)><]", RegexOptions.Compiled | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex CommandInjectionRegex();
 
-    [GeneratedRegex(@"^[\d\s\-\+\(\)\.]+$", RegexOptions.Compiled)]
+    [GeneratedRegex(@"^[\d\s\-\+\(\)\.]+$", RegexOptions.Compiled | RegexOptions.ExplicitCapture, matchTimeoutMilliseconds: 1000)]
     private static partial Regex PhoneRegex();
 }

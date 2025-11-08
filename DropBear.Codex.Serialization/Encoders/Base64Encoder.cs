@@ -31,7 +31,13 @@ public sealed class Base64Encoder : IEncoder
             useUrlSafeEncoding);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Encodes the specified data using Base64 encoding.
+    /// </summary>
+    /// <param name="data">The data to encode.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the Base64 encoded data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
     public async Task<Result<byte[], SerializationError>> EncodeAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -93,7 +99,14 @@ public sealed class Base64Encoder : IEncoder
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Decodes the specified Base64 encoded data.
+    /// </summary>
+    /// <param name="encodedData">The encoded data to decode.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the decoded data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when encodedData is null.</exception>
+    /// <exception cref="FormatException">Thrown when the encoded data has invalid Base64 format.</exception>
     public async Task<Result<byte[], SerializationError>> DecodeAsync(byte[] encodedData,
         CancellationToken cancellationToken = default)
     {

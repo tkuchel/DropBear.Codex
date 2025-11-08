@@ -35,7 +35,7 @@ public sealed class NotificationPool
         NotificationSeverity severity,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null)
+        IDictionary<string, object?>? data = null)
     {
         if (channelId == Guid.Empty)
         {

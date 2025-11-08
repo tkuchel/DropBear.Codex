@@ -229,7 +229,7 @@ public sealed class Notification
             // Try to convert using Convert class if applicable
             if (typeof(T).IsPrimitive && value != null)
             {
-                return (T)Convert.ChangeType(value, typeof(T));
+                return (T)Convert.ChangeType(value, typeof(T), System.Globalization.CultureInfo.InvariantCulture);
             }
         }
         catch

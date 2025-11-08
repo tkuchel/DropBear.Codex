@@ -106,9 +106,6 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private ColumnDefinition<TItem>? _currentSortColumn;
     private SortDirection _currentSortDirection = SortDirection.Ascending;
 
-    // Backing fields for parameters
-    private IEnumerable<TItem> _data = [];
-    private List<ColumnDefinition<TItem>>? _columnDefinitions;
 
     // Cache for filtered data
     private List<TItem>? _filteredDataCache;
@@ -120,7 +117,6 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     // Semaphore for thread safety
     private readonly SemaphoreSlim _dataSemaphore = new(1, 1);
     private IJSObjectReference? _downloadModule;
-    private bool _isModuleInitialized;
 
     #endregion
 
@@ -130,36 +126,13 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     ///     The dataset to display in the report viewer.
     /// </summary>
     [Parameter]
-    public IEnumerable<TItem> Data
-    {
-        get => _data;
-        set
-        {
-            if (_data != value)
-            {
-                _data = value;
-                _filteredDataDirty = true;
-                _shouldRender = true;
-            }
-        }
-    }
+    public IEnumerable<TItem> Data { get; set; } = [];
 
     /// <summary>
     ///     Optionally provide specific columns to be rendered; otherwise columns are auto-generated.
     /// </summary>
     [Parameter]
-    public List<ColumnDefinition<TItem>>? ColumnDefinitions
-    {
-        get => _columnDefinitions;
-        set
-        {
-            if (_columnDefinitions != value)
-            {
-                _columnDefinitions = value;
-                _shouldRender = true;
-            }
-        }
-    }
+    public List<ColumnDefinition<TItem>>? ColumnDefinitions { get; set; }
 
     #endregion
 
@@ -169,7 +142,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     ///     The columns used in the report, prioritizing <see cref="ColumnDefinitions" /> over auto-generated ones.
     /// </summary>
     private IEnumerable<ColumnDefinition<TItem>> ResolvedColumns =>
-        _columnDefinitions is { Count: > 0 } ? _columnDefinitions : _columns;
+        ColumnDefinitions is { Count: > 0 } ? ColumnDefinitions : _columns;
 
     /// <summary>
     ///     The filtered (and sorted) data to display.
@@ -341,11 +314,13 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
     private IEnumerable<TItem> ApplySortingAndFiltering()
     {
         // Get a thread-safe lock before processing data
+#pragma warning disable CA1416 // Blazor Server context - browser warning not applicable
         _dataSemaphore.Wait();
+#pragma warning restore CA1416
 
         try
         {
-            var query = _data.AsQueryable();
+            var query = Data.AsQueryable();
 
             // Apply filtering: for each column with a non-empty filter value, add a Where clause.
             foreach (var column in ResolvedColumns.Where(c => !string.IsNullOrWhiteSpace(c.FilterValue)))
@@ -426,7 +401,7 @@ public sealed partial class DropBearReportViewer<TItem> : DropBearComponentBase 
             // Special handling for mobile numbers: prepend '0' if necessary.
             if (propertySelector.Body is MemberExpression memberExpr &&
                 memberExpr.Member.Name.Contains("MobileNumber") &&
-                !strValue.StartsWith("0") && strValue.Length == 9)
+                !strValue.StartsWith("0", StringComparison.Ordinal) && strValue.Length == 9)
             {
                 return $"0{strValue}";
             }

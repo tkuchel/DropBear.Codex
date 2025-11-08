@@ -59,7 +59,9 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
         LogEncryptorInitialized(_logger, _enableCaching, _maxCacheSize);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Disposes the encryptor and securely erases sensitive cryptographic material.
+    /// </summary>
     public void Dispose()
     {
         if (_disposed)
@@ -88,7 +90,15 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
         GC.SuppressFinalize(this);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Encrypts the specified data using AES-GCM encryption.
+    /// </summary>
+    /// <param name="data">The data to encrypt.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the encrypted data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the encryptor has been disposed.</exception>
+    /// <exception cref="CryptographicException">Thrown when encryption fails.</exception>
     public async Task<Result<byte[], SerializationError>> EncryptAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -177,7 +187,15 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Decrypts the specified AES-GCM encrypted data.
+    /// </summary>
+    /// <param name="data">The encrypted data to decrypt.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the decrypted data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
+    /// <exception cref="ObjectDisposedException">Thrown if the encryptor has been disposed.</exception>
+    /// <exception cref="CryptographicException">Thrown when decryption fails or data is corrupted.</exception>
     public async Task<Result<byte[], SerializationError>> DecryptAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -290,6 +308,11 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     /// <summary>
     ///     Combines multiple byte arrays and spans into a single array using efficient copying.
     /// </summary>
+    /// <param name="encryptedKey">The RSA-encrypted AES key.</param>
+    /// <param name="encryptedNonce">The RSA-encrypted nonce.</param>
+    /// <param name="tag">The GCM authentication tag.</param>
+    /// <param name="ciphertext">The encrypted data.</param>
+    /// <returns>A single byte array containing all components.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static byte[] CombineEncryptedComponents(byte[] encryptedKey, byte[] encryptedNonce, ReadOnlySpan<byte> tag,
         ReadOnlySpan<byte> ciphertext)
@@ -315,8 +338,11 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Encrypts data using RSA.
+    ///     Encrypts data using RSA with OAEP SHA-256 padding.
     /// </summary>
+    /// <param name="data">The data to encrypt with RSA.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>The RSA encrypted data.</returns>
     private async Task<byte[]> EncryptWithRsaAsync(byte[] data, CancellationToken cancellationToken)
     {
         return await Task.Run(() =>
@@ -327,8 +353,11 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Decrypts data using RSA.
+    ///     Decrypts data using RSA with OAEP SHA-256 padding.
     /// </summary>
+    /// <param name="encryptedData">The RSA encrypted data to decrypt.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>The decrypted data.</returns>
     private async Task<byte[]> DecryptWithRsaAsync(byte[] encryptedData, CancellationToken cancellationToken)
     {
         return await Task.Run(() =>
@@ -341,6 +370,8 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     /// <summary>
     ///     Calculates a hash of the given data for caching purposes.
     /// </summary>
+    /// <param name="data">The data to hash.</param>
+    /// <returns>An integer hash value for the data.</returns>
     private int CalculateHash(byte[] data)
     {
         // For small data, use the built-in hash code
@@ -376,6 +407,8 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     /// <summary>
     ///     Caches an encryption result using thread-safe operations.
     /// </summary>
+    /// <param name="original">The original data before encryption.</param>
+    /// <param name="encrypted">The encrypted result to cache.</param>
     private void CacheEncryptionResult(byte[] original, byte[] encrypted)
     {
         if (!_enableCaching || _encryptionCache == null)

@@ -269,7 +269,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                     EnableToastNotifications = true,
                     EnableInboxNotifications = true,
                     EnableEmailNotifications = false,
-                    TypePreferences = new Dictionary<string, NotificationTypePreference>()
+                    TypePreferences = new Dictionary<string, NotificationTypePreference>(StringComparer.Ordinal)
                 };
                 return Result<NotificationPreferences?, NotificationError>.Success(defaultPreferences);
             }
@@ -292,12 +292,12 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                         JsonSerializer.Deserialize<Dictionary<string, NotificationTypePreference>>(
                             dbPreferences.SerializedTypePreferences,
                             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-                        ?? new Dictionary<string, NotificationTypePreference>();
+                        ?? new Dictionary<string, NotificationTypePreference>(StringComparer.Ordinal);
                 }
                 catch (Exception ex)
                 {
                     _logger.LogWarning(ex, "Failed to deserialize type preferences for user {UserId}", userId);
-                    preferences.TypePreferences = new Dictionary<string, NotificationTypePreference>();
+                    preferences.TypePreferences = new Dictionary<string, NotificationTypePreference>(StringComparer.Ordinal);
                 }
             }
 
@@ -373,7 +373,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         {
             try
             {
-                await handlers(notification);
+                await handlers(notification).ConfigureAwait(false);
                 _logger.LogDebug("NotificationReceived event raised for notification {Id}", notification.Id);
             }
             catch (Exception ex)
@@ -451,7 +451,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         {
             try
             {
-                await handlers(notificationId);
+                await handlers(notificationId).ConfigureAwait(false);
             }
             catch (Exception ex)
             {
@@ -467,7 +467,7 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         {
             try
             {
-                await handlers(notificationId);
+                await handlers(notificationId).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

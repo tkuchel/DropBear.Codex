@@ -98,7 +98,7 @@ public class NotificationRepository : INotificationRepository
             var totalCount = await query.CountAsync(cancellationToken).ConfigureAwait(false);
 
             // Apply sorting
-            query = filter.SortBy.ToLower() switch
+            query = filter.SortBy.ToLower(System.Globalization.CultureInfo.InvariantCulture) switch
             {
                 "createdat" => filter.SortDescending
                     ? query.OrderByDescending(n => n.CreatedAt)

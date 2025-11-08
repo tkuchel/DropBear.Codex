@@ -29,7 +29,7 @@ public sealed class ExecutionEngine : IAsyncDisposable
     private readonly BatchingProgressReporter _batchingReporter;
     private readonly TaskDependencyResolver _dependencyResolver;
     private readonly CancellationTokenSource _disposalCts;
-    private readonly object _disposalLock = new();
+    private readonly Lock _disposalLock = new();
     private readonly AsyncLock _executionLock;
     private readonly ILogger _logger;
     private readonly MessagePublisher _messagePublisher;

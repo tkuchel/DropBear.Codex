@@ -150,7 +150,7 @@ public sealed class ProgressState : IAsyncDisposable
         if (_stepStates.TryRemove(stepId, out var state))
         {
             // Dispose the removed state
-            state.DisposeAsync()
+            _ = state.DisposeAsync()
                 .AsTask()
                 .ContinueWith(
                     t => Console.WriteLine($"Error disposing step state: {t.Exception}"),

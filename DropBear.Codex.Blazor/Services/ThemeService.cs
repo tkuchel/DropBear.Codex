@@ -53,7 +53,9 @@ public sealed class ThemeService : IThemeService
     #region Events
 
     /// <inheritdoc />
+#pragma warning disable CS0067 // Event is part of IThemeService interface but not yet implemented
     public event EventHandler<ThemeChangedEventArgs>? ThemeChanged;
+#pragma warning restore CS0067
 
     #endregion
 

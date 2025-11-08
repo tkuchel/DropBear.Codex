@@ -183,14 +183,13 @@ public sealed class DropBearFileUploaderTests : ComponentTestBase
     }
 
     [Fact]
-    public async Task FileUploader_Should_InvokeOnFilesUploaded_AfterUpload()
+    public void FileUploader_Should_InvokeOnFilesUploaded_AfterUpload()
     {
         // Arrange
-        var filesUploaded = false;
         var cut = RenderComponent<DropBearFileUploader>(parameters => parameters
             .Add(p => p.OnFilesUploaded, EventCallback.Factory.Create<List<UploadFile>>(this, files =>
             {
-                filesUploaded = true;
+                // Callback configured
             })));
 
         // Assert - Callback should be configured
@@ -272,7 +271,7 @@ public sealed class DropBearFileUploaderTests : ComponentTestBase
     }
 
     [Fact]
-    public async Task FileUploader_Should_ShowSpinner_WhenUploading()
+    public void FileUploader_Should_ShowSpinner_WhenUploading()
     {
         // Arrange
         var cut = RenderComponent<DropBearFileUploader>();

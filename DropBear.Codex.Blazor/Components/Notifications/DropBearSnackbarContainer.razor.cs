@@ -17,7 +17,7 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Notifications;
 
 /// <summary>
-///     Modern snackbar container optimized for .NET 8+ and Blazor Server.
+///     Modern snackbar container optimized for .NET 9+ and Blazor Server.
 ///     Manages snackbar lifecycle, positioning, and notification subscriptions.
 /// </summary>
 public sealed partial class DropBearSnackbarContainer : DropBearComponentBase

@@ -142,7 +142,7 @@ public sealed class StreamSerializerAdapter : ISerializer
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         return new Dictionary<string, object>
 (StringComparer.Ordinal)

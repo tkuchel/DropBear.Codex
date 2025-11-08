@@ -1,3 +1,4 @@
+using System.Runtime.Versioning;
 using DropBear.Codex.Files.Builders;
 using DropBear.Codex.Files.Models;
 using FluentAssertions;
@@ -7,6 +8,7 @@ namespace DropBear.Codex.Files.Tests.Builders;
 /// <summary>
 ///     Tests for DropBearFileBuilder functionality.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class DropBearFileBuilderTests
 {
     #region WithFileName Tests

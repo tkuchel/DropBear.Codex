@@ -47,7 +47,7 @@ public sealed class NotificationFactory : INotificationFactory
         NotificationSeverity severity,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null)
+        IDictionary<string, object?>? data = null)
     {
         try
         {
@@ -56,7 +56,7 @@ public sealed class NotificationFactory : INotificationFactory
             {
                 var error = new NotificationError("ChannelId cannot be empty.")
                     .WithContext(nameof(CreateNotification));
-                _telemetry.TrackException(new ArgumentException(error.Message), ResultState.Failure, GetType());
+                _telemetry.TrackException(new ArgumentException(error.Message, nameof(channelId)), ResultState.Failure, GetType());
                 return Result<Notification, NotificationError>.Failure(error);
             }
 
@@ -64,7 +64,7 @@ public sealed class NotificationFactory : INotificationFactory
             {
                 var error = new NotificationError("Message cannot be null or whitespace.")
                     .WithContext(nameof(CreateNotification));
-                _telemetry.TrackException(new ArgumentException(error.Message), ResultState.Failure, GetType());
+                _telemetry.TrackException(new ArgumentException(error.Message, nameof(message)), ResultState.Failure, GetType());
                 return Result<Notification, NotificationError>.Failure(error);
             }
 
@@ -72,7 +72,7 @@ public sealed class NotificationFactory : INotificationFactory
             {
                 var error = new NotificationError("NotificationType must be specified.")
                     .WithContext(nameof(CreateNotification));
-                _telemetry.TrackException(new ArgumentException(error.Message), ResultState.Failure, GetType());
+                _telemetry.TrackException(new ArgumentException(error.Message, nameof(type)), ResultState.Failure, GetType());
                 return Result<Notification, NotificationError>.Failure(error);
             }
 
@@ -80,7 +80,7 @@ public sealed class NotificationFactory : INotificationFactory
             {
                 var error = new NotificationError("NotificationSeverity must be specified.")
                     .WithContext(nameof(CreateNotification));
-                _telemetry.TrackException(new ArgumentException(error.Message), ResultState.Failure, GetType());
+                _telemetry.TrackException(new ArgumentException(error.Message, nameof(severity)), ResultState.Failure, GetType());
                 return Result<Notification, NotificationError>.Failure(error);
             }
 
@@ -111,7 +111,7 @@ public sealed class NotificationFactory : INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null)
+        IDictionary<string, object?>? data = null)
     {
         return CreateNotification(
             channelId,
@@ -134,7 +134,7 @@ public sealed class NotificationFactory : INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null)
+        IDictionary<string, object?>? data = null)
     {
         return CreateNotification(
             channelId,
@@ -157,7 +157,7 @@ public sealed class NotificationFactory : INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null)
+        IDictionary<string, object?>? data = null)
     {
         return CreateNotification(
             channelId,
@@ -180,7 +180,7 @@ public sealed class NotificationFactory : INotificationFactory
         Guid channelId,
         string message,
         string? title = null,
-        Dictionary<string, object?>? data = null)
+        IDictionary<string, object?>? data = null)
     {
         return CreateNotification(
             channelId,

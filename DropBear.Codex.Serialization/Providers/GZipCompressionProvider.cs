@@ -22,6 +22,7 @@ public sealed partial class GZipCompressionProvider : ICompressionProvider
     /// <summary>
     ///     Initializes a new instance of the <see cref="GZipCompressionProvider" /> class with default settings.
     /// </summary>
+    /// <param name="loggerFactory">The logger factory for creating loggers.</param>
     public GZipCompressionProvider(ILoggerFactory loggerFactory)
         : this(CompressionLevel.Fastest, 81920, loggerFactory) // Default to fastest compression and 80KB buffer
     {
@@ -44,9 +45,9 @@ public sealed partial class GZipCompressionProvider : ICompressionProvider
     }
 
     /// <summary>
-    ///     Gets a GZip compressor.
+    ///     Gets a GZip compressor instance.
     /// </summary>
-    /// <returns>A GZip compressor.</returns>
+    /// <returns>A new GZip compressor configured with the provider's settings.</returns>
     public ICompressor GetCompressor()
     {
         LogCreatingCompressor(_compressionLevel.ToString());
@@ -59,7 +60,7 @@ public sealed partial class GZipCompressionProvider : ICompressionProvider
     /// <returns>A dictionary of information about the compression provider.</returns>
     public IDictionary<string, object> GetProviderInfo()
     {
-        return new Dictionary<string, object>
+        return new Dictionary<string, object>(StringComparer.Ordinal)
         {
             ["Algorithm"] = "GZip",
             ["CompressionLevel"] = _compressionLevel.ToString(),

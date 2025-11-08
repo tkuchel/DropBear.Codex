@@ -63,7 +63,7 @@ public static class TaskHelper
 
             if (completedTask == task)
             {
-                return Result<T, TaskError>.Success(await task);
+                return Result<T, TaskError>.Success(await task.ConfigureAwait(false));
             }
 
             return Result<T, TaskError>.Failure(new TaskError("Task timed out."));

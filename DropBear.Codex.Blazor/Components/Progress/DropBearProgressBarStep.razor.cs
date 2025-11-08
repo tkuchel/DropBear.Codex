@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     Optimized step component for DropBearProgressBar with modern .NET 8+ features.
+///     Optimized step component for DropBearProgressBar with modern .NET 9+ features.
 /// </summary>
 public sealed partial class DropBearProgressBarStep : DropBearComponentBase
 {

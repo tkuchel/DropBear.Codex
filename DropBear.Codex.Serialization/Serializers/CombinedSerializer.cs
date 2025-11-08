@@ -61,11 +61,11 @@ public sealed class CombinedSerializer : ISerializer
     }
 
     /// <inheritdoc />
-    public Dictionary<string, object> GetCapabilities()
+    public IReadOnlyDictionary<string, object> GetCapabilities()
     {
         var defaultCapabilities = _defaultSerializer.GetCapabilities();
 
-        var capabilities = new Dictionary<string, object>(defaultCapabilities)
+        var capabilities = new Dictionary<string, object>(defaultCapabilities, StringComparer.Ordinal)
         {
             ["SerializerType"] = "CombinedSerializer",
             ["DefaultSerializerType"] = _defaultSerializer.GetType().Name,

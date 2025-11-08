@@ -119,7 +119,7 @@ public sealed partial class ExecutionContext
 
     [LoggerMessage(Level = LogLevel.Error,
         Message = "Failed to create service scope")]
-    partial void LogFailedToCreateServiceScope(ILogger<ExecutionContext> logger, Exception ex);
+    static partial void LogFailedToCreateServiceScope(ILogger<ExecutionContext> logger, Exception ex);
 
     #endregion
 }

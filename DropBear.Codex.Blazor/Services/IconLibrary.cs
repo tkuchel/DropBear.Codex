@@ -134,7 +134,7 @@ public sealed class IconLibrary : IAsyncDisposable
     /// <param name="key">The icon key.</param>
     /// <param name="cancellationToken">Optional token to cancel the operation.</param>
     /// <returns>A task representing the asynchronous operation with a Result containing the SVG content if successful.</returns>
-    public async Task<Result<string, IconError>> GetIconAsync(
+    public Task<Result<string, IconError>> GetIconAsync(
         string key,
         CancellationToken cancellationToken = default)
     {
@@ -142,8 +142,8 @@ public sealed class IconLibrary : IAsyncDisposable
 
         if (string.IsNullOrWhiteSpace(key))
         {
-            return Result<string, IconError>.Failure(
-                IconError.IconNotFound("Key cannot be empty"));
+            return Task.FromResult(Result<string, IconError>.Failure(
+                IconError.IconNotFound("Key cannot be empty")));
         }
 
         try
@@ -153,30 +153,30 @@ public sealed class IconLibrary : IAsyncDisposable
             {
                 // Could implement asynchronous loading here from a database or remote source
                 // For now, return the not found error
-                return Result<string, IconError>.Failure(
-                    IconError.IconNotFound(key));
+                return Task.FromResult(Result<string, IconError>.Failure(
+                    IconError.IconNotFound(key)));
             }
 
             if (_iconCache.TryGetValue(key, out string? svgContent) && svgContent != null)
             {
-                return Result<string, IconError>.Success(svgContent);
+                return Task.FromResult(Result<string, IconError>.Success(svgContent));
             }
 
             // If we get here, the icon was in the existence cache but not in memory cache (unusual case)
             _iconExistenceCache.TryRemove(key, out _);
-            return Result<string, IconError>.Failure(
-                IconError.IconNotFound(key));
+            return Task.FromResult(Result<string, IconError>.Failure(
+                IconError.IconNotFound(key)));
         }
         catch (OperationCanceledException)
         {
-            return Result<string, IconError>.Failure(
-                IconError.RenderingFailed("Icon retrieval was cancelled"));
+            return Task.FromResult(Result<string, IconError>.Failure(
+                IconError.RenderingFailed("Icon retrieval was cancelled")));
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Error retrieving icon: {Key}", key);
-            return Result<string, IconError>.Failure(
-                IconError.RenderingFailed($"Error retrieving icon: {ex.Message}"), ex);
+            return Task.FromResult(Result<string, IconError>.Failure(
+                IconError.RenderingFailed($"Error retrieving icon: {ex.Message}"), ex));
         }
     }
 
@@ -301,7 +301,7 @@ public sealed class IconLibrary : IAsyncDisposable
     /// </summary>
     /// <param name="icons">Dictionary of icon keys and SVG content.</param>
     /// <returns>A Result indicating success or failure with details.</returns>
-    public Result<bool, IconError> RegisterIcons(Dictionary<string, string> icons)
+    public Result<bool, IconError> RegisterIcons(IDictionary<string, string> icons)
     {
         ThrowIfDisposed();
 
@@ -360,7 +360,7 @@ public sealed class IconLibrary : IAsyncDisposable
     /// <param name="cancellationToken">Optional token to cancel the operation.</param>
     /// <returns>A task representing the asynchronous operation with a Result indicating success or failure.</returns>
     public async Task<Result<bool, IconError>> RegisterIconsAsync(
-        Dictionary<string, string> icons,
+        IDictionary<string, string> icons,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -599,7 +599,7 @@ public sealed class IconLibrary : IAsyncDisposable
 
         try
         {
-            var metrics = new Dictionary<string, object>
+            var metrics = new Dictionary<string, object>(StringComparer.Ordinal)
             {
                 ["IconCount"] = _iconExistenceCache.Count, ["CurrentTime"] = DateTime.UtcNow
             };

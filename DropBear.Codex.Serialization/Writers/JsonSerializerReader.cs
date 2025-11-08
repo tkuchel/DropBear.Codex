@@ -37,7 +37,15 @@ public sealed class JsonSerializerReader : ISerializerReader
             _bufferSize, _options.WriteIndented, _options.MaxDepth);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Deserializes data from the stream into the specified type using JSON format.
+    /// </summary>
+    /// <typeparam name="T">The type to deserialize into.</typeparam>
+    /// <param name="stream">The stream to read the serialized data from.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the deserialized value on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when stream is null.</exception>
+    /// <exception cref="JsonException">Thrown when JSON deserialization fails.</exception>
     public async Task<Result<T, SerializationError>> DeserializeAsync<T>(Stream stream,
         CancellationToken cancellationToken = default)
     {
@@ -97,7 +105,10 @@ public sealed class JsonSerializerReader : ISerializerReader
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets information about the reader configuration.
+    /// </summary>
+    /// <returns>A dictionary containing reader configuration information.</returns>
     public IDictionary<string, object> GetReaderOptions()
     {
         return new Dictionary<string, object>

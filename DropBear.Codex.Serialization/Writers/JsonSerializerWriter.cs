@@ -37,7 +37,16 @@ public sealed class JsonSerializerWriter : ISerializerWriter
             _bufferSize, _options.WriteIndented, _options.MaxDepth);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Serializes the specified value to the stream using JSON format.
+    /// </summary>
+    /// <typeparam name="T">The type of value to serialize.</typeparam>
+    /// <param name="stream">The stream to write the serialized data to.</param>
+    /// <param name="value">The value to serialize.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result indicating success or failure of the serialization operation.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when stream is null.</exception>
+    /// <exception cref="JsonException">Thrown when JSON serialization fails.</exception>
     public async Task<Result<Unit, SerializationError>> SerializeAsync<T>(Stream stream, T value,
         CancellationToken cancellationToken = default)
     {
@@ -96,7 +105,10 @@ public sealed class JsonSerializerWriter : ISerializerWriter
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Gets information about the writer configuration.
+    /// </summary>
+    /// <returns>A dictionary containing writer configuration information.</returns>
     public IDictionary<string, object> GetWriterOptions()
     {
         return new Dictionary<string, object>

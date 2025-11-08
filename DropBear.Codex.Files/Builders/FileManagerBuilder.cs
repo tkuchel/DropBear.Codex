@@ -156,7 +156,7 @@ public class FileManagerBuilder
                 blobStorageResult.Exception);
         }
 
-        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager!, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -225,7 +225,7 @@ public class FileManagerBuilder
                 blobStorageResult.Exception);
         }
 
-        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager!, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -350,7 +350,7 @@ public class FileManagerBuilder
                 blobStorageResult.Exception);
         }
 
-        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
+        _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager!, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
         _logger.Information(
             "Configured FileManager to use Azure Blob Storage with account: {AccountName}, container: {ContainerName}",
             accountName, containerName);
@@ -408,7 +408,7 @@ public class FileManagerBuilder
                     blobStorageResult.Exception);
             }
 
-            _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
+            _storageManager = new BlobStorageManager(blobStorageResult.Value!, _memoryStreamManager!, _loggerFactory.CreateLogger<BlobStorageManager>(), containerName);
             _logger.Information(
                 "Configured FileManager to use Azure Blob Storage asynchronously with account: {AccountName}, container: {ContainerName}",
                 accountName, containerName);

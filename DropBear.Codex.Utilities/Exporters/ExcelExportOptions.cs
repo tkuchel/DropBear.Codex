@@ -31,7 +31,7 @@ public sealed class ExcelExportOptions
     ///     When provided, these custom names will be used instead of the property names for column headers.
     ///     The dictionary keys should match the property names of the exported type.
     /// </summary>
-    public Dictionary<string, string>? HeaderMappings { get; set; }
+    public IDictionary<string, string>? HeaderMappings { get; set; }
 
     /// <summary>
     ///     Gets or sets an optional limit on the maximum number of rows to export.

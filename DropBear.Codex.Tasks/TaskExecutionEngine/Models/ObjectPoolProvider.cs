@@ -54,7 +54,7 @@ internal static class ObjectPoolProvider
     }
 
     /// <summary>
-    ///     Rents a <see cref="HashSet{string}" /> with a capacity approximated from the <paramref name="expectedSize" />.
+    ///     Rents a <see cref="HashSet{T}" /> with a capacity approximated from the <paramref name="expectedSize" />.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static HashSet<string> RentStringSet(int expectedSize = 32)
@@ -65,7 +65,7 @@ internal static class ObjectPoolProvider
     }
 
     /// <summary>
-    ///     Rents a <see cref="Dictionary{string, bool}" /> with a capacity approximated from the
+    ///     Rents a <see cref="Dictionary{TKey, TValue}" /> with a capacity approximated from the
     ///     <paramref name="expectedSize" />.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

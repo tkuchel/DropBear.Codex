@@ -12,7 +12,7 @@ using Microsoft.AspNetCore.Components;
 namespace DropBear.Codex.Blazor.Components.Progress;
 
 /// <summary>
-///     Modern progress bar component optimized for .NET 8+ and Blazor Server.
+///     Modern progress bar component optimized for .NET 9+ and Blazor Server.
 ///     Features smooth animations, accessibility support, and responsive design.
 /// </summary>
 public sealed partial class DropBearProgressBar : DropBearComponentBase
@@ -30,13 +30,11 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     private readonly CancellationTokenSource _componentCts = new();
     private readonly Dictionary<string, ProgressStepState> _stepStates = new(StringComparer.OrdinalIgnoreCase);
-    private readonly PeriodicTimer? _estimationTimer;
 
     private DateTime _startTime = DateTime.UtcNow;
     private DateTime _lastUpdateTime = DateTime.UtcNow;
     private double _lastProgress;
     private bool _hasStarted;
-    private int _currentStepIndex;
 
     // Cached computations for performance
     private string? _cachedProgressStyle;
@@ -251,7 +249,6 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     protected override async ValueTask DisposeAsyncCore()
     {
         await _componentCts.CancelAsync();
-        _estimationTimer?.Dispose();
         _componentCts.Dispose();
 
         await base.DisposeAsyncCore();
@@ -436,13 +433,15 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
         var steps = Steps!;
         var totalSteps = steps.Count;
+        var currentIndex = (int)(Progress / 100.0 * totalSteps);
+        currentIndex = Math.Min(currentIndex, totalSteps - 1);
 
         for (var i = 0; i < totalSteps; i++)
         {
             var position = i switch
             {
-                _ when i < _currentStepIndex => StepPosition.Previous,
-                _ when i == _currentStepIndex => StepPosition.Current,
+                _ when i < currentIndex => StepPosition.Previous,
+                _ when i == currentIndex => StepPosition.Current,
                 _ => StepPosition.Next
             };
 

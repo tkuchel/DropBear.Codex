@@ -33,7 +33,7 @@ public sealed class NotificationService : INotificationService, IDisposable
 
     // A thread-safe dictionary mapping channel identifiers to semaphores for concurrency control and tracking usage.
     private readonly ConcurrentDictionary<string, (SemaphoreSlim Semaphore, DateTime LastUsed)> _channelSemaphores =
-        new();
+        new(StringComparer.Ordinal);
 
     // Timer for cleanup of unused semaphores.
     private readonly Timer _cleanupTimer;
@@ -146,7 +146,7 @@ public sealed class NotificationService : INotificationService, IDisposable
         {
             // Build the channel ID from the notification, ensuring it's not global
             var channel = GetChannel(false, notification.ChannelId);
-            return await PublishNotificationToChannelAsync(notification, channel, isSensitive, cancellationToken);
+            return await PublishNotificationToChannelAsync(notification, channel, isSensitive, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -185,7 +185,7 @@ public sealed class NotificationService : INotificationService, IDisposable
         {
             // Build the channel ID for the global channel
             var channel = GetChannel(true);
-            return await PublishNotificationToChannelAsync(notification, channel, isSensitive, cancellationToken);
+            return await PublishNotificationToChannelAsync(notification, channel, isSensitive, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -201,7 +201,7 @@ public sealed class NotificationService : INotificationService, IDisposable
 
     /// <summary>
     ///     Decrypts a previously encrypted notification (i.e., if <see cref="PublishNotificationAsync" />
-    ///     or <see cref="PublishGlobalNotificationAsync" /> was called with <paramref name="isSensitive" /> = true).
+    ///     or <see cref="PublishGlobalNotificationAsync" /> was called with sensitive data).
     /// </summary>
     /// <param name="notification">The notification to decrypt.</param>
     /// <returns>
@@ -332,7 +332,7 @@ public sealed class NotificationService : INotificationService, IDisposable
                 var encryptResult = EncryptNotification(notification);
                 if (!encryptResult.IsSuccess)
                 {
-                    return Result<Unit, NotificationError>.Failure(encryptResult.Error, encryptResult.Exception);
+                    return Result<Unit, NotificationError>.Failure(encryptResult.Error!, encryptResult.Exception);
                 }
                 notificationToPublish = encryptResult.Value!;
             }
@@ -350,19 +350,19 @@ public sealed class NotificationService : INotificationService, IDisposable
                 // If present, update the last used time
                 (_, existing) => (existing.Semaphore, nowUtc));
 
-            await semaphore.WaitAsync(cancellationToken);
+            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
 
             try
             {
                 // Execute under the retry policy
                 await _retryPolicy.ExecuteAsync(async () =>
                 {
-                    await _publisher.PublishAsync(channel, notificationToPublish, cancellationToken);
+                    await _publisher.PublishAsync(channel, notificationToPublish, cancellationToken).ConfigureAwait(false);
 
                     Logger.Information(
                         "Notification published to channel {Channel} with Type {Type} and Severity {Severity}",
                         channel, notification.Type, notification.Severity);
-                });
+                }).ConfigureAwait(false);
 
                 _telemetry.TrackResultCreated(ResultState.Success, GetType());
                 return Result<Unit, NotificationError>.Success(Unit.Value);
@@ -542,9 +542,10 @@ public sealed class NotificationService : INotificationService, IDisposable
             )
             .WrapAsync(
                 Policy.Handle<PermanentNotificationException>()
-                    .FallbackAsync(async ct =>
+                    .FallbackAsync(ct =>
                     {
                         Logger.Error("Permanent error publishing notification. No retries will be attempted.");
+                        return Task.CompletedTask;
                     }));
     }
 

@@ -45,7 +45,13 @@ public sealed class HexEncoder : IEncoder
         _logger.Information("HexEncoder initialized with UpperCase: {UpperCase}", upperCase);
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Encodes the specified data using hexadecimal encoding.
+    /// </summary>
+    /// <param name="data">The data to encode.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the hexadecimal encoded data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when data is null.</exception>
     public async Task<Result<byte[], SerializationError>> EncodeAsync(byte[] data,
         CancellationToken cancellationToken = default)
     {
@@ -141,7 +147,14 @@ public sealed class HexEncoder : IEncoder
         }
     }
 
-    /// <inheritdoc />
+    /// <summary>
+    ///     Decodes the specified hexadecimal encoded data.
+    /// </summary>
+    /// <param name="encodedData">The encoded data to decode.</param>
+    /// <param name="cancellationToken">Token to cancel the operation.</param>
+    /// <returns>A result containing the decoded data on success.</returns>
+    /// <exception cref="ArgumentNullException">Thrown when encodedData is null.</exception>
+    /// <exception cref="FormatException">Thrown when the encoded data has invalid hexadecimal format.</exception>
     public async Task<Result<byte[], SerializationError>> DecodeAsync(byte[] encodedData,
         CancellationToken cancellationToken = default)
     {

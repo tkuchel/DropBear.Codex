@@ -8,7 +8,7 @@ using DropBear.Codex.Workflow.Persistence.Steps;
 
 #endregion
 
-namespace DropBear.Codex.Workflow.Persistence.Examples;
+namespace DropBear.Codex.Workflow.Examples;
 
 /// <summary>
 ///     Context for user profile update workflow

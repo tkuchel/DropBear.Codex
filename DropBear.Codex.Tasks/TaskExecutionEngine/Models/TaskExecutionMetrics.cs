@@ -5,7 +5,7 @@
 /// </summary>
 public class TaskExecutionMetrics
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private int _failureCount;
     private int _successCount;
     private long _totalDurationTicks;
