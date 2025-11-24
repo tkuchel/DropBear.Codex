@@ -83,7 +83,7 @@ jobs:
 
       - name: Annotate Test Results
         if: always()
-        uses: dorny/test-reporter@v1.9.1
+        uses: dorny/test-reporter@v2.2.0
         with:
           name: ".NET Tests (${{ matrix.os }})"
           path: "TestResults/collected/*.trx"
