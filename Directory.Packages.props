@@ -11,7 +11,7 @@
     <PackageVersion Include="PublicApiAnalyzer" Version="1.0.0-alpha001" />
     <!-- ===== Code Analysis & Annotations ===== -->
     <PackageVersion Include="JetBrains.Annotations" Version="2025.2.2" />
-    <PackageVersion Include="Meziantou.Analyzer" Version="2.0.227" />
+    <PackageVersion Include="Meziantou.Analyzer" Version="2.0.256" />
     <PackageVersion Include="Roslynator.Analyzers" Version="4.14.1" />
     <PackageVersion Include="StyleCop.Analyzers" Version="1.2.0-beta.556" />
     <!-- ===== Testing Frameworks ===== -->
