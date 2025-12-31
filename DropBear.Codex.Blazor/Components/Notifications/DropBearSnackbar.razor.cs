@@ -19,7 +19,7 @@ public sealed partial class DropBearSnackbar : DropBearComponentBase
 {
     #region Constants
 
-    private const string JsModuleName = "snackbar";
+    private const string JsModuleName = "DropBearSnackbar";
     private const int DefaultDuration = 5000;
     private const int MaxRetries = 3;
 

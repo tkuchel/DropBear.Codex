@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Frozen;
 using System.Runtime.CompilerServices;
@@ -128,7 +128,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             }
 
             // Fire and forget UI update using .NET 9 Task.Run optimizations
-            _ = Task.Run(async () => await UpdateProgressBarAsync(indeterminate: true, message: message),
+            _ = Task.Run(async () => await UpdateProgressBarAsync(indeterminate: true, message: message).ConfigureAwait(false),
                 _cancellationTokenSource.Token);
             NotifyProgressUpdate();
 
@@ -160,7 +160,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _stepStates = FrozenDictionary<string, StepState>.Empty;
             }
 
-            _ = Task.Run(async () => await UpdateProgressBarAsync(progress: 0, message: _currentMessage),
+            _ = Task.Run(async () => await UpdateProgressBarAsync(progress: 0, message: _currentMessage).ConfigureAwait(false),
                 _cancellationTokenSource.Token);
             NotifyProgressUpdate();
 
@@ -201,7 +201,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 _stepStates = stepStatesBuilder.ToFrozenDictionary();
             }
 
-            _ = Task.Run(async () => await UpdateProgressBarAsync(steps: steps, progress: 0, message: _currentMessage),
+            _ = Task.Run(async () => await UpdateProgressBarAsync(steps: steps, progress: 0, message: _currentMessage).ConfigureAwait(false),
                 _cancellationTokenSource.Token);
             NotifyProgressUpdate();
 
@@ -251,7 +251,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 currentMessage = _currentMessage;
             }
 
-            await UpdateProgressBarAsync(progress: clampedProgress, message: currentMessage);
+            await UpdateProgressBarAsync(progress: clampedProgress, message: currentMessage).ConfigureAwait(false);
             NotifyProgressUpdate();
 
             return Result<Unit, ProgressManagerError>.Success(Unit.Value);
@@ -314,8 +314,8 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 currentMessage = _currentMessage;
             }
 
-            await UpdateStepInProgressBarAsync(stepId, clampedProgress, status);
-            await UpdateProgressBarAsync(message: currentMessage);
+            await UpdateStepInProgressBarAsync(stepId, clampedProgress, status).ConfigureAwait(false);
+            await UpdateProgressBarAsync(message: currentMessage).ConfigureAwait(false);
 
             NotifyProgressUpdate([updatedStep]);
 
@@ -373,16 +373,16 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
             if (_currentMode != ProgressMode.Stepped)
             {
-                await UpdateProgressBarAsync(progress: 100, message: "Completed");
+                await UpdateProgressBarAsync(progress: 100, message: "Completed").ConfigureAwait(false);
             }
 
             NotifyProgressUpdate(completedSteps.Count > 0 ? completedSteps : null);
 
             // Brief delay to show completion state using .NET 9 optimized Task.Delay
-            await Task.Delay(CompletionDisplayDuration, _cancellationTokenSource.Token);
+            await Task.Delay(CompletionDisplayDuration, _cancellationTokenSource.Token).ConfigureAwait(false);
 
             // Reset the progress bar
-            await ResetProgressBarAsync();
+            await ResetProgressBarAsync().ConfigureAwait(false);
 
             lock (_stateLock)
             {
@@ -477,7 +477,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_currentMode == ProgressMode.Stepped)
         {
-            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.InProgress);
+            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.InProgress).ConfigureAwait(false);
         }
     }
 
@@ -489,10 +489,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         {
             case ProgressMode.Stepped when message.TaskProgressPercentage.HasValue:
                 await UpdateStepProgressAsync(message.TaskName, message.TaskProgressPercentage.Value,
-                    StepStatus.InProgress);
+                    StepStatus.InProgress).ConfigureAwait(false);
                 break;
             case ProgressMode.Normal when message.OverallProgressPercentage.HasValue:
-                await UpdateProgressAsync(message.OverallProgressPercentage.Value, message.Message);
+                await UpdateProgressAsync(message.OverallProgressPercentage.Value, message.Message).ConfigureAwait(false);
                 break;
         }
     }
@@ -503,7 +503,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_currentMode == ProgressMode.Stepped)
         {
-            await UpdateStepProgressAsync(message.TaskName, 100, StepStatus.Completed);
+            await UpdateStepProgressAsync(message.TaskName, 100, StepStatus.Completed).ConfigureAwait(false);
         }
     }
 
@@ -513,7 +513,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
 
         if (_currentMode == ProgressMode.Stepped)
         {
-            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.Failed);
+            await UpdateStepProgressAsync(message.TaskName, 0, StepStatus.Failed).ConfigureAwait(false);
         }
     }
 
@@ -559,7 +559,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             }
 
             // Force UI refresh through component's public method
-            await _progressBar.UpdateProgressAsync(_progressBar.Progress, _progressBar.Message);
+            await _progressBar.UpdateProgressAsync(_progressBar.Progress, _progressBar.Message).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -580,7 +580,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
             cts.CancelAfter(OperationTimeout);
 
-            await _progressBar.UpdateStepAsync(stepId, progress, status);
+            await _progressBar.UpdateStepAsync(stepId, progress, status).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -601,7 +601,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
             cts.CancelAfter(OperationTimeout);
 
-            await _progressBar.ResetAsync();
+            await _progressBar.ResetAsync().ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
         {
@@ -679,7 +679,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
         IsDisposed = true;
 
         // Cancel all operations using .NET 9 optimized cancellation
-        await _cancellationTokenSource.CancelAsync();
+        await _cancellationTokenSource.CancelAsync().ConfigureAwait(false);
 
         // Clean up subscriptions
         DisableExecutionEngineIntegration();

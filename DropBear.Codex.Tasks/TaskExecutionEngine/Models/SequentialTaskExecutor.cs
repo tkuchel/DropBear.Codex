@@ -7,6 +7,7 @@ using DropBear.Codex.Tasks.Errors;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Extensions;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using Serilog;
 
 #endregion
@@ -60,6 +61,17 @@ public class SequentialTaskExecutor
                     _logger.Information("Executing task {TaskName}", task.Name);
                     _tracker.StartTask(task.Name, Task.CompletedTask);
 
+                    // Publish task started message
+                    var startedMessage = TaskStartedMessage.Get(task.Name);
+                    try
+                    {
+                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        TaskStartedMessage.Return(startedMessage);
+                    }
+
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     cts.CancelAfter(task.Timeout);
 
@@ -69,6 +81,17 @@ public class SequentialTaskExecutor
                     {
                         _tracker.CompleteTask(task.Name, true);
                         context.IncrementCompletedTaskCount();
+
+                        // Publish task completed message
+                        var completedMessage = TaskCompletedMessage.Get(task.Name);
+                        try
+                        {
+                            await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            TaskCompletedMessage.Return(completedMessage);
+                        }
                     }
                     else
                     {
@@ -78,6 +101,17 @@ public class SequentialTaskExecutor
 
                         _logger.Error(exception, "Task {TaskName} failed: {ErrorMessage}", task.Name, errorMessage);
                         failedTasks.Add((task.Name, exception));
+
+                        // Publish task failed message
+                        var failedMessage = TaskFailedMessage.Get(task.Name, exception);
+                        try
+                        {
+                            await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
+                        }
+                        finally
+                        {
+                            TaskFailedMessage.Return(failedMessage);
+                        }
 
                         // Stop on first failure if configured
                         if (!task.ContinueOnFailure && scope.Context.Options.StopOnFirstFailure)
@@ -91,6 +125,17 @@ public class SequentialTaskExecutor
                     _logger.Error(ex, "Unexpected error executing task {TaskName}", task.Name);
                     failedTasks.Add((task.Name, ex));
                     _tracker.CompleteTask(task.Name, false);
+
+                    // Publish task failed message
+                    var failedMessage = TaskFailedMessage.Get(task.Name, ex);
+                    try
+                    {
+                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
+                    }
+                    finally
+                    {
+                        TaskFailedMessage.Return(failedMessage);
+                    }
                 }
             }
 

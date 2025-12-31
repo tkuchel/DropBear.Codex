@@ -6,6 +6,7 @@ using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Tasks.Errors;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using Serilog;
 
 #endregion
@@ -217,6 +218,18 @@ public sealed class ParallelTaskScheduler : IDisposable
             cts.CancelAfter(task.Timeout);
 
             _logger.Information("Executing task {TaskName}", task.Name);
+
+            // Publish task started message
+            var startedMessage = TaskStartedMessage.Get(task.Name);
+            try
+            {
+                await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
+            }
+            finally
+            {
+                TaskStartedMessage.Return(startedMessage);
+            }
+
             var executionResult = await task.ExecuteAsync(scope.Context, cts.Token).ConfigureAwait(false);
 
             taskMetrics.Stop();
@@ -225,6 +238,18 @@ public sealed class ParallelTaskScheduler : IDisposable
             {
                 metrics.RecordSuccess(taskMetrics.Elapsed);
                 _stats.IncrementCompletedTasks();
+
+                // Publish task completed message
+                var completedMessage = TaskCompletedMessage.Get(task.Name);
+                try
+                {
+                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
+                }
+                finally
+                {
+                    TaskCompletedMessage.Return(completedMessage);
+                }
+
                 return Result<Unit, TaskExecutionError>.Success(Unit.Value);
             }
             else
@@ -232,6 +257,19 @@ public sealed class ParallelTaskScheduler : IDisposable
                 metrics.RecordFailure(taskMetrics.Elapsed);
                 _stats.IncrementFailedTasks();
                 _logger.Error("Task {TaskName} failed: {ErrorMessage}", task.Name, executionResult.Error!.Message);
+
+                // Publish task failed message
+                var exception = executionResult.Error.Exception ?? new Exception(executionResult.Error.Message);
+                var failedMessage = TaskFailedMessage.Get(task.Name, exception);
+                try
+                {
+                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
+                }
+                finally
+                {
+                    TaskFailedMessage.Return(failedMessage);
+                }
+
                 return Result<Unit, TaskExecutionError>.Failure(executionResult.Error);
             }
         }
@@ -241,6 +279,18 @@ public sealed class ParallelTaskScheduler : IDisposable
             metrics.RecordFailure(taskMetrics.Elapsed);
             _stats.IncrementFailedTasks();
             _logger.Error(ex, "Unexpected error executing task {TaskName}", task.Name);
+
+            // Publish task failed message
+            var failedMessage = TaskFailedMessage.Get(task.Name, ex);
+            try
+            {
+                await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
+            }
+            finally
+            {
+                TaskFailedMessage.Return(failedMessage);
+            }
+
             return Result<Unit, TaskExecutionError>.Failure(
                 new TaskExecutionError($"Task {task.Name} failed unexpectedly", task.Name, ex));
         }

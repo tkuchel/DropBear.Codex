@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Components.Progress;
 using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Extensions;
@@ -97,7 +97,7 @@ public sealed class ProgressService : IAsyncDisposable
 
         _disposed = true;
 
-        await _cleanupTimer.DisposeAsync();
+        await _cleanupTimer.DisposeAsync().ConfigureAwait(false);
 
         foreach (var operation in _operations.Values)
         {

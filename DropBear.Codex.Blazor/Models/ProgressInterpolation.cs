@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
@@ -173,7 +173,7 @@ internal static class ProgressInterpolation
 
                 try
                 {
-                    if (!await _timer.WaitForNextTickAsync(linkedCts.Token))
+                    if (!await _timer.WaitForNextTickAsync(linkedCts.Token).ConfigureAwait(false))
                     {
                         yield break;
                     }

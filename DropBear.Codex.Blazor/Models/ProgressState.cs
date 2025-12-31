@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -48,9 +48,9 @@ public sealed class ProgressState : IAsyncDisposable
 
         try
         {
-            await _disposalCts.CancelAsync();
+            await _disposalCts.CancelAsync().ConfigureAwait(false);
 
-            await _stateLock.WaitAsync(TimeSpan.FromSeconds(5));
+            await _stateLock.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             try
             {
                 // Properly dispose each StepProgressState
@@ -58,7 +58,7 @@ public sealed class ProgressState : IAsyncDisposable
                 {
                     try
                     {
-                        await state.DisposeAsync();
+                        await state.DisposeAsync().ConfigureAwait(false);
                     }
                     catch (Exception)
                     {
@@ -90,13 +90,13 @@ public sealed class ProgressState : IAsyncDisposable
             cancellationToken
         );
 
-        await _stateLock.WaitAsync(cts.Token);
+        await _stateLock.WaitAsync(cts.Token).ConfigureAwait(false);
         try
         {
             // Dispose existing step states before clearing
             foreach (var state in _stepStates.Values)
             {
-                await state.DisposeAsync();
+                await state.DisposeAsync().ConfigureAwait(false);
             }
 
             _isIndeterminate = true;
@@ -122,7 +122,7 @@ public sealed class ProgressState : IAsyncDisposable
             cancellationToken
         );
 
-        await _stateLock.WaitAsync(cts.Token);
+        await _stateLock.WaitAsync(cts.Token).ConfigureAwait(false);
         try
         {
             _isIndeterminate = false;

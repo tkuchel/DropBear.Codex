@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
@@ -62,14 +62,14 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
 
         try
         {
-            await _operationSemaphore.WaitAsync(cancellationToken);
+            await _operationSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 // Add to active collection
                 _activeSnackbars.TryAdd(snackbar.Id, snackbar);
 
                 // Notify subscribers
-                await OnShow.Invoke(snackbar);
+                await OnShow.Invoke(snackbar).ConfigureAwait(false);
 
                 _logger.LogDebug("Snackbar shown: {Id} - {Type} - {Message}",
                     snackbar.Id, snackbar.Type, snackbar.Message);
@@ -81,8 +81,8 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
                     {
                         try
                         {
-                            await Task.Delay(snackbar.Duration, cancellationToken);
-                            await RemoveSnackbar(snackbar.Id, cancellationToken);
+                            await Task.Delay(snackbar.Duration, cancellationToken).ConfigureAwait(false);
+                            await RemoveSnackbar(snackbar.Id, cancellationToken).ConfigureAwait(false);
                         }
                         catch (TaskCanceledException)
                         {
@@ -179,12 +179,12 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
 
         try
         {
-            await _operationSemaphore.WaitAsync(cancellationToken);
+            await _operationSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 if (_activeSnackbars.TryRemove(snackbarId, out var removedSnackbar))
                 {
-                    await OnRemove.Invoke(snackbarId);
+                    await OnRemove.Invoke(snackbarId).ConfigureAwait(false);
                     _logger.LogDebug("Snackbar removed: {Id}", snackbarId);
                 }
             }
@@ -207,7 +207,7 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
 
         try
         {
-            await _operationSemaphore.WaitAsync(cancellationToken);
+            await _operationSemaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 var snackbarIds = _activeSnackbars.Keys.ToList();
@@ -216,7 +216,7 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
                 // Notify for each removed snackbar
                 foreach (var id in snackbarIds)
                 {
-                    await OnRemove.Invoke(id);
+                    await OnRemove.Invoke(id).ConfigureAwait(false);
                 }
 
                 _logger.LogDebug("All snackbars removed: {Count}", snackbarIds.Count);

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Components.Bases;
@@ -279,7 +279,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
             var semaphoreTask = _modalSemaphore.WaitAsync(linkedCts.Token);
 
             // Wait for either the semaphore or timeout
-            var completedTask = await Task.WhenAny(semaphoreTask, timeoutTask);
+            var completedTask = await Task.WhenAny(semaphoreTask, timeoutTask).ConfigureAwait(false);
 
             if (completedTask == timeoutTask)
             {
@@ -314,7 +314,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
                     _isModalVisible = true;
 
                     // Trigger notification
-                    await NotifyStateChangedAsync(linkedCts.Token);
+                    await NotifyStateChangedAsync(linkedCts.Token).ConfigureAwait(false);
                 }
 
                 return Result<Unit, ModalError>.Success(Unit.Value);
@@ -390,7 +390,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
             var semaphoreTask = _modalSemaphore.WaitAsync(linkedCts.Token);
 
             // Wait for either the semaphore or timeout
-            var completedTask = await Task.WhenAny(semaphoreTask, timeoutTask);
+            var completedTask = await Task.WhenAny(semaphoreTask, timeoutTask).ConfigureAwait(false);
 
             if (completedTask == timeoutTask)
             {
@@ -428,7 +428,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
                 }
 
                 // Trigger UI update with debounce protection
-                await NotifyStateChangedAsync(linkedCts.Token);
+                await NotifyStateChangedAsync(linkedCts.Token).ConfigureAwait(false);
 
                 _logger.LogDebug("Successfully closed modal: {ClosedComponentType}", closedComponentType);
                 return Result<Unit, ModalError>.Success(Unit.Value);
@@ -478,7 +478,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
             var semaphoreTask = _modalSemaphore.WaitAsync(linkedCts.Token);
 
             // Wait for either the semaphore or timeout
-            var completedTask = await Task.WhenAny(semaphoreTask, timeoutTask);
+            var completedTask = await Task.WhenAny(semaphoreTask, timeoutTask).ConfigureAwait(false);
 
             if (completedTask == timeoutTask)
             {
@@ -510,7 +510,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
                     _isModalVisible = false;
 
                     // Trigger UI update
-                    await NotifyStateChangedAsync(linkedCts.Token);
+                    await NotifyStateChangedAsync(linkedCts.Token).ConfigureAwait(false);
                 }
 
                 _logger.LogDebug("Successfully cleared {QueueCount} queued modals and {VisibleCount} visible modal",
@@ -593,10 +593,10 @@ public sealed class ModalService : IModalService, IAsyncDisposable
             _logger.LogDebug("Disposing modal service");
 
             // Cancel any ongoing operations
-            await _disposalCts.CancelAsync();
+            await _disposalCts.CancelAsync().ConfigureAwait(false);
 
             // Acquire the lock to prevent any new operations
-            if (await _modalSemaphore.WaitAsync(1000))
+            if (await _modalSemaphore.WaitAsync(1000).ConfigureAwait(false))
             {
                 try
                 {
@@ -696,7 +696,7 @@ public sealed class ModalService : IModalService, IAsyncDisposable
         try
         {
             // First quick check without waiting
-            if (!await _notificationSemaphore.WaitAsync(0, cancellationToken))
+            if (!await _notificationSemaphore.WaitAsync(0, cancellationToken).ConfigureAwait(false))
             {
                 // Increment pending count
                 Interlocked.Increment(ref _pendingNotifications);
