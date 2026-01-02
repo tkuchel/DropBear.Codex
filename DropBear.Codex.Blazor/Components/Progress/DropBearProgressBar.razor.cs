@@ -203,6 +203,25 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         var currentTime = DateTime.UtcNow;
         var progressChanged = Math.Abs(Progress - _lastProgress) > 0.01;
 
+        // Reinitialize step states when Steps parameter changes
+        // This handles the case where Steps is set after component initialization
+        if (HasSteps)
+        {
+            var needsReinit = _stepStates.Count == 0 ||
+                              Steps!.Any(s => !_stepStates.ContainsKey(s.Id));
+
+            if (needsReinit)
+            {
+                foreach (var step in Steps!)
+                {
+                    if (!_stepStates.ContainsKey(step.Id))
+                    {
+                        _stepStates[step.Id] = new ProgressStepState(step.Id);
+                    }
+                }
+            }
+        }
+
         if (progressChanged)
         {
             if (!_hasStarted && Progress > 0)
