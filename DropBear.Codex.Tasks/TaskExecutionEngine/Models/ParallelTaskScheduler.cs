@@ -220,15 +220,12 @@ public sealed class ParallelTaskScheduler : IDisposable
             _logger.Information("Executing task {TaskName}", task.Name);
 
             // Publish task started message
-            var startedMessage = TaskStartedMessage.Get(task.Name);
-            try
-            {
-                await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
-            }
-            finally
-            {
-                TaskStartedMessage.Return(startedMessage);
-            }
+            // Note: We create a new message instance instead of using object pooling
+            // because QueueMessage is async and the message may not be processed
+            // before it would be returned to the pool, causing a race condition.
+            var startedMessage = new TaskStartedMessage();
+            startedMessage.Initialize(task.Name);
+            await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
 
             var executionResult = await task.ExecuteAsync(scope.Context, cts.Token).ConfigureAwait(false);
 
@@ -240,15 +237,9 @@ public sealed class ParallelTaskScheduler : IDisposable
                 _stats.IncrementCompletedTasks();
 
                 // Publish task completed message
-                var completedMessage = TaskCompletedMessage.Get(task.Name);
-                try
-                {
-                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
-                }
-                finally
-                {
-                    TaskCompletedMessage.Return(completedMessage);
-                }
+                var completedMessage = new TaskCompletedMessage();
+                completedMessage.Initialize(task.Name);
+                await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
 
                 return Result<Unit, TaskExecutionError>.Success(Unit.Value);
             }
@@ -260,15 +251,9 @@ public sealed class ParallelTaskScheduler : IDisposable
 
                 // Publish task failed message
                 var exception = executionResult.Error.Exception ?? new Exception(executionResult.Error.Message);
-                var failedMessage = TaskFailedMessage.Get(task.Name, exception);
-                try
-                {
-                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
-                }
-                finally
-                {
-                    TaskFailedMessage.Return(failedMessage);
-                }
+                var failedMessage = new TaskFailedMessage();
+                failedMessage.Initialize(task.Name, exception);
+                await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
 
                 return Result<Unit, TaskExecutionError>.Failure(executionResult.Error);
             }
@@ -281,15 +266,9 @@ public sealed class ParallelTaskScheduler : IDisposable
             _logger.Error(ex, "Unexpected error executing task {TaskName}", task.Name);
 
             // Publish task failed message
-            var failedMessage = TaskFailedMessage.Get(task.Name, ex);
-            try
-            {
-                await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
-            }
-            finally
-            {
-                TaskFailedMessage.Return(failedMessage);
-            }
+            var failedMessage = new TaskFailedMessage();
+            failedMessage.Initialize(task.Name, ex);
+            await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
 
             return Result<Unit, TaskExecutionError>.Failure(
                 new TaskExecutionError($"Task {task.Name} failed unexpectedly", task.Name, ex));

@@ -62,15 +62,12 @@ public class SequentialTaskExecutor
                     _tracker.StartTask(task.Name, Task.CompletedTask);
 
                     // Publish task started message
-                    var startedMessage = TaskStartedMessage.Get(task.Name);
-                    try
-                    {
-                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        TaskStartedMessage.Return(startedMessage);
-                    }
+                    // Note: We create a new message instance instead of using object pooling
+                    // because QueueMessage is async and the message may not be processed
+                    // before it would be returned to the pool, causing a race condition.
+                    var startedMessage = new TaskStartedMessage();
+                    startedMessage.Initialize(task.Name);
+                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
 
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     cts.CancelAfter(task.Timeout);
@@ -83,15 +80,9 @@ public class SequentialTaskExecutor
                         context.IncrementCompletedTaskCount();
 
                         // Publish task completed message
-                        var completedMessage = TaskCompletedMessage.Get(task.Name);
-                        try
-                        {
-                            await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            TaskCompletedMessage.Return(completedMessage);
-                        }
+                        var completedMessage = new TaskCompletedMessage();
+                        completedMessage.Initialize(task.Name);
+                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
                     }
                     else
                     {
@@ -103,15 +94,9 @@ public class SequentialTaskExecutor
                         failedTasks.Add((task.Name, exception));
 
                         // Publish task failed message
-                        var failedMessage = TaskFailedMessage.Get(task.Name, exception);
-                        try
-                        {
-                            await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
-                        }
-                        finally
-                        {
-                            TaskFailedMessage.Return(failedMessage);
-                        }
+                        var failedMessage = new TaskFailedMessage();
+                        failedMessage.Initialize(task.Name, exception);
+                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
 
                         // Stop on first failure if configured
                         if (!task.ContinueOnFailure && scope.Context.Options.StopOnFirstFailure)
@@ -127,15 +112,9 @@ public class SequentialTaskExecutor
                     _tracker.CompleteTask(task.Name, false);
 
                     // Publish task failed message
-                    var failedMessage = TaskFailedMessage.Get(task.Name, ex);
-                    try
-                    {
-                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
-                    }
-                    finally
-                    {
-                        TaskFailedMessage.Return(failedMessage);
-                    }
+                    var failedMessage = new TaskFailedMessage();
+                    failedMessage.Initialize(task.Name, ex);
+                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
                 }
             }
 
