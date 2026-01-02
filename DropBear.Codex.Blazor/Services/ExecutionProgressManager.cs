@@ -285,6 +285,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             var clampedProgress = Math.Clamp(progress, 0, 100);
             StepState updatedStep;
             string currentMessage;
+            double overallProgress;
 
             lock (_stateLock)
             {
@@ -301,7 +302,7 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                 stepStatesBuilder[stepId] = updatedStep;
                 _stepStates = stepStatesBuilder.ToFrozenDictionary();
 
-                // Update overall message
+                // Update overall message and calculate overall progress
                 if (_steps is { Count: > 0 })
                 {
                     var stepIndex = _steps.ToList().FindIndex(s => string.Equals(s.Id, stepId, StringComparison.Ordinal));
@@ -309,13 +310,22 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                     {
                         _currentMessage = $"Step {stepIndex + 1} of {_steps.Count}";
                     }
+
+                    // Calculate overall progress as average of all step progress values
+                    var totalProgress = _stepStates.Values.Sum(s => s.Progress);
+                    overallProgress = totalProgress / _steps.Count;
+                    _currentProgress = overallProgress;
+                }
+                else
+                {
+                    overallProgress = 0;
                 }
 
                 currentMessage = _currentMessage;
             }
 
             await UpdateStepInProgressBarAsync(stepId, clampedProgress, status).ConfigureAwait(false);
-            await UpdateProgressBarAsync(message: currentMessage).ConfigureAwait(false);
+            await UpdateProgressBarAsync(progress: overallProgress, message: currentMessage).ConfigureAwait(false);
 
             NotifyProgressUpdate([updatedStep]);
 
