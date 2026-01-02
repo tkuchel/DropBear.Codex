@@ -66,9 +66,34 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     /// <summary>
     ///     Gets or sets the collection of progress steps.
+    ///     When set directly (not through parameter binding), this property
+    ///     automatically initializes step states for progress tracking.
     /// </summary>
     [Parameter]
-    public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
+    public IReadOnlyList<ProgressStepConfig>? Steps
+    {
+        get => _steps;
+        set
+        {
+            if (ReferenceEquals(_steps, value)) return;
+
+            _steps = value;
+
+            // Initialize step states when steps are set directly
+            // This is necessary because direct property assignment bypasses OnParametersSetAsync
+            if (_steps is { Count: > 0 })
+            {
+                foreach (var step in _steps)
+                {
+                    if (!_stepStates.ContainsKey(step.Id))
+                    {
+                        _stepStates[step.Id] = new ProgressStepState(step.Id);
+                    }
+                }
+            }
+        }
+    }
+    private IReadOnlyList<ProgressStepConfig>? _steps;
 
     /// <summary>
     ///     Gets or sets the visual variant/theme of the progress bar.
