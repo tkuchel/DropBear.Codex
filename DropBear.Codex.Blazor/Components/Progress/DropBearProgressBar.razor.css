@@ -260,6 +260,93 @@
   gap: 8px;
 }
 
+/* Timeline Layout - Optimized for many steps (6+) */
+.steps-container[data-layout="timeline"] {
+  display: flex;
+  flex-direction: row;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: thin;
+  scrollbar-color: var(--progress-gray-300) transparent;
+  padding-bottom: 8px;
+  gap: 8px;
+}
+
+.steps-container[data-layout="timeline"]::-webkit-scrollbar {
+  height: 6px;
+}
+
+.steps-container[data-layout="timeline"]::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.steps-container[data-layout="timeline"]::-webkit-scrollbar-thumb {
+  background: var(--progress-gray-300);
+  border-radius: 3px;
+}
+
+.steps-container[data-layout="timeline"] > * {
+  flex: 0 0 auto;
+  min-width: 140px;
+  max-width: 180px;
+  scroll-snap-align: start;
+}
+
+/* Dense Layout - Even more compact for very many steps */
+.steps-container[data-layout="dense"] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.steps-container[data-layout="dense"] > * {
+  flex: 0 0 auto;
+  min-width: 100px;
+  max-width: 140px;
+}
+
+/* Many Steps Optimizations - Auto-applied via container query when many steps detected */
+.steps-section[data-step-count="many"] .steps-container {
+  /* Reduce gap for many steps */
+  gap: 8px;
+}
+
+/* Summary row for many steps - shows condensed view above timeline */
+.steps-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--progress-gray-100);
+  border-radius: var(--progress-border-radius);
+  font-size: 0.875rem;
+  color: var(--progress-gray-700);
+}
+
+.steps-summary-count {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.steps-summary-count .count-completed {
+  color: var(--progress-success);
+  font-weight: 600;
+}
+
+.steps-summary-count .count-remaining {
+  color: var(--progress-gray-500);
+}
+
+.steps-summary-current {
+  flex: 1;
+  font-weight: 500;
+  color: var(--progress-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Status Section */
 .progress-status {
   display: flex;

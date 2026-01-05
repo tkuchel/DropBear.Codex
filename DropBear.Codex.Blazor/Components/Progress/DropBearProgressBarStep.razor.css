@@ -117,6 +117,93 @@
   font-size: 0.875rem;
 }
 
+/* Ultra-Compact Mode - For timeline/dense layouts with many steps */
+.progress-step.step-ultra-compact {
+  padding: 8px 10px;
+}
+
+.progress-step.step-ultra-compact .step-header {
+  margin-bottom: 4px;
+  gap: 8px;
+}
+
+.progress-step.step-ultra-compact .step-icon {
+  width: 18px;
+  height: 18px;
+}
+
+.progress-step.step-ultra-compact .step-title {
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  margin: 0;
+}
+
+.progress-step.step-ultra-compact .step-description {
+  display: none;
+}
+
+.progress-step.step-ultra-compact .step-progress-track {
+  height: 4px;
+  margin: 4px 0;
+}
+
+.progress-step.step-ultra-compact .step-status-message {
+  font-size: 0.75rem;
+  margin-top: 4px;
+}
+
+.progress-step.step-ultra-compact .step-progress-text {
+  font-size: 0.75rem;
+  min-width: 35px;
+}
+
+/* Timeline Step Connector - visual line connecting steps */
+.progress-step.step-timeline {
+  position: relative;
+}
+
+.progress-step.step-timeline::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 8px;
+  height: 2px;
+  background: var(--progress-gray-300);
+  transform: translateY(-50%);
+}
+
+.progress-step.step-timeline:first-child::before {
+  display: none;
+}
+
+.progress-step.step-timeline[data-status="completed"]::before {
+  background: var(--progress-success);
+}
+
+.progress-step.step-timeline[data-status="in-progress"]::before {
+  background: linear-gradient(90deg, var(--progress-success), var(--progress-primary));
+}
+
+/* Many Steps - Emphasize current, de-emphasize others */
+.steps-container[data-many-steps="true"] .progress-step[data-status="not-started"] {
+  opacity: 0.5;
+  transform: scale(0.95);
+}
+
+.steps-container[data-many-steps="true"] .progress-step[data-status="completed"] {
+  opacity: 0.7;
+}
+
+.steps-container[data-many-steps="true"] .progress-step[data-status="in-progress"] {
+  opacity: 1;
+  transform: scale(1);
+  z-index: 10;
+  box-shadow:
+    0 4px 12px -2px rgba(0, 0, 0, 0.15),
+    0 0 0 2px color-mix(in srgb, var(--step-color) 20%, transparent);
+}
+
 /* Step Content */
 .step-content {
   position: relative;

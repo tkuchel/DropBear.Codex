@@ -424,6 +424,48 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     }
 
     /// <summary>
+    ///     Gets the effective layout based on step count when Auto is selected.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private StepsLayout GetEffectiveLayout()
+    {
+        if (StepsLayout != StepsLayout.Auto || !HasSteps)
+        {
+            return StepsLayout;
+        }
+
+        var stepCount = Steps!.Count;
+        return stepCount switch
+        {
+            <= 4 => StepsLayout.Horizontal,
+            <= 6 => StepsLayout.Compact,
+            <= 10 => StepsLayout.Timeline,
+            _ => StepsLayout.Dense
+        };
+    }
+
+    /// <summary>
+    ///     Gets whether we have many steps (6+) for applying special styling.
+    /// </summary>
+    private bool HasManySteps => HasSteps && Steps!.Count >= 6;
+
+    /// <summary>
+    ///     Gets the step count category for CSS data attribute.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetStepCountCategory()
+    {
+        if (!HasSteps) return "none";
+        var count = Steps!.Count;
+        return count switch
+        {
+            <= 4 => "few",
+            <= 8 => "many",
+            _ => "very-many"
+        };
+    }
+
+    /// <summary>
     ///     Formats a TimeSpan for display.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
