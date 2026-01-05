@@ -315,6 +315,9 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                     var totalProgress = _stepStates.Values.Sum(s => s.Progress);
                     overallProgress = totalProgress / _steps.Count;
                     _currentProgress = overallProgress;
+
+                    _logger.Debug("Overall progress calculation: StepId={StepId}, StepProgress={StepProgress}, TotalProgress={TotalProgress}, StepCount={StepCount}, OverallProgress={OverallProgress}",
+                        stepId, clampedProgress, totalProgress, _steps.Count, overallProgress);
                 }
                 else
                 {
@@ -563,12 +566,17 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
             else
             {
                 _progressBar.IsIndeterminate = false;
-                if (progress.HasValue) _progressBar.Progress = progress.Value;
+                if (progress.HasValue)
+                {
+                    _logger.Debug("Setting progress bar Progress to {Progress}", progress.Value);
+                    _progressBar.Progress = progress.Value;
+                }
                 if (message != null) _progressBar.Message = message;
                 if (steps != null) _progressBar.Steps = steps;
             }
 
             // Force UI refresh through component's public method
+            _logger.Debug("Calling UpdateProgressAsync with Progress={Progress}, Message={Message}", _progressBar.Progress, _progressBar.Message);
             await _progressBar.UpdateProgressAsync(_progressBar.Progress, _progressBar.Message).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (_cancellationTokenSource.Token.IsCancellationRequested)
