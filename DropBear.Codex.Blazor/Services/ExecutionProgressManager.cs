@@ -384,10 +384,10 @@ public sealed class ExecutionProgressManager : IExecutionProgressManager
                     UpdateStepInProgressBarAsync(step.Id, step.Progress, step.Status).AsTask()));
             }
 
-            if (_currentMode != ProgressMode.Stepped)
-            {
-                await UpdateProgressBarAsync(progress: 100, message: "Completed").ConfigureAwait(false);
-            }
+            // Always update overall progress bar to 100% on completion
+            // For stepped mode, this ensures the overall percentage is displayed correctly
+            // even if the final step's update hasn't been rendered yet
+            await UpdateProgressBarAsync(progress: 100, message: "Completed").ConfigureAwait(false);
 
             NotifyProgressUpdate(completedSteps.Count > 0 ? completedSteps : null);
 
