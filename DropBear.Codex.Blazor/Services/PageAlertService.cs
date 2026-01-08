@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Frozen;
 using System.Threading.Channels;
@@ -117,7 +117,7 @@ public sealed class PageAlertService : IPageAlertService
             };
 
             // Try to write to channel
-            if (!await _writer.WaitToWriteAsync(linkedCts.Token))
+            if (!await _writer.WaitToWriteAsync(linkedCts.Token).ConfigureAwait(false))
             {
                 return Result<Unit, AlertError>.Failure(
                     AlertError.CreateFailed("Alert channel is closed"));
@@ -199,7 +199,7 @@ public sealed class PageAlertService : IPageAlertService
                 _cts.Token, cancellationToken);
             linkedCts.CancelAfter(OperationTimeoutMs);
 
-            var semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(2), linkedCts.Token);
+            var semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(2), linkedCts.Token).ConfigureAwait(false);
             if (!semaphoreAcquired)
             {
                 return Result<Unit, AlertError>.Failure(
@@ -294,7 +294,7 @@ public sealed class PageAlertService : IPageAlertService
         {
             await foreach (var alert in _reader.ReadAllAsync(cancellationToken))
             {
-                await ProcessSingleAlertAsync(alert);
+                await ProcessSingleAlertAsync(alert).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
@@ -316,7 +316,7 @@ public sealed class PageAlertService : IPageAlertService
 
         try
         {
-            var semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(1), _cts.Token);
+            var semaphoreAcquired = await _eventSemaphore.WaitAsync(TimeSpan.FromSeconds(1), _cts.Token).ConfigureAwait(false);
             if (!semaphoreAcquired)
             {
                 _logger?.LogWarning("Timeout waiting for semaphore when processing alert: {AlertId}", alert.Id);
@@ -325,7 +325,7 @@ public sealed class PageAlertService : IPageAlertService
 
             try
             {
-                await OnAlert.Invoke(alert);
+                await OnAlert.Invoke(alert).ConfigureAwait(false);
                 _logger?.LogDebug("Alert processed: {AlertId} - {Title}", alert.Id, alert.Title);
             }
             finally
@@ -371,14 +371,14 @@ public sealed class PageAlertService : IPageAlertService
             _writer.Complete();
 
             // Cancel background operations
-            await _cts.CancelAsync();
+            await _cts.CancelAsync().ConfigureAwait(false);
 
             // Wait for processing to complete
             if (_processingTask != null)
             {
                 try
                 {
-                    await _processingTask;
+                    await _processingTask.ConfigureAwait(false);
                 }
                 catch (OperationCanceledException)
                 {

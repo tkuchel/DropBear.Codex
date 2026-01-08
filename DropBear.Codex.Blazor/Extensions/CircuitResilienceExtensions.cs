@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Diagnostics;
 using System.Reflection;
@@ -79,7 +79,7 @@ public static class CircuitResilienceExtensions
                 try
                 {
                     // Wait for connection or timeout
-                    return await tcs.Task.WaitAsync(timeoutCts.Token);
+                    return await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -99,7 +99,7 @@ public static class CircuitResilienceExtensions
             try
             {
                 // Wait for connection or timeout
-                return await tcs.Task.WaitAsync(timeoutCts.Token);
+                return await tcs.Task.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             }
             finally
             {
@@ -141,7 +141,7 @@ public static class CircuitResilienceExtensions
             attempts++;
             try
             {
-                var result = await func(cancellationToken);
+                var result = await func(cancellationToken).ConfigureAwait(false);
 
                 // Log the successful completion time if needed
                 // e.g., Debug.WriteLine($"Operation completed in {operationTimer.ElapsedMilliseconds}ms after {attempts} attempts");
@@ -163,7 +163,7 @@ public static class CircuitResilienceExtensions
 
                 // Add jitter to retry delay
                 var jitter = Random.Shared.Next(50, 250);
-                await Task.Delay((100 * attempts) + jitter, cancellationToken);
+                await Task.Delay((100 * attempts) + jitter, cancellationToken).ConfigureAwait(false);
             }
         }
     }

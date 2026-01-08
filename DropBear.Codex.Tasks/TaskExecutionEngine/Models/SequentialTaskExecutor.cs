@@ -7,6 +7,7 @@ using DropBear.Codex.Tasks.Errors;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Enums;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Extensions;
 using DropBear.Codex.Tasks.TaskExecutionEngine.Interfaces;
+using DropBear.Codex.Tasks.TaskExecutionEngine.Messages;
 using Serilog;
 
 #endregion
@@ -60,6 +61,14 @@ public class SequentialTaskExecutor
                     _logger.Information("Executing task {TaskName}", task.Name);
                     _tracker.StartTask(task.Name, Task.CompletedTask);
 
+                    // Publish task started message
+                    // Note: We create a new message instance instead of using object pooling
+                    // because QueueMessage is async and the message may not be processed
+                    // before it would be returned to the pool, causing a race condition.
+                    var startedMessage = new TaskStartedMessage();
+                    startedMessage.Initialize(task.Name);
+                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, startedMessage).ConfigureAwait(false);
+
                     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                     cts.CancelAfter(task.Timeout);
 
@@ -69,6 +78,11 @@ public class SequentialTaskExecutor
                     {
                         _tracker.CompleteTask(task.Name, true);
                         context.IncrementCompletedTaskCount();
+
+                        // Publish task completed message
+                        var completedMessage = new TaskCompletedMessage();
+                        completedMessage.Initialize(task.Name);
+                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, completedMessage).ConfigureAwait(false);
                     }
                     else
                     {
@@ -78,6 +92,11 @@ public class SequentialTaskExecutor
 
                         _logger.Error(exception, "Task {TaskName} failed: {ErrorMessage}", task.Name, errorMessage);
                         failedTasks.Add((task.Name, exception));
+
+                        // Publish task failed message
+                        var failedMessage = new TaskFailedMessage();
+                        failedMessage.Initialize(task.Name, exception);
+                        await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
 
                         // Stop on first failure if configured
                         if (!task.ContinueOnFailure && scope.Context.Options.StopOnFirstFailure)
@@ -91,6 +110,11 @@ public class SequentialTaskExecutor
                     _logger.Error(ex, "Unexpected error executing task {TaskName}", task.Name);
                     failedTasks.Add((task.Name, ex));
                     _tracker.CompleteTask(task.Name, false);
+
+                    // Publish task failed message
+                    var failedMessage = new TaskFailedMessage();
+                    failedMessage.Initialize(task.Name, ex);
+                    await scope.MessagePublisher.QueueMessage(scope.ChannelId, failedMessage).ConfigureAwait(false);
                 }
             }
 

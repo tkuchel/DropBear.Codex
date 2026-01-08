@@ -243,9 +243,59 @@ dotnet_naming_style.begins_with_underscore.capitalization = camel_case
 
 #### Analyzer Rules ####
 
-# Meziantou.Analyzer suppressions
+# Meziantou.Analyzer - Subjective/Style warnings (suppressed)
 # MA0048: File name must match type name - suppress for files with multiple types or helper classes
 dotnet_diagnostic.MA0048.severity = none
 
 # MA0051: Method is too long - suppress for complex methods where splitting would reduce readability
 dotnet_diagnostic.MA0051.severity = none
+
+# MA0009: Regex timeout - suggestion only, not critical for most scenarios
+dotnet_diagnostic.MA0009.severity = suggestion
+
+# MA0074: Avoid implicit culture-sensitive ToString - suggestion for less critical cases
+dotnet_diagnostic.MA0074.severity = suggestion
+
+# MA0134: Observe result of async calls - suggestion, covered by compiler warnings
+dotnet_diagnostic.MA0134.severity = suggestion
+
+# MA0140: Use explicit enum value instead of 0 - stylistic preference
+dotnet_diagnostic.MA0140.severity = suggestion
+
+# MA0147: Avoid async void method for delegate - suggestion, context-dependent
+dotnet_diagnostic.MA0147.severity = suggestion
+
+# MA0158: Use ValueTask instead of Task - optimization, not required
+dotnet_diagnostic.MA0158.severity = suggestion
+
+# MA0055: Do not use destructor - rare issue, suggestion level
+dotnet_diagnostic.MA0055.severity = suggestion
+
+# Meziantou.Analyzer - Keep as warnings (correctness issues)
+# MA0004: Use ConfigureAwait - important for library code
+dotnet_diagnostic.MA0004.severity = warning
+
+# MA0006: Use string.Equals instead of == - correctness for culture-aware comparisons
+dotnet_diagnostic.MA0006.severity = warning
+
+# MA0002: IEqualityComparer for collections - correctness for culture-aware operations
+dotnet_diagnostic.MA0002.severity = warning
+
+# MA0011: IFormatProvider for formatting - correctness for culture-aware formatting
+dotnet_diagnostic.MA0011.severity = warning
+
+# MA0015: ArgumentException with parameter name - helpful for debugging
+dotnet_diagnostic.MA0015.severity = warning
+
+# MA0016: Prefer returning collection abstraction - good API design
+dotnet_diagnostic.MA0016.severity = warning
+
+# MA0046: Use EventHandler<T> - correctness for event signatures
+dotnet_diagnostic.MA0046.severity = warning
+
+# Unused field warnings - should be cleaned up
+dotnet_diagnostic.CS0169.severity = warning
+dotnet_diagnostic.CS0649.severity = warning
+dotnet_diagnostic.CS0414.severity = warning
+dotnet_diagnostic.CS0067.severity = warning
+dotnet_diagnostic.CS1998.severity = warning

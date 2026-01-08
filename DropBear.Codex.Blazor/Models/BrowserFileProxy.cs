@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.JSInterop;
@@ -75,7 +75,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
             // in that case, do not dispose it here.
             if (_fileKey is null)
             {
-                await _jsModuleOrFileRef.DisposeAsync();
+                await _jsModuleOrFileRef.DisposeAsync().ConfigureAwait(false);
             }
         }
         finally
@@ -144,7 +144,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
         try
         {
-            var fileInfo = await jsModule.InvokeAsync<FileInfoJson>("getFileInfoByKey", fileKey);
+            var fileInfo = await jsModule.InvokeAsync<FileInfoJson>("getFileInfoByKey", fileKey).ConfigureAwait(false);
             return new BrowserFileProxy(
                 fileKey,
                 jsModule,
@@ -258,7 +258,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
             }
 
             var bytesToRead = (int)Math.Min(count, bytesRemaining);
-            var bytesRead = await _readAsync(buffer, offset, bytesToRead, cancellationToken);
+            var bytesRead = await _readAsync(buffer, offset, bytesToRead, cancellationToken).ConfigureAwait(false);
             _position += bytesRead;
             return bytesRead;
         }

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Logging;
 using Microsoft.Extensions.Logging;
@@ -127,7 +127,7 @@ public static partial class ValidationHelper
                 .Select(model => Task.Run(() => ValidateModel(model, validationContextFactory)))
                 .ToList();
 
-            var results = await Task.WhenAll(validationTasks);
+            var results = await Task.WhenAll(validationTasks).ConfigureAwait(false);
             return CoreValidationResult.Combine(results);
         }
         catch (Exception ex)

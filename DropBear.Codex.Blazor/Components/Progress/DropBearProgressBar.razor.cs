@@ -66,9 +66,34 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     /// <summary>
     ///     Gets or sets the collection of progress steps.
+    ///     When set directly (not through parameter binding), this property
+    ///     automatically initializes step states for progress tracking.
     /// </summary>
     [Parameter]
-    public IReadOnlyList<ProgressStepConfig>? Steps { get; set; }
+    public IReadOnlyList<ProgressStepConfig>? Steps
+    {
+        get => _steps;
+        set
+        {
+            if (ReferenceEquals(_steps, value)) return;
+
+            _steps = value;
+
+            // Initialize step states when steps are set directly
+            // This is necessary because direct property assignment bypasses OnParametersSetAsync
+            if (_steps is { Count: > 0 })
+            {
+                foreach (var step in _steps)
+                {
+                    if (!_stepStates.ContainsKey(step.Id))
+                    {
+                        _stepStates[step.Id] = new ProgressStepState(step.Id);
+                    }
+                }
+            }
+        }
+    }
+    private IReadOnlyList<ProgressStepConfig>? _steps;
 
     /// <summary>
     ///     Gets or sets the visual variant/theme of the progress bar.
@@ -202,6 +227,25 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     {
         var currentTime = DateTime.UtcNow;
         var progressChanged = Math.Abs(Progress - _lastProgress) > 0.01;
+
+        // Reinitialize step states when Steps parameter changes
+        // This handles the case where Steps is set after component initialization
+        if (HasSteps)
+        {
+            var needsReinit = _stepStates.Count == 0 ||
+                              Steps!.Any(s => !_stepStates.ContainsKey(s.Id));
+
+            if (needsReinit)
+            {
+                foreach (var step in Steps!)
+                {
+                    if (!_stepStates.ContainsKey(step.Id))
+                    {
+                        _stepStates[step.Id] = new ProgressStepState(step.Id);
+                    }
+                }
+            }
+        }
 
         if (progressChanged)
         {
@@ -377,6 +421,48 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         _lastTimeEstimationUpdate = now;
 
         return _cachedTimeEstimation;
+    }
+
+    /// <summary>
+    ///     Gets the effective layout based on step count when Auto is selected.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private StepsLayout GetEffectiveLayout()
+    {
+        if (StepsLayout != StepsLayout.Auto || !HasSteps)
+        {
+            return StepsLayout;
+        }
+
+        var stepCount = Steps!.Count;
+        return stepCount switch
+        {
+            <= 4 => StepsLayout.Horizontal,
+            <= 6 => StepsLayout.Compact,
+            <= 10 => StepsLayout.Timeline,
+            _ => StepsLayout.Dense
+        };
+    }
+
+    /// <summary>
+    ///     Gets whether we have many steps (6+) for applying special styling.
+    /// </summary>
+    private bool HasManySteps => HasSteps && Steps!.Count >= 6;
+
+    /// <summary>
+    ///     Gets the step count category for CSS data attribute.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private string GetStepCountCategory()
+    {
+        if (!HasSteps) return "none";
+        var count = Steps!.Count;
+        return count switch
+        {
+            <= 4 => "few",
+            <= 8 => "many",
+            _ => "very-many"
+        };
     }
 
     /// <summary>

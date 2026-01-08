@@ -22,11 +22,15 @@ public sealed class TaskExecutionScope : IDisposable
         IServiceScope scope,
         TaskExecutionTracker tracker,
         ExecutionContext context,
+        MessagePublisher messagePublisher,
+        Guid channelId,
         ILogger logger)
     {
         _scope = scope ?? throw new ArgumentNullException(nameof(scope));
         Tracker = tracker ?? throw new ArgumentNullException(nameof(tracker));
         Context = context ?? throw new ArgumentNullException(nameof(context));
+        MessagePublisher = messagePublisher ?? throw new ArgumentNullException(nameof(messagePublisher));
+        ChannelId = channelId;
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
@@ -39,6 +43,16 @@ public sealed class TaskExecutionScope : IDisposable
     ///     Holds shared resources and options for the current execution context.
     /// </summary>
     public ExecutionContext Context { get; }
+
+    /// <summary>
+    ///     Publishes task execution messages (started, completed, failed, progress).
+    /// </summary>
+    public MessagePublisher MessagePublisher { get; }
+
+    /// <summary>
+    ///     The channel ID used for publishing messages.
+    /// </summary>
+    public Guid ChannelId { get; }
 
     /// <summary>
     ///     Disposes the underlying scope and marks this object as disposed.

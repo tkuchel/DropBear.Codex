@@ -27,6 +27,7 @@ namespace DropBear.Codex.Tasks.TaskExecutionEngine;
 public sealed class ExecutionEngine : IAsyncDisposable
 {
     private readonly BatchingProgressReporter _batchingReporter;
+    private readonly Guid _channelId;
     private readonly TaskDependencyResolver _dependencyResolver;
     private readonly CancellationTokenSource _disposalCts;
     private readonly Lock _disposalLock = new();
@@ -55,6 +56,7 @@ public sealed class ExecutionEngine : IAsyncDisposable
         IAsyncPublisher<Guid, TaskCompletedMessage> taskCompletedPublisher,
         IAsyncPublisher<Guid, TaskFailedMessage> taskFailedPublisher)
     {
+        _channelId = channelId;
         _options = options?.Value ?? throw new ArgumentNullException(nameof(options));
         _scopeFactory = scopeFactory ?? throw new ArgumentNullException(nameof(scopeFactory));
         _logger = LoggerFactory.Logger.ForContext<ExecutionEngine>();
@@ -336,6 +338,8 @@ public sealed class ExecutionEngine : IAsyncDisposable
                         rootScope,
                         Tracker,
                         executionContext,
+                        _messagePublisher,
+                        _channelId,
                         _logger);
 
                     // Determine optimal execution strategy

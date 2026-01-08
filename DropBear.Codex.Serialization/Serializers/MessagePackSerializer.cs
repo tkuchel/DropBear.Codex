@@ -65,7 +65,8 @@ public sealed partial class MessagePackSerializer : ISerializer
             ["SerializerType"] = "MessagePack",
             ["Compression"] = _options.Compression.ToString(),
             ["Resolver"] = _options.Resolver?.GetType().Name ?? "Default",
-            ["Security"] = _options.Security.ToString() ?? "Unknown",
+            ["Security.HashCollisionResistant"] = _options.Security.HashCollisionResistant,
+            ["Security.MaximumObjectGraphDepth"] = _options.Security.MaximumObjectGraphDepth,
             ["CacheEnabled"] = _enableCaching,
             ["MaxCacheSize"] = _maxCacheSize,
             ["IsThreadSafe"] = true

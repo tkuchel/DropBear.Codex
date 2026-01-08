@@ -22,6 +22,13 @@
   --clr-border-active: var(--clr-cadet-gray);
   --clr-border-disabled: var(--clr-anti-flash-white);
 
+  /* Progress bar colors */
+  --progress-primary: #5dcfbe;
+  --progress-success: #65b555;
+  --progress-warning: #e6b84d;
+  --progress-error: #d64a4a;
+  --progress-info: #4a9fd6;
+
   /* Alpha variations of main colors */
   --clr-primary-alpha: rgba(var(--clr-primary), 0.15);
   --clr-error-alpha: rgba(var(--clr-error), 0.15);
@@ -64,6 +71,13 @@
     --clr-border-focus: var(--clr-malibu);  /* Keep focus color consistent for accessibility */
     --clr-border-active: var(--clr-french-gray);
     --clr-border-disabled: var(--clr-onyx);
+
+    /* Progress bar colors - dark theme */
+    --progress-primary: #76e0d1;
+    --progress-success: #7dc970;
+    --progress-warning: #f0c86a;
+    --progress-error: #e86b6b;
+    --progress-info: #6bb5e6;
 
     /* Adjust semantic colors for dark theme */
     --clr-success: var(--clr-success-dark);

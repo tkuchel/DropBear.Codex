@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using DropBear.Codex.Blazor.Errors;
@@ -261,7 +261,7 @@ public sealed class IconLibrary : IAsyncDisposable
         try
         {
             // Use semaphore for async operations
-            await _cacheOperationLock.WaitAsync(cancellationToken);
+            await _cacheOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 var cacheOptions = new MemoryCacheEntryOptions
@@ -377,7 +377,7 @@ public sealed class IconLibrary : IAsyncDisposable
         try
         {
             // Lock to ensure consistent state
-            await _cacheOperationLock.WaitAsync(cancellationToken);
+            await _cacheOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 foreach (var (key, svg) in icons)
@@ -512,7 +512,7 @@ public sealed class IconLibrary : IAsyncDisposable
 
         try
         {
-            await _cacheOperationLock.WaitAsync(cancellationToken);
+            await _cacheOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 var existed = _iconExistenceCache.TryRemove(key, out _);
@@ -562,7 +562,7 @@ public sealed class IconLibrary : IAsyncDisposable
 
         try
         {
-            await _cacheOperationLock.WaitAsync(cancellationToken);
+            await _cacheOperationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
                 _iconExistenceCache.Clear();
@@ -633,7 +633,7 @@ public sealed class IconLibrary : IAsyncDisposable
             _iconExistenceCache.Clear();
 
             // Dispose the semaphore
-            await _cacheOperationLock.WaitAsync();
+            await _cacheOperationLock.WaitAsync().ConfigureAwait(false);
             _cacheOperationLock.Dispose();
         }
         catch (Exception ex)

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Blazor.Enums;
@@ -66,8 +66,8 @@ public class StepProgressState : IAsyncDisposable
 
         try
         {
-            await _disposalCts.CancelAsync();
-            await _updateLock.WaitAsync(TimeSpan.FromSeconds(5));
+            await _disposalCts.CancelAsync().ConfigureAwait(false);
+            await _updateLock.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
             try
             {
                 _progress = 0;
@@ -105,7 +105,7 @@ public class StepProgressState : IAsyncDisposable
             cancellationToken
         );
 
-        await _updateLock.WaitAsync(cts.Token);
+        await _updateLock.WaitAsync(cts.Token).ConfigureAwait(false);
         try
         {
             Volatile.Write(ref _progress, Math.Clamp(newProgress, MinProgress, MaxProgress));
@@ -123,7 +123,7 @@ public class StepProgressState : IAsyncDisposable
 
             if (previousStatus != newStatus)
             {
-                await OnStatusChanged(previousStatus, newStatus);
+                await OnStatusChanged(previousStatus, newStatus).ConfigureAwait(false);
             }
         }
         finally
@@ -178,7 +178,7 @@ public class StepProgressState : IAsyncDisposable
             cancellationToken
         );
 
-        await _updateLock.WaitAsync(cts.Token);
+        await _updateLock.WaitAsync(cts.Token).ConfigureAwait(false);
         try
         {
             Volatile.Write(ref _progress, MinProgress);

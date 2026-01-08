@@ -46,8 +46,10 @@
     <!-- Steps Section -->
     @if (HasSteps)
     {
-        <div class="steps-section">
-            <div class="steps-container" data-layout="@StepsLayout.ToString().ToLowerInvariant()">
+        <div class="steps-section" data-step-count="@GetStepCountCategory()">
+            <div class="steps-container"
+                 data-layout="@GetEffectiveLayout().ToString().ToLowerInvariant()"
+                 data-many-steps="@HasManySteps.ToString().ToLowerInvariant()">
                 @foreach (var (step, position) in GetVisibleSteps())
                 {
                     <DropBearProgressBarStep
@@ -56,7 +58,7 @@
                         Progress="GetStepProgress(step.Id)"
                         Status="GetStepStatus(step.Id)"
                         Variant="Variant"
-                        CompactMode="CompactSteps" />
+                        CompactMode="@(CompactSteps || HasManySteps)" />
                 }
             </div>
         </div>

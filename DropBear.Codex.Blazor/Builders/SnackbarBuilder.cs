@@ -1,4 +1,4 @@
-﻿using DropBear.Codex.Blazor.Enums;
+using DropBear.Codex.Blazor.Enums;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Models;
 
@@ -132,7 +132,7 @@ public sealed class SnackbarBuilder
     public async Task ShowAsync(CancellationToken cancellationToken = default)
     {
         var snackbar = _builder.Build();
-        await _service.Show(snackbar, cancellationToken);
+        await _service.Show(snackbar, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
