@@ -429,6 +429,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private StepsLayout GetEffectiveLayout()
     {
+        // If explicitly set (not Auto), return as-is
         if (StepsLayout != StepsLayout.Auto || !HasSteps)
         {
             return StepsLayout;
@@ -437,11 +438,56 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
         var stepCount = Steps!.Count;
         return stepCount switch
         {
-            <= 4 => StepsLayout.Horizontal,
-            <= 6 => StepsLayout.Compact,
-            <= 10 => StepsLayout.Timeline,
-            _ => StepsLayout.Dense
+            <= 3 => StepsLayout.Horizontal, // 1-3 steps: show all horizontally
+            _ => StepsLayout.SlidingWindow  // 4+ steps: use sliding window
         };
+    }
+
+    /// <summary>
+    ///     Gets whether the current layout is sliding window mode.
+    /// </summary>
+    private bool IsSlidingWindowMode
+    {
+        get
+        {
+            var effectiveLayout = GetEffectiveLayout();
+            return effectiveLayout == StepsLayout.SlidingWindow;
+        }
+    }
+
+    /// <summary>
+    ///     Gets the index of the currently active step based on step statuses.
+    ///     Falls back to progress-based calculation if no step is explicitly in progress.
+    /// </summary>
+    private int GetCurrentStepIndex()
+    {
+        if (!HasSteps) return 0;
+
+        var steps = Steps!;
+        var totalSteps = steps.Count;
+
+        // First, find the step that's currently in progress
+        for (var i = 0; i < totalSteps; i++)
+        {
+            var status = GetStepStatus(steps[i].Id);
+            if (status == StepStatus.InProgress)
+            {
+                return i;
+            }
+        }
+
+        // If no step is in progress, find the first non-completed step
+        for (var i = 0; i < totalSteps; i++)
+        {
+            var status = GetStepStatus(steps[i].Id);
+            if (status == StepStatus.NotStarted)
+            {
+                return Math.Max(0, i - 1); // Return the last completed step if found
+            }
+        }
+
+        // All completed - return the last step
+        return totalSteps - 1;
     }
 
     /// <summary>
@@ -512,6 +558,7 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
     /// <summary>
     ///     Gets the visible steps with their positions.
+    ///     In SlidingWindow mode, only returns up to 3 steps: previous, current, and next.
     /// </summary>
     private IEnumerable<(ProgressStepConfig Config, StepPosition Position)> GetVisibleSteps()
     {
@@ -519,19 +566,40 @@ public sealed partial class DropBearProgressBar : DropBearComponentBase
 
         var steps = Steps!;
         var totalSteps = steps.Count;
-        var currentIndex = (int)(Progress / 100.0 * totalSteps);
-        currentIndex = Math.Min(currentIndex, totalSteps - 1);
+        var currentIndex = GetCurrentStepIndex();
 
-        for (var i = 0; i < totalSteps; i++)
+        // In sliding window mode, only show previous, current, and next
+        if (IsSlidingWindowMode)
         {
-            var position = i switch
+            // Previous step (if exists)
+            if (currentIndex > 0)
             {
-                _ when i < currentIndex => StepPosition.Previous,
-                _ when i == currentIndex => StepPosition.Current,
-                _ => StepPosition.Next
-            };
+                yield return (steps[currentIndex - 1], StepPosition.Previous);
+            }
 
-            yield return (steps[i], position);
+            // Current step
+            yield return (steps[currentIndex], StepPosition.Current);
+
+            // Next step (if exists)
+            if (currentIndex < totalSteps - 1)
+            {
+                yield return (steps[currentIndex + 1], StepPosition.Next);
+            }
+        }
+        else
+        {
+            // Standard mode: show all steps
+            for (var i = 0; i < totalSteps; i++)
+            {
+                var position = i switch
+                {
+                    _ when i < currentIndex => StepPosition.Previous,
+                    _ when i == currentIndex => StepPosition.Current,
+                    _ => StepPosition.Next
+                };
+
+                yield return (steps[i], position);
+            }
         }
     }
 

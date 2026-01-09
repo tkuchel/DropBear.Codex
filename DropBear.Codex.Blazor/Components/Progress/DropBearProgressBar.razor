@@ -47,18 +47,26 @@
     @if (HasSteps)
     {
         <div class="steps-section" data-step-count="@GetStepCountCategory()">
+            @* Step counter header for sliding window mode *@
+            @if (IsSlidingWindowMode)
+            {
+                <div class="step-counter">
+                    <span class="step-counter-text">Step @(GetCurrentStepIndex() + 1) of @Steps!.Count</span>
+                </div>
+            }
             <div class="steps-container"
                  data-layout="@GetEffectiveLayout().ToString().ToLowerInvariant()"
                  data-many-steps="@HasManySteps.ToString().ToLowerInvariant()">
                 @foreach (var (step, position) in GetVisibleSteps())
                 {
+                    @* In sliding window mode, always show full details (not compact) *@
                     <DropBearProgressBarStep
                         Config="step"
                         Position="position"
                         Progress="GetStepProgress(step.Id)"
                         Status="GetStepStatus(step.Id)"
                         Variant="Variant"
-                        CompactMode="@(CompactSteps || HasManySteps)" />
+                        CompactMode="@(CompactSteps && !IsSlidingWindowMode)" />
                 }
             </div>
         </div>

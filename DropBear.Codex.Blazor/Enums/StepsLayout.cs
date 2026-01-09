@@ -1,4 +1,4 @@
-﻿namespace DropBear.Codex.Blazor.Enums;
+namespace DropBear.Codex.Blazor.Enums;
 
 /// <summary>
 ///     Layout options for progress steps.
@@ -34,5 +34,11 @@ public enum StepsLayout
     ///     Automatically selects the best layout based on step count.
     ///     Uses Horizontal for 1-4 steps, Compact for 5-6, Timeline for 7-10, Dense for 11+.
     /// </summary>
-    Auto
+    Auto,
+
+    /// <summary>
+    ///     Displays only 3 steps at a time: previous, current, and next.
+    ///     Steps slide smoothly as execution progresses. Best for many steps (4+).
+    /// </summary>
+    SlidingWindow
 }
