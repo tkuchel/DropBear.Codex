@@ -35,7 +35,7 @@
     <!-- ===== Serialization ===== -->
     <PackageVersion Include="MessagePack" Version="3.1.4" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.10" />
+    <PackageVersion Include="System.Text.Json" Version="9.0.11" />
     <!-- ===== Microsoft Extensions ===== -->
     <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
@@ -48,9 +48,9 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
     <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="9.0.10" />
     <!-- ===== Entity Framework Core ===== -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.11" />
     <!-- ===== Hashing Libraries ===== -->
     <PackageVersion Include="Blake3" Version="2.0.0" />
     <PackageVersion Include="HashDepot" Version="3.1.0" />
