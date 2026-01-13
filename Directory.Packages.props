@@ -65,7 +65,7 @@
 
   <!-- ===== System.Text.Json ===== -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageVersion Include="System.Text.Json" Version="9.0.10" />
+    <PackageVersion Include="System.Text.Json" Version="10.0.1" />
   </ItemGroup>
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
     <PackageVersion Include="System.Text.Json" Version="10.0.0" />
@@ -105,9 +105,9 @@
 
   <!-- ===== Entity Framework Core (net9.0) ===== -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.11" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.11" />
   </ItemGroup>
   <!-- ===== Entity Framework Core (net10.0) ===== -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
