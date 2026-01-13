@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Text.Json" VersionOverride="10.0.1" />
     <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
     <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
     <ProjectReference Include="..\DropBear.Codex.Hashing\DropBear.Codex.Hashing.csproj" />
