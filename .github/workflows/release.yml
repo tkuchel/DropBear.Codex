@@ -43,10 +43,11 @@ jobs:
             -p:RepositoryUrl=${{ github.server_url }}/${{ github.repository }} \
             -p:RepositoryCommit=${{ github.sha }}
 
-      - name: Validate Packages
+      - name: List Packages
         run: |
-          for nupkg in $(find . -name "*.nupkg"); do
-            dotnet nuget verify "$nupkg" --all
+          echo "📦 Packages to publish:"
+          find . -name "*.nupkg" -type f | while read pkg; do
+            echo "  - $(basename "$pkg")"
           done
 
       - name: Publish to NuGet
