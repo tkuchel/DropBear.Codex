@@ -73,13 +73,13 @@
 
   <!-- ===== Microsoft Extensions (net9.0) ===== -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.1" />
     <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
     <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.1" />
   </ItemGroup>
   <!-- ===== Microsoft Extensions (net10.0) ===== -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">

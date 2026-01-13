@@ -93,6 +93,7 @@
     </ItemGroup>
     <!-- Folders (if required) -->
     <ItemGroup>
+      <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
         <Folder Include="Enums\" />
     </ItemGroup>
 </Project>

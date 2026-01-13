@@ -47,6 +47,7 @@
         </PackageReference>
         <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
         <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    <PackageReference Include="Microsoft.Extensions.Options" VersionOverride="10.0.1" />
         <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
         <PackageReference Include="Serilog.Extensions.Logging" />
         <PackageReference Include="Microsoft.SourceLink.GitHub">
