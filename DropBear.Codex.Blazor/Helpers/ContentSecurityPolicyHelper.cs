@@ -294,33 +294,40 @@ public static class ContentSecurityPolicyHelper
         /// <summary>
         ///     Adds sources to a directive.
         /// </summary>
-        public CspPolicyBuilder AddDirective(string directive, params string[] sources)
+        /// <remarks>
+        ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+        /// </remarks>
+        public CspPolicyBuilder AddDirective(string directive, params ReadOnlySpan<string> sources)
         {
-            if (!_directives.ContainsKey(directive))
+            if (!_directives.TryGetValue(directive, out var list))
             {
-                _directives[directive] = new List<string>();
+                list = new List<string>(sources.Length);
+                _directives[directive] = list;
             }
 
-            _directives[directive].AddRange(sources);
+            foreach (var source in sources)
+            {
+                list.Add(source);
+            }
             return this;
         }
 
         /// <summary>
         ///     Sets default-src directive.
         /// </summary>
-        public CspPolicyBuilder WithDefaultSrc(params string[] sources) =>
+        public CspPolicyBuilder WithDefaultSrc(params ReadOnlySpan<string> sources) =>
             AddDirective(Directives.DefaultSrc, sources);
 
         /// <summary>
         ///     Sets script-src directive.
         /// </summary>
-        public CspPolicyBuilder WithScriptSrc(params string[] sources) =>
+        public CspPolicyBuilder WithScriptSrc(params ReadOnlySpan<string> sources) =>
             AddDirective(Directives.ScriptSrc, sources);
 
         /// <summary>
         ///     Sets style-src directive.
         /// </summary>
-        public CspPolicyBuilder WithStyleSrc(params string[] sources) =>
+        public CspPolicyBuilder WithStyleSrc(params ReadOnlySpan<string> sources) =>
             AddDirective(Directives.StyleSrc, sources);
 
         /// <summary>

@@ -65,11 +65,12 @@ public sealed class ParallelBlockBuilder<TContext> where TContext : class
     /// </summary>
     /// <param name="stepTypes">The types of steps to execute in parallel</param>
     /// <returns>The parallel block builder for method chaining</returns>
-    public ParallelBlockBuilder<TContext> ExecuteAll(params Type[] stepTypes)
+    /// <remarks>
+    ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+    /// </remarks>
+    public ParallelBlockBuilder<TContext> ExecuteAll(params ReadOnlySpan<Type> stepTypes)
     {
-        ArgumentNullException.ThrowIfNull(stepTypes);
-
-        foreach (Type stepType in stepTypes)
+        foreach (var stepType in stepTypes)
         {
             if (!typeof(IWorkflowStep<TContext>).IsAssignableFrom(stepType))
             {

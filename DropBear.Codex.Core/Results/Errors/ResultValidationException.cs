@@ -149,10 +149,23 @@ public class ResultValidationException : Exception
     /// <summary>
     ///     Creates a ResultValidationException from multiple validation errors.
     /// </summary>
-    public static ResultValidationException FromErrors(params ValidationError[] errors)
+    /// <remarks>
+    ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+    /// </remarks>
+    public static ResultValidationException FromErrors(params ReadOnlySpan<ValidationError> errors)
     {
-        ArgumentNullException.ThrowIfNull(errors);
-        return FromErrors((IEnumerable<ValidationError>)errors);
+        if (errors.Length == 0)
+        {
+            throw new ArgumentException("At least one validation error is required", nameof(errors));
+        }
+
+        var errorList = new List<ValidationError>(errors.Length);
+        foreach (var error in errors)
+        {
+            errorList.Add(error);
+        }
+
+        return new ResultValidationException(ValidationResult.Failed(errorList));
     }
 
     #endregion

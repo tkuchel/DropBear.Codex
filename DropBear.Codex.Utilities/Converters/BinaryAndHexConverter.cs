@@ -61,8 +61,8 @@ public static class BinaryAndHexConverter
         { "F", "1111" }
     };
 
-    // Table for valid hex characters for quick lookup
-    private static readonly HashSet<char> ValidHexChars = new("0123456789ABCDEFabcdef");
+    // Table for valid hex characters using SearchValues<char> for optimized lookup
+    private static readonly SearchValues<char> ValidHexChars = SearchValues.Create("0123456789ABCDEFabcdef");
 
     /// <summary>
     ///     Converts a string to its binary representation.

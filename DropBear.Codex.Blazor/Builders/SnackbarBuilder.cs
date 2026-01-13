@@ -93,7 +93,10 @@ public sealed class SnackbarBuilder
     /// <summary>
     ///     Adds multiple actions to the snackbar.
     /// </summary>
-    public SnackbarBuilder WithActions(params SnackbarAction[] actions)
+    /// <remarks>
+    ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+    /// </remarks>
+    public SnackbarBuilder WithActions(params ReadOnlySpan<SnackbarAction> actions)
     {
         _builder.WithActions(actions);
         return this;

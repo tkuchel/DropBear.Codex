@@ -3,6 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <!-- Centralized package versions for DropBear.Codex -->
+  <!-- Multi-targeting: net9.0 and net10.0 -->
   <ItemGroup>
     <!-- ===== Build Tools & Source Control ===== -->
     <PackageVersion Include="BenchmarkDotNet" Version="0.15.4" />
@@ -35,22 +36,6 @@
     <!-- ===== Serialization ===== -->
     <PackageVersion Include="MessagePack" Version="3.1.4" />
     <PackageVersion Include="Newtonsoft.Json" Version="13.0.4" />
-    <PackageVersion Include="System.Text.Json" Version="9.0.10" />
-    <!-- ===== Microsoft Extensions ===== -->
-    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.10" />
-    <!-- ===== ASP.NET Core & Blazor ===== -->
-    <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="9.0.10" />
-    <!-- ===== Entity Framework Core ===== -->
-    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.10" />
-    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.10" />
     <!-- ===== Hashing Libraries ===== -->
     <PackageVersion Include="Blake3" Version="2.0.0" />
     <PackageVersion Include="HashDepot" Version="3.1.0" />
@@ -59,8 +44,6 @@
     <!-- ===== Storage & Files ===== -->
     <PackageVersion Include="FluentStorage.Azure.Blobs" Version="6.0.0" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
-    <!-- ===== Security ===== -->
-    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.10" />
     <!-- ===== Utilities ===== -->
     <PackageVersion Include="ClosedXML" Version="0.105.0" />
     <PackageVersion Include="FuzzySharp" Version="2.0.2" />
@@ -73,5 +56,72 @@
     <PackageVersion Include="Stateless" Version="5.20.0" />
     <!-- ===== Resilience & Retry ===== -->
     <PackageVersion Include="Polly" Version="8.6.4" />
+  </ItemGroup>
+
+  <!-- ═══════════════════════════════════════════════════════════════════════════
+       FRAMEWORK-SPECIFIC PACKAGES: Multi-targeting net9.0 and net10.0
+       These packages have different versions for each target framework.
+       ═══════════════════════════════════════════════════════════════════════════ -->
+
+  <!-- ===== System.Text.Json ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageVersion Include="System.Text.Json" Version="9.0.10" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="System.Text.Json" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- ===== Microsoft Extensions (net9.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="9.0.10" />
+  </ItemGroup>
+  <!-- ===== Microsoft Extensions (net10.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.ObjectPool" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- ===== ASP.NET Core & Blazor (net9.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="9.0.10" />
+  </ItemGroup>
+  <!-- ===== ASP.NET Core & Blazor (net10.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.AspNetCore.DataProtection" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- ===== Entity Framework Core (net9.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.10" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="9.0.10" />
+  </ItemGroup>
+  <!-- ===== Entity Framework Core (net10.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0" />
+    <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.0" />
+  </ItemGroup>
+
+  <!-- ===== Security (net9.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="9.0.10" />
+  </ItemGroup>
+  <!-- ===== Security (net10.0) ===== -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
   </ItemGroup>
 </Project>
