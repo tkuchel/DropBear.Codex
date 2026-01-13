@@ -121,13 +121,29 @@ jobs:
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
+          # First, push all main packages (without auto-pushing symbols)
           for nupkg in artifacts/*.nupkg; do
-            echo "Publishing $(basename "$nupkg")..."
+            echo "📦 Publishing $(basename "$nupkg")..."
             dotnet nuget push "$nupkg" \
               --api-key "$NUGET_API_KEY" \
               --source https://api.nuget.org/v3/index.json \
               --skip-duplicate \
+              --no-symbols \
               --timeout 300
+          done
+
+          # Then, push symbol packages (continue on error for empty snupkgs)
+          echo ""
+          echo "📦 Publishing symbol packages..."
+          for snupkg in artifacts/*.snupkg; do
+            if [ -f "$snupkg" ]; then
+              echo "  - $(basename "$snupkg")"
+              dotnet nuget push "$snupkg" \
+                --api-key "$NUGET_API_KEY" \
+                --source https://api.nuget.org/v3/index.json \
+                --skip-duplicate \
+                --timeout 300 || echo "    ⚠️ Symbol package skipped (may be empty or already exists)"
+            fi
           done
 
       - name: Create GitHub Release
