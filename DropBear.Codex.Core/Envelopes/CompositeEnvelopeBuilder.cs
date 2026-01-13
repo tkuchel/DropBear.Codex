@@ -31,8 +31,19 @@ public sealed class CompositeEnvelopeBuilder<T>
     /// <summary>
     ///     Adds multiple payloads to the composite envelope.
     /// </summary>
-    public CompositeEnvelopeBuilder<T> AddPayloads(params T[] payloads) =>
-        AddPayloads((IEnumerable<T>)payloads);
+    /// <remarks>
+    ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+    /// </remarks>
+    public CompositeEnvelopeBuilder<T> AddPayloads(params ReadOnlySpan<T> payloads)
+    {
+        foreach (var payload in payloads)
+        {
+            ArgumentNullException.ThrowIfNull(payload);
+            _payloads.Add(payload);
+        }
+
+        return this;
+    }
 
     /// <summary>
     ///     Adds multiple payloads from an enumerable source.
@@ -65,8 +76,20 @@ public sealed class CompositeEnvelopeBuilder<T>
     /// <summary>
     ///     Adds multiple headers to the composite envelope.
     /// </summary>
-    public CompositeEnvelopeBuilder<T> WithHeaders(params KeyValuePair<string, object>[] headers) =>
-        WithHeaders((IEnumerable<KeyValuePair<string, object>>)headers);
+    /// <remarks>
+    ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+    /// </remarks>
+    public CompositeEnvelopeBuilder<T> WithHeaders(params ReadOnlySpan<KeyValuePair<string, object>> headers)
+    {
+        foreach (var (key, value) in headers)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(key);
+            ArgumentNullException.ThrowIfNull(value);
+            _headers[key] = value;
+        }
+
+        return this;
+    }
 
     /// <summary>
     ///     Adds multiple headers from an enumerable source.

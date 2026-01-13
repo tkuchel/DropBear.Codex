@@ -13,7 +13,7 @@ public sealed class ProgressOperation : IDisposable
 {
     private readonly ILogger _logger;
     private readonly Dictionary<string, ProgressStepState> _stepStates = [];
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
 
     private double _overallProgress;
     private string _message = string.Empty;

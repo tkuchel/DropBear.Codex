@@ -1,127 +1,119 @@
-﻿/* Modern Progress Bar Styles - Optimized for .NET 8+ and Professional UI/UX */
+/* Modern Progress Bar Styles - Dark Theme First Design */
+/* Optimized for ABP/LeptonX and professional dark UI */
 
 :root {
-  /* Color System */
-  --progress-primary: #2563eb;
-  --progress-primary-light: #3b82f6;
-  --progress-primary-dark: #1d4ed8;
+  /* Color System - Vibrant colors for dark backgrounds */
+  --progress-primary: #3b82f6;
+  --progress-primary-light: #60a5fa;
+  --progress-primary-dark: #2563eb;
+  --progress-primary-glow: rgba(59, 130, 246, 0.4);
 
-  --progress-success: #10b981;
-  --progress-success-light: #34d399;
-  --progress-success-dark: #059669;
+  --progress-success: #22c55e;
+  --progress-success-light: #4ade80;
+  --progress-success-dark: #16a34a;
+  --progress-success-glow: rgba(34, 197, 94, 0.4);
 
   --progress-warning: #f59e0b;
   --progress-warning-light: #fbbf24;
   --progress-warning-dark: #d97706;
+  --progress-warning-glow: rgba(245, 158, 11, 0.4);
 
   --progress-error: #ef4444;
   --progress-error-light: #f87171;
   --progress-error-dark: #dc2626;
+  --progress-error-glow: rgba(239, 68, 68, 0.4);
 
   --progress-info: #06b6d4;
   --progress-info-light: #22d3ee;
   --progress-info-dark: #0891b2;
+  --progress-info-glow: rgba(6, 182, 212, 0.4);
 
-  /* Neutrals */
-  --progress-gray-50: #f8fafc;
-  --progress-gray-100: #f1f5f9;
-  --progress-gray-200: #e2e8f0;
-  --progress-gray-300: #cbd5e1;
-  --progress-gray-400: #94a3b8;
-  --progress-gray-500: #64748b;
-  --progress-gray-600: #475569;
-  --progress-gray-700: #334155;
-  --progress-gray-800: #1e293b;
-  --progress-gray-900: #0f172a;
+  /* Dark Theme Neutrals (default) */
+  --progress-bg: #1a1d23;
+  --progress-bg-elevated: #22262e;
+  --progress-bg-card: #282c34;
+  --progress-border: #3a3f4a;
+  --progress-border-light: #4a5060;
+  --progress-text: #f0f2f5;
+  --progress-text-muted: #9ca3af;
+  --progress-text-dim: #6b7280;
+  --progress-track-bg: #2d323b;
 
   /* Sizing */
-  --progress-height: 12px;
-  --progress-border-radius: 8px;
+  --progress-height: 20px;
+  --progress-border-radius: 10px;
   --progress-padding: 24px;
-  --progress-gap: 16px;
+  --progress-gap: 20px;
 
   /* Animation */
   --progress-transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   --progress-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
 }
 
-/* Dark theme support */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --progress-gray-50: #0f172a;
-    --progress-gray-100: #1e293b;
-    --progress-gray-200: #334155;
-    --progress-gray-300: #475569;
-    --progress-gray-400: #64748b;
-    --progress-gray-500: #94a3b8;
-    --progress-gray-600: #cbd5e1;
-    --progress-gray-700: #e2e8f0;
-    --progress-gray-800: #f1f5f9;
-    --progress-gray-900: #f8fafc;
-  }
-}
-
 /* Main Container */
 .dropbear-progress {
   --current-color: var(--progress-primary);
+  --current-glow: var(--progress-primary-glow);
 
   display: flex;
   flex-direction: column;
   gap: var(--progress-gap);
   padding: var(--progress-padding);
-  background: var(--progress-gray-50);
-  border: 1px solid var(--progress-gray-200);
-  border-radius: calc(var(--progress-border-radius) * 1.5);
+  background: var(--progress-bg-card);
+  border: 1px solid var(--progress-border);
+  border-radius: 16px;
   box-shadow:
-    0 1px 3px rgba(0, 0, 0, 0.1),
-    0 1px 2px rgba(0, 0, 0, 0.06);
+    0 4px 6px -1px rgba(0, 0, 0, 0.3),
+    0 2px 4px -2px rgba(0, 0, 0, 0.2),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   position: relative;
   overflow: hidden;
   container-type: inline-size;
 }
 
+/* Subtle top accent line */
 .dropbear-progress::before {
   content: '';
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  height: 2px;
+  height: 3px;
   background: linear-gradient(
     90deg,
     var(--current-color),
-    color-mix(in srgb, var(--current-color) 80%, transparent)
+    color-mix(in srgb, var(--current-color) 60%, transparent)
   );
-  opacity: 0.6;
-  transform: scaleX(0);
-  transform-origin: left;
-  animation: progressHeader 0.6s ease-out 0.2s forwards;
+  opacity: 0.8;
 }
 
 /* Variant Colors */
 .dropbear-progress[data-variant="success"] {
   --current-color: var(--progress-success);
+  --current-glow: var(--progress-success-glow);
 }
 
 .dropbear-progress[data-variant="warning"] {
   --current-color: var(--progress-warning);
+  --current-glow: var(--progress-warning-glow);
 }
 
 .dropbear-progress[data-variant="error"] {
   --current-color: var(--progress-error);
+  --current-glow: var(--progress-error-glow);
 }
 
 .dropbear-progress[data-variant="info"] {
   --current-color: var(--progress-info);
+  --current-glow: var(--progress-info-glow);
 }
 
 /* Header Section */
 .progress-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   gap: var(--progress-gap);
-  margin-bottom: 4px;
 }
 
 .progress-info {
@@ -133,20 +125,22 @@
 }
 
 .progress-title {
-  font-size: 1.125rem;
+  font-size: 1rem;
   font-weight: 600;
-  color: var(--progress-gray-900);
+  color: var(--progress-text);
   margin: 0;
   line-height: 1.4;
+  letter-spacing: -0.01em;
 }
 
 .progress-percentage {
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   font-weight: 700;
   color: var(--current-color);
   font-variant-numeric: tabular-nums;
   text-align: right;
-  min-width: 60px;
+  min-width: 80px;
+  text-shadow: 0 0 20px var(--current-glow);
 }
 
 .progress-meta {
@@ -161,7 +155,7 @@
   align-items: center;
   gap: 6px;
   font-size: 0.875rem;
-  color: var(--progress-gray-600);
+  color: var(--progress-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
@@ -171,14 +165,18 @@
   opacity: 0.7;
 }
 
-/* Progress Track */
+/* ============================================
+   MAIN PROGRESS TRACK - More Prominent Design
+   ============================================ */
 .progress-track {
   position: relative;
   height: var(--progress-height);
-  background: var(--progress-gray-200);
+  background: var(--progress-track-bg);
   border-radius: var(--progress-border-radius);
   overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.1);
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.3),
+    0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .progress-fill {
@@ -186,14 +184,15 @@
   background: linear-gradient(
     90deg,
     var(--current-color),
-    color-mix(in srgb, var(--current-color) 85%, white)
+    color-mix(in srgb, var(--current-color) 80%, white)
   );
   border-radius: var(--progress-border-radius);
   position: relative;
-  transition: var(--progress-transition);
-  transform-origin: left;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 16px var(--current-glow);
 }
 
+/* Shimmer effect on progress fill */
 .progress-fill::after {
   content: '';
   position: absolute;
@@ -204,7 +203,7 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.3) 50%,
+    rgba(255, 255, 255, 0.2) 50%,
     transparent 100%
   );
   border-radius: inherit;
@@ -212,14 +211,14 @@
 
 .progress-glow {
   position: absolute;
-  top: -2px;
-  left: -2px;
-  right: -2px;
-  bottom: -2px;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
   background: var(--current-color);
-  border-radius: calc(var(--progress-border-radius) + 2px);
-  filter: blur(4px);
-  opacity: 0.4;
+  border-radius: calc(var(--progress-border-radius) + 4px);
+  filter: blur(8px);
+  opacity: 0.3;
   z-index: -1;
 }
 
@@ -235,41 +234,47 @@
   animation: progressIndeterminate 1.5s ease-in-out infinite;
 }
 
-/* Steps Section */
+/* ============================================
+   STEPS SECTION - Full Width Distribution
+   ============================================ */
 .steps-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
+  margin-top: 8px;
 }
 
 .steps-container {
   display: grid;
-  gap: 12px;
+  gap: 16px;
+  width: 100%;
 }
 
+/* Horizontal Layout - Evenly distributed */
 .steps-container[data-layout="horizontal"] {
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+/* Vertical Layout */
 .steps-container[data-layout="vertical"] {
   grid-template-columns: 1fr;
 }
 
+/* Compact Layout */
 .steps-container[data-layout="compact"] {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
 }
 
-/* Timeline Layout - Optimized for many steps (6+) */
+/* Timeline Layout - Evenly distributed with scrolling for overflow */
 .steps-container[data-layout="timeline"] {
   display: flex;
-  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 12px;
   overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: thin;
-  scrollbar-color: var(--progress-gray-300) transparent;
   padding-bottom: 8px;
-  gap: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--progress-border-light) transparent;
 }
 
 .steps-container[data-layout="timeline"]::-webkit-scrollbar {
@@ -281,70 +286,103 @@
 }
 
 .steps-container[data-layout="timeline"]::-webkit-scrollbar-thumb {
-  background: var(--progress-gray-300);
+  background: var(--progress-border-light);
   border-radius: 3px;
 }
 
-.steps-container[data-layout="timeline"] > * {
-  flex: 0 0 auto;
-  min-width: 140px;
-  max-width: 180px;
-  scroll-snap-align: start;
+/* Timeline steps - grow to fill available space */
+.steps-container[data-layout="timeline"] ::deep .progress-step {
+  flex: 1 1 0;
+  min-width: 120px;
+  max-width: none;
 }
 
-/* Dense Layout - Even more compact for very many steps */
+/* Dense Layout - Compact wrapped grid */
 .steps-container[data-layout="dense"] {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
 }
 
-.steps-container[data-layout="dense"] > * {
-  flex: 0 0 auto;
-  min-width: 100px;
-  max-width: 140px;
+.steps-container[data-layout="dense"] ::deep .progress-step {
+  min-width: 0;
 }
 
-/* Many Steps Optimizations - Auto-applied via container query when many steps detected */
-.steps-section[data-step-count="many"] .steps-container {
-  /* Reduce gap for many steps */
-  gap: 8px;
+/* ============================================
+   SLIDING WINDOW LAYOUT - 3 Steps at a time
+   ============================================ */
+.steps-container[data-layout="slidingwindow"] {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  width: 100%;
 }
 
-/* Summary row for many steps - shows condensed view above timeline */
-.steps-summary {
+/* Handle case where we have fewer than 3 steps visible */
+.steps-container[data-layout="slidingwindow"]:has(> :only-child) {
+  grid-template-columns: 1fr;
+}
+
+.steps-container[data-layout="slidingwindow"]:has(> :nth-child(2):last-child) {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+/* Sliding window step transitions */
+.steps-container[data-layout="slidingwindow"] ::deep .progress-step {
+  animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Previous step - slightly faded */
+.steps-container[data-layout="slidingwindow"] ::deep .progress-step.step-previous {
+  opacity: 0.85;
+}
+
+/* Current step - highlighted */
+.steps-container[data-layout="slidingwindow"] ::deep .progress-step.step-current {
+  transform: scale(1.02);
+  z-index: 10;
+}
+
+/* Next step - slightly faded */
+.steps-container[data-layout="slidingwindow"] ::deep .progress-step.step-next {
+  opacity: 0.7;
+}
+
+/* Step Counter Header */
+.step-counter {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  background: var(--progress-gray-100);
-  border-radius: var(--progress-border-radius);
+  justify-content: space-between;
+  padding: 8px 0;
+}
+
+.step-counter-text {
   font-size: 0.875rem;
-  color: var(--progress-gray-700);
-}
-
-.steps-summary-count {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.steps-summary-count .count-completed {
-  color: var(--progress-success);
   font-weight: 600;
+  color: var(--progress-text-muted);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }
 
-.steps-summary-count .count-remaining {
-  color: var(--progress-gray-500);
+/* Slide-in animation for steps */
+@keyframes slideIn {
+  0% {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
-.steps-summary-current {
-  flex: 1;
-  font-weight: 500;
-  color: var(--progress-primary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Many Steps Optimizations */
+.steps-section[data-step-count="many"] .steps-container {
+  gap: 10px;
+}
+
+.steps-section[data-step-count="very-many"] .steps-container {
+  gap: 8px;
 }
 
 /* Status Section */
@@ -352,46 +390,42 @@
   display: flex;
   align-items: center;
   padding: 12px 16px;
-  border-radius: var(--progress-border-radius);
+  border-radius: 8px;
   font-size: 0.875rem;
   font-weight: 500;
   border-left: 4px solid;
+  background: var(--progress-bg-elevated);
 }
 
 .progress-status[data-status="success"] {
-  background: color-mix(in srgb, var(--progress-success) 10%, transparent);
   border-left-color: var(--progress-success);
-  color: var(--progress-success-dark);
+  color: var(--progress-success-light);
 }
 
 .progress-status[data-status="error"] {
-  background: color-mix(in srgb, var(--progress-error) 10%, transparent);
   border-left-color: var(--progress-error);
-  color: var(--progress-error-dark);
+  color: var(--progress-error-light);
 }
 
 .progress-status[data-status="warning"] {
-  background: color-mix(in srgb, var(--progress-warning) 10%, transparent);
   border-left-color: var(--progress-warning);
-  color: var(--progress-warning-dark);
+  color: var(--progress-warning-light);
 }
 
 .progress-status[data-status="info"] {
-  background: color-mix(in srgb, var(--progress-info) 10%, transparent);
   border-left-color: var(--progress-info);
-  color: var(--progress-info-dark);
+  color: var(--progress-info-light);
 }
 
 .progress-status[data-status="default"] {
-  background: var(--progress-gray-100);
-  border-left-color: var(--progress-gray-300);
-  color: var(--progress-gray-700);
+  border-left-color: var(--progress-border-light);
+  color: var(--progress-text-muted);
 }
 
 .status-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .status-icon {
@@ -405,40 +439,43 @@
   .progress-header {
     flex-direction: column;
     align-items: flex-start;
+    gap: 12px;
   }
 
   .progress-percentage {
     text-align: left;
     min-width: unset;
+    font-size: 1.5rem;
   }
 
   .steps-container[data-layout="horizontal"] {
     grid-template-columns: 1fr;
+  }
+
+  .steps-container[data-layout="timeline"] ::deep .progress-step {
+    min-width: 140px;
+    flex: 0 0 auto;
   }
 }
 
 @container (max-width: 400px) {
   .dropbear-progress {
     padding: 16px;
-    gap: 12px;
+    gap: 14px;
   }
 
   .progress-title {
-    font-size: 1rem;
+    font-size: 0.9375rem;
   }
 
   .progress-percentage {
     font-size: 1.25rem;
   }
+
+  --progress-height: 16px;
 }
 
 /* Animations */
-@keyframes progressHeader {
-  to {
-    transform: scaleX(1);
-  }
-}
-
 @keyframes progressIndeterminate {
   0% {
     transform: translateX(-100%);
@@ -451,7 +488,7 @@
   }
 }
 
-/* Accessibility */
+/* Accessibility - Reduced Motion */
 @media (prefers-reduced-motion: reduce) {
   .progress-fill,
   .dropbear-progress::before {
@@ -466,7 +503,7 @@
   }
 }
 
-/* Focus and Interaction States */
+/* Focus States */
 .dropbear-progress:focus-within {
   outline: 2px solid var(--current-color);
   outline-offset: 2px;
@@ -476,12 +513,172 @@
 @media print {
   .dropbear-progress {
     box-shadow: none;
-    border: 1px solid #000;
+    border: 1px solid #333;
+    background: #fff;
   }
 
   .progress-fill.indeterminate {
     animation: none;
     width: 100% !important;
-    background: #000 !important;
+    background: #333 !important;
   }
+
+  .progress-title,
+  .progress-percentage {
+    color: #000;
+  }
+}
+
+/* ============================================
+   LIGHT THEME SUPPORT
+   ============================================ */
+@media (prefers-color-scheme: light) {
+  :root {
+    /* Light Theme Neutrals */
+    --progress-bg: #f8fafc;
+    --progress-bg-elevated: #ffffff;
+    --progress-bg-card: #ffffff;
+    --progress-border: #e2e8f0;
+    --progress-border-light: #cbd5e1;
+    --progress-text: #1e293b;
+    --progress-text-muted: #64748b;
+    --progress-text-dim: #94a3b8;
+    --progress-track-bg: #e2e8f0;
+
+    /* Adjusted glow colors for light theme (more subtle) */
+    --progress-primary-glow: rgba(59, 130, 246, 0.2);
+    --progress-success-glow: rgba(34, 197, 94, 0.2);
+    --progress-warning-glow: rgba(245, 158, 11, 0.2);
+    --progress-error-glow: rgba(239, 68, 68, 0.2);
+    --progress-info-glow: rgba(6, 182, 212, 0.2);
+  }
+
+  .dropbear-progress {
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.1),
+      0 2px 4px -2px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .progress-track {
+    box-shadow:
+      inset 0 2px 4px rgba(0, 0, 0, 0.08),
+      0 1px 0 rgba(255, 255, 255, 0.9);
+  }
+
+  .progress-fill {
+    box-shadow: 0 0 12px var(--current-glow);
+  }
+
+  .progress-percentage {
+    text-shadow: none;
+  }
+
+  /* Adjust status colors for better contrast on light */
+  .progress-status[data-status="success"] {
+    color: var(--progress-success-dark);
+    background: rgba(34, 197, 94, 0.08);
+  }
+
+  .progress-status[data-status="error"] {
+    color: var(--progress-error-dark);
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  .progress-status[data-status="warning"] {
+    color: var(--progress-warning-dark);
+    background: rgba(245, 158, 11, 0.08);
+  }
+
+  .progress-status[data-status="info"] {
+    color: var(--progress-info-dark);
+    background: rgba(6, 182, 212, 0.08);
+  }
+
+  .progress-status[data-status="default"] {
+    background: rgba(0, 0, 0, 0.03);
+  }
+}
+
+/* ABP/LeptonX Theme Integration */
+/* Dark theme class-based overrides for LeptonX */
+.lpx-theme-dark,
+.lpx-theme-dim {
+  --progress-bg: #1a1d23;
+  --progress-bg-elevated: #22262e;
+  --progress-bg-card: #282c34;
+  --progress-border: #3a3f4a;
+  --progress-border-light: #4a5060;
+  --progress-text: #f0f2f5;
+  --progress-text-muted: #9ca3af;
+  --progress-text-dim: #6b7280;
+  --progress-track-bg: #2d323b;
+  --progress-primary-glow: rgba(59, 130, 246, 0.4);
+  --progress-success-glow: rgba(34, 197, 94, 0.4);
+  --progress-warning-glow: rgba(245, 158, 11, 0.4);
+  --progress-error-glow: rgba(239, 68, 68, 0.4);
+  --progress-info-glow: rgba(6, 182, 212, 0.4);
+}
+
+/* Light theme class-based overrides for LeptonX */
+.lpx-theme-light {
+  --progress-bg: #f8fafc;
+  --progress-bg-elevated: #ffffff;
+  --progress-bg-card: #ffffff;
+  --progress-border: #e2e8f0;
+  --progress-border-light: #cbd5e1;
+  --progress-text: #1e293b;
+  --progress-text-muted: #64748b;
+  --progress-text-dim: #94a3b8;
+  --progress-track-bg: #e2e8f0;
+  --progress-primary-glow: rgba(59, 130, 246, 0.2);
+  --progress-success-glow: rgba(34, 197, 94, 0.2);
+  --progress-warning-glow: rgba(245, 158, 11, 0.2);
+  --progress-error-glow: rgba(239, 68, 68, 0.2);
+  --progress-info-glow: rgba(6, 182, 212, 0.2);
+}
+
+.lpx-theme-light .dropbear-progress {
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 2px 4px -2px rgba(0, 0, 0, 0.05),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.lpx-theme-light .progress-track {
+  box-shadow:
+    inset 0 2px 4px rgba(0, 0, 0, 0.08),
+    0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.lpx-theme-light .progress-fill {
+  box-shadow: 0 0 12px var(--current-glow);
+}
+
+.lpx-theme-light .progress-percentage {
+  text-shadow: none;
+}
+
+.lpx-theme-light .progress-status[data-status="success"] {
+  color: var(--progress-success-dark);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+.lpx-theme-light .progress-status[data-status="error"] {
+  color: var(--progress-error-dark);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.lpx-theme-light .progress-status[data-status="warning"] {
+  color: var(--progress-warning-dark);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.lpx-theme-light .progress-status[data-status="info"] {
+  color: var(--progress-info-dark);
+  background: rgba(6, 182, 212, 0.08);
+}
+
+.lpx-theme-light .progress-status[data-status="default"] {
+  background: rgba(0, 0, 0, 0.03);
 }

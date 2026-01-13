@@ -37,6 +37,28 @@
         • See https://github.com/dotnet/Nerdbank.GitVersioning
 
         ═══════════════════════════════════════════════════════════════════════
+
+        ═══════════════════════════════════════════════════════════════════════
+        MULTI-TARGETING & C# 14 FEATURES
+        ═══════════════════════════════════════════════════════════════════════
+
+        This solution targets both .NET 9.0 and .NET 10.0 (multi-targeting).
+
+        C# 14 Features Used (NET10_0_OR_GREATER):
+        • 'field' keyword - Direct access to auto-property backing fields
+          Example: public string? Message { get => field; set => field = value ?? ""; }
+
+        Conditional Compilation:
+        • Use #if NET10_0_OR_GREATER for .NET 10-only code
+        • Use #if !NET10_0_OR_GREATER for .NET 9 fallback code
+
+        Package Versioning:
+        • Framework-specific packages (Microsoft.Extensions.*, etc.) use
+          conditional versioning in Directory.Packages.props
+        • .NET 9: Version 9.0.x packages
+        • .NET 10: Version 10.0.x packages
+
+        ═══════════════════════════════════════════════════════════════════════
     -->
 
     <ItemGroup>

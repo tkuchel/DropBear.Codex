@@ -1,0 +1,76 @@
+# EditorConfig for DropBear.Codex.Blazor project
+# This file overrides the root .editorconfig for Blazor-specific settings
+
+root = false
+
+[*.cs]
+
+#### Blazor-Specific Analyzer Rules ####
+
+# MA0004: Do not require ConfigureAwait(false) in Blazor UI code
+# Blazor components and services need the synchronization context to properly marshal
+# back to the UI thread for state changes (StateHasChanged()) and component lifecycle.
+# ConfigureAwait(false) would break UI updates and component rendering.
+dotnet_diagnostic.MA0004.severity = none
+
+# CS8604: Possible null reference - suppress for Blazor components where null checks are handled
+dotnet_diagnostic.CS8604.severity = suggestion
+
+# MA0006: String comparison - UI code often uses == for readability
+dotnet_diagnostic.MA0006.severity = suggestion
+
+# MA0011: IFormatProvider in ToString - not critical for UI display strings
+dotnet_diagnostic.MA0011.severity = suggestion
+
+# MA0002: String comparer - less critical in UI code
+dotnet_diagnostic.MA0002.severity = suggestion
+
+# MA0074: EndsWith with StringComparison - less critical in UI code
+dotnet_diagnostic.MA0074.severity = suggestion
+
+# MA0016: Collection abstraction - Blazor components often use concrete types for binding
+dotnet_diagnostic.MA0016.severity = suggestion
+
+# MA0046: Event handler signatures - Blazor uses non-standard event patterns
+dotnet_diagnostic.MA0046.severity = none
+
+# MA0009: Regex DoS - false positives for simple UI validation patterns
+dotnet_diagnostic.MA0009.severity = suggestion
+
+# MA0134: Unobserved async calls - intentional fire-and-forget in UI code
+dotnet_diagnostic.MA0134.severity = suggestion
+
+# MA0015: ArgumentException parameter names - false positives for property validation
+dotnet_diagnostic.MA0015.severity = suggestion
+
+# MA0055: Finalizer usage - intentional for resource cleanup in components
+dotnet_diagnostic.MA0055.severity = suggestion
+
+# MA0140: Identical if/else branches - sometimes intentional for clarity
+dotnet_diagnostic.MA0140.severity = suggestion
+
+# MA0147: Async void delegates - sometimes necessary for event handlers
+dotnet_diagnostic.MA0147.severity = suggestion
+
+# MA0158: Use System.Threading.Lock - .NET 9 feature, maintaining compatibility
+dotnet_diagnostic.MA0158.severity = suggestion
+
+# BL0007: Component parameter should be auto property - intentional for validation logic
+dotnet_diagnostic.BL0007.severity = suggestion
+
+# BL0005: Setting component parameters - intentional pattern in some scenarios
+dotnet_diagnostic.BL0005.severity = suggestion
+
+# CA1416: Platform compatibility - Blazor runs in browser context
+dotnet_diagnostic.CA1416.severity = warning
+
+# CS0649/CS0169/CS0414: Unused fields - these should be cleaned up
+dotnet_diagnostic.CS0649.severity = warning
+dotnet_diagnostic.CS0169.severity = warning
+dotnet_diagnostic.CS0414.severity = warning
+
+# CS1998: Async without await - should be fixed
+dotnet_diagnostic.CS1998.severity = warning
+
+# CS0067: Unused event - should be cleaned up
+dotnet_diagnostic.CS0067.severity = warning

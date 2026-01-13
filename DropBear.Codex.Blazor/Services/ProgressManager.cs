@@ -82,8 +82,9 @@ public sealed class ProgressManager : IProgressManager
 
     /// <summary>
     ///     State lock for thread-safe operations.
+    ///     Uses .NET 9+ Lock type for better semantics and performance.
     /// </summary>
-    private readonly object _stateLock = new();
+    private readonly Lock _stateLock = new();
 
     /// <summary>
     ///     Timer for automated progress updates.
@@ -136,14 +137,16 @@ public sealed class ProgressManager : IProgressManager
     private volatile bool _isIndeterminate;
 
     /// <summary>
-    ///     Current progress message.
-    /// </summary>
-    private string? _message = string.Empty;
-
-    /// <summary>
     ///     Current progress value (0-100).
     /// </summary>
     private double _progress;
+
+#if !NET10_0_OR_GREATER
+    /// <summary>
+    ///     Current progress message (backing field for .NET 9).
+    /// </summary>
+    private string? _message = string.Empty;
+#endif
 
     #endregion
 
@@ -177,7 +180,11 @@ public sealed class ProgressManager : IProgressManager
     /// <summary>
     ///     Gets the current progress message.
     /// </summary>
+#if NET10_0_OR_GREATER
+    public string? Message { get => field; private set => field = value ?? string.Empty; } = string.Empty;
+#else
     public string? Message { get => _message; private set => _message = value ?? string.Empty; }
+#endif
 
     /// <summary>
     ///     Gets the current progress value (0-100).

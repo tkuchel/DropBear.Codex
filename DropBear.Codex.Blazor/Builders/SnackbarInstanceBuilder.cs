@@ -107,12 +107,18 @@ public sealed class SnackbarInstanceBuilder
     /// <summary>
     ///     Adds multiple actions to the snackbar.
     /// </summary>
-    public SnackbarInstanceBuilder WithActions(params SnackbarAction[] actions)
+    /// <remarks>
+    ///     Uses params ReadOnlySpan for zero-allocation when called with inline arguments.
+    /// </remarks>
+    public SnackbarInstanceBuilder WithActions(params ReadOnlySpan<SnackbarAction> actions)
     {
-        if (actions?.Length > 0)
+        if (actions.Length > 0)
         {
-            _actions ??= new List<SnackbarAction>();
-            _actions.AddRange(actions);
+            _actions ??= new List<SnackbarAction>(actions.Length);
+            foreach (var action in actions)
+            {
+                _actions.Add(action);
+            }
         }
 
         return this;

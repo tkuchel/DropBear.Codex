@@ -57,6 +57,7 @@ build_output.txt
 build_async_changes.txt
 intermediate_build.txt
 release_build_output.txt
+build_*.txt
 *_output.txt
 *_errors.txt
 *_changes.txt
@@ -64,6 +65,11 @@ release_build_output.txt
 *_analysis.txt
 workflow_errors.txt
 nul
+
+## Temporary analysis files
+*.json.bak
+ma0004-locations.json
+extract-*.ps1
 
 ## Benchmark results (keep only curated analysis markdown files)
 *_results.txt
