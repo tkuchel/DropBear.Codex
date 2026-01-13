@@ -4,28 +4,84 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (skip NuGet publish)'
+        required: false
+        default: 'false'
+        type: boolean
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false # Don't cancel releases in progress
 
 jobs:
-  publish:
+  # First, verify tests pass before releasing
+  verify:
+    name: Verify Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@3e891b0cb619bf60e2c25674b222b8940e2c1c25 # v4.1.0
         with:
           dotnet-version: |
             9.0.x
             10.0.x
 
       - name: Cache NuGet packages
-        uses: actions/cache@v4
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: ~/.nuget/packages
-          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: dotnet restore --nologo
+
+      - name: Build
+        run: dotnet build -c Release --no-restore --nologo
+
+      - name: Test
+        run: dotnet test -c Release --no-build --nologo --logger "trx"
+
+  # Then publish packages
+  publish:
+    name: Publish NuGet Packages
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # For creating GitHub release
+      packages: write # For GitHub Packages (optional)
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@3e891b0cb619bf60e2c25674b222b8940e2c1c25 # v4.1.0
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Cache NuGet packages
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
 
@@ -39,26 +95,46 @@ jobs:
         run: |
           dotnet pack -c Release --no-build --nologo \
             -p:ContinuousIntegrationBuild=true \
-            -p:IncludeSymbols=true -p:SymbolPackageFormat=snupkg \
+            -p:IncludeSymbols=true \
+            -p:SymbolPackageFormat=snupkg \
             -p:RepositoryUrl=${{ github.server_url }}/${{ github.repository }} \
             -p:RepositoryCommit=${{ github.sha }}
 
-      - name: List Packages
+      - name: Collect Packages
+        id: packages
         run: |
+          mkdir -p artifacts
+          find . -name "*.nupkg" -type f -exec cp {} artifacts/ \;
+          find . -name "*.snupkg" -type f -exec cp {} artifacts/ \;
           echo "📦 Packages to publish:"
-          find . -name "*.nupkg" -type f | while read pkg; do
-            echo "  - $(basename "$pkg")"
-          done
+          ls -la artifacts/
+
+      - name: Upload Package Artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: nuget-packages
+          path: artifacts/
+          retention-days: 90
 
       - name: Publish to NuGet
+        if: ${{ github.event.inputs.dry_run != 'true' }}
         env:
           NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          for nupkg in $(find . -name "*.nupkg"); do
-            dotnet nuget push "$nupkg" --api-key "$NUGET_API_KEY" --source https://api.nuget.org/v3/index.json --skip-duplicate
+          for nupkg in artifacts/*.nupkg; do
+            echo "Publishing $(basename "$nupkg")..."
+            dotnet nuget push "$nupkg" \
+              --api-key "$NUGET_API_KEY" \
+              --source https://api.nuget.org/v3/index.json \
+              --skip-duplicate \
+              --timeout 300
           done
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@da05d552573ad5aba039eaac05058a918a7bf631 # v2.2.2
         with:
           generate_release_notes: true
+          files: |
+            artifacts/*.nupkg
+            artifacts/*.snupkg
+          fail_on_unmatched_files: false
