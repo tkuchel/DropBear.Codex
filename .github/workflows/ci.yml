@@ -71,7 +71,7 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
       - name: Publish Coverage Report
-        uses: danielpalme/ReportGenerator-GitHub-Action@25b70f2be2c6bfcbd0508399f3e322a7e1841607 # v5.4.7
+        uses: danielpalme/ReportGenerator-GitHub-Action@ee0ae774f6d3afedcbd1683c1ab21b83670bdf8e # v5.5.1
         with:
           reports: "./TestResults/**/coverage.cobertura.xml"
           targetdir: "./TestResults/CoverageReport"
@@ -93,7 +93,7 @@ jobs:
 
       - name: Annotate Test Results
         if: always()
-        uses: dorny/test-reporter@6e6a65b7a0bd2c9197df7d0ae36ac5cee784230c # v2.0.0
+        uses: dorny/test-reporter@ee41dc9ab458bd171e5c9fe1a8f32484b186520a # v2.0.0
         with:
           name: ".NET Tests (${{ matrix.os }})"
           path: "TestResults/collected/*.trx"
