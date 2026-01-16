@@ -1,6 +1,7 @@
 ﻿#region
 
 using System.Buffers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
@@ -24,8 +25,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     private readonly AesCng _aesCng;
     private readonly bool _enableCaching;
 
-    // Cache for encrypted/decrypted results
-    private readonly Dictionary<int, byte[]>? _encryptionCache;
+    // Cache for encrypted/decrypted results - uses ConcurrentDictionary for thread safety
+    private readonly ConcurrentDictionary<int, byte[]>? _encryptionCache;
     private readonly ILogger _logger;
     private readonly int _maxCacheSize;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
@@ -65,7 +66,7 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 
         if (_enableCaching)
         {
-            _encryptionCache = new Dictionary<int, byte[]>(_maxCacheSize);
+            _encryptionCache = new ConcurrentDictionary<int, byte[]>();
         }
 
         _logger = LoggerFactory.Logger.ForContext<AESCNGEncryptor>();
@@ -141,19 +142,27 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 
             try
             {
-                // Encrypt the AES key and IV using RSA
-                var encryptedKey = _rsa.Encrypt(_aesCng.Key, RSAEncryptionPadding.OaepSHA256);
-                var encryptedIV = _rsa.Encrypt(_aesCng.IV, RSAEncryptionPadding.OaepSHA256);
+                // SECURITY FIX: Generate a fresh IV for each encryption operation to prevent IV reuse attacks
+                // IV reuse in CBC mode can leak information about repeated plaintexts
+                var freshIV = new byte[16]; // 128 bits for AES block size
+                RandomNumberGenerator.Fill(freshIV);
 
-                // Encrypt the data using AES
+                // Encrypt the AES key and fresh IV using RSA
+                var encryptedKey = _rsa.Encrypt(_aesCng.Key, RSAEncryptionPadding.OaepSHA256);
+                var encryptedIV = _rsa.Encrypt(freshIV, RSAEncryptionPadding.OaepSHA256);
+
+                // Encrypt the data using AES with the fresh IV
                 using var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Encrypt");
 
-                using (var encryptor = _aesCng.CreateEncryptor())
+                using (var encryptor = _aesCng.CreateEncryptor(_aesCng.Key, freshIV))
                 using (var cryptoStream = new CryptoStream(resultStream, encryptor, CryptoStreamMode.Write, true))
                 {
                     await cryptoStream.WriteAsync(data.AsMemory(), cancellationToken).ConfigureAwait(false);
                     await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
                 } // cryptoStream and encryptor are disposed here
+
+                // Securely clear the fresh IV from memory
+                Array.Clear(freshIV, 0, freshIV.Length);
 
                 // Combine all components into a single result
                 var encryptedData = resultStream.ToArray();
@@ -229,8 +238,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                 var encryptedData = data.AsSpan(2 * keySizeBytes).ToArray();
 
                 // Decrypt key and IV
-                byte[] aesKey;
-                byte[] aesIV;
+                byte[]? aesKey = null;
+                byte[]? aesIV = null;
 
                 try
                 {
@@ -244,35 +253,55 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                         new SerializationError("RSA decryption of AES key or IV failed") { Operation = "Decrypt" }, ex);
                 }
 
-                // Decrypt data
-                using var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Decrypt");
-                using var inputStream = _memoryStreamManager.GetStream("AesEncryptor-Decrypt-Input", encryptedData);
+                byte[] plaintext;
 
-                using (var decryptor = _aesCng.CreateDecryptor(aesKey, aesIV))
-                using (var cryptoStream = new CryptoStream(inputStream, decryptor, CryptoStreamMode.Read))
+                try
                 {
-                    // Use shared buffer from array pool
-                    var buffer = ArrayPool<byte>.Shared.Rent(81920); // 80KB buffer
+                    // Decrypt data
+                    using var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Decrypt");
+                    using var inputStream = _memoryStreamManager.GetStream("AesEncryptor-Decrypt-Input", encryptedData);
 
-                    try
+                    using (var decryptor = _aesCng.CreateDecryptor(aesKey, aesIV))
+                    using (var cryptoStream = new CryptoStream(inputStream, decryptor, CryptoStreamMode.Read))
                     {
-                        int bytesRead;
-                        while ((bytesRead = await cryptoStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
-                                   .ConfigureAwait(false)) > 0)
+                        // Use shared buffer from array pool
+                        var buffer = ArrayPool<byte>.Shared.Rent(81920); // 80KB buffer
+
+                        try
                         {
-                            await resultStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken)
-                                .ConfigureAwait(false);
+                            int bytesRead;
+                            while ((bytesRead = await cryptoStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
+                                       .ConfigureAwait(false)) > 0)
+                            {
+                                await resultStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken)
+                                    .ConfigureAwait(false);
+                            }
+                        }
+                        finally
+                        {
+                            // Clear buffer before returning to pool
+                            Array.Clear(buffer, 0, buffer.Length);
+                            ArrayPool<byte>.Shared.Return(buffer);
                         }
                     }
-                    finally
+
+                    // Get the decrypted data
+                    resultStream.Position = 0;
+                    plaintext = resultStream.ToArray();
+                }
+                finally
+                {
+                    // SECURITY FIX: Securely clear decrypted key and IV from memory
+                    // This prevents sensitive cryptographic material from lingering in memory
+                    if (aesKey != null)
                     {
-                        ArrayPool<byte>.Shared.Return(buffer);
+                        Array.Clear(aesKey, 0, aesKey.Length);
+                    }
+                    if (aesIV != null)
+                    {
+                        Array.Clear(aesIV, 0, aesIV.Length);
                     }
                 }
-
-                // Get the decrypted data
-                resultStream.Position = 0;
-                var plaintext = resultStream.ToArray();
 
                 stopwatch.Stop();
                 _logger.Information("AES decryption completed successfully in {ElapsedMs}ms. " +
@@ -372,7 +401,7 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Caches an encryption result.
+    ///     Caches an encryption result using thread-safe operations.
     /// </summary>
     /// <param name="original">The original data before encryption.</param>
     /// <param name="encrypted">The encrypted result to cache.</param>
@@ -387,14 +416,20 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
         {
             var hash = CalculateHash(original);
 
-            // If cache is full, remove oldest entry
+            // If cache is full, try to remove a random entry (simple eviction strategy)
             if (_encryptionCache.Count >= _maxCacheSize)
             {
-                var keyToRemove = _encryptionCache.Keys.First();
-                _encryptionCache.Remove(keyToRemove);
+                // Thread-safe eviction: get a snapshot of keys and remove one
+                var keysSnapshot = _encryptionCache.Keys.ToArray();
+                if (keysSnapshot.Length > 0)
+                {
+                    var randomIndex = Random.Shared.Next(keysSnapshot.Length);
+                    _encryptionCache.TryRemove(keysSnapshot[randomIndex], out _);
+                }
             }
 
-            _encryptionCache[hash] = encrypted;
+            // Use TryAdd for thread safety - if key exists, we don't overwrite
+            _encryptionCache.TryAdd(hash, encrypted);
         }
         catch (Exception ex)
         {

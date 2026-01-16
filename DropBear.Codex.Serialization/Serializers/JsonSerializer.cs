@@ -31,7 +31,8 @@ public sealed partial class JsonSerializer : ISerializer
     private readonly RecyclableMemoryStreamManager _memoryManager;
 
     // Cache for frequently serialized objects
-    private readonly Dictionary<int, byte[]>? _serializationCache;
+    // SECURITY: Using ConcurrentDictionary for thread-safe cache access
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte[]>? _serializationCache;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="JsonSerializer" /> class.
@@ -56,7 +57,7 @@ public sealed partial class JsonSerializer : ISerializer
 
         if (_enableCaching)
         {
-            _serializationCache = new Dictionary<int, byte[]>(_maxCacheSize);
+            _serializationCache = new System.Collections.Concurrent.ConcurrentDictionary<int, byte[]>();
             LogCachingEnabled(_logger, _maxCacheSize);
         }
 
@@ -357,15 +358,21 @@ public sealed partial class JsonSerializer : ISerializer
 
         try
         {
+            var cacheKey = CalculateCacheKey(value);
+
+            // Thread-safe cache eviction when at capacity
+            // Note: This is approximate due to concurrent access, but avoids locks
             if (_serializationCache.Count >= _maxCacheSize)
             {
-                // If the cache is full, remove the first entry (FIFO)
-                var keyToRemove = _serializationCache.Keys.First();
-                _serializationCache.Remove(keyToRemove);
+                // Remove an arbitrary entry to make room (no guaranteed ordering with ConcurrentDictionary)
+                foreach (var key in _serializationCache.Keys.Take(1))
+                {
+                    _serializationCache.TryRemove(key, out _);
+                    break;
+                }
             }
 
-            var cacheKey = CalculateCacheKey(value);
-            _serializationCache[cacheKey] = serializedData;
+            _serializationCache.TryAdd(cacheKey, serializedData);
         }
         catch (Exception ex)
         {

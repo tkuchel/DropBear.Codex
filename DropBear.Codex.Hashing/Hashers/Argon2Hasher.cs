@@ -23,10 +23,18 @@ public class Argon2Hasher : IHasher
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<Argon2Hasher>();
 
-    private int _degreeOfParallelism = 8;
-    private int _hashSize = 16;
-    private int _iterations = 4;
-    private int _memorySize = 1024 * 1024; // Default to ~1GB
+    // SECURITY NOTE: Default parameters follow OWASP recommendations for password hashing
+    // See: https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html
+    // These defaults balance security with practical resource usage:
+    // - 64 MB memory: Provides good GPU resistance without exhausting server memory
+    // - 3 iterations: Recommended minimum for Argon2id
+    // - 4 parallelism: Suitable for multi-core systems
+    // - 32 byte output: 256-bit hash for PCI-DSS compliance
+    // For high-security applications, consider increasing memory to 256MB+ if resources allow
+    private int _degreeOfParallelism = 4;
+    private int _hashSize = 32; // 256-bit output for PCI-DSS compliance
+    private int _iterations = 3; // OWASP recommended minimum
+    private int _memorySize = 65536; // 64 MB - OWASP recommended minimum for web applications
     private byte[]? _salt;
 
     /// <summary>

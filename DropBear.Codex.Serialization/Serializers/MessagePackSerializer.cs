@@ -28,7 +28,8 @@ public sealed partial class MessagePackSerializer : ISerializer
     private readonly MessagePackSerializerOptions _options;
 
     // Cache for frequently serialized objects
-    private readonly Dictionary<int, byte[]>? _serializationCache;
+    // SECURITY: Using ConcurrentDictionary for thread-safe cache access
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<int, byte[]>? _serializationCache;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="MessagePackSerializer" /> class.
@@ -50,7 +51,7 @@ public sealed partial class MessagePackSerializer : ISerializer
 
         if (_enableCaching)
         {
-            _serializationCache = new Dictionary<int, byte[]>(_maxCacheSize);
+            _serializationCache = new System.Collections.Concurrent.ConcurrentDictionary<int, byte[]>();
         }
 
         LogMessagePackSerializerInitialized(_logger, _options.Compression.ToString(), _options.Resolver?.GetType().Name ?? "null", _enableCaching);
@@ -219,15 +220,21 @@ public sealed partial class MessagePackSerializer : ISerializer
 
         try
         {
+            var cacheKey = CalculateCacheKey(value);
+
+            // Thread-safe cache eviction when at capacity
+            // Note: This is approximate due to concurrent access, but avoids locks
             if (_serializationCache.Count >= _maxCacheSize)
             {
-                // If the cache is full, remove the first entry (FIFO)
-                var keyToRemove = _serializationCache.Keys.First();
-                _serializationCache.Remove(keyToRemove);
+                // Remove an arbitrary entry to make room (no guaranteed ordering with ConcurrentDictionary)
+                foreach (var key in _serializationCache.Keys.Take(1))
+                {
+                    _serializationCache.TryRemove(key, out _);
+                    break;
+                }
             }
 
-            var cacheKey = CalculateCacheKey(value);
-            _serializationCache[cacheKey] = serializedData;
+            _serializationCache.TryAdd(cacheKey, serializedData);
         }
         catch (Exception ex)
         {

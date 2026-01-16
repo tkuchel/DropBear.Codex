@@ -78,4 +78,19 @@ public sealed record StorageError : FilesError
     {
         return new StorageError($"Failed to create storage: {message}");
     }
+
+    /// <summary>
+    ///     Creates an error indicating that the provided path is invalid or contains path traversal sequences.
+    ///     This is a security-related error per PCI-DSS requirement 6.5.1 (Injection).
+    /// </summary>
+    /// <param name="path">The invalid path that was provided.</param>
+    /// <param name="reason">The reason why the path is invalid.</param>
+    /// <returns>A <see cref="StorageError" /> with a descriptive message.</returns>
+    public static StorageError InvalidPath(string? path, string reason)
+    {
+        // SECURITY: Do not include the actual path in the error message to prevent information disclosure
+        // The path is sanitized to avoid leaking potentially malicious input
+        var sanitizedPath = string.IsNullOrWhiteSpace(path) ? "(empty)" : "(redacted)";
+        return new StorageError($"Invalid path {sanitizedPath}: {reason}");
+    }
 }

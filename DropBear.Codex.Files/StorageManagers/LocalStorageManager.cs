@@ -54,10 +54,18 @@ public sealed partial class LocalStorageManager : IStorageManager
                 StorageError.WriteFailed(identifier, "Attempting to write an empty stream to local storage."));
         }
 
+        // SECURITY: Validate path to prevent path traversal attacks (PCI-DSS 6.5.1)
+        var validationResult = ValidateFilePath(identifier);
+        if (!validationResult.IsSuccess)
+        {
+            return Result<Unit, StorageError>.Failure(validationResult.Error!);
+        }
+        var safePath = validationResult.Value!; // Safe: we checked IsSuccess above
+
         try
         {
             // Ensure the directory exists
-            EnsureDirectoryExists(Path.GetDirectoryName(identifier)!);
+            EnsureDirectoryExists(Path.GetDirectoryName(safePath)!);
 
             // Convert to a seekable stream if necessary
             var seekableStream = await GetSeekableStreamAsync(dataStream, cancellationToken).ConfigureAwait(false);
@@ -65,7 +73,7 @@ public sealed partial class LocalStorageManager : IStorageManager
             {
                 // Use file options for optimal performance
                 var fileStream = new FileStream(
-                    identifier,
+                    safePath,
                     FileMode.Create,
                     FileAccess.Write,
                     FileShare.None,
@@ -98,16 +106,24 @@ public sealed partial class LocalStorageManager : IStorageManager
         string identifier,
         CancellationToken cancellationToken = default)
     {
+        // SECURITY: Validate path to prevent path traversal attacks (PCI-DSS 6.5.1)
+        var validationResult = ValidateFilePath(identifier);
+        if (!validationResult.IsSuccess)
+        {
+            return Result<Stream, StorageError>.Failure(validationResult.Error!);
+        }
+        var safePath = validationResult.Value!;
+
         try
         {
-            if (!File.Exists(identifier))
+            if (!File.Exists(safePath))
             {
                 LogFileNotFound(identifier);
                 return Result<Stream, StorageError>.Failure(
                     StorageError.ReadFailed(identifier, "The specified file does not exist."));
             }
 
-            var fileInfo = new FileInfo(identifier);
+            var fileInfo = new FileInfo(safePath);
 
             // Create memory stream with size hint
             var memoryStream = fileInfo.Length <= int.MaxValue
@@ -116,7 +132,7 @@ public sealed partial class LocalStorageManager : IStorageManager
 
             // Use optimized file options for reading
             var fileStream = new FileStream(
-                identifier,
+                safePath,
                 FileMode.Open,
                 FileAccess.Read,
                 FileShare.Read,
@@ -167,9 +183,17 @@ public sealed partial class LocalStorageManager : IStorageManager
         Stream newDataStream,
         CancellationToken cancellationToken = default)
     {
+        // SECURITY: Validate path to prevent path traversal attacks (PCI-DSS 6.5.1)
+        var validationResult = ValidateFilePath(identifier);
+        if (!validationResult.IsSuccess)
+        {
+            return Result<Unit, StorageError>.Failure(validationResult.Error!);
+        }
+        var safePath = validationResult.Value!;
+
         try
         {
-            if (!File.Exists(identifier))
+            if (!File.Exists(safePath))
             {
                 LogFileNotFoundForUpdate(identifier);
                 return Result<Unit, StorageError>.Failure(
@@ -177,7 +201,7 @@ public sealed partial class LocalStorageManager : IStorageManager
             }
 
             // First delete the existing file
-            File.Delete(identifier);
+            File.Delete(safePath);
             LogDeletedBeforeUpdate(identifier);
 
             // Then write the new data
@@ -201,18 +225,26 @@ public sealed partial class LocalStorageManager : IStorageManager
         string identifier,
         CancellationToken cancellationToken = default)
     {
+        // SECURITY: Validate path to prevent path traversal attacks (PCI-DSS 6.5.1)
+        var validationResult = ValidateFilePath(identifier);
+        if (!validationResult.IsSuccess)
+        {
+            return Task.FromResult(Result<Unit, StorageError>.Failure(validationResult.Error!));
+        }
+        var safePath = validationResult.Value!;
+
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (!File.Exists(identifier))
+            if (!File.Exists(safePath))
             {
                 LogFileNotFoundForDeletion(identifier);
                 return Task.FromResult(Result<Unit, StorageError>.Failure(
                     StorageError.DeleteFailed(identifier, "The specified file does not exist.")));
             }
 
-            File.Delete(identifier);
+            File.Delete(safePath);
             LogDeleteSuccessful(identifier);
             return Task.FromResult(Result<Unit, StorageError>.Success(Unit.Value));
         }
@@ -230,6 +262,63 @@ public sealed partial class LocalStorageManager : IStorageManager
     }
 
     #region Private Helper Methods
+
+    /// <summary>
+    ///     Validates a file path to prevent path traversal attacks.
+    ///     This is a critical security control per PCI-DSS requirement 6.5.1 (Injection).
+    /// </summary>
+    /// <param name="path">The file path to validate.</param>
+    /// <returns>A Result containing the validated full path, or an error if validation fails.</returns>
+    private Result<string, StorageError> ValidateFilePath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            LogPathTraversalAttempt(path, "Path is null or empty");
+            return Result<string, StorageError>.Failure(
+                StorageError.InvalidPath(path, "Path cannot be null or empty."));
+        }
+
+        // Check for path traversal sequences BEFORE resolving the full path
+        // This catches attempts like "../../../etc/passwd" or "..\\..\\Windows\\System32"
+        if (path.Contains("..", StringComparison.Ordinal) ||
+            path.Contains("~", StringComparison.Ordinal))
+        {
+            LogPathTraversalAttempt(path, "Path contains traversal sequence");
+            return Result<string, StorageError>.Failure(
+                StorageError.InvalidPath(path, "Path traversal sequences are not allowed."));
+        }
+
+        // Check for null bytes which can be used to truncate paths
+        if (path.Contains('\0'))
+        {
+            LogPathTraversalAttempt(path, "Path contains null byte");
+            return Result<string, StorageError>.Failure(
+                StorageError.InvalidPath(path, "Path contains invalid characters."));
+        }
+
+        try
+        {
+            // Get the full path to resolve any symbolic links or relative components
+            var fullPath = Path.GetFullPath(path);
+
+            // Additional check: verify the resolved path doesn't escape to unexpected locations
+            // by checking that it's a valid rooted path
+            if (!Path.IsPathRooted(fullPath))
+            {
+                LogPathTraversalAttempt(path, "Resolved path is not rooted");
+                return Result<string, StorageError>.Failure(
+                    StorageError.InvalidPath(path, "Invalid path format."));
+            }
+
+            return Result<string, StorageError>.Success(fullPath);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            LogPathTraversalAttempt(path, $"Path validation failed: {ex.Message}");
+            return Result<string, StorageError>.Failure(
+                StorageError.InvalidPath(path, $"Invalid path: {ex.Message}"), ex);
+        }
+    }
 
     /// <summary>
     ///     Creates a seekable stream from a potentially non-seekable input stream.
@@ -336,6 +425,9 @@ public sealed partial class LocalStorageManager : IStorageManager
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Created directory: {directoryPath}")]
     private partial void LogDirectoryCreated(string directoryPath);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "SECURITY: Path traversal attempt blocked. Path: {path}, Reason: {reason}")]
+    private partial void LogPathTraversalAttempt(string? path, string reason);
 
     #endregion
 }

@@ -23,11 +23,13 @@ public static class DeepCloner
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(DeepCloner));
 
     // Default JSON serialization settings with circular reference handling
+    // SECURITY NOTE: TypeNameHandling.None is used to prevent deserialization attacks (CVE-2019-13520)
+    // Do NOT change this to TypeNameHandling.Auto or TypeNameHandling.All as it enables RCE attacks
     private static readonly JsonSerializerSettings DefaultSettings = new()
     {
         ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
         PreserveReferencesHandling = PreserveReferencesHandling.Objects,
-        TypeNameHandling = TypeNameHandling.Auto,
+        TypeNameHandling = TypeNameHandling.None,
         NullValueHandling = NullValueHandling.Ignore
     };
 

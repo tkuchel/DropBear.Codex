@@ -263,12 +263,13 @@ public sealed partial class BlobStorageManager : IStorageManager
     }
 
     /// <summary>
-    ///     Ensures the blob name is valid (non-empty and within length limits).
+    ///     Ensures the blob name is valid (non-empty, within length limits, and free of path traversal).
+    ///     This is a critical security control per PCI-DSS requirement 6.5.1 (Injection).
     /// </summary>
     /// <param name="blobName">The combined container/blob path.</param>
     /// <returns>The validated blob name.</returns>
     /// <exception cref="ArgumentException">Thrown if blob name is invalid.</exception>
-    private static string ValidateBlobName(string blobName)
+    private string ValidateBlobName(string blobName)
     {
         if (string.IsNullOrEmpty(blobName))
         {
@@ -278,6 +279,21 @@ public sealed partial class BlobStorageManager : IStorageManager
         if (blobName.Length > 1024)
         {
             throw new ArgumentException("Blob name cannot exceed 1024 characters.", nameof(blobName));
+        }
+
+        // SECURITY: Check for path traversal sequences to prevent accessing other containers
+        // This catches attempts like "../other-container/secret" or "..\\..\\data"
+        if (blobName.Contains("..", StringComparison.Ordinal))
+        {
+            LogPathTraversalAttempt(blobName);
+            throw new ArgumentException("Path traversal sequences are not allowed in blob names.", nameof(blobName));
+        }
+
+        // Check for null bytes which can be used to truncate paths
+        if (blobName.Contains('\0'))
+        {
+            LogPathTraversalAttempt(blobName);
+            throw new ArgumentException("Blob name contains invalid characters.", nameof(blobName));
         }
 
         return blobName;
@@ -325,6 +341,9 @@ public sealed partial class BlobStorageManager : IStorageManager
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error updating blob {blobName} in container {containerName}")]
     private partial void LogUpdateFailed(Exception ex, string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "SECURITY: Path traversal attempt blocked in blob name: {blobName}")]
+    private partial void LogPathTraversalAttempt(string blobName);
 
     #endregion
 }
