@@ -110,3 +110,16 @@ artifacts/
 
 ## Claude Code (user-specific settings)
 .claude/
+
+## Session/Internal documentation (not for public repo)
+SESSION_*.md
+*_COMPLETE.md
+*_SUMMARY.md
+*_ANALYSIS*.md
+*_PLAN.md
+*_ROADMAP.md
+*_STRATEGY.md
+*_EVALUATION.md
+*_STATUS.md
+*_REPORT.md
+IMPROVEMENT*.md
