@@ -53,6 +53,6 @@
             <PrivateAssets>All</PrivateAssets>
         </PackageReference>
         <PackageReference Update="Nerdbank.GitVersioning"></PackageReference>
-        <PackageReference Include="System.Text.Json" />
+        <!-- System.Text.Json removed: included in net9.0/net10.0 shared framework -->
     </ItemGroup>
 </Project>

@@ -65,7 +65,7 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
+        <!-- Microsoft.AspNetCore.Components.Web removed: included via FrameworkReference Microsoft.AspNetCore.App -->
         <PackageReference Include="Microsoft.SourceLink.GitHub">
             <PrivateAssets>All</PrivateAssets>
         </PackageReference>
