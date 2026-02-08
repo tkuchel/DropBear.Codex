@@ -265,6 +265,7 @@ public abstract record ResultError
 
     /// <summary>
     ///     Returns a string representation of this error.
+    ///     SECURITY: Stack traces are excluded from production builds to prevent information leakage.
     /// </summary>
     public override string ToString()
     {
@@ -288,22 +289,37 @@ public abstract record ResultError
             parts.Add($"Metadata: [{metadataStr}]");
         }
 
+        // SECURITY FIX: Do NOT include stack trace in ToString() to prevent information leakage
+        // Stack traces can reveal internal implementation details and file paths
+        // Use ToDetailedString() if stack trace is needed for debugging
+
         return string.Join(" | ", parts);
     }
 
     /// <summary>
     ///     Gets a detailed string representation including stack trace.
+    ///     SECURITY: Stack traces are conditionally included based on DEBUG configuration.
+    ///     In production builds, stack trace is still available but must be explicitly accessed.
     /// </summary>
     public string ToDetailedString()
     {
         var builder = new StringBuilder();
         builder.AppendLine(ToString());
 
+#if DEBUG
+        // In DEBUG builds, include full stack trace for development/debugging
         if (!string.IsNullOrWhiteSpace(StackTrace))
         {
             builder.AppendLine("Stack Trace:");
             builder.AppendLine(StackTrace);
         }
+#else
+        // In RELEASE builds, indicate stack trace is available but don't expose it automatically
+        if (!string.IsNullOrWhiteSpace(StackTrace))
+        {
+            builder.AppendLine("Stack Trace: (Available via StackTrace property)");
+        }
+#endif
 
         if (SourceException?.InnerException != null)
         {

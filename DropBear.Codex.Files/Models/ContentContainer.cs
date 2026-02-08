@@ -401,7 +401,7 @@ public sealed partial class ContentContainer
         {
             if (IsFlagEnabled(flag))
             {
-                Console.WriteLine($"- {flag}");
+                _logger.LogDebug("Enabled flag: {Flag}", flag);
             }
         }
     }

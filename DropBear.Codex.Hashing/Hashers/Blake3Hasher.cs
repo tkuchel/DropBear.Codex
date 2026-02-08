@@ -98,8 +98,9 @@ public class Blake3Hasher : BaseHasher
             Logger.Information("Hashing input using Blake3 (async).");
             cancellationToken.ThrowIfCancellationRequested();
 
-            // For larger inputs, offload to task thread
-            if (input.Length > 1000)
+            // PERFORMANCE FIX: Only use Task.Run for large inputs (64KB+)
+            // Blake3 is fast enough that small inputs don't benefit from thread pool offloading
+            if (input.Length > 65536)
             {
                 return await Task.Run(() =>
                 {
@@ -168,8 +169,8 @@ public class Blake3Hasher : BaseHasher
 
             byte[] computedHash;
 
-            // Only use Task.Run for larger inputs
-            if (input.Length > 1000)
+            // PERFORMANCE FIX: Only use Task.Run for large inputs (64KB+)
+            if (input.Length > 65536)
             {
                 computedHash = await Task.Run(() => HashInput(Encoding.UTF8.GetBytes(input)), cancellationToken)
                     .ConfigureAwait(false);
@@ -266,8 +267,8 @@ public class Blake3Hasher : BaseHasher
             Logger.Information("Encoding data to Base64 hash using Blake3 (async).");
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Process larger data asynchronously
-            if (data.Length > 1000)
+            // PERFORMANCE FIX: Only use Task.Run for large inputs (64KB+)
+            if (data.Length > 65536)
             {
                 var result = await Task.Run(() => HashBytes(data.Span), cancellationToken).ConfigureAwait(false);
                 return Result<string, HashingError>.Success(Convert.ToBase64String(result));

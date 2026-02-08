@@ -70,6 +70,18 @@ public static class WorkflowConstants
         ///     Maximum step timeout duration (default: 1 hour).
         /// </summary>
         public static readonly TimeSpan MaxStepTimeout = TimeSpan.FromHours(1);
+
+        /// <summary>
+        ///     Maximum delay duration for delay nodes (default: 24 hours).
+        ///     SECURITY: Prevents DoS via extremely long delays.
+        /// </summary>
+        public static readonly TimeSpan MaxDelayDuration = TimeSpan.FromHours(24);
+
+        /// <summary>
+        ///     Maximum signal timeout duration (default: 30 days).
+        ///     SECURITY: Prevents resource exhaustion via extremely long signal waits.
+        /// </summary>
+        public static readonly TimeSpan MaxSignalTimeout = TimeSpan.FromDays(30);
     }
 
     /// <summary>

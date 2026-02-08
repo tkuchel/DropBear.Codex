@@ -204,4 +204,26 @@ public abstract class BaseHasher : IHasher
 
         return diff == 0;
     }
+
+    /// <summary>
+    ///     Converts a hex string to bytes for constant-time comparison.
+    ///     For use with non-cryptographic hash functions where hex comparison is needed.
+    /// </summary>
+    /// <param name="hex">Hex string to convert.</param>
+    /// <returns>Byte array representation.</returns>
+    protected static byte[] HexToBytes(string hex)
+    {
+        if (hex.Length % 2 != 0)
+        {
+            throw new ArgumentException("Hex string must have even length", nameof(hex));
+        }
+
+        var bytes = new byte[hex.Length / 2];
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+        }
+
+        return bytes;
+    }
 }

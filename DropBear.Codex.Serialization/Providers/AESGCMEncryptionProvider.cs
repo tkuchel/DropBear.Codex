@@ -97,11 +97,12 @@ public sealed class AESGCMEncryptionProvider : IEncryptionProvider, IDisposable
             throw new ObjectDisposedException(nameof(AESGCMEncryptionProvider));
         }
 
-        _logger.Information("Creating AES-GCM encryptor with KeySize: {KeySize}, Caching: {EnableCaching}",
-            _rsa.KeySize, _enableCaching);
+        _logger.Information("Creating AES-GCM encryptor with KeySize: {KeySize}. Caching is disabled for security.",
+            _rsa.KeySize);
 
         var logger = _loggerFactory.CreateLogger<AesGcmEncryptor>();
-        return new AesGcmEncryptor(_rsa, logger, _enableCaching, _maxCacheSize);
+        // Note: enableCaching and maxCacheSize parameters are deprecated and ignored
+        return new AesGcmEncryptor(_rsa, logger, false, 0);
     }
 
     /// <summary>

@@ -1,7 +1,6 @@
 ﻿#region
 
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.Versioning;
 using System.Security.Cryptography;
@@ -23,12 +22,7 @@ namespace DropBear.Codex.Serialization.Encryption;
 public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 {
     private readonly AesCng _aesCng;
-    private readonly bool _enableCaching;
-
-    // Cache for encrypted/decrypted results - uses ConcurrentDictionary for thread safety
-    private readonly ConcurrentDictionary<int, byte[]>? _encryptionCache;
     private readonly ILogger _logger;
-    private readonly int _maxCacheSize;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
     private readonly RSA _rsa;
 
@@ -39,8 +33,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     /// </summary>
     /// <param name="rsa">The RSA key pair used for encryption.</param>
     /// <param name="memoryStreamManager">The RecyclableMemoryStreamManager instance.</param>
-    /// <param name="enableCaching">Whether to enable caching of encryption results.</param>
-    /// <param name="maxCacheSize">The maximum number of encryption results to cache.</param>
+    /// <param name="enableCaching">Deprecated parameter, no longer used. Caching is disabled for security.</param>
+    /// <param name="maxCacheSize">Deprecated parameter, no longer used.</param>
     [SupportedOSPlatform("windows")]
     public AESCNGEncryptor(
         RSA rsa,
@@ -61,18 +55,10 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
             Padding = PaddingMode.PKCS7
         };
 
-        _enableCaching = enableCaching;
-        _maxCacheSize = maxCacheSize > 0 ? maxCacheSize : 100;
-
-        if (_enableCaching)
-        {
-            _encryptionCache = new ConcurrentDictionary<int, byte[]>();
-        }
-
         _logger = LoggerFactory.Logger.ForContext<AESCNGEncryptor>();
         _logger.Information(
-            "AESCNGEncryptor initialized with CNG implementation, KeySize: {KeySize}, Caching: {EnableCaching}.",
-            _aesCng.KeySize, _enableCaching);
+            "AESCNGEncryptor initialized with CNG implementation, KeySize: {KeySize}. Encryption caching is disabled for security.",
+            _aesCng.KeySize);
 
         InitializeCryptoComponents();
     }
@@ -91,12 +77,6 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 
         _aesCng.Dispose();
         _rsa.Dispose();
-
-        // Clear the cache if it exists
-        if (_enableCaching && _encryptionCache != null)
-        {
-            _encryptionCache.Clear();
-        }
 
         _disposed = true;
         GC.SuppressFinalize(this);
@@ -123,18 +103,6 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
             if (data.Length == 0)
             {
                 return Result<byte[], SerializationError>.Success([]);
-            }
-
-            // Try cache lookup if enabled
-            if (_enableCaching && _encryptionCache != null)
-            {
-                var dataHash = CalculateHash(data);
-
-                if (_encryptionCache.TryGetValue(dataHash, out var cachedResult))
-                {
-                    _logger.Information("Cache hit for encryption, returning cached result.");
-                    return Result<byte[], SerializationError>.Success(cachedResult);
-                }
             }
 
             _logger.Information("Starting AES encryption of data with length {Length} bytes.", data.Length);
@@ -172,12 +140,6 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                 _logger.Information("AES encryption completed successfully in {ElapsedMs}ms. " +
                                     "Original size: {OriginalSize}, Encrypted size: {EncryptedSize}",
                     stopwatch.ElapsedMilliseconds, data.Length, combinedResult.Length);
-
-                // Cache the result if enabled
-                if (_enableCaching)
-                {
-                    CacheEncryptionResult(data, combinedResult);
-                }
 
                 return Result<byte[], SerializationError>.Success(combinedResult);
             }
@@ -361,81 +323,6 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
         Buffer.BlockCopy(encryptedData, 0, result, position, encryptedData.Length);
 
         return result;
-    }
-
-    /// <summary>
-    ///     Calculates a hash of the given data for caching purposes.
-    /// </summary>
-    /// <param name="data">The data to hash.</param>
-    /// <returns>An integer hash value for the data.</returns>
-    private int CalculateHash(byte[] data)
-    {
-        // For small data, use the built-in hash code
-        if (data.Length <= 256)
-        {
-            return BitConverter.ToInt32(SHA256.HashData(data).AsSpan(0, 4));
-        }
-
-        // For larger data, compute a faster hash
-        unchecked
-        {
-            const int p = 16777619;
-            var hash = (int)2166136261;
-
-            // Sample data at intervals for a faster but reasonably unique hash
-            var step = Math.Max(1, data.Length / 64);
-
-            for (var i = 0; i < data.Length; i += step)
-            {
-                hash = (hash ^ data[i]) * p;
-            }
-
-            hash += hash << 13;
-            hash ^= hash >> 7;
-            hash += hash << 3;
-            hash ^= hash >> 17;
-            hash += hash << 5;
-
-            return hash;
-        }
-    }
-
-    /// <summary>
-    ///     Caches an encryption result using thread-safe operations.
-    /// </summary>
-    /// <param name="original">The original data before encryption.</param>
-    /// <param name="encrypted">The encrypted result to cache.</param>
-    private void CacheEncryptionResult(byte[] original, byte[] encrypted)
-    {
-        if (!_enableCaching || _encryptionCache == null)
-        {
-            return;
-        }
-
-        try
-        {
-            var hash = CalculateHash(original);
-
-            // If cache is full, try to remove a random entry (simple eviction strategy)
-            if (_encryptionCache.Count >= _maxCacheSize)
-            {
-                // Thread-safe eviction: get a snapshot of keys and remove one
-                var keysSnapshot = _encryptionCache.Keys.ToArray();
-                if (keysSnapshot.Length > 0)
-                {
-                    var randomIndex = Random.Shared.Next(keysSnapshot.Length);
-                    _encryptionCache.TryRemove(keysSnapshot[randomIndex], out _);
-                }
-            }
-
-            // Use TryAdd for thread safety - if key exists, we don't overwrite
-            _encryptionCache.TryAdd(hash, encrypted);
-        }
-        catch (Exception ex)
-        {
-            // Don't let caching errors affect the core functionality
-            _logger.Warning(ex, "Error while caching encryption result: {Message}", ex.Message);
-        }
     }
 
     /// <summary>

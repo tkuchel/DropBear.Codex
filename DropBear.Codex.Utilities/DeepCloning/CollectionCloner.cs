@@ -176,10 +176,10 @@ public static class CollectionCloner
         }
 
         // Check for read-only collection types
+        // Note: ReadOnlySpan<> and ReadOnlyMemory<> are excluded because ReadOnlySpan is a ref struct
+        // and cannot be used in expression trees
         return type == typeof(ReadOnlyCollection<>) ||
-               type == typeof(ReadOnlyDictionary<,>) ||
-               type == typeof(ReadOnlySpan<>) ||
-               type == typeof(ReadOnlyMemory<>);
+               type == typeof(ReadOnlyDictionary<,>);
     }
 
     /// <summary>

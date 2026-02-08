@@ -1,7 +1,6 @@
 ﻿#region
 
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
@@ -22,16 +21,10 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     private const int KeySize = 32; // AES-256 key size in bytes
     private const int TagSize = 16; // GCM tag size in bytes
     private const int NonceSize = 12; // Recommended for GCM
-    private readonly bool _enableCaching;
-
-    // Thread-safe cache for encrypted/decrypted results - WARNING: Caching encryption is generally discouraged
-    // due to nonce reuse concerns. Only use if you understand the security implications.
-    private readonly ConcurrentDictionary<int, byte[]>? _encryptionCache;
 
     private readonly byte[] _key;
 
     private readonly ILogger<AesGcmEncryptor> _logger;
-    private readonly int _maxCacheSize;
     private readonly RSA _rsa;
     private bool _disposed;
 
@@ -40,23 +33,17 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     /// </summary>
     /// <param name="rsa">The RSA key pair used for encryption.</param>
     /// <param name="logger">The logger instance.</param>
-    /// <param name="enableCaching">Whether to enable caching of encryption results.</param>
-    /// <param name="maxCacheSize">The maximum number of encryption results to cache.</param>
+    /// <param name="enableCaching">Deprecated parameter, no longer used. Caching is disabled for security.</param>
+    /// <param name="maxCacheSize">Deprecated parameter, no longer used.</param>
     public AesGcmEncryptor(RSA rsa, ILogger<AesGcmEncryptor> logger, bool enableCaching = false, int maxCacheSize = 100)
     {
         _rsa = rsa ?? throw new ArgumentNullException(nameof(rsa), "RSA key pair cannot be null.");
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _key = GenerateKey();
-        _enableCaching = enableCaching;
-        _maxCacheSize = maxCacheSize > 0 ? maxCacheSize : 100;
 
-        if (_enableCaching)
-        {
-            _encryptionCache = new ConcurrentDictionary<int, byte[]>();
-            LogCachingWarning(_logger);
-        }
-
-        LogEncryptorInitialized(_logger, _enableCaching, _maxCacheSize);
+        // SECURITY: Encryption caching has been removed to prevent nonce reuse vulnerabilities
+        // AES-GCM requires a unique nonce for every encryption operation
+        LogEncryptorInitialized(_logger);
     }
 
     /// <summary>
@@ -79,12 +66,6 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
 
         // Dispose of RSA resources
         _rsa.Dispose();
-
-        // Clear the cache if it exists
-        if (_enableCaching && _encryptionCache != null)
-        {
-            _encryptionCache.Clear();
-        }
 
         _disposed = true;
         GC.SuppressFinalize(this);
@@ -113,18 +94,6 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
                 return Result<byte[], SerializationError>.Success([]);
             }
 
-            // Try cache lookup if enabled
-            if (_enableCaching)
-            {
-                var dataHash = CalculateHash(data);
-
-                if (_encryptionCache?.TryGetValue(dataHash, out var cachedResult) == true)
-                {
-                    LogCacheHit(_logger);
-                    return Result<byte[], SerializationError>.Success(cachedResult!);
-                }
-            }
-
             LogEncryptionStarting(_logger, data.Length);
             var stopwatch = Stopwatch.StartNew();
 
@@ -151,12 +120,6 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
 
                 stopwatch.Stop();
                 LogEncryptionCompleted(_logger, stopwatch.ElapsedMilliseconds, data.Length, combinedData.Length);
-
-                // Cache the result if enabled
-                if (_enableCaching)
-                {
-                    CacheEncryptionResult(data, combinedData);
-                }
 
                 return Result<byte[], SerializationError>.Success(combinedData);
             }
@@ -368,81 +331,6 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Calculates a hash of the given data for caching purposes.
-    /// </summary>
-    /// <param name="data">The data to hash.</param>
-    /// <returns>An integer hash value for the data.</returns>
-    private int CalculateHash(byte[] data)
-    {
-        // For small data, use the built-in hash code
-        if (data.Length <= 256)
-        {
-            return BitConverter.ToInt32(SHA256.HashData(data).AsSpan(0, 4));
-        }
-
-        // For larger data, compute a faster hash
-        unchecked
-        {
-            const int p = 16777619;
-            var hash = (int)2166136261;
-
-            // Sample data at intervals for a faster but reasonably unique hash
-            var step = Math.Max(1, data.Length / 64);
-
-            for (var i = 0; i < data.Length; i += step)
-            {
-                hash = (hash ^ data[i]) * p;
-            }
-
-            hash += hash << 13;
-            hash ^= hash >> 7;
-            hash += hash << 3;
-            hash ^= hash >> 17;
-            hash += hash << 5;
-
-            return hash;
-        }
-    }
-
-    /// <summary>
-    ///     Caches an encryption result using thread-safe operations.
-    /// </summary>
-    /// <param name="original">The original data before encryption.</param>
-    /// <param name="encrypted">The encrypted result to cache.</param>
-    private void CacheEncryptionResult(byte[] original, byte[] encrypted)
-    {
-        if (!_enableCaching || _encryptionCache == null)
-        {
-            return;
-        }
-
-        try
-        {
-            var hash = CalculateHash(original);
-
-            // If cache is full, try to remove a random entry (simple eviction strategy)
-            if (_encryptionCache.Count >= _maxCacheSize)
-            {
-                // Try to remove a random entry to make space
-                var keysSnapshot = _encryptionCache.Keys.ToArray();
-                if (keysSnapshot.Length > 0)
-                {
-                    var randomIndex = Random.Shared.Next(keysSnapshot.Length);
-                    _encryptionCache.TryRemove(keysSnapshot[randomIndex], out _);
-                }
-            }
-
-            // Use TryAdd for thread safety - if key exists, we don't overwrite
-            _encryptionCache.TryAdd(hash, encrypted);
-        }
-        catch (Exception ex)
-        {
-            // Don't let caching errors affect the core functionality
-            LogCachingError(_logger, ex, ex.Message);
-        }
-    }
-
-    /// <summary>
     ///     Throws an ObjectDisposedException if this object has been disposed.
     /// </summary>
     private void ThrowIfDisposed()
@@ -455,11 +343,8 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
 
     #region LoggerMessage Source Generators
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "AesGcmEncryptor initialized with caching: {EnableCaching}, MaxCacheSize: {MaxCacheSize}.")]
-    static partial void LogEncryptorInitialized(ILogger<AesGcmEncryptor> logger, bool enableCaching, int maxCacheSize);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Encryption caching is enabled. This may have security implications due to nonce reuse patterns.")]
-    static partial void LogCachingWarning(ILogger<AesGcmEncryptor> logger);
+    [LoggerMessage(Level = LogLevel.Information, Message = "AesGcmEncryptor initialized. Encryption caching is disabled for security.")]
+    static partial void LogEncryptorInitialized(ILogger<AesGcmEncryptor> logger);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Disposing AesGcmEncryptor and securely erasing the key.")]
     static partial void LogDisposingEncryptor(ILogger<AesGcmEncryptor> logger);
@@ -476,9 +361,6 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
     [LoggerMessage(Level = LogLevel.Information, Message = "Decryption completed successfully in {ElapsedMs}ms. Encrypted size: {EncryptedSize}, Decrypted size: {DecryptedSize}")]
     static partial void LogDecryptionCompleted(ILogger<AesGcmEncryptor> logger, long elapsedMs, int encryptedSize, int decryptedSize);
 
-    [LoggerMessage(Level = LogLevel.Information, Message = "Cache hit for encryption, returning cached result.")]
-    static partial void LogCacheHit(ILogger<AesGcmEncryptor> logger);
-
     [LoggerMessage(Level = LogLevel.Error, Message = "Cryptographic error during encryption: {Message}")]
     static partial void LogCryptographicErrorEncryption(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
 
@@ -490,9 +372,6 @@ public sealed partial class AesGcmEncryptor : IEncryptor, IDisposable
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error occurred during decryption: {Message}")]
     static partial void LogDecryptionError(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
-
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Error while caching encryption result: {Message}")]
-    static partial void LogCachingError(ILogger<AesGcmEncryptor> logger, Exception ex, string message);
 
     #endregion
 }

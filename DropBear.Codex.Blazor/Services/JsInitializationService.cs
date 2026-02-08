@@ -454,15 +454,12 @@ public sealed class JsInitializationService : IJsInitializationService
     {
         try
         {
-            // Optimized to use a single JS invocation with a template string
+            // SECURITY FIX: Use direct function invocation instead of eval()
+            // This checks if window[moduleName].__initialized === true
             return await _jsRuntime.InvokeAsync<bool>(
-                "eval",
+                "DropBear.Codex.checkModuleInitialized",
                 cancellationToken,
-                @$"
-                    typeof window['{moduleName}'] !== 'undefined' &&
-                    window['{moduleName}'] !== null &&
-                    window['{moduleName}'].__initialized === true
-                "
+                moduleName
             );
         }
         catch (JSException)
@@ -493,15 +490,12 @@ public sealed class JsInitializationService : IJsInitializationService
 
             try
             {
+                // SECURITY FIX: Use direct function invocation instead of eval()
+                // Check if module needs initialization using safe helper function
                 var needsInitialization = await _jsRuntime.InvokeAsync<bool>(
-                    "eval",
+                    "DropBear.Codex.checkModuleNeedsInitialization",
                     cancellationToken,
-                    @$"
-                        typeof window['{moduleName}'] !== 'undefined' &&
-                        window['{moduleName}'] !== null &&
-                        window['{moduleName}'].__initialized !== true &&
-                        typeof window['{moduleName}'].initialize === 'function'
-                    "
+                    moduleName
                 );
 
                 if (needsInitialization)

@@ -1,3 +1,4 @@
+using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Core;
 using DropBear.Codex.Workflow.Results;
 
@@ -28,6 +29,13 @@ public abstract class WaitForSignalStep<TContext, TSignalData> : WorkflowStepBas
     {
         await Task.CompletedTask; // Allow for async override
 
+        // SECURITY: Cap signal timeout to prevent resource exhaustion
+        TimeSpan? actualTimeout = SignalTimeout;
+        if (actualTimeout.HasValue && actualTimeout.Value > Common.WorkflowConstants.Limits.MaxSignalTimeout)
+        {
+            actualTimeout = Common.WorkflowConstants.Limits.MaxSignalTimeout;
+        }
+
         // Return a special result that indicates we're waiting for a signal
         var metadata = new Dictionary<string, object>
         {
@@ -35,9 +43,14 @@ public abstract class WaitForSignalStep<TContext, TSignalData> : WorkflowStepBas
             ["WaitingStartedAt"] = DateTimeOffset.UtcNow
         };
 
-        if (SignalTimeout.HasValue)
+        if (actualTimeout.HasValue)
         {
-            metadata["SignalTimeoutAt"] = DateTimeOffset.UtcNow.Add(SignalTimeout.Value);
+            metadata["SignalTimeoutAt"] = DateTimeOffset.UtcNow.Add(actualTimeout.Value);
+            if (SignalTimeout.HasValue && actualTimeout.Value != SignalTimeout.Value)
+            {
+                metadata["TimeoutCapped"] = true;
+                metadata["RequestedTimeout"] = SignalTimeout.Value.TotalMilliseconds;
+            }
         }
 
         // This special failure type will be recognized by the persistent engine

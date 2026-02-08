@@ -31,7 +31,6 @@ public static class ExpressionCloner
 
     // Cache for type information to avoid repeated lookups
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> TypePropertiesCache = new();
-    private static readonly ConcurrentDictionary<Type, bool> ImmutableTypesCache = new();
 
     /// <summary>
     ///     Clones the specified object using an expression tree.
@@ -77,10 +76,11 @@ public static class ExpressionCloner
 
         // Create labels for circular reference check
         var returnTarget = Expression.Label(type);
-        var circularRefCheckLabel = Expression.Label();
+
+        // Variable to hold the cloned result
+        var clonedVar = Expression.Variable(type, "cloned");
 
         // Check for circular references
-        var circularRefKey = Expression.Constant("CircularRefKey");
         var trackContainsCheck = Expression.Call(
             trackParameter,
             typeof(Dictionary<object, object>).GetMethod("ContainsKey")!,
@@ -96,29 +96,26 @@ public static class ExpressionCloner
                         parameter),
                     type)));
 
-        // Track this object
+        // Build the clone expression
+        var cloneExpr = BuildCloneExpression(type, parameter, trackParameter);
+
+        // Assign the cloned result to the variable
+        var assignCloned = Expression.Assign(clonedVar, cloneExpr);
+
+        // Add the cloned object to tracking dictionary
         var trackAddStatement = Expression.Call(
             trackParameter,
             typeof(Dictionary<object, object>).GetMethod("Add")!,
             parameter,
-            Expression.Variable(typeof(object), "placeholder"));
-
-        // Build the clone expression
-        var cloneExpr = BuildCloneExpression(type, parameter, trackParameter);
-
-        // Save cloned object in tracking dictionary
-        var trackSetResultStatement = Expression.Call(
-            trackParameter,
-            typeof(Dictionary<object, object>).GetMethod("set_Item")!,
-            parameter,
-            Expression.Convert(cloneExpr, typeof(object)));
+            Expression.Convert(clonedVar, typeof(object)));
 
         // Create and compile the full expression
         var body = Expression.Block(
+            new[] { clonedVar },
             circularRefCheck,
+            assignCloned,
             trackAddStatement,
-            trackSetResultStatement,
-            Expression.Label(returnTarget, cloneExpr));
+            Expression.Label(returnTarget, clonedVar));
 
         var lambda = Expression.Lambda<Func<T, Dictionary<object, object>, T>>(body, parameter, trackParameter);
         var compiled = lambda.Compile();
@@ -367,26 +364,8 @@ public static class ExpressionCloner
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool IsImmutableType(Type type)
     {
-        return ImmutableTypesCache.GetOrAdd(type, t =>
-        {
-            // Primitive types, strings, and other known immutable types
-            if (t.IsPrimitive || t == typeof(string) || t == typeof(decimal) ||
-                t == typeof(DateTime) || t == typeof(DateTimeOffset) || t == typeof(TimeSpan) ||
-                t == typeof(Guid) || t.IsEnum || t == typeof(Type))
-            {
-                return true;
-            }
-
-            // Check for .NET immutable collections
-            if (t.Namespace?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal) == true)
-            {
-                return true;
-            }
-
-            // Consider a type immutable if all properties have only getters
-            var properties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            return properties.Length > 0 && properties.All(p => p.GetSetMethod(true) == null);
-        });
+        // Use shared TypeHelper for consistent immutability checks
+        return TypeHelper.IsImmutableType(type);
     }
 
     /// <summary>

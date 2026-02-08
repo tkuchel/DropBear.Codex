@@ -109,7 +109,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
     #region Lifecycle Management
 
     /// <summary>
-    ///     Initializes the component asynchronously.
+    ///     Initializes the component asynchronously with error handling.
     /// </summary>
     protected override async Task OnInitializedAsync()
     {
@@ -123,7 +123,7 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
                 LifecycleMonitors.Add(this, new LifecycleMonitor(GetType().Name));
             }
 
-            await base.OnInitializedAsync();
+            await base.OnInitializedAsync().ConfigureAwait(false);
             IsConnected = true;
             _initializationTcs.TrySetResult(true);
         }
@@ -131,27 +131,29 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
         {
             LogError("Component initialization failed", ex);
             _initializationTcs?.TrySetException(ex);
+            HandleComponentError(ex);
             throw;
         }
     }
 
     /// <summary>
-    ///     Performs post-render initialization.
+    ///     Performs post-render initialization with error handling.
     /// </summary>
     /// <param name="firstRender">Indicates if this is the first render.</param>
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        await base.OnAfterRenderAsync(firstRender);
+        await base.OnAfterRenderAsync(firstRender).ConfigureAwait(false);
 
         if (firstRender)
         {
             try
             {
-                await InitializeComponentAsync();
+                await InitializeComponentAsync().ConfigureAwait(false);
             }
             catch (Exception ex)
             {
                 LogError("Component post-render initialization failed", ex);
+                HandleComponentError(ex);
             }
         }
     }
@@ -677,6 +679,21 @@ public abstract class DropBearComponentBase : ComponentBase, IAsyncDisposable
             // Queue a state change to update the UI after reconnection
             _ = InvokeAsync(StateHasChanged);
         }
+    }
+
+    /// <summary>
+    ///     QUALITY FIX: Centralized error handling for component lifecycle errors.
+    ///     Override this in derived classes to provide custom error handling/UI.
+    /// </summary>
+    /// <param name="exception">The exception that occurred.</param>
+    protected virtual void HandleComponentError(Exception exception)
+    {
+        // Default implementation logs the error
+        // Derived classes can override to show error UI, set error state properties, etc.
+        LogError("Unhandled component error", exception);
+
+        // In development, we could set error state for display
+        // For production, consider telemetry/monitoring integration
     }
 
     #endregion

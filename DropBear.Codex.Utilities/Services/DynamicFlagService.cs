@@ -54,6 +54,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// </summary>
     /// <param name="flagName">The name of the flag to add.</param>
     /// <exception cref="InvalidOperationException">Thrown if the flag already exists or the limit is exceeded.</exception>
+    [Obsolete("Use AddFlag() which returns Result<Unit, FlagServiceError> instead of throwing exceptions.")]
     public void AddFlagLegacy(string flagName)
     {
         var result = AddFlag(flagName);
@@ -68,6 +69,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// </summary>
     /// <param name="flagName">The name of the flag to remove.</param>
     /// <exception cref="KeyNotFoundException">Thrown if the flag does not exist.</exception>
+    [Obsolete("Use RemoveFlag() which returns Result<Unit, FlagServiceError> instead of throwing exceptions.")]
     public void RemoveFlagLegacy(string flagName)
     {
         var result = RemoveFlag(flagName);
@@ -82,6 +84,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// </summary>
     /// <param name="flagName">The name of the flag to set.</param>
     /// <exception cref="KeyNotFoundException">Thrown if the flag does not exist.</exception>
+    [Obsolete("Use SetFlag() which returns Result<Unit, FlagServiceError> instead of throwing exceptions.")]
     public void SetFlagLegacy(string flagName)
     {
         var result = SetFlag(flagName);
@@ -96,6 +99,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// </summary>
     /// <param name="flagName">The name of the flag to clear.</param>
     /// <exception cref="KeyNotFoundException">Thrown if the flag does not exist.</exception>
+    [Obsolete("Use ClearFlag() which returns Result<Unit, FlagServiceError> instead of throwing exceptions.")]
     public void ClearFlagLegacy(string flagName)
     {
         var result = ClearFlag(flagName);
@@ -110,6 +114,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// </summary>
     /// <param name="flagName">The name of the flag to toggle.</param>
     /// <exception cref="KeyNotFoundException">Thrown if the flag does not exist.</exception>
+    [Obsolete("Use ToggleFlag() which returns Result<Unit, FlagServiceError> instead of throwing exceptions.")]
     public void ToggleFlagLegacy(string flagName)
     {
         var result = ToggleFlag(flagName);
@@ -125,6 +130,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// <param name="flagName">The name of the flag to check.</param>
     /// <returns>True if the flag is set; otherwise, false.</returns>
     /// <exception cref="KeyNotFoundException">Thrown if the flag does not exist.</exception>
+    [Obsolete("Use IsFlagSet() which returns Result<bool, FlagServiceError> instead of throwing exceptions.")]
     public bool IsFlagSetLegacy(string flagName)
     {
         var result = IsFlagSet(flagName);
@@ -140,6 +146,7 @@ public class DynamicFlagService : IDynamicFlagService
     ///     For backwards compatibility: Serializes the current state of the flag manager.
     /// </summary>
     /// <returns>A JSON string representing the serialized state.</returns>
+    [Obsolete("Use Serialize() which returns Result<string, FlagServiceError> instead of throwing exceptions.")]
     public string SerializeLegacy()
     {
         var result = Serialize();
@@ -156,6 +163,7 @@ public class DynamicFlagService : IDynamicFlagService
     /// </summary>
     /// <param name="serializedData">The JSON string representing the serialized state.</param>
     /// <exception cref="InvalidOperationException">Thrown if deserialization fails.</exception>
+    [Obsolete("Use Deserialize() which returns Result<Unit, FlagServiceError> instead of throwing exceptions.")]
     public void DeserializeLegacy(string serializedData)
     {
         var result = Deserialize(serializedData);
@@ -169,6 +177,7 @@ public class DynamicFlagService : IDynamicFlagService
     ///     For backwards compatibility: Returns a list of all flags and their current states.
     /// </summary>
     /// <returns>A dictionary with flag names as keys and their states as values.</returns>
+    [Obsolete("Use GetAllFlags() which returns Result<IDictionary<string, bool>, FlagServiceError> instead of throwing exceptions.")]
     public IDictionary<string, bool> GetAllFlagsLegacy()
     {
         var result = GetAllFlags();

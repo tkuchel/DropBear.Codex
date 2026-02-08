@@ -81,12 +81,17 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
                 }
             }
 
+            // QUALITY FIX: Proper disposal of JS modules with exception handling
             if (_jsUtilsModule != null)
             {
                 await _uploadSemaphore.WaitAsync(TimeSpan.FromSeconds(5));
                 try
                 {
-                    await _jsUtilsModule.DisposeAsync();
+                    await _jsUtilsModule.DisposeAsync().ConfigureAwait(false);
+                }
+                catch (JSDisconnectedException)
+                {
+                    // Circuit already disconnected, safe to ignore
                 }
                 finally
                 {
@@ -212,9 +217,24 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private readonly Timer _progressUpdateTimer;
 
     /// <summary>
-    ///     List of file extensions that are blocked for security reasons.
+    ///     SECURITY FIX: Allowlist of permitted file extensions (replaces blocklist approach).
+    ///     Only these file types can be uploaded to prevent extension bypass attacks.
     /// </summary>
-    private readonly string[] _blockedExtensions = [".exe", ".dll", ".bat", ".cmd", ".msi", ".sh", ".app"];
+    private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        // Images
+        ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico", ".tiff", ".tif",
+        // Documents
+        ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".odt", ".ods", ".odp",
+        // Text
+        ".txt", ".csv", ".rtf", ".md",
+        // Archives
+        ".zip", ".rar", ".7z", ".tar", ".gz",
+        // Media
+        ".mp4", ".avi", ".mov", ".wmv", ".mp3", ".wav", ".ogg",
+        // Other
+        ".json", ".xml"
+    };
 
     /// <summary>
     ///     Counter for tracking drag events to handle nested elements.
@@ -718,6 +738,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <summary>
     ///     Validates a file against size and type restrictions.
+    ///     SECURITY FIX: Uses allowlist instead of blocklist for file extensions.
     /// </summary>
     /// <param name="file">The browser file to validate.</param>
     /// <returns>True if the file is valid; otherwise, false.</returns>
@@ -730,11 +751,12 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             return false;
         }
 
-        // Check for blocked extensions
-        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
-        if (_blockedExtensions.Contains(extension))
+        // SECURITY FIX: Use allowlist approach - only permitted extensions are allowed
+        var extension = Path.GetExtension(file.Name);
+        if (string.IsNullOrEmpty(extension) || !AllowedExtensions.Contains(extension))
         {
-            LogWarning("Blocked file type: {FileName} ({Extension})", file.Name, extension);
+            LogWarning("File extension not allowed: {FileName} ({Extension})",
+                file.Name, extension ?? "(no extension)");
             return false;
         }
 
@@ -745,11 +767,11 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             return false;
         }
 
-        // Check allowed types if specified
+        // Check allowed types if specified (MIME type validation)
         if (AllowedFileTypes.Any() &&
             !AllowedFileTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase))
         {
-            LogWarning("File type not allowed: {FileName} ({Type})", file.Name, file.ContentType);
+            LogWarning("File MIME type not allowed: {FileName} ({Type})", file.Name, file.ContentType);
             return false;
         }
 

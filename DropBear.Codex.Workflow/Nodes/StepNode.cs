@@ -2,6 +2,7 @@
 
 using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Configuration;
+using DropBear.Codex.Workflow.Context;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Metrics;
 using DropBear.Codex.Workflow.Results;
@@ -61,7 +62,8 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
         int retryAttempts = 0;
         StepResult lastResult = StepResult.Failure("Step execution did not complete");
 
-        RetryPolicy retryPolicy = RetryPolicy.Default;
+        // QUALITY FIX: Use retry policy from execution options if available
+        RetryPolicy retryPolicy = GetRetryPolicy(serviceProvider);
 
         try
         {
@@ -187,6 +189,27 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return StepResult.Failure($"Step '{step.StepName}' exceeded timeout of {timeout.TotalSeconds} seconds");
+        }
+    }
+
+    /// <summary>
+    ///     Gets the retry policy from execution options if available,
+    ///     otherwise returns the default retry policy.
+    /// </summary>
+    private static RetryPolicy GetRetryPolicy(IServiceProvider serviceProvider)
+    {
+        try
+        {
+            // Try to get execution context from service provider
+            var executionContext = serviceProvider.GetService<IWorkflowExecutionContext>();
+
+            // Use configured retry policy if available, otherwise default
+            return executionContext?.Options?.RetryPolicy ?? RetryPolicy.Default;
+        }
+        catch
+        {
+            // Fallback to default if anything goes wrong
+            return RetryPolicy.Default;
         }
     }
 }

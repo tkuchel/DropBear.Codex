@@ -17,10 +17,11 @@ namespace DropBear.Codex.Serialization.Compression;
 /// </summary>
 public sealed partial class GZipCompressor : ICompressor
 {
+    private static readonly RecyclableMemoryStreamManager s_memoryStreamManager = new();
+
     private readonly int _bufferSize;
     private readonly CompressionLevel _compressionLevel;
     private readonly ILogger<GZipCompressor> _logger;
-    private readonly RecyclableMemoryStreamManager _memoryStreamManager;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="GZipCompressor" /> class with default settings.
@@ -41,7 +42,6 @@ public sealed partial class GZipCompressor : ICompressor
         _logger = logger;
         _compressionLevel = compressionLevel;
         _bufferSize = bufferSize > 0 ? bufferSize : 81920; // Default to 80KB if invalid
-        _memoryStreamManager = new RecyclableMemoryStreamManager();
 
         LogCompressorInitialized(compressionLevel.ToString(), _bufferSize);
     }
@@ -67,7 +67,7 @@ public sealed partial class GZipCompressor : ICompressor
 
             LogCompressionStarting(data.Length);
 
-            using var compressedStream = _memoryStreamManager.GetStream("GZipCompressor-Compress");
+            using var compressedStream = s_memoryStreamManager.GetStream("GZipCompressor-Compress");
 
             // Use braced scope to ensure proper disposal of resources
             {
@@ -118,10 +118,10 @@ public sealed partial class GZipCompressor : ICompressor
 
             // Create input stream with compressed data
             using var compressedStream =
-                _memoryStreamManager.GetStream("GZipCompressor-Decompress-Input", compressedData);
+                s_memoryStreamManager.GetStream("GZipCompressor-Decompress-Input", compressedData);
 
             // Create output stream for decompressed data
-            using var decompressedStream = _memoryStreamManager.GetStream("GZipCompressor-Decompress-Output");
+            using var decompressedStream = s_memoryStreamManager.GetStream("GZipCompressor-Decompress-Output");
 
             // Use a shared buffer from the array pool to minimize allocations
             var buffer = ArrayPool<byte>.Shared.Rent(_bufferSize);

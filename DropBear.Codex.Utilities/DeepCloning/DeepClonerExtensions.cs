@@ -85,16 +85,31 @@ public static class DeepClonerExtensions
     }
 
     /// <summary>
-    ///     Performs a fast shallow clone of the object.
-    ///     Suitable for simple objects with no nested complex types.
+    ///     Performs a shallow clone of the object using MemberwiseClone.
+    ///     This creates a shallow copy - reference type properties will reference the same objects as the original.
+    ///     Suitable for simple objects with no nested complex types that need to be cloned.
     /// </summary>
     /// <typeparam name="T">The type of the object to clone.</typeparam>
     /// <param name="obj">The object to clone.</param>
-    /// <returns>A Result containing the cloned object or error information.</returns>
+    /// <returns>A Result containing the shallow cloned object or error information.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static Result<T, DeepCloneError> ShallowClone<T>(this T obj) where T : class
+    {
+        return DeepCloner.ShallowClone(obj);
+    }
+
+    /// <summary>
+    ///     Performs a fast shallow clone of the object using MemberwiseClone.
+    ///     DEPRECATED: Use ShallowClone instead. This method name was misleading.
+    /// </summary>
+    /// <typeparam name="T">The type of the object to clone.</typeparam>
+    /// <param name="obj">The object to clone.</param>
+    /// <returns>A Result containing the shallow cloned object or error information.</returns>
+    [Obsolete("Use ShallowClone instead. FastClone was misleadingly named as it performs shallow cloning, not fast deep cloning.")]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Result<T, DeepCloneError> FastClone<T>(this T obj) where T : class
     {
-        return DeepCloner.FastClone(obj);
+        return DeepCloner.ShallowClone(obj);
     }
 
     /// <summary>
