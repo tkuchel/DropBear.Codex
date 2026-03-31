@@ -138,7 +138,6 @@ public sealed partial class BlobStorageManager : IStorageManager
                         totalBytesRead += bytesRead;
                         if (totalBytesRead > MaxBufferedReadBytes)
                         {
-                            memoryStream.Dispose();
                             LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
                             return Result<Stream, StorageError>.Failure(
                                 StorageError.ReadFailed(identifier,
@@ -148,11 +147,6 @@ public sealed partial class BlobStorageManager : IStorageManager
                         await memoryStream.WriteAsync(
                             buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                     }
-                }
-                catch
-                {
-                    memoryStream.Dispose();
-                    throw;
                 }
                 finally
                 {
