@@ -15,7 +15,7 @@ public sealed class InputValidatorTests
         dynamic result = method!.Invoke(null, ["<script>alert(1)</script>", "html"])!;
 
         ((bool)result.IsSuccess).Should().BeFalse();
-        ((object?)result.Error).Should().NotBeNull();
+        result.Error.Should().NotBeNull();
         ((string)result.Error!.Message).Should().Contain("suspicious");
     }
 
