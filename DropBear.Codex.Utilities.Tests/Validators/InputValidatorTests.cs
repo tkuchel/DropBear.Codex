@@ -24,7 +24,9 @@ public sealed class InputValidatorTests
     {
         var tempPath = Path.GetTempPath();
         var basePath = Path.GetFullPath("allowed", tempPath);
-        var siblingPath = Path.GetFullPath(Path.Combine("allowed2", "file.txt"), tempPath);
+        var siblingPath = Path.GetFullPath(
+            $"allowed2{Path.DirectorySeparatorChar}file.txt",
+            tempPath);
 
         var result = InputValidator.ValidateFilePath(siblingPath, basePath);
 

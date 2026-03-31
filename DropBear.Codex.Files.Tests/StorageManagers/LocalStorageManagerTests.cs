@@ -7,10 +7,8 @@ namespace DropBear.Codex.Files.Tests.StorageManagers;
 
 public sealed class LocalStorageManagerTests : IDisposable
 {
-    private readonly string _rootDirectory = Path.Combine(
-        Path.GetTempPath(),
-        "DropBear.Codex.Files.Tests",
-        Guid.NewGuid().ToString("N"));
+    private readonly string _rootDirectory = Path.GetFullPath(
+        Path.Join(Path.GetTempPath(), "DropBear.Codex.Files.Tests", Guid.NewGuid().ToString("N")));
 
     [Fact]
     public async Task WriteAsync_ShouldReject_RootedPathOutsideConfiguredRoot()
