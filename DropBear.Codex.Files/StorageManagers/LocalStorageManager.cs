@@ -158,24 +158,32 @@ public sealed partial class LocalStorageManager : IStorageManager
                 var disposeMemoryStream = true;
                 try
                 {
-                    long totalBytesRead = 0;
-                    int bytesRead;
-                    while ((bytesRead = await fileStream.ReadAsync(
-                               buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                    try
                     {
-                        totalBytesRead += bytesRead;
-                        if (totalBytesRead > MaxBufferedReadBytes)
+                        long totalBytesRead = 0;
+                        int bytesRead;
+                        while ((bytesRead = await fileStream.ReadAsync(
+                                   buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                         {
-                            memoryStream.Dispose();
-                            disposeMemoryStream = false;
-                            LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
-                            return Result<Stream, StorageError>.Failure(
-                                StorageError.ReadFailed(identifier,
-                                    $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
-                        }
+                            totalBytesRead += bytesRead;
+                            if (totalBytesRead > MaxBufferedReadBytes)
+                            {
+                                memoryStream.Dispose();
+                                disposeMemoryStream = false;
+                                LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
+                                return Result<Stream, StorageError>.Failure(
+                                    StorageError.ReadFailed(identifier,
+                                        $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+                            }
 
-                        await memoryStream.WriteAsync(
-                            buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                            await memoryStream.WriteAsync(
+                                buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                        }
+                    }
+                    catch
+                    {
+                        memoryStream.Dispose();
+                        throw;
                     }
 
                     memoryStream.Position = 0;
@@ -330,7 +338,7 @@ public sealed partial class LocalStorageManager : IStorageManager
         {
             var fullPath = Path.IsPathRooted(path)
                 ? Path.GetFullPath(path)
-                : Path.GetFullPath(Path.Combine(_rootDirectory, path));
+                : Path.GetFullPath(path, _rootDirectory);
 
             if (!Path.IsPathRooted(fullPath))
             {

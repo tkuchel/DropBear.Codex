@@ -1,4 +1,5 @@
 using System.Text;
+using System.Runtime.Versioning;
 using DropBear.Codex.Serialization.ConfigurationPresets;
 using DropBear.Codex.Serialization.Extensions;
 using DropBear.Codex.Serialization.Factories;
@@ -12,6 +13,7 @@ namespace DropBear.Codex.Serialization.Tests.Serializers;
 /// <summary>
 ///     Tests for JsonSerializer functionality.
 /// </summary>
+[SupportedOSPlatform("windows")]
 public sealed class JsonSerializerTests
 {
     #region Test Models

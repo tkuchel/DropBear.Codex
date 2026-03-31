@@ -7,7 +7,9 @@ namespace DropBear.Codex.Serialization.Tests.Providers;
 [SupportedOSPlatform("windows")]
 public sealed class RSAKeyProviderTests : IDisposable
 {
-    private readonly string _testDirectory = Path.Combine(Path.GetTempPath(), "DropBear.Codex.Serialization.Tests", Guid.NewGuid().ToString("N"));
+    private readonly string _testDirectory = Path.GetFullPath(
+        Path.Combine("DropBear.Codex.Serialization.Tests", Guid.NewGuid().ToString("N")),
+        Path.GetTempPath());
 
     [Fact]
     public void GetRsaProvider_ShouldPersist_PrivatePemUsingProtectedEnvelope()

@@ -163,11 +163,11 @@ public sealed partial class AppDomainWorkflowTypeResolver : IWorkflowTypeResolve
 
     private static bool IsSystemAssembly(Assembly assembly)
     {
-        string assemblyName = assembly.GetName().Name ?? string.Empty;
-        return assemblyName.StartsWith("System", StringComparison.OrdinalIgnoreCase) ||
-               assemblyName.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase) ||
-               assemblyName.StartsWith("mscorlib", StringComparison.OrdinalIgnoreCase) ||
-               assemblyName.StartsWith("netstandard", StringComparison.OrdinalIgnoreCase);
+        var name = assembly.GetName().Name ?? string.Empty;
+        return name.StartsWith("System", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("mscorlib", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("netstandard", StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

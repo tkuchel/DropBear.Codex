@@ -524,15 +524,9 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         updateMetadata(updatedMetadata);
 
         MethodInfo? cloneMethod = stateType.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance);
-        object updatedState;
-        if (cloneMethod is not null)
-        {
-            updatedState = cloneMethod.Invoke(workflowState, null)!;
-        }
-        else
-        {
-            updatedState = workflowState;
-        }
+        object updatedState = cloneMethod is not null
+            ? cloneMethod.Invoke(workflowState, null)!
+            : workflowState;
 
         metadataProperty.SetValue(updatedState, updatedMetadata);
         lastUpdatedAtProperty.SetValue(updatedState, DateTimeOffset.UtcNow);

@@ -137,13 +137,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                 } // cryptoStream and encryptor are disposed here
 
                 resultStream.Position = 0;
-                byte[] encryptedData;
-                using (var bufferStream = new System.IO.MemoryStream())
-                {
-                    await resultStream.CopyToAsync(bufferStream, cancellationToken).ConfigureAwait(false);
-                    encryptedData = bufferStream.ToArray();
-                }
-
+                var encryptedData = new byte[resultStream.Length];
+                await resultStream.ReadExactlyAsync(encryptedData, cancellationToken).ConfigureAwait(false);
                 var authenticationTag = ComputeAuthenticationTag(
                     authenticationKey,
                     encryptedKey,
@@ -306,7 +301,8 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 
                     // Get the decrypted data
                     resultStream.Position = 0;
-                    plaintext = resultStream.ToArray();
+                    plaintext = new byte[resultStream.Length];
+                    await resultStream.ReadExactlyAsync(plaintext, cancellationToken).ConfigureAwait(false);
                 }
                 finally
                 {

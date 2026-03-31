@@ -7,7 +7,9 @@ namespace DropBear.Codex.Files.Tests.StorageManagers;
 
 public sealed class LocalStorageManagerTests : IDisposable
 {
-    private readonly string _rootDirectory = Path.Join(Path.GetTempPath(), "DropBear.Codex.Files.Tests", Guid.NewGuid().ToString("N"));
+    private readonly string _rootDirectory = Path.GetFullPath(
+        Path.Combine("DropBear.Codex.Files.Tests", Guid.NewGuid().ToString("N")),
+        Path.GetTempPath());
 
     [Fact]
     public async Task WriteAsync_ShouldReject_RootedPathOutsideConfiguredRoot()
@@ -15,7 +17,7 @@ public sealed class LocalStorageManagerTests : IDisposable
         Directory.CreateDirectory(_rootDirectory);
         var storageManager = CreateStorageManager();
         await using var stream = new MemoryStream([1, 2, 3, 4]);
-        var outsidePath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".bin");
+        var outsidePath = Path.GetFullPath(Guid.NewGuid() + ".bin", Path.GetTempPath());
 
         var result = await storageManager.WriteAsync(outsidePath, stream);
 

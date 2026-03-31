@@ -249,18 +249,7 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
     /// </summary>
     private static RetryPolicy GetRetryPolicy(IServiceProvider serviceProvider)
     {
-        try
-        {
-            // Try to get execution context from service provider
-            var executionContext = serviceProvider.GetService<IWorkflowExecutionContext>();
-
-            // Use configured retry policy if available, otherwise default
-            return executionContext?.Options?.RetryPolicy ?? RetryPolicy.Default;
-        }
-        catch
-        {
-            // Fallback to default if anything goes wrong
-            return RetryPolicy.Default;
-        }
+        var executionContext = serviceProvider.GetService<IWorkflowExecutionContext>();
+        return executionContext?.Options?.RetryPolicy ?? RetryPolicy.Default;
     }
 }

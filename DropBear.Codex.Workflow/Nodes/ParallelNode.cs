@@ -328,19 +328,8 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
     /// </summary>
     private static int GetMaxDegreeOfParallelism(IServiceProvider serviceProvider)
     {
-        try
-        {
-            // Try to get execution context from service provider
-            var executionContext = serviceProvider.GetService<IWorkflowExecutionContext>();
-
-            // Use configured value if available, otherwise default
-            return executionContext?.Options?.MaxDegreeOfParallelism
-                   ?? WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
-        }
-        catch
-        {
-            // Fallback to default if anything goes wrong
-            return WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
-        }
+        var executionContext = serviceProvider.GetService<IWorkflowExecutionContext>();
+        return executionContext?.Options?.MaxDegreeOfParallelism
+               ?? WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
     }
 }
