@@ -99,8 +99,9 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
                         break;
 
                     case "providers":
-                        providers = JsonSerializer.Deserialize<Dictionary<string, Type>>(ref reader, options)
-                                    ?? new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+                        var providerIdentifiers = JsonSerializer.Deserialize<Dictionary<string, string>>(ref reader, options)
+                                                  ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        providers = ResolveProviders(providerIdentifiers);
                         break;
 
                     default:
@@ -150,8 +151,25 @@ public sealed class ContentContainerConverter : JsonConverter<ContentContainer>
         writer.WriteString("hash", value.Hash);
 
         writer.WritePropertyName("providers");
-        JsonSerializer.Serialize(writer, value.GetProvidersDictionary(), options);
+        JsonSerializer.Serialize(writer, value.GetProviderIdentifiers(), options);
 
         writer.WriteEndObject();
+    }
+
+    private Dictionary<string, Type> ResolveProviders(Dictionary<string, string> providerIdentifiers)
+    {
+        var providers = new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var (key, identifier) in providerIdentifiers)
+        {
+            if (!ProviderTypeRegistry.TryResolve(identifier, out var type) || type is null)
+            {
+                throw new JsonException($"Provider identifier '{identifier}' for key '{key}' is not allowed.");
+            }
+
+            providers[key] = type;
+        }
+
+        return providers;
     }
 }

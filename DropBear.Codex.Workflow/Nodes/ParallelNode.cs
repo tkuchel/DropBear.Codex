@@ -4,9 +4,11 @@ using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 using DropBear.Codex.Core.Results.Async;
 using DropBear.Codex.Workflow.Common;
+using DropBear.Codex.Workflow.Context;
 using DropBear.Codex.Workflow.Errors;
 using DropBear.Codex.Workflow.Interfaces;
 using DropBear.Codex.Workflow.Results;
+using Microsoft.Extensions.DependencyInjection;
 
 #endregion
 
@@ -72,8 +74,9 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
 
         try
         {
-            // Execute parallel nodes with throttling to prevent resource exhaustion
-            int maxDegreeOfParallelism = WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
+            // QUALITY FIX: Use configured max degree of parallelism from execution options if available
+            int maxDegreeOfParallelism = GetMaxDegreeOfParallelism(serviceProvider);
+
             NodeExecutionResult<TContext>[] results = await ExecuteParallelWithThrottlingAsync(
                 ParallelNodes,
                 maxDegreeOfParallelism,
@@ -171,14 +174,17 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
         async IAsyncEnumerable<NodeExecutionResult<TContext>> StreamInternal(
             [EnumeratorCancellation] CancellationToken ct = default)
         {
-            // Use unbounded channel for result collection
-            var channel = Channel.CreateUnbounded<NodeExecutionResult<TContext>>(new UnboundedChannelOptions
+            // SECURITY: Use bounded channel to prevent memory exhaustion
+            int capacity = ParallelNodes.Count * 2;
+            var channel = Channel.CreateBounded<NodeExecutionResult<TContext>>(new BoundedChannelOptions(capacity)
             {
+                FullMode = BoundedChannelFullMode.Wait,
                 SingleReader = true,
                 SingleWriter = false // Multiple parallel tasks write to this channel
             });
 
-            int maxDegreeOfParallelism = WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
+            // QUALITY FIX: Use configured max degree of parallelism from execution options if available
+            int maxDegreeOfParallelism = GetMaxDegreeOfParallelism(serviceProvider);
             using var semaphore = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
 
             // Start all parallel executions
@@ -226,6 +232,7 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
 
     /// <summary>
     ///     Executes parallel nodes with throttling to limit concurrency.
+    ///     QUALITY FIX: Properly propagates cancellation to sibling tasks when one fails or is cancelled.
     /// </summary>
     /// <param name="nodes">The nodes to execute in parallel</param>
     /// <param name="maxDegreeOfParallelism">Maximum number of concurrent executions</param>
@@ -243,13 +250,38 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
         // Use semaphore to throttle concurrent execution
         using var semaphore = new SemaphoreSlim(maxDegreeOfParallelism, maxDegreeOfParallelism);
 
-        var tasks = nodes.Select(async node =>
+        // Create a linked cancellation source to cancel siblings when any task fails
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var results = new NodeExecutionResult<TContext>[nodes.Count];
+        var hasFailure = false;
+
+        var tasks = nodes.Select(async (node, index) =>
         {
-            await semaphore.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await semaphore.WaitAsync(linkedCts.Token).ConfigureAwait(false);
             try
             {
-                return await ExecuteNodeAsync(node, context, serviceProvider, cancellationToken)
+                var result = await ExecuteNodeAsync(node, context, serviceProvider, linkedCts.Token)
                     .ConfigureAwait(false);
+
+                results[index] = result;
+
+                // If this task failed and we haven't already triggered cancellation, do so now
+                if (!result.StepResult.IsSuccess && !hasFailure)
+                {
+                    hasFailure = true;
+                    await linkedCts.CancelAsync().ConfigureAwait(false);
+                }
+
+                return result;
+            }
+            catch (OperationCanceledException) when (linkedCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            {
+                // Sibling task was cancelled due to another task's failure
+                // Return a failure result instead of propagating the exception
+                var failureResult = NodeExecutionResult<TContext>.Failure(
+                    StepResult.Failure("Task cancelled due to sibling task failure"));
+                results[index] = failureResult;
+                return failureResult;
             }
             finally
             {
@@ -257,7 +289,17 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
             }
         }).ToArray();
 
-        return await Task.WhenAll(tasks).ConfigureAwait(false);
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (linkedCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // Some tasks were cancelled due to sibling failure - this is expected
+            // Results array already contains the failure information
+        }
+
+        return results;
     }
 
     private static async Task<NodeExecutionResult<TContext>> ExecuteNodeAsync(
@@ -278,5 +320,16 @@ public sealed class ParallelNode<TContext> : WorkflowNodeBase<TContext>, ILinkab
         {
             return NodeExecutionResult<TContext>.Failure(StepResult.Failure(ex));
         }
+    }
+
+    /// <summary>
+    ///     Gets the maximum degree of parallelism from execution options if available,
+    ///     otherwise returns the default value.
+    /// </summary>
+    private static int GetMaxDegreeOfParallelism(IServiceProvider serviceProvider)
+    {
+        var executionContext = serviceProvider.GetService<IWorkflowExecutionContext>();
+        return executionContext?.Options?.MaxDegreeOfParallelism
+               ?? WorkflowConstants.Defaults.DefaultMaxDegreeOfParallelism;
     }
 }

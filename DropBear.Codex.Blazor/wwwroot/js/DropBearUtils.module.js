@@ -176,6 +176,16 @@ const DropBearUtils = {
     }
     element.click();
   },
+
+  /**
+   * Focus the first modal dialog element, if present.
+   */
+  focusModalDialog() {
+    const dialog = document.querySelector('[role="dialog"]');
+    if (dialog instanceof HTMLElement) {
+      dialog.focus();
+    }
+  },
 };
 
 /**
@@ -288,6 +298,7 @@ export const DropBearUtilsAPI = {
   createError: (...args) => window.DropBearUtils.createError(...args),
   createEvent: (...args) => window.DropBearUtils.createEvent(...args),
   clickElementById: id => window.DropBearUtils.clickElementById(id), // New API method
+  focusModalDialog: () => window.DropBearUtils.focusModalDialog(),
 
   // Functions from DropBearUtilities:
   getWindowDimensions: () => window.DropBearUtils.getWindowDimensions(),

@@ -297,12 +297,24 @@ public class DebounceService : IDebounceService
 
     /// <summary>
     ///     Creates an error of the specified type with the given message.
+    ///     Falls back to base ResultError if the type cannot be constructed.
     /// </summary>
     /// <param name="errorType">The type of error to create.</param>
     /// <param name="message">The error message.</param>
     /// <returns>A new instance of the specified error type.</returns>
     private static ResultError CreateError(Type errorType, string message)
     {
-        return (ResultError)Activator.CreateInstance(errorType, message)!;
+        try
+        {
+            return (ResultError)Activator.CreateInstance(errorType, message)!;
+        }
+        catch (MissingMethodException)
+        {
+            // Fallback: the error type doesn't have a (string) constructor
+            Logger.Warning(
+                "Error type {ErrorType} does not have a string constructor, using DebounceError",
+                errorType.Name);
+            return new DebounceError(message);
+        }
     }
 }

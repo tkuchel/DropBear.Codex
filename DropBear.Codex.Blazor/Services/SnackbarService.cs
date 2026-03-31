@@ -260,7 +260,7 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
     #region Disposal
 
     /// <summary>
-    ///     Disposes the service and cleans up resources.
+    ///     QUALITY FIX: Disposes the service and cleans up resources including event handlers.
     /// </summary>
     public void Dispose()
     {
@@ -274,8 +274,24 @@ public sealed class SnackbarService : ISnackbarService, IDisposable
             try
             {
                 _activeSnackbars.Clear();
-                OnShow = delegate { return Task.CompletedTask; };
-                OnRemove = delegate { return Task.CompletedTask; };
+
+                // QUALITY FIX: Properly clear all event handlers to prevent memory leaks
+                // Get all delegates and remove them
+                if (OnShow is not null)
+                {
+                    foreach (var handler in OnShow.GetInvocationList())
+                    {
+                        OnShow -= (Func<SnackbarInstance, Task>)handler;
+                    }
+                }
+
+                if (OnRemove is not null)
+                {
+                    foreach (var handler in OnRemove.GetInvocationList())
+                    {
+                        OnRemove -= (Func<string, Task>)handler;
+                    }
+                }
             }
             finally
             {

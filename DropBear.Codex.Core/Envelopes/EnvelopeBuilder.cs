@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Frozen;
 using DropBear.Codex.Core.Interfaces;
@@ -10,7 +10,7 @@ namespace DropBear.Codex.Core.Envelopes;
 
 /// <summary>
 ///     Fluent builder for constructing envelopes.
-///     Optimized for .NET 9 with modern builder patterns.
+///     Optimized for .NET 10 with modern builder patterns.
 /// </summary>
 public sealed class EnvelopeBuilder<T>
 {
@@ -54,8 +54,16 @@ public sealed class EnvelopeBuilder<T>
 
         foreach (var (key, value) in headers)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(key);
-            ArgumentNullException.ThrowIfNull(value);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException("Header keys cannot be null or whitespace.", nameof(headers));
+            }
+
+            if (value is null)
+            {
+                throw new ArgumentNullException(nameof(headers), "Header values cannot be null.");
+            }
+
             _headers[key] = value;
         }
 
@@ -95,7 +103,7 @@ public sealed class EnvelopeBuilder<T>
     /// <summary>
     ///     Builds and seals the envelope with a signature.
     /// </summary>
-    public Envelope<T> BuildAndSeal(Func<T, string> signatureGenerator)
+    public Envelope<T> BuildAndSeal(Func<Envelope<T>, string> signatureGenerator)
     {
         ArgumentNullException.ThrowIfNull(signatureGenerator);
 
@@ -104,14 +112,24 @@ public sealed class EnvelopeBuilder<T>
             throw new InvalidOperationException("Payload is required");
         }
 
-        var signature = signatureGenerator(_payload);
-
-        return new Envelope<T>(
+        var createdAt = DateTime.UtcNow;
+        var sealedAt = DateTime.UtcNow;
+        var signableEnvelope = new Envelope<T>(
             _payload,
             _headers.ToFrozenDictionary(StringComparer.Ordinal),
             true,
-            DateTime.UtcNow,
-            DateTime.UtcNow,
+            createdAt,
+            sealedAt,
+            null,
+            _telemetry ?? TelemetryProvider.Current);
+        var signature = signatureGenerator(signableEnvelope);
+
+        return new Envelope<T>(
+            _payload,
+            signableEnvelope.Headers.ToFrozenDictionary(StringComparer.Ordinal),
+            true,
+            createdAt,
+            sealedAt,
             signature,
             _telemetry ?? TelemetryProvider.Current);
     }

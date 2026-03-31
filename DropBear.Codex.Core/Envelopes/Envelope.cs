@@ -239,10 +239,10 @@ public sealed class Envelope<T>
         return new Envelope<TResult>(
             newPayload,
             _headers,
-            IsSealed,
+            false,
             CreatedAt,
-            SealedAt,
-            Signature,
+            null,
+            null,
             _telemetry);
     }
 
@@ -264,10 +264,10 @@ public sealed class Envelope<T>
         return new Envelope<TResult>(
             newPayload,
             _headers,
-            IsSealed,
+            false,
             CreatedAt,
-            SealedAt,
-            Signature,
+            null,
+            null,
             _telemetry);
     }
 
@@ -278,7 +278,7 @@ public sealed class Envelope<T>
     /// <summary>
     ///     Seals this envelope with a digital signature, making it immutable.
     /// </summary>
-    public Envelope<T> Seal(Func<T, string> signatureGenerator)
+    public Envelope<T> Seal(Func<Envelope<T>, string> signatureGenerator)
     {
         ArgumentNullException.ThrowIfNull(signatureGenerator);
 
@@ -292,14 +292,16 @@ public sealed class Envelope<T>
             throw new InvalidOperationException("Cannot seal an envelope without a payload");
         }
 
-        var signature = signatureGenerator(Payload!);
+        var sealedAt = DateTime.UtcNow;
+        var signableEnvelope = CreateSignableEnvelope(sealedAt);
+        var signature = signatureGenerator(signableEnvelope);
 
         return new Envelope<T>(
             Payload,
             _headers,
             true,
             CreatedAt,
-            DateTime.UtcNow,
+            sealedAt,
             signature,
             _telemetry);
     }
@@ -307,7 +309,7 @@ public sealed class Envelope<T>
     /// <summary>
     ///     Verifies the signature of a sealed envelope.
     /// </summary>
-    public Result<Unit, ValidationError> VerifySignature(Func<T, string, bool> verifier)
+    public Result<Unit, ValidationError> VerifySignature(Func<Envelope<T>, string, bool> verifier)
     {
         ArgumentNullException.ThrowIfNull(verifier);
 
@@ -323,7 +325,8 @@ public sealed class Envelope<T>
                 new ValidationError("Invalid envelope state for verification"));
         }
 
-        var isValid = verifier(Payload!, Signature);
+        var signableEnvelope = CreateSignableEnvelope(SealedAt);
+        var isValid = verifier(signableEnvelope, Signature);
 
         return isValid
             ? Result<Unit, ValidationError>.Success(Unit.Value)
@@ -367,6 +370,18 @@ public sealed class Envelope<T>
             dto.SealedAt,
             dto.Signature,
             telemetry ?? TelemetryProvider.Current);
+    }
+
+    private Envelope<T> CreateSignableEnvelope(DateTime? sealedAt)
+    {
+        return new Envelope<T>(
+            Payload,
+            _headers,
+            true,
+            CreatedAt,
+            sealedAt,
+            null,
+            _telemetry);
     }
 
     #endregion

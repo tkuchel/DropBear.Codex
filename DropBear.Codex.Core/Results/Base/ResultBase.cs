@@ -262,6 +262,12 @@ public abstract class ResultBase : IResult, IResultDiagnostics
     private protected static void ValidateErrorState<TError>(ResultState state, TError? error)
         where TError : ResultError
     {
+        // SECURITY FIX: Validate that successful results cannot have errors
+        if (state == ResultState.Success && error is not null)
+        {
+            throw new ResultException("A successful result cannot have errors.");
+        }
+
         // Failure, Warning, PartialSuccess, Cancelled, Pending, NoOp require an error
         var requiresError = state is ResultState.Failure or ResultState.Warning
             or ResultState.PartialSuccess or ResultState.Cancelled
@@ -272,7 +278,7 @@ public abstract class ResultBase : IResult, IResultDiagnostics
             throw new ResultException($"ResultState {state} requires an error, but none was provided.");
         }
 
-        if (!requiresError && error is not null)
+        if (!requiresError && state != ResultState.Success && error is not null)
         {
             Logger.Warning("ResultState {State} does not typically have an error, but one was provided", state);
         }

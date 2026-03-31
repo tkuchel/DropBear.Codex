@@ -65,14 +65,12 @@ public sealed class WorkflowTimeoutService : BackgroundService
             }
             catch (OperationCanceledException)
             {
-                // Expected when shutting down
                 _logger.LogDebug("Workflow timeout service cancellation requested");
                 break;
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error processing workflow timeouts");
-                // Wait before retrying to avoid tight error loops
                 try
                 {
                     await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken).ConfigureAwait(false);
@@ -91,7 +89,6 @@ public sealed class WorkflowTimeoutService : BackgroundService
     {
         try
         {
-            // Get workflows that have exceeded their signal timeout
             IEnumerable<WorkflowInstanceState<object>> expiredWorkflows =
                 await _stateRepository.GetWaitingWorkflowsAsync<object>(cancellationToken: cancellationToken)
                     .ConfigureAwait(false);
@@ -117,9 +114,13 @@ public sealed class WorkflowTimeoutService : BackgroundService
                     if (cancelled)
                     {
                         processedCount++;
-                        _logger.LogInformation(
-                            "Successfully cancelled timed-out workflow {WorkflowInstanceId}",
-                            workflow.WorkflowInstanceId);
+
+                        if (_logger.IsEnabled(LogLevel.Information))
+                        {
+                            _logger.LogInformation(
+                                "Successfully cancelled timed-out workflow {WorkflowInstanceId}",
+                                workflow.WorkflowInstanceId);
+                        }
                     }
                     else
                     {
@@ -136,7 +137,7 @@ public sealed class WorkflowTimeoutService : BackgroundService
                 }
             }
 
-            if (processedCount > 0)
+            if (processedCount > 0 && _logger.IsEnabled(LogLevel.Information))
             {
                 _logger.LogInformation(
                     "Processed {Count} timed-out workflows",

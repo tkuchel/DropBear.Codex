@@ -21,6 +21,8 @@ public static class AntiForgeryHelper
 {
     private const int TokenByteSize = 32; // 256 bits
     private const int SaltByteSize = 16; // 128 bits
+    private static readonly Lock SigningKeyLock = new();
+    private static byte[]? _signingKey;
 
     /// <summary>
     ///     Generates a cryptographically secure anti-forgery token.
@@ -43,24 +45,10 @@ public static class AntiForgeryHelper
         RandomNumberGenerator.Fill(tokenBytes);
         RandomNumberGenerator.Fill(saltBytes);
 
-        // Create a composite token: timestamp + salt + randomBytes + hash(salt + userId + sessionId + randomBytes)
-        var dataToHash = new StringBuilder();
-        dataToHash.Append(Convert.ToBase64String(saltBytes));
-        dataToHash.Append('|');
-        dataToHash.Append(userId);
-        if (!string.IsNullOrEmpty(sessionId))
-        {
-            dataToHash.Append('|');
-            dataToHash.Append(sessionId);
-        }
-        dataToHash.Append('|');
-        dataToHash.Append(Convert.ToBase64String(tokenBytes));
-
-        var hash = SHA256.HashData(Encoding.UTF8.GetBytes(dataToHash.ToString()));
-
         // Get current timestamp
         var timestamp = DateTime.UtcNow.ToBinary();
         var timestampBytes = BitConverter.GetBytes(timestamp);
+        var hash = ComputeTokenMac(timestamp, saltBytes, tokenBytes, userId, sessionId);
 
         // Combine timestamp + salt + randomBytes + hash for the final token
         var finalToken = new byte[timestampBytes.Length + SaltByteSize + TokenByteSize + hash.Length];
@@ -138,20 +126,7 @@ public static class AntiForgeryHelper
             var randomBytes = tokenBytes.AsSpan(timestampSize + SaltByteSize, randomSize);
             var providedHash = tokenBytes.AsSpan(timestampSize + SaltByteSize + randomSize, hashSize);
 
-            // Reconstruct the hash to verify integrity
-            var dataToHash = new StringBuilder();
-            dataToHash.Append(Convert.ToBase64String(salt));
-            dataToHash.Append('|');
-            dataToHash.Append(userId);
-            if (!string.IsNullOrEmpty(sessionId))
-            {
-                dataToHash.Append('|');
-                dataToHash.Append(sessionId);
-            }
-            dataToHash.Append('|');
-            dataToHash.Append(Convert.ToBase64String(randomBytes));
-
-            var computedHash = SHA256.HashData(Encoding.UTF8.GetBytes(dataToHash.ToString()));
+            var computedHash = ComputeTokenMac(timestamp, salt, randomBytes, userId, sessionId);
 
             // Use constant-time comparison to prevent timing attacks
             if (!CryptographicOperations.FixedTimeEquals(providedHash, computedHash))
@@ -243,6 +218,24 @@ public static class AntiForgeryHelper
     public static class Options
     {
         /// <summary>
+        ///     Configures the signing key used to authenticate stateless anti-forgery tokens.
+        /// </summary>
+        /// <param name="signingKey">The application secret used to sign tokens.</param>
+        public static void ConfigureSigningKey(byte[] signingKey)
+        {
+            ArgumentNullException.ThrowIfNull(signingKey);
+            if (signingKey.Length < 32)
+            {
+                throw new ArgumentException("Signing key must be at least 32 bytes.", nameof(signingKey));
+            }
+
+            lock (SigningKeyLock)
+            {
+                _signingKey = [.. signingKey];
+            }
+        }
+
+        /// <summary>
         ///     Default token expiration time (2 hours).
         /// </summary>
         public static readonly TimeSpan DefaultExpiration = TimeSpan.FromHours(2);
@@ -308,5 +301,27 @@ public static class AntiForgeryHelper
         /// </summary>
         public TimeSpan RemainingLifetime =>
             IsExpired ? TimeSpan.Zero : ExpiresAt - DateTime.UtcNow;
+    }
+
+    private static byte[] ComputeTokenMac(
+        long timestamp,
+        ReadOnlySpan<byte> salt,
+        ReadOnlySpan<byte> randomBytes,
+        string userId,
+        string? sessionId)
+    {
+        var tokenPayload =
+            $"{timestamp}|{Convert.ToBase64String(salt)}|{userId}|{sessionId ?? string.Empty}|{Convert.ToBase64String(randomBytes)}";
+        using var hmac = new HMACSHA256(GetSigningKey());
+        return hmac.ComputeHash(Encoding.UTF8.GetBytes(tokenPayload));
+    }
+
+    private static byte[] GetSigningKey()
+    {
+        lock (SigningKeyLock)
+        {
+            _signingKey ??= RandomNumberGenerator.GetBytes(32);
+            return _signingKey;
+        }
     }
 }

@@ -60,13 +60,11 @@ public sealed class DictionaryComparisonStrategy : IComparisonStrategy
             double totalScore = 0;
             var keysCompared = 0;
 
-            // Create a set of keys from dict2 for faster lookup
-            var keys2 = new HashSet<object>(dict2.Keys.Cast<object>());
-
             // For each key in dict1, check existence in dict2 and compare values
+            // Use IDictionary.Contains which is O(1) for most implementations
             foreach (var key in dict1.Keys)
             {
-                if (!keys2.Contains(key))
+                if (!dict2.Contains(key))
                 {
                     // Key not found in dict2, skip but reduce overall confidence
                     totalScore += 0;
@@ -92,18 +90,5 @@ public sealed class DictionaryComparisonStrategy : IComparisonStrategy
             Logger.Warning(ex, "Error during dictionary comparison");
             return 0;
         }
-    }
-
-    /// <summary>
-    ///     Optimized key lookup for dictionaries without recreating a HashSet.
-    /// </summary>
-    /// <param name="dict">The dictionary to search in.</param>
-    /// <param name="key">The key to find.</param>
-    /// <returns>True if the key exists; otherwise, false.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool ContainsKey(IDictionary dict, object key)
-    {
-        // Use the IDictionary's more efficient Contains method directly
-        return dict.Contains(key);
     }
 }

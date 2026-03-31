@@ -142,6 +142,7 @@ public sealed class SecurityHeadersOptions
     public static SecurityHeadersOptions Production => new()
     {
         UseStrictCsp = true,
+        UseNonceCsp = true,
         AddHsts = true,
         HstsMaxAge = 31536000,
         HstsIncludeSubDomains = true,

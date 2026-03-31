@@ -39,6 +39,7 @@ public sealed class SnackbarInstanceBuilder
 
     /// <summary>
     ///     Sets the message for the snackbar.
+    ///     The rendered snackbar encodes this content by default rather than treating it as trusted HTML.
     /// </summary>
     public SnackbarInstanceBuilder WithMessage(string message)
     {

@@ -167,13 +167,14 @@ public class Argon2Hasher : IHasher
             Logger.Information("Hashing input using Argon2.");
             cancellationToken.ThrowIfCancellationRequested();
 
-            _salt ??= HashingHelper.GenerateRandomSalt(32); // Generate a 32-byte salt if none is set
+            // SECURITY FIX: Generate salt as local variable to avoid reuse when pooled
+            var salt = _salt ?? HashingHelper.GenerateRandomSalt(32);
 
-            using var argon2 = CreateArgon2(input, _salt);
+            using var argon2 = CreateArgon2(input, salt);
             var hashBytes = await Task.Run(() => argon2.GetBytes(_hashSize), cancellationToken).ConfigureAwait(false);
 
             // Combine salt + hash so we can reconstruct the salt on verification
-            var combinedBytes = HashingHelper.CombineBytes(_salt, hashBytes);
+            var combinedBytes = HashingHelper.CombineBytes(salt, hashBytes);
             Logger.Information("Argon2 hashing successful.");
 
             return Result<string, HashingError>.Success(Convert.ToBase64String(combinedBytes));
@@ -208,13 +209,14 @@ public class Argon2Hasher : IHasher
         try
         {
             Logger.Information("Hashing input using Argon2.");
-            _salt ??= HashingHelper.GenerateRandomSalt(32); // Generate a 32-byte salt if none is set
+            // SECURITY FIX: Generate salt as local variable to avoid reuse when pooled
+            var salt = _salt ?? HashingHelper.GenerateRandomSalt(32);
 
-            using var argon2 = CreateArgon2(input, _salt);
+            using var argon2 = CreateArgon2(input, salt);
             var hashBytes = argon2.GetBytes(_hashSize);
 
             // Combine salt + hash so we can reconstruct the salt on verification
-            var combinedBytes = HashingHelper.CombineBytes(_salt, hashBytes);
+            var combinedBytes = HashingHelper.CombineBytes(salt, hashBytes);
             Logger.Information("Argon2 hashing successful.");
 
             return Result<string, HashingError>.Success(Convert.ToBase64String(combinedBytes));

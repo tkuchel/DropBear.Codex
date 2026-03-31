@@ -92,17 +92,19 @@ public static class AsyncExtensions
 
             return Result<IReadOnlyList<TResult>, TError>.Success(results);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            return Result<IReadOnlyList<TResult>, TError>.Cancelled(new TError
-            {
-                Message = "Parallel operation was cancelled"
-            });
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Parallel operation was cancelled" };
+            return Result<IReadOnlyList<TResult>, TError>.Cancelled(
+                error.WithException(ex) as TError ?? error);
         }
         catch (Exception ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Parallel operation failed" };
             return Result<IReadOnlyList<TResult>, TError>.Failure(
-                new TError { Message = "Parallel operation failed" },
+                error.WithException(ex) as TError ?? error,
                 ex);
         }
     }
@@ -201,7 +203,11 @@ public static class AsyncExtensions
         }
         catch (Exception ex)
         {
-            return Result<TResult, TError>.Failure(result.Error!, ex);
+            // SECURITY FIX: Preserve inner exception in error result
+            var error = result.Error!;
+            return Result<TResult, TError>.Failure(
+                error.WithException(ex) as TError ?? error,
+                ex);
         }
     }
 
@@ -240,7 +246,11 @@ public static class AsyncExtensions
         }
         catch (Exception ex)
         {
-            return Result<TResult, TError>.Failure(result.Error!, ex);
+            // SECURITY FIX: Preserve inner exception in error result
+            var error = result.Error!;
+            return Result<TResult, TError>.Failure(
+                error.WithException(ex) as TError ?? error,
+                ex);
         }
     }
 
@@ -265,13 +275,20 @@ public static class AsyncExtensions
             cancellationToken.ThrowIfCancellationRequested();
             return await resultTask.ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            return Result<T, TError>.Cancelled(new TError { Message = "Operation was cancelled" });
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Operation was cancelled" };
+            return Result<T, TError>.Cancelled(
+                error.WithException(ex) as TError ?? error);
         }
         catch (Exception ex)
         {
-            return Result<T, TError>.Failure(new TError { Message = "Task failed" }, ex);
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Task failed" };
+            return Result<T, TError>.Failure(
+                error.WithException(ex) as TError ?? error,
+                ex);
         }
     }
 
@@ -293,13 +310,20 @@ public static class AsyncExtensions
             cancellationToken.ThrowIfCancellationRequested();
             return await resultTask.ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
-            return Result<T, TError>.Cancelled(new TError { Message = "Operation was cancelled" });
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Operation was cancelled" };
+            return Result<T, TError>.Cancelled(
+                error.WithException(ex) as TError ?? error);
         }
         catch (Exception ex)
         {
-            return Result<T, TError>.Failure(new TError { Message = "ValueTask failed" }, ex);
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "ValueTask failed" };
+            return Result<T, TError>.Failure(
+                error.WithException(ex) as TError ?? error,
+                ex);
         }
     }
 
@@ -615,15 +639,19 @@ public static class AsyncExtensions
 
             return Result<IReadOnlyList<T>, TError>.Success(list.AsReadOnly());
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Operation was cancelled" };
             return Result<IReadOnlyList<T>, TError>.Cancelled(
-                new TError { Message = "Operation was cancelled" });
+                error.WithException(ex) as TError ?? error);
         }
         catch (Exception ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Failed to materialize async enumerable" };
             return Result<IReadOnlyList<T>, TError>.Failure(
-                new TError { Message = "Failed to materialize async enumerable" },
+                error.WithException(ex) as TError ?? error,
                 ex);
         }
     }
@@ -662,15 +690,19 @@ public static class AsyncExtensions
 
             return Result<T[], TError>.Success(list.ToArray());
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Operation was cancelled" };
             return Result<T[], TError>.Cancelled(
-                new TError { Message = "Operation was cancelled" });
+                error.WithException(ex) as TError ?? error);
         }
         catch (Exception ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Failed to materialize async enumerable" };
             return Result<T[], TError>.Failure(
-                new TError { Message = "Failed to materialize async enumerable" },
+                error.WithException(ex) as TError ?? error,
                 ex);
         }
     }
@@ -709,15 +741,19 @@ public static class AsyncExtensions
 
             return Result<Unit, TError>.Success(Unit.Value);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "Operation was cancelled" };
             return Result<Unit, TError>.Cancelled(
-                new TError { Message = "Operation was cancelled" });
+                error.WithException(ex) as TError ?? error);
         }
         catch (Exception ex)
         {
+            // SECURITY FIX: Preserve inner exception for proper error tracking
+            var error = new TError { Message = "ForEach operation failed" };
             return Result<Unit, TError>.Failure(
-                new TError { Message = "ForEach operation failed" },
+                error.WithException(ex) as TError ?? error,
                 ex);
         }
     }

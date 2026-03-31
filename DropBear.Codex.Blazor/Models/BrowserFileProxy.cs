@@ -9,6 +9,9 @@ namespace DropBear.Codex.Blazor.Models;
 
 public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 {
+    private const string MetadataTrustBoundaryMessage =
+        "Browser-reported file metadata is advisory only and must not be treated as a trusted server-side limit.";
+
     private readonly string _contentType;
     private readonly string _extension;
     private readonly string? _fileKey; // Indicates the proxy was created from a file key.
@@ -102,6 +105,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
     /// <summary>
     ///     Opens a read stream for the file.
+    ///     The <paramref name="maxAllowedSize" /> check relies on browser-reported metadata and is advisory only.
     /// </summary>
     public Stream OpenReadStream(
         long maxAllowedSize = 512000,
@@ -121,6 +125,12 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
             async (buffer, offset, count, ct) =>
             {
                 var chunk = await ReadFileChunkAsync(offset, count, ct).ConfigureAwait(false);
+                if (chunk.Length > count)
+                {
+                    throw new IOException(
+                        $"JavaScript returned {chunk.Length} bytes for a requested chunk of {count} bytes. {MetadataTrustBoundaryMessage}");
+                }
+
                 Array.Copy(chunk, 0, buffer, offset, chunk.Length);
                 return chunk.Length;
             },
@@ -132,6 +142,7 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
     ///     Creates a new BrowserFileProxy from a file key.
     ///     This method uses the provided JS module (the FileReaderHelpers module) to retrieve file information
     ///     and later to read file chunks.
+    ///     File size and content type values returned from JavaScript are treated as metadata only.
     /// </summary>
     /// <param name="fileKey">The key referencing the stored file.</param>
     /// <param name="jsModule">The JS module reference (should be the FileReaderHelpers module).</param>
@@ -259,6 +270,18 @@ public sealed class BrowserFileProxy : IBrowserFile, IAsyncDisposable
 
             var bytesToRead = (int)Math.Min(count, bytesRemaining);
             var bytesRead = await _readAsync(buffer, offset, bytesToRead, cancellationToken).ConfigureAwait(false);
+
+            if (bytesRead < 0)
+            {
+                throw new IOException("JavaScript returned a negative byte count.");
+            }
+
+            if (bytesRead > bytesToRead || bytesRead > bytesRemaining)
+            {
+                throw new IOException(
+                    $"JavaScript returned {bytesRead} bytes when at most {bytesToRead} bytes were allowed.");
+            }
+
             _position += bytesRead;
             return bytesRead;
         }

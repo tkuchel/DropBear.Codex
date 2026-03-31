@@ -14,19 +14,23 @@ using Serilog;
 namespace DropBear.Codex.Utilities.AccessCodes;
 
 /// <summary>
-///     Generates and validates time-based security codes.
-///     Useful for scenarios like two-factor authentication or other time-sensitive token generation.
+///     Generates and validates short-lived verification codes derived from time windows.
 /// </summary>
+/// <remarks>
+///     This helper does not enforce one-time use, replay protection, or attempt throttling and should not be
+///     presented as a standalone multi-factor authentication solution without additional controls.
+/// </remarks>
 public class TimeBasedCodeGenerator
 {
     // Constants to avoid allocations from string formatting
-    private const string DateTimeFormat = "yyyyMMddHHmm";
+    private const string DateTimeFormat = "yyyyMMddHHmmss";
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<TimeBasedCodeGenerator>();
 
     private readonly string _characterSet;
     private readonly int _codeLength;
     private readonly TimeSpan _gracePeriod;
     private readonly string _secretKey;
+    private readonly TimeSpan _timeStep;
 
     // Cache for validated codes to improve performance
     private readonly ConcurrentDictionary<string, (DateTime ExpiryTime, bool IsValid)> _validationCache = new(StringComparer.Ordinal);
@@ -35,12 +39,12 @@ public class TimeBasedCodeGenerator
     /// <summary>
     ///     Initializes a new instance of the <see cref="TimeBasedCodeGenerator" /> class.
     /// </summary>
-    /// <param name="codeLength">Length of the generated code (default: 4).</param>
+    /// <param name="codeLength">Length of the generated code (default: 6).</param>
     /// <param name="characterSet">
     ///     Characters used in the generated code (default: digits '0'-'9').
     /// </param>
     /// <param name="validityDuration">
-    ///     How long (time span) a generated code remains valid (default: 5 minutes).
+    ///     How long (time span) a generated code remains valid (default: 30 seconds).
     /// </param>
     /// <param name="gracePeriod">
     ///     Additional grace period after <paramref name="validityDuration" /> during which the code is still accepted
@@ -49,22 +53,42 @@ public class TimeBasedCodeGenerator
     /// <param name="secretKey">
     ///     A secret key used for hashing. If <c>null</c>, a random Base64-encoded 32-byte key is generated.
     /// </param>
+    /// <param name="timeStep">
+    ///     The time step used to normalize generated codes into windows (default: 30 seconds).
+    /// </param>
     public TimeBasedCodeGenerator(
-        int codeLength = 4,
+        int codeLength = 6,
         string characterSet = "0123456789",
         TimeSpan? validityDuration = null,
         TimeSpan? gracePeriod = null,
-        string? secretKey = null)
+        string? secretKey = null,
+        TimeSpan? timeStep = null)
     {
         _codeLength = codeLength;
         _characterSet = characterSet;
-        _validityDuration = validityDuration ?? TimeSpan.FromMinutes(5);
+        _validityDuration = validityDuration ?? TimeSpan.FromSeconds(30);
         _gracePeriod = gracePeriod ?? TimeSpan.Zero;
         _secretKey = secretKey ?? GenerateDefaultSecretKey();
+        _timeStep = timeStep ?? TimeSpan.FromSeconds(30);
+
+        if (_codeLength < 4)
+        {
+            throw new ArgumentOutOfRangeException(nameof(codeLength), "Code length must be at least 4 characters.");
+        }
+
+        if (_validityDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(validityDuration), "Validity duration must be positive.");
+        }
+
+        if (_timeStep <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(timeStep), "Time step must be positive.");
+        }
 
         Logger.Information(
-            "TimeBasedCodeGenerator initialized with code length: {CodeLength}, character set: {CharacterSet}, validity duration: {ValidityDuration}, grace period: {GracePeriod}",
-            codeLength, characterSet, _validityDuration, _gracePeriod);
+            "TimeBasedCodeGenerator initialized with code length: {CodeLength}, character set: {CharacterSet}, validity duration: {ValidityDuration}, grace period: {GracePeriod}, time step: {TimeStep}",
+            codeLength, characterSet, _validityDuration, _gracePeriod, _timeStep);
     }
 
     /// <summary>
@@ -85,8 +109,10 @@ public class TimeBasedCodeGenerator
     {
         try
         {
+            var normalizedDateTime = NormalizeToTimeStep(dateTime.ToUniversalTime());
+
             // We incorporate the date/time and the secret key into an HMAC-SHA256 hash
-            var message = dateTime.ToString(DateTimeFormat, CultureInfo.InvariantCulture) + _secretKey;
+            var message = normalizedDateTime.ToString(DateTimeFormat, CultureInfo.InvariantCulture) + _secretKey;
             using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_secretKey));
             var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
             var hashString = Convert.ToBase64String(hash);
@@ -94,7 +120,7 @@ public class TimeBasedCodeGenerator
             // Convert the hash into a code of length _codeLength using characters from _characterSet
             var code = GenerateCodeFromHash(hashString, _codeLength, _characterSet);
 
-            Logger.Debug("Generated code for date: {DateTime}", dateTime);
+            Logger.Debug("Generated code for normalized date window: {DateTime}", normalizedDateTime);
             return Result<string, TimeBasedCodeError>.Success(code);
         }
         catch (Exception ex)
@@ -146,13 +172,14 @@ public class TimeBasedCodeGenerator
 
         try
         {
+            var normalizedDateTime = NormalizeToTimeStep(dateTime.ToUniversalTime());
             // The earliest time we consider a code valid
-            var validityStart = dateTime - _validityDuration - _gracePeriod;
+            var validityStart = normalizedDateTime - _validityDuration - _gracePeriod;
             // The latest time it can be valid
-            var validityEnd = dateTime;
+            var validityEnd = normalizedDateTime;
 
-            // We check every minute from validityStart up to validityEnd for a match
-            for (var checkTime = validityStart; checkTime <= validityEnd; checkTime = checkTime.AddMinutes(1))
+            // We check each configured time step from validityStart up to validityEnd for a match
+            for (var checkTime = NormalizeToTimeStep(validityStart); checkTime <= validityEnd; checkTime = checkTime.Add(_timeStep))
             {
                 var generatedCodeResult = GenerateCode(checkTime);
                 if (!generatedCodeResult.IsSuccess)
@@ -248,5 +275,12 @@ public class TimeBasedCodeGenerator
     {
         _validationCache.Clear();
         Logger.Information("Validation cache has been cleared");
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private DateTime NormalizeToTimeStep(DateTime dateTimeUtc)
+    {
+        var ticks = dateTimeUtc.Ticks - (dateTimeUtc.Ticks % _timeStep.Ticks);
+        return new DateTime(ticks, DateTimeKind.Utc);
     }
 }

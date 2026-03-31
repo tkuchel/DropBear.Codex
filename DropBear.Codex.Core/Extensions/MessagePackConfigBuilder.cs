@@ -12,10 +12,12 @@ namespace DropBear.Codex.Core.Extensions;
 /// </summary>
 public sealed class MessagePackConfigBuilder
 {
+    private static readonly IFormatterResolver SafeDefaultResolver = ContractlessStandardResolver.Instance;
+
     private bool _allowAssemblyVersionMismatch;
     private MessagePackCompression _compression = MessagePackCompression.Lz4BlockArray;
     private bool _omitAssemblyVersion;
-    private IFormatterResolver _resolver = StandardResolverAllowPrivate.Instance;
+    private IFormatterResolver _resolver = SafeDefaultResolver;
     private MessagePackSecurity _security = MessagePackSecurity.UntrustedData;
 
     internal MessagePackConfigBuilder()
@@ -136,6 +138,8 @@ public sealed class MessagePackConfigBuilder
     /// </summary>
     public MessagePackSerializerOptions Build()
     {
+        ValidateResolver(_resolver);
+
         var options = MessagePackSerializerOptions.Standard
             .WithCompression(_compression)
             .WithResolver(_resolver)
@@ -152,5 +156,18 @@ public sealed class MessagePackConfigBuilder
         }
 
         return options;
+    }
+
+    private static void ValidateResolver(IFormatterResolver resolver)
+    {
+        ArgumentNullException.ThrowIfNull(resolver);
+
+        if (ReferenceEquals(resolver, StandardResolver.Instance) ||
+            ReferenceEquals(resolver, StandardResolverAllowPrivate.Instance))
+        {
+            throw new InvalidOperationException(
+                "Unsafe MessagePack resolvers are not allowed. Use ContractlessStandardResolver, " +
+                "the default safe resolver composition, or an explicit custom resolver.");
+        }
     }
 }

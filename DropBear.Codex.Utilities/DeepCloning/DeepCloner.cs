@@ -36,9 +36,6 @@ public static class DeepCloner
     // Cache compiled cloner expressions for better performance
     private static readonly ConcurrentDictionary<Type, Delegate> ClonerCache = new();
 
-    // Track immutable types to skip unnecessary cloning
-    private static readonly ConcurrentDictionary<Type, bool> ImmutableTypeCache = new();
-
     /// <summary>
     ///     Deep clones an object of type <typeparamref name="T" /> using the appropriate cloning method.
     /// </summary>
@@ -75,13 +72,14 @@ public static class DeepCloner
     }
 
     /// <summary>
-    ///     Fast clones an object using shallow cloning techniques.
-    ///     Suitable for simple objects with no nested complex types.
+    ///     Creates a shallow clone of an object using MemberwiseClone.
+    ///     This performs a shallow copy - reference type properties will reference the same objects as the original.
+    ///     Suitable for simple objects with no nested complex types that need to be cloned.
     /// </summary>
     /// <typeparam name="T">The type of the object to clone.</typeparam>
     /// <param name="source">The object to clone.</param>
-    /// <returns>A Result containing the cloned object or error information.</returns>
-    public static Result<T, DeepCloneError> FastClone<T>(T? source) where T : class
+    /// <returns>A Result containing the shallow cloned object or error information.</returns>
+    public static Result<T, DeepCloneError> ShallowClone<T>(T? source) where T : class
     {
         if (source == null)
         {
@@ -219,26 +217,8 @@ public static class DeepCloner
     /// </summary>
     private static bool IsImmutableType(Type type)
     {
-        return ImmutableTypeCache.GetOrAdd(type, t =>
-        {
-            // Primitive types, strings, and common immutable types
-            if (t.IsPrimitive || t == typeof(string) || t == typeof(Guid) ||
-                t == typeof(DateTime) || t == typeof(DateTimeOffset) || t == typeof(TimeSpan) ||
-                t == typeof(decimal) || t == typeof(Type) || t.IsEnum)
-            {
-                return true;
-            }
-
-            // System immutable collections
-            if (t.Namespace?.StartsWith("System.Collections.Immutable", StringComparison.Ordinal) == true)
-            {
-                return true;
-            }
-
-            // Look for readonly properties only (no setters)
-            var publicProperties = t.GetProperties(BindingFlags.Public | BindingFlags.Instance);
-            return publicProperties.Length > 0 && publicProperties.All(p => p.GetSetMethod() == null);
-        });
+        // Use shared TypeHelper for consistent immutability checks
+        return TypeHelper.IsImmutableType(type);
     }
 
     /// <summary>

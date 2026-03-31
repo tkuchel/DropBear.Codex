@@ -227,12 +227,14 @@ public static partial class InputValidator
     }
 
     /// <summary>
-    ///     Validates that a string does not contain dangerous characters for injection attacks.
+    ///     Heuristically screens a string for obviously suspicious patterns.
     /// </summary>
     /// <remarks>
-    ///     Checks for common SQL injection, XSS, and command injection patterns.
-    ///     This is a basic check and should be combined with parameterized queries and proper encoding.
+    ///     This is NOT a security boundary and must not be treated as proof that input is safe.
+    ///     It only checks a small set of blacklist patterns and should be combined with
+    ///     parameterized queries, output encoding, and context-specific validation.
     /// </remarks>
+    [Obsolete("ValidateSafe is heuristic screening only and must not be used as a security boundary. Prefer context-specific encoding and parameterization.")]
     public static Result<string, UtilityError> ValidateSafe(
         string value,
         string parameterName = "value")
@@ -248,7 +250,7 @@ public static partial class InputValidator
         {
             return Result<string, UtilityError>.Failure(
                 UtilityError.ValidationFailed(
-                    $"Parameter '{parameterName}' contains potentially unsafe SQL patterns"));
+                    $"Parameter '{parameterName}' contains suspicious SQL-like patterns"));
         }
 
         // Check for XSS patterns
@@ -256,7 +258,7 @@ public static partial class InputValidator
         {
             return Result<string, UtilityError>.Failure(
                 UtilityError.ValidationFailed(
-                    $"Parameter '{parameterName}' contains potentially unsafe script patterns"));
+                    $"Parameter '{parameterName}' contains suspicious script-like patterns"));
         }
 
         // Check for command injection patterns
@@ -264,7 +266,7 @@ public static partial class InputValidator
         {
             return Result<string, UtilityError>.Failure(
                 UtilityError.ValidationFailed(
-                    $"Parameter '{parameterName}' contains potentially unsafe command patterns"));
+                    $"Parameter '{parameterName}' contains suspicious command-like patterns"));
         }
 
         return Result<string, UtilityError>.Success(value);
@@ -326,9 +328,9 @@ public static partial class InputValidator
             try
             {
                 var fullPath = Path.GetFullPath(Path.Combine(basePath, filePath));
-                var fullBasePath = Path.GetFullPath(basePath);
+                var fullBasePath = NormalizeDirectoryPath(Path.GetFullPath(basePath));
 
-                if (!fullPath.StartsWith(fullBasePath, StringComparison.Ordinal))
+                if (!fullPath.StartsWith(fullBasePath, StringComparison.OrdinalIgnoreCase))
                 {
                     return Result<string, UtilityError>.Failure(
                         UtilityError.ValidationFailed("File path attempts to access outside allowed directory"));
@@ -342,6 +344,14 @@ public static partial class InputValidator
         }
 
         return Result<string, UtilityError>.Success(filePath);
+    }
+
+    private static string NormalizeDirectoryPath(string path)
+    {
+        return path.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal) ||
+               path.EndsWith(Path.AltDirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+            ? path
+            : path + Path.DirectorySeparatorChar;
     }
 
     // Compiled regex patterns for performance

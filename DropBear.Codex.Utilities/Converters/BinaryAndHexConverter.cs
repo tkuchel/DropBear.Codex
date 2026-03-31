@@ -20,47 +20,6 @@ public static class BinaryAndHexConverter
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(BinaryAndHexConverter));
 
-    // Lookup tables for binary-hex conversions to avoid repeated calculations
-    private static readonly Dictionary<string, string> BinaryToHexTable = new(StringComparer.Ordinal)
-    {
-        { "0000", "0" },
-        { "0001", "1" },
-        { "0010", "2" },
-        { "0011", "3" },
-        { "0100", "4" },
-        { "0101", "5" },
-        { "0110", "6" },
-        { "0111", "7" },
-        { "1000", "8" },
-        { "1001", "9" },
-        { "1010", "A" },
-        { "1011", "B" },
-        { "1100", "C" },
-        { "1101", "D" },
-        { "1110", "E" },
-        { "1111", "F" }
-    };
-
-    private static readonly Dictionary<string, string> HexToBinaryTable = new(StringComparer.Ordinal)
-    {
-        { "0", "0000" },
-        { "1", "0001" },
-        { "2", "0010" },
-        { "3", "0011" },
-        { "4", "0100" },
-        { "5", "0101" },
-        { "6", "0110" },
-        { "7", "0111" },
-        { "8", "1000" },
-        { "9", "1001" },
-        { "A", "1010" },
-        { "B", "1011" },
-        { "C", "1100" },
-        { "D", "1101" },
-        { "E", "1110" },
-        { "F", "1111" }
-    };
-
     // Table for valid hex characters using SearchValues<char> for optimized lookup
     private static readonly SearchValues<char> ValidHexChars = SearchValues.Create("0123456789ABCDEFabcdef");
 
@@ -223,9 +182,10 @@ public static class BinaryAndHexConverter
                         }
                     }
 
-                    // Get the hex value from the lookup table
-                    var hexValue = BinaryToHexTable[new string(chunk)];
-                    result[i / 4] = hexValue[0];
+                    // Convert 4 binary digits to hex via arithmetic (avoids string allocation)
+                    int nibble = ((chunk[0] - '0') << 3) | ((chunk[1] - '0') << 2) |
+                                 ((chunk[2] - '0') << 1) | (chunk[3] - '0');
+                    result[i / 4] = "0123456789ABCDEF"[nibble];
                 }
 
                 return Result<string, BinaryConversionError>.Success(new string(result));
@@ -284,9 +244,12 @@ public static class BinaryAndHexConverter
                             new BinaryConversionError($"Invalid hexadecimal character: '{hexChar}'"));
                     }
 
-                    // Get the binary value from the lookup table
-                    var binaryValue = HexToBinaryTable[hexChar.ToString()];
-                    binaryValue.AsSpan().CopyTo(result.Slice(i * 4, 4));
+                    // Convert hex char to 4 binary digits via arithmetic (avoids string allocation)
+                    int nibble = hexChar >= 'A' ? hexChar - 'A' + 10 : hexChar - '0';
+                    result[i * 4] = (nibble & 8) != 0 ? '1' : '0';
+                    result[i * 4 + 1] = (nibble & 4) != 0 ? '1' : '0';
+                    result[i * 4 + 2] = (nibble & 2) != 0 ? '1' : '0';
+                    result[i * 4 + 3] = (nibble & 1) != 0 ? '1' : '0';
                 }
 
                 return Result<string, BinaryConversionError>.Success(new string(result));
@@ -373,7 +336,7 @@ public static class BinaryAndHexConverter
         try
         {
             var bytes = Encoding.UTF8.GetBytes(value);
-            var hex = BitConverter.ToString(bytes).Replace("-", "", StringComparison.OrdinalIgnoreCase);
+            var hex = Convert.ToHexString(bytes);
 
             // Convert hex string to byte array (2 hex chars per byte)
             var result = new byte[hex.Length / 2];
@@ -406,7 +369,7 @@ public static class BinaryAndHexConverter
 
         try
         {
-            var hex = BitConverter.ToString(value).Replace("-", "", StringComparison.OrdinalIgnoreCase);
+            var hex = Convert.ToHexString(value);
             return Result<string, BinaryConversionError>.Success(hex);
         }
         catch (Exception ex)
@@ -484,15 +447,7 @@ public static class BinaryAndHexConverter
 
         try
         {
-            // Pre-allocate StringBuilder for better performance
-            var sb = new StringBuilder(bytes.Length * 2);
-
-            foreach (var b in bytes)
-            {
-                sb.Append(b.ToString("X2"));
-            }
-
-            return Result<string, BinaryConversionError>.Success(sb.ToString());
+            return Result<string, BinaryConversionError>.Success(Convert.ToHexString(bytes));
         }
         catch (Exception ex)
         {

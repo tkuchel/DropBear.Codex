@@ -33,10 +33,10 @@ public sealed record ContentContainerError : FilesError
         new("Deserialization operation failed");
 
     /// <summary>
-    ///     Error indicating that data integrity check failed.
+    ///     Error indicating that accidental corruption was detected.
     /// </summary>
     public static ContentContainerError HashVerificationFailed =>
-        new("Data integrity check failed");
+        new("Data corruption detection failed");
 
     /// <summary>
     ///     Creates an error indicating that a specific provider was not found.

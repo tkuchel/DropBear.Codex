@@ -189,6 +189,9 @@ public sealed partial class WorkflowBuilder<TContext> where TContext : class
             throw new InvalidOperationException("Cannot build workflow without any steps. Call StartWith<T>() first.");
         }
 
+        // SECURITY & QUALITY: Detect cycles in workflow graph before execution
+        DetectCycles(_rootNode);
+
         return new BuiltWorkflowDefinition<TContext>(WorkflowId!, _displayName, _version, _workflowTimeout, _rootNode);
     }
 
@@ -216,4 +219,88 @@ public sealed partial class WorkflowBuilder<TContext> where TContext : class
     }
 
     private static bool IsValidWorkflowId(string workflowId) => WorkflowIdPattern().IsMatch(workflowId);
+
+    /// <summary>
+    ///     Detects cycles in the workflow graph using depth-first search.
+    ///     Uses reference equality to track nodes (not NodeId, which may not be unique).
+    ///     Throws WorkflowConfigurationException if a cycle is found.
+    /// </summary>
+    private void DetectCycles(IWorkflowNode<TContext> root)
+    {
+        // Use reference equality sets — NodeId is NOT unique across nodes of the same type
+        var visited = new HashSet<IWorkflowNode<TContext>>(ReferenceEqualityComparer.Instance);
+        var recursionStack = new HashSet<IWorkflowNode<TContext>>(ReferenceEqualityComparer.Instance);
+
+        void VisitNode(IWorkflowNode<TContext> node, string nodePath)
+        {
+            // If we've seen this exact node instance in the current recursion path, we have a cycle
+            if (recursionStack.Contains(node))
+            {
+                throw new WorkflowConfigurationException(
+                    $"Cycle detected in workflow graph at node '{node.NodeId}'. Path: {nodePath} -> {node.NodeId}",
+                    WorkflowId);
+            }
+
+            // If already fully visited (and not in recursion stack), skip it
+            if (visited.Contains(node))
+            {
+                return;
+            }
+
+            // Mark as being visited in current path
+            visited.Add(node);
+            recursionStack.Add(node);
+
+            // Get child nodes based on node type
+            var childNodes = GetChildNodes(node);
+            foreach (var childNode in childNodes)
+            {
+                VisitNode(childNode, $"{nodePath} -> {node.NodeId}");
+            }
+
+            // Remove from recursion stack after exploring all children
+            recursionStack.Remove(node);
+        }
+
+        VisitNode(root, "ROOT");
+    }
+
+    /// <summary>
+    ///     Gets all child nodes for a given node based on its type.
+    /// </summary>
+    private static List<IWorkflowNode<TContext>> GetChildNodes(IWorkflowNode<TContext> node)
+    {
+        var children = new List<IWorkflowNode<TContext>>();
+
+        // Handle linkable nodes (sequential flow)
+        if (node is ILinkableNode<TContext> linkableNode)
+        {
+            var nextNode = linkableNode.GetNextNode();
+            if (nextNode is not null)
+            {
+                children.Add(nextNode);
+            }
+        }
+
+        // Handle parallel nodes (multiple branches)
+        if (node is ParallelNode<TContext> parallelNode)
+        {
+            children.AddRange(parallelNode.ParallelNodes);
+        }
+
+        // Handle conditional nodes (true/false branches)
+        if (node is ConditionalNode<TContext> conditionalNode)
+        {
+            if (conditionalNode.TrueNode is not null)
+            {
+                children.Add(conditionalNode.TrueNode);
+            }
+            if (conditionalNode.FalseNode is not null)
+            {
+                children.Add(conditionalNode.FalseNode);
+            }
+        }
+
+        return children;
+    }
 }

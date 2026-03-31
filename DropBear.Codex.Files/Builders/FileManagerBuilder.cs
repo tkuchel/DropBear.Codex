@@ -100,7 +100,10 @@ public class FileManagerBuilder
         }
 
         _baseDirectory = baseDirectory;
-        _storageManager = new LocalStorageManager(_memoryStreamManager, _loggerFactory.CreateLogger<LocalStorageManager>());
+        _storageManager = new LocalStorageManager(
+            _memoryStreamManager,
+            _loggerFactory.CreateLogger<LocalStorageManager>(),
+            baseDirectory);
         _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
             baseDirectory);
         return this;
@@ -295,7 +298,10 @@ public class FileManagerBuilder
             }
 
             _baseDirectory = baseDirectory;
-            _storageManager = new LocalStorageManager(_memoryStreamManager, _loggerFactory.CreateLogger<LocalStorageManager>());
+            _storageManager = new LocalStorageManager(
+                _memoryStreamManager,
+                _loggerFactory.CreateLogger<LocalStorageManager>(),
+                baseDirectory);
             _logger.Information("Configured FileManager to use local storage with base directory: {BaseDirectory}",
                 baseDirectory);
             return Result<FileManagerBuilder, BuilderError>.Success(this);
