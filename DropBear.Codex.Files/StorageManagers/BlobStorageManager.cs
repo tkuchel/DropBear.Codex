@@ -123,39 +123,50 @@ public sealed partial class BlobStorageManager : IStorageManager
                 ? _memoryStreamManager.GetStream(null, (int)readStream.Length)
                 : _memoryStreamManager.GetStream();
 
-            // Use ArrayPool for optimal buffer management
-            var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+            var success = false;
             try
             {
-                long totalBytesRead = 0;
-                int bytesRead;
-                while ((bytesRead = await readStream.ReadAsync(
-                           buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                // Use ArrayPool for optimal buffer management
+                var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+                try
                 {
-                    totalBytesRead += bytesRead;
-                    if (totalBytesRead > MaxBufferedReadBytes)
+                    long totalBytesRead = 0;
+                    int bytesRead;
+                    while ((bytesRead = await readStream.ReadAsync(
+                               buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                     {
-                        memoryStream.Dispose();
-                        LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
-                        return Result<Stream, StorageError>.Failure(
-                            StorageError.ReadFailed(identifier,
-                                $"Blob exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
-                    }
+                        totalBytesRead += bytesRead;
+                        if (totalBytesRead > MaxBufferedReadBytes)
+                        {
+                            LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
+                            return Result<Stream, StorageError>.Failure(
+                                StorageError.ReadFailed(identifier,
+                                    $"Blob exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+                        }
 
-                    await memoryStream.WriteAsync(
-                        buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                        await memoryStream.WriteAsync(
+                            buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                    }
                 }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                    await readStream.DisposeAsync().ConfigureAwait(false);
+                }
+
+                memoryStream.Position = 0;
+
+                LogReadSuccessful(identifier, _containerName);
+                success = true;
+                return Result<Stream, StorageError>.Success(memoryStream);
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(buffer);
-                await readStream.DisposeAsync().ConfigureAwait(false);
+                if (!success)
+                {
+                    memoryStream.Dispose();
+                }
             }
-
-            memoryStream.Position = 0;
-
-            LogReadSuccessful(identifier, _containerName);
-            return Result<Stream, StorageError>.Success(memoryStream);
         }
         catch (OperationCanceledException)
         {
