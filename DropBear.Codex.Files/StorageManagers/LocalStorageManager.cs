@@ -158,32 +158,24 @@ public sealed partial class LocalStorageManager : IStorageManager
                 var disposeMemoryStream = true;
                 try
                 {
-                    try
+                    long totalBytesRead = 0;
+                    int bytesRead;
+                    while ((bytesRead = await fileStream.ReadAsync(
+                               buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                     {
-                        long totalBytesRead = 0;
-                        int bytesRead;
-                        while ((bytesRead = await fileStream.ReadAsync(
-                                   buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                        totalBytesRead += bytesRead;
+                        if (totalBytesRead > MaxBufferedReadBytes)
                         {
-                            totalBytesRead += bytesRead;
-                            if (totalBytesRead > MaxBufferedReadBytes)
-                            {
-                                memoryStream.Dispose();
-                                disposeMemoryStream = false;
-                                LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
-                                return Result<Stream, StorageError>.Failure(
-                                    StorageError.ReadFailed(identifier,
-                                        $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
-                            }
-
-                            await memoryStream.WriteAsync(
-                                buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
+                            memoryStream.Dispose();
+                            disposeMemoryStream = false;
+                            LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
+                            return Result<Stream, StorageError>.Failure(
+                                StorageError.ReadFailed(identifier,
+                                    $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
                         }
-                    }
-                    catch
-                    {
-                        memoryStream.Dispose();
-                        throw;
+
+                        await memoryStream.WriteAsync(
+                            buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                     }
 
                     memoryStream.Position = 0;
