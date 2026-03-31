@@ -879,7 +879,7 @@ public sealed partial class FileManager
         else
         {
             // Combine with base directory and resolve
-            fullPath = Path.GetFullPath(Path.Combine(normalizedBaseDirectory, path));
+            fullPath = Path.GetFullPath(Path.Join(normalizedBaseDirectory, path));
         }
 
         // SECURITY: Ensure resolved path is still within base directory
