@@ -155,6 +155,7 @@ public sealed partial class LocalStorageManager : IStorageManager
             {
                 // Use ArrayPool for optimal buffer management
                 var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+                var disposeMemoryStream = true;
                 try
                 {
                     long totalBytesRead = 0;
@@ -166,6 +167,7 @@ public sealed partial class LocalStorageManager : IStorageManager
                         if (totalBytesRead > MaxBufferedReadBytes)
                         {
                             memoryStream.Dispose();
+                            disposeMemoryStream = false;
                             LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
                             return Result<Stream, StorageError>.Failure(
                                 StorageError.ReadFailed(identifier,
@@ -175,16 +177,21 @@ public sealed partial class LocalStorageManager : IStorageManager
                         await memoryStream.WriteAsync(
                             buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                     }
+
+                    memoryStream.Position = 0;
+                    disposeMemoryStream = false;
+
+                    LogReadSuccessful(identifier);
+                    return Result<Stream, StorageError>.Success(memoryStream);
                 }
                 finally
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
+                    if (disposeMemoryStream)
+                    {
+                        memoryStream.Dispose();
+                    }
                 }
-
-                memoryStream.Position = 0;
-
-                LogReadSuccessful(identifier);
-                return Result<Stream, StorageError>.Success(memoryStream);
             }
         }
         catch (OperationCanceledException)
