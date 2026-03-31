@@ -138,7 +138,7 @@ public sealed partial class LocalStorageManager : IStorageManager
             }
 
             // Create memory stream with size hint
-            var memoryStream = fileInfo.Length <= int.MaxValue
+            await using var memoryStream = fileInfo.Length <= int.MaxValue
                 ? _memoryStreamManager.GetStream(null, (int)fileInfo.Length)
                 : _memoryStreamManager.GetStream();
 
@@ -155,7 +155,6 @@ public sealed partial class LocalStorageManager : IStorageManager
             {
                 // Use ArrayPool for optimal buffer management
                 var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-                var disposeMemoryStream = true;
                 try
                 {
                     long totalBytesRead = 0;
@@ -166,8 +165,6 @@ public sealed partial class LocalStorageManager : IStorageManager
                         totalBytesRead += bytesRead;
                         if (totalBytesRead > MaxBufferedReadBytes)
                         {
-                            memoryStream.Dispose();
-                            disposeMemoryStream = false;
                             LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
                             return Result<Stream, StorageError>.Failure(
                                 StorageError.ReadFailed(identifier,
@@ -179,7 +176,6 @@ public sealed partial class LocalStorageManager : IStorageManager
                     }
 
                     memoryStream.Position = 0;
-                    disposeMemoryStream = false;
 
                     LogReadSuccessful(identifier);
                     return Result<Stream, StorageError>.Success(memoryStream);
@@ -187,10 +183,6 @@ public sealed partial class LocalStorageManager : IStorageManager
                 finally
                 {
                     ArrayPool<byte>.Shared.Return(buffer);
-                    if (disposeMemoryStream)
-                    {
-                        memoryStream.Dispose();
-                    }
                 }
             }
         }
