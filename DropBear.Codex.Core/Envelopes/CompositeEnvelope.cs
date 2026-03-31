@@ -324,10 +324,10 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<TResult>(
             mappedPayloads,
             _headers,
-            IsSealed,
+            false,
             CreatedAt,
-            SealedAt,
-            Signature,
+            null,
+            null,
             _telemetry);
     }
 
@@ -352,10 +352,10 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<TResult>(
             mappedPayloads.ToFrozenSet(),
             _headers,
-            IsSealed,
+            false,
             CreatedAt,
-            SealedAt,
-            Signature,
+            null,
+            null,
             _telemetry);
     }
 
@@ -376,10 +376,10 @@ public sealed class CompositeEnvelope<T>
         return new CompositeEnvelope<T>(
             filteredPayloads,
             _headers,
-            IsSealed,
+            false,
             CreatedAt,
-            SealedAt,
-            Signature,
+            null,
+            null,
             _telemetry);
     }
 
@@ -390,7 +390,7 @@ public sealed class CompositeEnvelope<T>
     /// <summary>
     ///     Seals this composite envelope with a digital signature.
     /// </summary>
-    public CompositeEnvelope<T> Seal(Func<IEnumerable<T>, string> signatureGenerator)
+    public CompositeEnvelope<T> Seal(Func<CompositeEnvelope<T>, string> signatureGenerator)
     {
         ArgumentNullException.ThrowIfNull(signatureGenerator);
 
@@ -399,14 +399,16 @@ public sealed class CompositeEnvelope<T>
             throw new InvalidOperationException("Composite envelope is already sealed");
         }
 
-        var signature = signatureGenerator(_payloads);
+        var sealedAt = DateTime.UtcNow;
+        var signableEnvelope = CreateSignableEnvelope(sealedAt);
+        var signature = signatureGenerator(signableEnvelope);
 
         return new CompositeEnvelope<T>(
             _payloads,
             _headers,
             true,
             CreatedAt,
-            DateTime.UtcNow,
+            sealedAt,
             signature,
             _telemetry);
     }
@@ -414,7 +416,7 @@ public sealed class CompositeEnvelope<T>
     /// <summary>
     ///     Verifies the signature of a sealed composite envelope.
     /// </summary>
-    public Result<Unit, ValidationError> VerifySignature(Func<IEnumerable<T>, string, bool> verifier)
+    public Result<Unit, ValidationError> VerifySignature(Func<CompositeEnvelope<T>, string, bool> verifier)
     {
         ArgumentNullException.ThrowIfNull(verifier);
 
@@ -430,12 +432,25 @@ public sealed class CompositeEnvelope<T>
                 new ValidationError("Invalid envelope state for verification"));
         }
 
-        var isValid = verifier(_payloads, Signature);
+        var signableEnvelope = CreateSignableEnvelope(SealedAt);
+        var isValid = verifier(signableEnvelope, Signature);
 
         return isValid
             ? Result<Unit, ValidationError>.Success(Unit.Value)
             : Result<Unit, ValidationError>.Failure(
                 new ValidationError("Signature verification failed"));
+    }
+
+    private CompositeEnvelope<T> CreateSignableEnvelope(DateTime? sealedAt)
+    {
+        return new CompositeEnvelope<T>(
+            _payloads,
+            _headers,
+            true,
+            CreatedAt,
+            sealedAt,
+            null,
+            _telemetry);
     }
 
     #endregion

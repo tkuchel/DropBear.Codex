@@ -21,6 +21,9 @@ namespace DropBear.Codex.Workflow.Persistence.Implementation;
 /// </summary>
 public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
 {
+    private const string PendingSignalNameKey = "PendingSignalName";
+    private const string PendingSignalPayloadKey = "PendingSignalPayload";
+
     private readonly IWorkflowEngine _baseEngine;
     private readonly ILogger<PersistentWorkflowEngine> _logger;
     private readonly IWorkflowNotificationService _notificationService;
@@ -178,7 +181,27 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
         TData? signalData,
         CancellationToken cancellationToken)
     {
-        // Delegate to signal handler
+        if (!await _signalHandler.IsWaitingForSignalAsync(workflowInstanceId, signalName, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return false;
+        }
+
+        (WorkflowStateInfo? stateInfo, Type? contextType) =
+            await _stateCoordinator.GetWorkflowStateInfoAsync(workflowInstanceId, cancellationToken)
+                .ConfigureAwait(false);
+
+        if (stateInfo is null || contextType is null)
+        {
+            return false;
+        }
+
+        if (!await PersistPendingSignalAsync(workflowInstanceId, contextType, signalName, signalData, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            return false;
+        }
+
         return await _signalHandler.DeliverSignalAsync(workflowInstanceId, signalName, signalData, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -317,6 +340,14 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
     {
         try
         {
+            var pendingSignal = await ReadPendingSignalAsync(workflowInstanceId, contextType, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!await ClearPendingSignalAsync(workflowInstanceId, contextType, cancellationToken).ConfigureAwait(false))
+            {
+                return false;
+            }
+
             MethodInfo? resumeMethod = GetType()
                 .GetMethod(nameof(ResumeWorkflowAsync), BindingFlags.Public | BindingFlags.Instance);
 
@@ -328,6 +359,10 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
             MethodInfo genericResumeMethod = resumeMethod.MakeGenericMethod(contextType);
 
             // ResumeWorkflowAsync returns ValueTask<PersistentWorkflowResult<TContext>>
+            using var signalScope = pendingSignal is not null
+                ? WorkflowSignalContextAccessor.BeginScope(pendingSignal.SignalName, pendingSignal.Payload)
+                : null;
+
             object? result = genericResumeMethod.Invoke(this, [workflowInstanceId, cancellationToken]);
 
             if (result is null)
@@ -357,6 +392,164 @@ public sealed partial class PersistentWorkflowEngine : IPersistentWorkflowEngine
             LogWorkflowResumeFailed(workflowInstanceId, ex);
             return false;
         }
+    }
+
+    private async ValueTask<bool> PersistPendingSignalAsync<TData>(
+        string workflowInstanceId,
+        Type contextType,
+        string signalName,
+        TData? signalData,
+        CancellationToken cancellationToken)
+    {
+        var workflowState = await LoadWorkflowStateObjectAsync(workflowInstanceId, contextType, cancellationToken)
+            .ConfigureAwait(false);
+        if (workflowState is null)
+        {
+            return false;
+        }
+
+        return await UpdateWorkflowMetadataAsync(
+                workflowState,
+                contextType,
+                metadata =>
+                {
+                    metadata[PendingSignalNameKey] = signalName;
+                    if (signalData is null)
+                    {
+                        metadata.Remove(PendingSignalPayloadKey);
+                    }
+                    else
+                    {
+                        metadata[PendingSignalPayloadKey] = signalData;
+                    }
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<WorkflowSignalContextAccessor.PendingSignalContext?> ReadPendingSignalAsync(
+        string workflowInstanceId,
+        Type contextType,
+        CancellationToken cancellationToken)
+    {
+        var workflowState = await LoadWorkflowStateObjectAsync(workflowInstanceId, contextType, cancellationToken)
+            .ConfigureAwait(false);
+        if (workflowState is null)
+        {
+            return null;
+        }
+
+        if (workflowState.GetType().GetProperty("Metadata")?.GetValue(workflowState) is not IDictionary<string, object> metadata)
+        {
+            return null;
+        }
+
+        if (!metadata.TryGetValue(PendingSignalNameKey, out var signalNameValue) || signalNameValue is not string signalName)
+        {
+            return null;
+        }
+
+        metadata.TryGetValue(PendingSignalPayloadKey, out var payload);
+        return new WorkflowSignalContextAccessor.PendingSignalContext(signalName, payload);
+    }
+
+    private async ValueTask<bool> ClearPendingSignalAsync(
+        string workflowInstanceId,
+        Type contextType,
+        CancellationToken cancellationToken)
+    {
+        var workflowState = await LoadWorkflowStateObjectAsync(workflowInstanceId, contextType, cancellationToken)
+            .ConfigureAwait(false);
+        if (workflowState is null)
+        {
+            return false;
+        }
+
+        return await UpdateWorkflowMetadataAsync(
+                workflowState,
+                contextType,
+                metadata =>
+                {
+                    metadata.Remove(PendingSignalNameKey);
+                    metadata.Remove(PendingSignalPayloadKey);
+                },
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private async ValueTask<object?> LoadWorkflowStateObjectAsync(
+        string workflowInstanceId,
+        Type contextType,
+        CancellationToken cancellationToken)
+    {
+        MethodInfo? getStateMethod = typeof(IWorkflowStateCoordinator)
+            .GetMethod(nameof(IWorkflowStateCoordinator.LoadWorkflowStateAsync))
+            ?.MakeGenericMethod(contextType);
+
+        if (getStateMethod is null)
+        {
+            return null;
+        }
+
+        var stateTask = (Task?)getStateMethod.Invoke(_stateCoordinator, [workflowInstanceId, cancellationToken]);
+        if (stateTask is null)
+        {
+            return null;
+        }
+
+        await stateTask.ConfigureAwait(false);
+        return stateTask.GetType().GetProperty("Result")?.GetValue(stateTask);
+    }
+
+    private async ValueTask<bool> UpdateWorkflowMetadataAsync(
+        object workflowState,
+        Type contextType,
+        Action<Dictionary<string, object>> updateMetadata,
+        CancellationToken cancellationToken)
+    {
+        Type stateType = workflowState.GetType();
+        var metadataProperty = stateType.GetProperty("Metadata");
+        var lastUpdatedAtProperty = stateType.GetProperty("LastUpdatedAt");
+
+        if (metadataProperty is null || lastUpdatedAtProperty is null)
+        {
+            return false;
+        }
+
+        var currentMetadata = metadataProperty.GetValue(workflowState) as IDictionary<string, object>;
+        var updatedMetadata = currentMetadata != null
+            ? new Dictionary<string, object>(currentMetadata, StringComparer.OrdinalIgnoreCase)
+            : new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        updateMetadata(updatedMetadata);
+
+        MethodInfo? cloneMethod = stateType.GetMethod("<Clone>$", BindingFlags.Public | BindingFlags.Instance);
+        object updatedState;
+        if (cloneMethod is not null)
+        {
+            updatedState = cloneMethod.Invoke(workflowState, null)!;
+        }
+        else
+        {
+            updatedState = workflowState;
+        }
+
+        metadataProperty.SetValue(updatedState, updatedMetadata);
+        lastUpdatedAtProperty.SetValue(updatedState, DateTimeOffset.UtcNow);
+
+        MethodInfo? updateStateMethod = typeof(IWorkflowStateCoordinator)
+            .GetMethod(nameof(IWorkflowStateCoordinator.UpdateWorkflowStateAsync))
+            ?.MakeGenericMethod(contextType);
+
+        if (updateStateMethod is null)
+        {
+            return false;
+        }
+
+        await ((Task)updateStateMethod.Invoke(_stateCoordinator, [updatedState, cancellationToken])!)
+            .ConfigureAwait(false);
+
+        return true;
     }
 
     private async ValueTask<bool> UpdateWorkflowStatusToCancelledAsync(

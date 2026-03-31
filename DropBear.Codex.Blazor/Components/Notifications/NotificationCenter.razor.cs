@@ -125,7 +125,7 @@ public partial class NotificationCenter : DropBearComponentBase
     {
         try
         {
-            await NotificationService.MarkAsReadAsync(notificationId);
+            await NotificationService.MarkAsReadAsync(UserId, notificationId);
 
             // Update the local collection
             var notification = _notifications.Find(n => n.Id == notificationId);
@@ -145,7 +145,7 @@ public partial class NotificationCenter : DropBearComponentBase
     {
         try
         {
-            await NotificationService.DismissAsync(notificationId);
+            await NotificationService.DismissAsync(UserId, notificationId);
 
             // Remove from local collection if showing non-dismissed only
             if (_filter.IsDismissed.HasValue && !_filter.IsDismissed.Value)

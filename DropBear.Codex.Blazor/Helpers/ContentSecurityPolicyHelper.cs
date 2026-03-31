@@ -18,6 +18,12 @@ namespace DropBear.Codex.Blazor.Helpers;
 public static class ContentSecurityPolicyHelper
 {
     /// <summary>
+    ///     Placeholder nonce token used in static preset strings.
+    ///     Replace this value at runtime with a per-request nonce.
+    /// </summary>
+    public const string NoncePlaceholder = "__CSP_NONCE__";
+
+    /// <summary>
     ///     CSP directive names.
     /// </summary>
     private static class Directives
@@ -60,7 +66,8 @@ public static class ContentSecurityPolicyHelper
     /// <returns>A CSP policy string ready to be used in HTTP headers or meta tags.</returns>
     /// <remarks>
     ///     This policy is designed for Blazor WebAssembly which requires 'unsafe-eval' for JavaScript interop.
-    ///     For production, consider using nonces for inline scripts instead of 'unsafe-inline'.
+    ///     When a nonce is provided, the generated policy removes the inline-style fallback
+    ///     and requires matching nonce attributes on inline scripts and styles.
     /// </remarks>
     public static string GenerateBlazorWasmPolicy(
         IEnumerable<string>? allowedScriptSources = null,
@@ -87,8 +94,16 @@ public static class ContentSecurityPolicyHelper
         }
         policy.Append("; ");
 
-        // Style sources: Allow inline styles for Blazor components
-        policy.Append($"{Directives.StyleSrc} {Sources.Self} {Sources.UnsafeInline}");
+        // Style sources: prefer nonce-based inline styles when available.
+        policy.Append($"{Directives.StyleSrc} {Sources.Self}");
+        if (!string.IsNullOrEmpty(nonce))
+        {
+            policy.Append($" 'nonce-{nonce}'");
+        }
+        else
+        {
+            policy.Append($" {Sources.UnsafeInline}");
+        }
         if (allowedStyleSources != null)
         {
             foreach (var source in allowedStyleSources)
@@ -159,8 +174,16 @@ public static class ContentSecurityPolicyHelper
         }
         policy.Append("; ");
 
-        // Style sources
-        policy.Append($"{Directives.StyleSrc} {Sources.Self} {Sources.UnsafeInline}");
+        // Style sources: prefer nonce-based inline styles when available.
+        policy.Append($"{Directives.StyleSrc} {Sources.Self}");
+        if (!string.IsNullOrEmpty(nonce))
+        {
+            policy.Append($" 'nonce-{nonce}'");
+        }
+        else
+        {
+            policy.Append($" {Sources.UnsafeInline}");
+        }
         if (allowedStyleSources != null)
         {
             foreach (var source in allowedStyleSources)
@@ -224,14 +247,15 @@ public static class ContentSecurityPolicyHelper
     {
         /// <summary>
         ///     Strict policy for production Blazor WebAssembly apps.
-        ///     Blocks all inline scripts/styles except those with nonces.
+        ///     Uses a runtime nonce placeholder and does not allow inline styles without a nonce.
         /// </summary>
-        public static string StrictBlazorWasm => GenerateBlazorWasmPolicy();
+        public static string StrictBlazorWasm => GenerateBlazorWasmPolicy(nonce: NoncePlaceholder);
 
         /// <summary>
         ///     Strict policy for production Blazor Server apps.
+        ///     Uses a runtime nonce placeholder and does not allow inline styles without a nonce.
         /// </summary>
-        public static string StrictBlazorServer => GenerateBlazorServerPolicy();
+        public static string StrictBlazorServer => GenerateBlazorServerPolicy(nonce: NoncePlaceholder);
 
         /// <summary>
         ///     Development-friendly policy allowing more permissive rules.

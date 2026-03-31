@@ -27,13 +27,13 @@ public interface INotificationCenterService
     ///     Retrieves a specific notification by ID.
     /// </summary>
     Task<Result<NotificationRecord?, NotificationError>> GetNotificationAsync(
-        Guid id, CancellationToken cancellationToken = default);
+        Guid userId, Guid id, CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Marks a notification as read.
     /// </summary>
     Task<Result<Unit, NotificationError>> MarkAsReadAsync(
-        Guid notificationId, CancellationToken cancellationToken = default);
+        Guid userId, Guid notificationId, CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Marks all notifications for a user as read.
@@ -45,7 +45,7 @@ public interface INotificationCenterService
     ///     Dismisses a notification.
     /// </summary>
     Task<Result<Unit, NotificationError>> DismissAsync(
-        Guid notificationId, CancellationToken cancellationToken = default);
+        Guid userId, Guid notificationId, CancellationToken cancellationToken = default);
 
     /// <summary>
     ///     Dismisses all notifications for a user.

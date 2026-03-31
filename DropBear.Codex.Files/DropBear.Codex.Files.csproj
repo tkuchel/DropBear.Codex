@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+        <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
         <LangVersion>latest</LangVersion>
@@ -53,6 +53,6 @@
             <PrivateAssets>All</PrivateAssets>
         </PackageReference>
         <PackageReference Update="Nerdbank.GitVersioning"></PackageReference>
-        <!-- System.Text.Json removed: included in net9.0/net10.0 shared framework -->
+        <!-- System.Text.Json removed: included in the net10.0 shared framework -->
     </ItemGroup>
 </Project>

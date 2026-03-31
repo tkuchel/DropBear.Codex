@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Reflection;
 using System.Runtime.Versioning;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
@@ -216,26 +217,8 @@ public static partial class SerializerFactory
 
             if (constructorWithLogger != null)
             {
-                // Create MEL logger using LoggerFactory
-                var loggerFactoryType = typeof(Microsoft.Extensions.Logging.LoggerFactory);
-                var createMethod = loggerFactoryType.GetMethod(nameof(Microsoft.Extensions.Logging.LoggerFactory.Create),
-                    [typeof(Action<Microsoft.Extensions.Logging.ILoggingBuilder>)]);
-
-                if (createMethod == null)
-                {
-                    throw new InvalidOperationException("Could not find LoggerFactory.Create method");
-                }
-
-                // Create a logger factory that uses Serilog as the provider
-                var loggerFactory = (Microsoft.Extensions.Logging.ILoggerFactory)createMethod.Invoke(null,
-                    [new Action<Microsoft.Extensions.Logging.ILoggingBuilder>(builder =>
-                    {
-                        // Use Serilog logger
-                        builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext(serializerType));
-                        builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
-                    })])!;
-
-                var melLogger = loggerFactory.CreateLogger(serializerType);
+                var loggerFactory = CreateSerilogLoggerFactory(serializerType);
+                var melLogger = CreateGenericLogger(loggerFactory, serializerType);
 
                 LogInstantiatingSerializerWithLogger(Logger, serializerType.Name);
                 return (ISerializer)constructorWithLogger.Invoke([config, melLogger]);
@@ -462,6 +445,33 @@ public static partial class SerializerFactory
             LogCreateProviderFailed(Logger, ex, providerType.Name);
             throw new InvalidOperationException($"Error creating provider: {ex.Message}", ex);
         }
+    }
+
+    private static Microsoft.Extensions.Logging.ILoggerFactory CreateSerilogLoggerFactory(Type contextType)
+    {
+        return Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
+        {
+            builder.AddSerilog(DropBear.Codex.Core.Logging.LoggerFactory.Logger.ForContext(contextType));
+            builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace);
+        });
+    }
+
+    private static object CreateGenericLogger(Microsoft.Extensions.Logging.ILoggerFactory loggerFactory, Type targetType)
+    {
+        var createLoggerMethod = typeof(Microsoft.Extensions.Logging.LoggerFactoryExtensions)
+            .GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .FirstOrDefault(method =>
+                string.Equals(method.Name, nameof(Microsoft.Extensions.Logging.LoggerFactoryExtensions.CreateLogger), StringComparison.Ordinal) &&
+                method.IsGenericMethodDefinition &&
+                method.GetParameters().Length == 1 &&
+                method.GetParameters()[0].ParameterType == typeof(Microsoft.Extensions.Logging.ILoggerFactory));
+
+        if (createLoggerMethod == null)
+        {
+            throw new InvalidOperationException("Could not find LoggerFactoryExtensions.CreateLogger<T> method");
+        }
+
+        return createLoggerMethod.MakeGenericMethod(targetType).Invoke(null, [loggerFactory])!;
     }
 
     #region LoggerMessage Source Generators

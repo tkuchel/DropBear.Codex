@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
     <!--
         ═══════════════════════════════════════════════════════════════════════
@@ -42,21 +42,19 @@
         MULTI-TARGETING & C# 14 FEATURES
         ═══════════════════════════════════════════════════════════════════════
 
-        This solution targets both .NET 9.0 and .NET 10.0 (multi-targeting).
+        This solution targets .NET 10.0.
 
-        C# 14 Features Used (NET10_0_OR_GREATER):
+        C# 14 Features Used:
         • 'field' keyword - Direct access to auto-property backing fields
           Example: public string? Message { get => field; set => field = value ?? ""; }
 
         Conditional Compilation:
-        • Use #if NET10_0_OR_GREATER for .NET 10-only code
-        • Use #if !NET10_0_OR_GREATER for .NET 9 fallback code
+        • NET10_0_OR_GREATER is always available in this solution
 
         Package Versioning:
-        • Framework-specific packages (Microsoft.Extensions.*, etc.) use
-          conditional versioning in Directory.Packages.props
-        • .NET 9: Version 9.0.x packages
-        • .NET 10: Version 10.0.x packages
+        • Shared framework-specific packages are pinned centrally
+          in Directory.Packages.props
+        • .NET 10 packages use 10.0.x versions
 
         ═══════════════════════════════════════════════════════════════════════
     -->
@@ -68,3 +66,4 @@
         </PackageReference>
     </ItemGroup>
 </Project>
+

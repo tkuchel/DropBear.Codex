@@ -35,37 +35,28 @@ public sealed partial class AppDomainWorkflowTypeResolver : IWorkflowTypeResolve
             return null;
         }
 
-        // Try assembly qualified name first (most reliable)
+        var contextTypes = _knownTypes.Value.Values;
+
         if (!string.IsNullOrEmpty(assemblyQualifiedName))
         {
-            var type = Type.GetType(assemblyQualifiedName);
-            if (type is not null)
-            {
-                // SECURITY: Validate type is safe before returning
-                if (!IsTypeSafeForResolution(type))
-                {
-                    LogTypeRejectedBySecurity(type.FullName ?? type.Name);
-                    return null;
-                }
+            var knownType = contextTypes.FirstOrDefault(type =>
+                string.Equals(type.AssemblyQualifiedName, assemblyQualifiedName, StringComparison.Ordinal));
 
-                LogResolvedFromAssemblyQualifiedName(type.FullName ?? type.Name);
-                return type;
+            if (knownType is not null)
+            {
+                LogResolvedFromAssemblyQualifiedName(knownType.FullName ?? knownType.Name);
+                return knownType;
             }
         }
 
-        // Fallback: try to find by type name in known types
         if (!string.IsNullOrEmpty(typeName))
         {
-            var contextTypes = _knownTypes.Value;
-            if (contextTypes.TryGetValue(typeName, out Type? knownType))
-            {
-                // SECURITY: Double-check type safety (should already be filtered during discovery)
-                if (!IsTypeSafeForResolution(knownType))
-                {
-                    LogTypeRejectedBySecurity(typeName);
-                    return null;
-                }
+            var knownType = contextTypes.FirstOrDefault(type =>
+                string.Equals(type.FullName, typeName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type.Name, typeName, StringComparison.OrdinalIgnoreCase));
 
+            if (knownType is not null)
+            {
                 LogResolvedFromKnownTypes(typeName);
                 return knownType;
             }

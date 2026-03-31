@@ -69,18 +69,18 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task<Result<NotificationRecord?, NotificationError>> GetNotificationAsync(Guid id, CancellationToken cancellationToken = default)
+    public async Task<Result<NotificationRecord?, NotificationError>> GetNotificationAsync(Guid userId, Guid id, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return await _repository.GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+            return await _repository.GetByIdAsync(userId, id, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to get notification {Id}", id);
+            _logger.LogError(ex, "Failed to get notification {Id} for user {UserId}", id, userId);
             return Result<NotificationRecord?, NotificationError>.Failure(
                 NotificationError.FromException(ex),
                 ex);
@@ -91,14 +91,14 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task<Result<Unit, NotificationError>> MarkAsReadAsync(Guid notificationId, CancellationToken cancellationToken = default)
+    public async Task<Result<Unit, NotificationError>> MarkAsReadAsync(Guid userId, Guid notificationId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var result = await _repository.MarkAsReadAsync(notificationId, cancellationToken).ConfigureAwait(false);
+            var result = await _repository.MarkAsReadAsync(userId, notificationId, cancellationToken).ConfigureAwait(false);
 
             if (!result.IsSuccess)
             {
@@ -110,12 +110,12 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                 await RaiseNotificationReadEvent(notificationId).ConfigureAwait(false);
             }
 
-            _logger.LogDebug("Notification {Id} marked as read", notificationId);
+            _logger.LogDebug("Notification {Id} marked as read for user {UserId}", notificationId, userId);
             return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to mark notification {Id} as read", notificationId);
+            _logger.LogError(ex, "Failed to mark notification {Id} as read for user {UserId}", notificationId, userId);
             return Result<Unit, NotificationError>.Failure(
                 NotificationError.FromException(ex),
                 ex);
@@ -159,14 +159,14 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
         }
     }
 
-    public async Task<Result<Unit, NotificationError>> DismissAsync(Guid notificationId, CancellationToken cancellationToken = default)
+    public async Task<Result<Unit, NotificationError>> DismissAsync(Guid userId, Guid notificationId, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         await _operationLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            var result = await _repository.DismissAsync(notificationId, cancellationToken).ConfigureAwait(false);
+            var result = await _repository.DismissAsync(userId, notificationId, cancellationToken).ConfigureAwait(false);
 
             if (!result.IsSuccess)
             {
@@ -178,12 +178,12 @@ public class NotificationCenterService : INotificationCenterService, IDisposable
                 await RaiseNotificationDismissedEvent(notificationId).ConfigureAwait(false);
             }
 
-            _logger.LogDebug("Notification {Id} dismissed", notificationId);
+            _logger.LogDebug("Notification {Id} dismissed for user {UserId}", notificationId, userId);
             return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to dismiss notification {Id}", notificationId);
+            _logger.LogError(ex, "Failed to dismiss notification {Id} for user {UserId}", notificationId, userId);
             return Result<Unit, NotificationError>.Failure(
                 NotificationError.FromException(ex),
                 ex);

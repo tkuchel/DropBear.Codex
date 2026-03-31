@@ -65,7 +65,7 @@ public static class SimpleObfuscator
     }
 
     /// <summary>
-    ///     Encodes the specified value by obfuscating it and appending a hash for integrity verification.
+    ///     Encodes the specified value by obfuscating it and appending a hash for accidental corruption detection.
     /// </summary>
     /// <param name="value">The value to encode.</param>
     /// <param name="key">Optional key for deterministic obfuscation. If null, a default key is used.</param>
@@ -88,7 +88,7 @@ public static class SimpleObfuscator
                     new ObfuscationError($"Failed to convert value to binary: {binaryResult.Error?.Message}"));
             }
 
-            // Calculate hash for integrity
+            // Calculate hash for accidental corruption detection
             var hash = GenerateHash(value);
 
             // Convert hash to binary with Result pattern
@@ -152,7 +152,7 @@ public static class SimpleObfuscator
     }
 
     /// <summary>
-    ///     Decodes the specified obfuscated value and verifies its integrity.
+    ///     Decodes the specified obfuscated value and checks for accidental corruption.
     /// </summary>
     /// <param name="obfuscatedValue">The obfuscated value to decode.</param>
     /// <param name="key">Optional key for deterministic obfuscation. Must match the key used during encoding.</param>
@@ -200,7 +200,7 @@ public static class SimpleObfuscator
                 if (deobfuscatedBinary.Length <= 256)
                 {
                     return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError("Invalid obfuscated data: insufficient length for hash verification."));
+                        new ObfuscationError("Invalid obfuscated data: insufficient length for corruption detection."));
                 }
 
                 var originalBinary = deobfuscatedBinary[..^256];
@@ -226,11 +226,11 @@ public static class SimpleObfuscator
                 var originalValue = originalValueResult.Value!;
                 var hash = hashResult.Value!;
 
-                // Verify integrity by recalculating hash
+                // Check for accidental corruption by recalculating the hash
                 if (!string.Equals(GenerateHash(originalValue), hash, StringComparison.Ordinal))
                 {
                     return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError("Data integrity check failed: hash mismatch."));
+                        new ObfuscationError("Data corruption detection failed: hash mismatch."));
                 }
 
                 return Result<string, ObfuscationError>.Success(originalValue);

@@ -24,6 +24,7 @@ public sealed partial class MessagePackSerializer : ISerializer
     private readonly bool _enableCaching;
     private readonly ILogger _logger;
     private readonly int _maxCacheSize;
+    private readonly long _maxMemoryThreshold;
     private readonly RecyclableMemoryStreamManager _memoryManager;
     private readonly MessagePackSerializerOptions _options;
 
@@ -48,6 +49,7 @@ public sealed partial class MessagePackSerializer : ISerializer
 
         _enableCaching = config.EnableCaching;
         _maxCacheSize = config.MaxCacheSize;
+        _maxMemoryThreshold = config.MaxMemoryThreshold;
 
         if (_enableCaching)
         {
@@ -108,6 +110,7 @@ public sealed partial class MessagePackSerializer : ISerializer
                     .SerializeAsync(memoryStream, value, _options, cancellationToken)
                     .ConfigureAwait(false);
 
+                EnsureWithinMemoryThreshold(memoryStream.Length, "serialized output");
                 var resultBytes = memoryStream.ToArray();
 
                 stopwatch.Stop();
@@ -151,6 +154,14 @@ public sealed partial class MessagePackSerializer : ISerializer
                 SerializationError.ForType<T>("Cannot deserialize null or empty data", "Deserialize"));
         }
 
+        if (data.LongLength > _maxMemoryThreshold)
+        {
+            return Result<T, SerializationError>.Failure(
+                SerializationError.ForType<T>(
+                    $"Input exceeds the configured memory threshold of {_maxMemoryThreshold} bytes",
+                    "Deserialize"));
+        }
+
         LogDeserializationStarting(_logger, typeof(T).Name);
         var stopwatch = Stopwatch.StartNew();
 
@@ -192,6 +203,15 @@ public sealed partial class MessagePackSerializer : ISerializer
     }
 
     #region Private Helper Methods
+
+    private void EnsureWithinMemoryThreshold(long size, string operationTarget)
+    {
+        if (size > _maxMemoryThreshold)
+        {
+            throw new InvalidOperationException(
+                $"{operationTarget} exceeds the configured memory threshold of {_maxMemoryThreshold} bytes.");
+        }
+    }
 
     /// <summary>
     ///     Calculates a cache key for the given value.

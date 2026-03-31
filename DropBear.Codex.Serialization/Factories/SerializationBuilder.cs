@@ -256,7 +256,7 @@ public sealed partial class SerializationBuilder
             PropertyNameCaseInsensitive = true,
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
             NumberHandling = JsonNumberHandling.AllowReadingFromString,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            Encoder = JavaScriptEncoder.Default,
             ReferenceHandler = ReferenceHandler.Preserve,
             MaxDepth = 64,
             UnknownTypeHandling = JsonUnknownTypeHandling.JsonNode,
@@ -296,8 +296,7 @@ public sealed partial class SerializationBuilder
         var options = MessagePackSerializerOptions.Standard
             .WithResolver(CompositeResolver.Create(
                 ImmutableCollectionResolver.Instance,
-                StandardResolverAllowPrivate.Instance,
-                StandardResolver.Instance
+                ContractlessStandardResolver.Instance
             ))
             .WithCompression(MessagePackCompression.Lz4BlockArray)
             .WithSecurity(MessagePackSecurity.UntrustedData);
@@ -399,6 +398,12 @@ public sealed partial class SerializationBuilder
             if (!validationResult.IsSuccess)
             {
                 return Result<ISerializer, SerializationError>.Failure(validationResult.Error!);
+            }
+
+            var configValidationResult = _config.Validate();
+            if (!configValidationResult.IsSuccess)
+            {
+                return Result<ISerializer, SerializationError>.Failure(configValidationResult.Error!);
             }
 
             // Create the serializer using the factory

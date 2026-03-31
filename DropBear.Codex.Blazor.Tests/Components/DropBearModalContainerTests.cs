@@ -1,6 +1,7 @@
 #region
 
 using Bunit;
+using Bunit.JSInterop;
 using DropBear.Codex.Blazor.Components.Containers;
 using DropBear.Codex.Blazor.Interfaces;
 using DropBear.Codex.Blazor.Tests.TestHelpers;
@@ -279,6 +280,25 @@ public sealed class DropBearModalContainerTests : ComponentTestBase
         cut.Instance.Should().NotBeNull();
     }
 
+    [Fact]
+    public void ModalContainer_Should_NotUseEval_ForFocusManagement()
+    {
+        // Arrange
+        SetupModalService(isVisible: true);
+        _mockModalService.Setup(x => x.CurrentComponent).Returns(typeof(TestComponent));
+        var utilsModule = JSInterop.SetupModule("./_content/DropBear.Codex.Blazor/js/DropBearUtils.module.js");
+        utilsModule.SetupVoid("DropBearUtilsAPI.focusModalDialog", _ => true);
+
+        // Act
+        var cut = RenderComponent<DropBearModalContainer>();
+
+        // Assert
+        cut.Instance.Should().NotBeNull();
+        JSInterop.Invocations.Should().NotContain(invocation => invocation.Identifier == "eval");
+        JSInterop.Invocations.Should().Contain(invocation => invocation.Identifier == "import");
+        utilsModule.Invocations.Should().Contain(invocation => invocation.Identifier == "DropBearUtilsAPI.focusModalDialog");
+    }
+
     /// <summary>
     ///     Simple test component for modal testing.
     /// </summary>
@@ -290,3 +310,5 @@ public sealed class DropBearModalContainerTests : ComponentTestBase
         }
     }
 }
+
+

@@ -28,6 +28,7 @@ public sealed partial class JsonSerializer : ISerializer
     private readonly JsonSerializerContext? _jsonSerializerContext;
     private readonly ILogger _logger;
     private readonly int _maxCacheSize;
+    private readonly long _maxMemoryThreshold;
     private readonly RecyclableMemoryStreamManager _memoryManager;
 
     // Cache for frequently serialized objects
@@ -54,6 +55,7 @@ public sealed partial class JsonSerializer : ISerializer
         _bufferSize = config.BufferSize;
         _enableCaching = config.EnableCaching;
         _maxCacheSize = config.MaxCacheSize;
+        _maxMemoryThreshold = config.MaxMemoryThreshold;
 
         if (_enableCaching)
         {
@@ -137,6 +139,7 @@ public sealed partial class JsonSerializer : ISerializer
                         .ConfigureAwait(false);
                 }
 
+                EnsureWithinMemoryThreshold(memoryStream.Length, "serialized output");
                 var resultBytes = memoryStream.ToArray();
                 stopwatch.Stop();
 
@@ -183,6 +186,14 @@ public sealed partial class JsonSerializer : ISerializer
             LogDeserializeNullOrEmptyData(_logger, typeof(T).Name);
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>("Cannot deserialize null or empty data", "Deserialize"));
+        }
+
+        if (data.LongLength > _maxMemoryThreshold)
+        {
+            return Result<T, SerializationError>.Failure(
+                SerializationError.ForType<T>(
+                    $"Input exceeds the configured memory threshold of {_maxMemoryThreshold} bytes",
+                    "Deserialize"));
         }
 
         // For simple value types, use an optimized path
@@ -255,6 +266,15 @@ public sealed partial class JsonSerializer : ISerializer
     }
 
     #region Private Helper Methods
+
+    private void EnsureWithinMemoryThreshold(long size, string operationTarget)
+    {
+        if (size > _maxMemoryThreshold)
+        {
+            throw new InvalidOperationException(
+                $"{operationTarget} exceeds the configured memory threshold of {_maxMemoryThreshold} bytes.");
+        }
+    }
 
     /// <summary>
     ///     Attempts to directly serialize simple types without using JsonSerializer.

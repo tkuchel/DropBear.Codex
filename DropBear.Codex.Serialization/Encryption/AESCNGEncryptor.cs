@@ -21,6 +21,9 @@ namespace DropBear.Codex.Serialization.Encryption;
 [SupportedOSPlatform("windows")]
 public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 {
+    private const byte FormatVersion = 1;
+    private const int AuthenticationTagSize = 32;
+
     private readonly AesCng _aesCng;
     private readonly ILogger _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
@@ -115,9 +118,13 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                 var freshIV = new byte[16]; // 128 bits for AES block size
                 RandomNumberGenerator.Fill(freshIV);
 
-                // Encrypt the AES key and fresh IV using RSA
+                var authenticationKey = new byte[32];
+                RandomNumberGenerator.Fill(authenticationKey);
+
+                // Encrypt the AES key, fresh IV, and authentication key using RSA
                 var encryptedKey = _rsa.Encrypt(_aesCng.Key, RSAEncryptionPadding.OaepSHA256);
                 var encryptedIV = _rsa.Encrypt(freshIV, RSAEncryptionPadding.OaepSHA256);
+                var encryptedAuthenticationKey = _rsa.Encrypt(authenticationKey, RSAEncryptionPadding.OaepSHA256);
 
                 // Encrypt the data using AES with the fresh IV
                 using var resultStream = _memoryStreamManager.GetStream("AesEncryptor-Encrypt");
@@ -129,12 +136,25 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                     await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
                 } // cryptoStream and encryptor are disposed here
 
-                // Securely clear the fresh IV from memory
+                var encryptedData = resultStream.ToArray();
+                var authenticationTag = ComputeAuthenticationTag(
+                    authenticationKey,
+                    encryptedKey,
+                    encryptedIV,
+                    encryptedAuthenticationKey,
+                    encryptedData);
+
+                // Securely clear the fresh IV and authentication key from memory
                 Array.Clear(freshIV, 0, freshIV.Length);
+                Array.Clear(authenticationKey, 0, authenticationKey.Length);
 
                 // Combine all components into a single result
-                var encryptedData = resultStream.ToArray();
-                var combinedResult = CombineEncryptedComponents(encryptedKey, encryptedIV, encryptedData);
+                var combinedResult = CombineEncryptedComponents(
+                    encryptedKey,
+                    encryptedIV,
+                    encryptedAuthenticationKey,
+                    authenticationTag,
+                    encryptedData);
 
                 stopwatch.Stop();
                 _logger.Information("AES encryption completed successfully in {ElapsedMs}ms. " +
@@ -187,33 +207,63 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
 
             try
             {
-                // Extract encrypted key, IV, and data
+                // Extract encrypted key, IV, authentication key, tag, and data
                 var keySizeBytes = _rsa.KeySize / 8; // Calculate based on RSA key size
 
-                if (data.Length <= 2 * keySizeBytes)
+                if (data.Length < 1 + (3 * keySizeBytes) + AuthenticationTagSize + 1)
                 {
                     throw new CryptographicException("Encrypted data is too short to contain required components");
                 }
 
-                var encryptedKey = data.AsSpan(0, keySizeBytes).ToArray();
-                var encryptedIV = data.AsSpan(keySizeBytes, keySizeBytes).ToArray();
-                var encryptedData = data.AsSpan(2 * keySizeBytes).ToArray();
+                if (data[0] != FormatVersion)
+                {
+                    throw new CryptographicException("Unsupported or legacy unauthenticated AES-CNG payload format");
+                }
+
+                var position = 1;
+                var encryptedKey = data.AsSpan(position, keySizeBytes).ToArray();
+                position += keySizeBytes;
+                var encryptedIV = data.AsSpan(position, keySizeBytes).ToArray();
+                position += keySizeBytes;
+                var encryptedAuthenticationKey = data.AsSpan(position, keySizeBytes).ToArray();
+                position += keySizeBytes;
+                var authenticationTag = data.AsSpan(position, AuthenticationTagSize).ToArray();
+                position += AuthenticationTagSize;
+                var encryptedData = data.AsSpan(position).ToArray();
 
                 // Decrypt key and IV
                 byte[]? aesKey = null;
                 byte[]? aesIV = null;
+                byte[]? authenticationKey = null;
 
                 try
                 {
                     aesKey = _rsa.Decrypt(encryptedKey, RSAEncryptionPadding.OaepSHA256);
                     aesIV = _rsa.Decrypt(encryptedIV, RSAEncryptionPadding.OaepSHA256);
+                    authenticationKey = _rsa.Decrypt(encryptedAuthenticationKey, RSAEncryptionPadding.OaepSHA256);
                 }
                 catch (CryptographicException ex)
                 {
-                    _logger.Error(ex, "Failed to decrypt AES key or IV: {Message}", ex.Message);
+                    _logger.Error(ex, "Failed to decrypt AES key, IV, or authentication key: {Message}", ex.Message);
                     return Result<byte[], SerializationError>.Failure(
-                        new SerializationError("RSA decryption of AES key or IV failed") { Operation = "Decrypt" }, ex);
+                        new SerializationError("RSA decryption of AES key, IV, or authentication key failed") { Operation = "Decrypt" }, ex);
                 }
+
+                var expectedTag = ComputeAuthenticationTag(
+                    authenticationKey,
+                    encryptedKey,
+                    encryptedIV,
+                    encryptedAuthenticationKey,
+                    encryptedData);
+
+                if (!CryptographicOperations.FixedTimeEquals(authenticationTag, expectedTag))
+                {
+                    Array.Clear(expectedTag, 0, expectedTag.Length);
+                    return Result<byte[], SerializationError>.Failure(
+                        new SerializationError("Encrypted data authentication failed") { Operation = "Decrypt" });
+                }
+
+                Array.Clear(expectedTag, 0, expectedTag.Length);
 
                 byte[] plaintext;
 
@@ -263,6 +313,10 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                     {
                         Array.Clear(aesIV, 0, aesIV.Length);
                     }
+                    if (authenticationKey != null)
+                    {
+                        Array.Clear(authenticationKey, 0, authenticationKey.Length);
+                    }
                 }
 
                 stopwatch.Stop();
@@ -301,18 +355,28 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
     }
 
     /// <summary>
-    ///     Combines multiple byte arrays into a single array.
+    ///     Combines multiple byte arrays into a single authenticated payload.
     /// </summary>
     /// <param name="encryptedKey">The RSA-encrypted AES key.</param>
     /// <param name="encryptedIV">The RSA-encrypted initialization vector.</param>
+    /// <param name="encryptedAuthenticationKey">The RSA-encrypted authentication key.</param>
+    /// <param name="authenticationTag">The HMAC tag covering the encrypted components.</param>
     /// <param name="encryptedData">The AES-encrypted data.</param>
     /// <returns>A single byte array containing all components.</returns>
-    private static byte[] CombineEncryptedComponents(byte[] encryptedKey, byte[] encryptedIV, byte[] encryptedData)
+    private static byte[] CombineEncryptedComponents(
+        byte[] encryptedKey,
+        byte[] encryptedIV,
+        byte[] encryptedAuthenticationKey,
+        byte[] authenticationTag,
+        byte[] encryptedData)
     {
-        var totalLength = encryptedKey.Length + encryptedIV.Length + encryptedData.Length;
+        var totalLength = 1 + encryptedKey.Length + encryptedIV.Length + encryptedAuthenticationKey.Length +
+                          authenticationTag.Length + encryptedData.Length;
         var result = new byte[totalLength];
 
         var position = 0;
+
+        result[position++] = FormatVersion;
 
         Buffer.BlockCopy(encryptedKey, 0, result, position, encryptedKey.Length);
         position += encryptedKey.Length;
@@ -320,9 +384,31 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
         Buffer.BlockCopy(encryptedIV, 0, result, position, encryptedIV.Length);
         position += encryptedIV.Length;
 
+        Buffer.BlockCopy(encryptedAuthenticationKey, 0, result, position, encryptedAuthenticationKey.Length);
+        position += encryptedAuthenticationKey.Length;
+
+        Buffer.BlockCopy(authenticationTag, 0, result, position, authenticationTag.Length);
+        position += authenticationTag.Length;
+
         Buffer.BlockCopy(encryptedData, 0, result, position, encryptedData.Length);
 
         return result;
+    }
+
+    private static byte[] ComputeAuthenticationTag(
+        byte[] authenticationKey,
+        byte[] encryptedKey,
+        byte[] encryptedIV,
+        byte[] encryptedAuthenticationKey,
+        byte[] encryptedData)
+    {
+        using var hmac = new HMACSHA256(authenticationKey);
+        hmac.TransformBlock([FormatVersion], 0, 1, null, 0);
+        hmac.TransformBlock(encryptedKey, 0, encryptedKey.Length, null, 0);
+        hmac.TransformBlock(encryptedIV, 0, encryptedIV.Length, null, 0);
+        hmac.TransformBlock(encryptedAuthenticationKey, 0, encryptedAuthenticationKey.Length, null, 0);
+        hmac.TransformFinalBlock(encryptedData, 0, encryptedData.Length);
+        return hmac.Hash!;
     }
 
     /// <summary>

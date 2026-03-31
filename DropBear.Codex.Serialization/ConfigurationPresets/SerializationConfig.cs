@@ -153,10 +153,11 @@ public sealed class SerializationConfig
                 {
                     // SECURITY: Validate that MessagePack is not using StandardResolver which allows arbitrary type instantiation
                     var resolverName = MessagePackSerializerOptions.Resolver?.GetType().Name ?? "";
-                    if (resolverName.Equals("StandardResolver", StringComparison.Ordinal))
+                    if (resolverName.Equals("StandardResolver", StringComparison.Ordinal) ||
+                        resolverName.Equals("StandardResolverAllowPrivate", StringComparison.Ordinal))
                     {
                         errors.Add(
-                            "SECURITY: StandardResolver is not allowed due to deserialization RCE risks. " +
+                            "SECURITY: StandardResolver and StandardResolverAllowPrivate are not allowed due to deserialization RCE risks. " +
                             "Use ContractlessStandardResolver, a custom resolver with type filtering, " +
                             "or define explicit MessagePack contracts for all types.");
                     }

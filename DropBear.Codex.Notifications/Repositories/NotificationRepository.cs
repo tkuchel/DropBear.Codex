@@ -28,20 +28,21 @@ public class NotificationRepository : INotificationRepository
     }
 
     public async Task<Result<NotificationRecord?, NotificationError>> GetByIdAsync(
+        Guid userId,
         Guid id,
         CancellationToken cancellationToken = default)
     {
         try
         {
             var notification = await _dbContext.Set<NotificationRecord>()
-                .FirstOrDefaultAsync(n => n.Id == id, cancellationToken)
+                .FirstOrDefaultAsync(n => n.UserId == userId && n.Id == id, cancellationToken)
                 .ConfigureAwait(false);
 
             return Result<NotificationRecord?, NotificationError>.Success(notification);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to retrieve notification by ID: {Id}", id);
+            _logger.LogError(ex, "Failed to retrieve notification by ID: {Id} for user {UserId}", id, userId);
             return Result<NotificationRecord?, NotificationError>.Failure(
                 NotificationError.DatabaseOperationFailed("GetByIdAsync", ex.Message),
                 ex);
@@ -167,12 +168,13 @@ public class NotificationRepository : INotificationRepository
     }
 
     public async Task<Result<Unit, NotificationError>> MarkAsReadAsync(
+        Guid userId,
         Guid id,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var notificationResult = await GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+            var notificationResult = await GetByIdAsync(userId, id, cancellationToken).ConfigureAwait(false);
 
             if (!notificationResult.IsSuccess)
             {
@@ -183,7 +185,7 @@ public class NotificationRepository : INotificationRepository
 
             if (notification == null)
             {
-                _logger.LogWarning("Cannot mark notification as read. Not found: {Id}", id);
+                _logger.LogWarning("Cannot mark notification as read. Not found: {Id} for user {UserId}", id, userId);
                 return Result<Unit, NotificationError>.Failure(NotificationError.NotFound(id));
             }
 
@@ -194,14 +196,14 @@ public class NotificationRepository : INotificationRepository
                 _dbContext.Update(notification);
                 await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-                _logger.LogDebug("Marked notification as read: {Id}", id);
+                _logger.LogDebug("Marked notification as read: {Id} for user {UserId}", id, userId);
             }
 
             return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to mark notification as read: {Id}", id);
+            _logger.LogError(ex, "Failed to mark notification as read: {Id} for user {UserId}", id, userId);
             return Result<Unit, NotificationError>.Failure(
                 NotificationError.DatabaseOperationFailed("MarkAsReadAsync", ex.Message),
                 ex);
@@ -238,12 +240,13 @@ public class NotificationRepository : INotificationRepository
     }
 
     public async Task<Result<Unit, NotificationError>> DismissAsync(
+        Guid userId,
         Guid id,
         CancellationToken cancellationToken = default)
     {
         try
         {
-            var notificationResult = await GetByIdAsync(id, cancellationToken).ConfigureAwait(false);
+            var notificationResult = await GetByIdAsync(userId, id, cancellationToken).ConfigureAwait(false);
 
             if (!notificationResult.IsSuccess)
             {
@@ -254,7 +257,7 @@ public class NotificationRepository : INotificationRepository
 
             if (notification == null)
             {
-                _logger.LogWarning("Cannot dismiss notification. Not found: {Id}", id);
+                _logger.LogWarning("Cannot dismiss notification. Not found: {Id} for user {UserId}", id, userId);
                 return Result<Unit, NotificationError>.Failure(NotificationError.NotFound(id));
             }
 
@@ -265,14 +268,14 @@ public class NotificationRepository : INotificationRepository
                 _dbContext.Update(notification);
                 await _dbContext.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
 
-                _logger.LogDebug("Dismissed notification: {Id}", id);
+                _logger.LogDebug("Dismissed notification: {Id} for user {UserId}", id, userId);
             }
 
             return Result<Unit, NotificationError>.Success(Unit.Value);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to dismiss notification: {Id}", id);
+            _logger.LogError(ex, "Failed to dismiss notification: {Id} for user {UserId}", id, userId);
             return Result<Unit, NotificationError>.Failure(
                 NotificationError.DatabaseOperationFailed("DismissAsync", ex.Message),
                 ex);

@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Files.Converters;
 using DropBear.Codex.Files.Enums;
 using DropBear.Codex.Files.Errors;
 using DropBear.Codex.Hashing;
@@ -31,7 +32,8 @@ public sealed partial class ContentContainer
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="ContentContainer" /> class.
-    ///     Defaults to <see cref="Flags" /> = <see cref="ContentContainerFlags.NoOperation" />.
+    ///     Defaults to <see cref="Flags" /> = <see cref="ContentContainerFlags.NoOperation" /> and uses
+    ///     XxHash for accidental corruption detection, not adversarial tamper resistance.
     /// </summary>
     public ContentContainer()
         : this(new HashBuilder().GetHasher("XxHash"), null)
@@ -83,7 +85,7 @@ public sealed partial class ContentContainer
     public byte[]? Data { get; internal set; }
 
     /// <summary>
-    ///     Gets or sets the base64-encoded hash for <see cref="Data" />, used for integrity checks.
+    ///     Gets or sets the base64-encoded hash for <see cref="Data" />, used for accidental corruption detection.
     /// </summary>
     [JsonPropertyName("hash")]
     public string? Hash { get; private set; }
@@ -179,6 +181,8 @@ public sealed partial class ContentContainer
             throw new ArgumentException("Key and Type must not be null or empty.", nameof(key));
         }
 
+        ValidateProviderType(key, type);
+
         if (!_providers.TryAdd(key, type))
         {
             throw new ArgumentException(
@@ -195,6 +199,7 @@ public sealed partial class ContentContainer
     {
         foreach (var provider in providers)
         {
+            ValidateProviderType(provider.Key, provider.Value);
             _providers[provider.Key] = provider.Value;
         }
     }
@@ -206,6 +211,14 @@ public sealed partial class ContentContainer
     public IDictionary<string, Type> GetProvidersDictionary()
     {
         return new Dictionary<string, Type>(_providers, StringComparer.OrdinalIgnoreCase);
+    }
+
+    public IDictionary<string, string> GetProviderIdentifiers()
+    {
+        return _providers.ToDictionary(
+            kvp => kvp.Key,
+            kvp => ProviderTypeRegistry.GetIdentifier(kvp.Value),
+            StringComparer.OrdinalIgnoreCase);
     }
 
     /// <summary>
@@ -232,7 +245,8 @@ public sealed partial class ContentContainer
     }
 
     /// <summary>
-    ///     Asynchronously gets the data as type <typeparamref name="T" />, verifying integrity with <see cref="Hash" />.
+    ///     Asynchronously gets the data as type <typeparamref name="T" />, checking for accidental corruption with
+    ///     <see cref="Hash" />.
     ///     If needed, a configured serializer is used to deserialize <see cref="Data" /> into <typeparamref name="T" />.
     /// </summary>
     /// <typeparam name="T">The desired output type (e.g., <c>byte[]</c>, <c>string</c>, or a model class).</typeparam>
@@ -249,10 +263,10 @@ public sealed partial class ContentContainer
         if (Hash is null)
         {
             return Result<T, ContentContainerError>.Failure(
-                new ContentContainerError("No hash available for data integrity verification."));
+                new ContentContainerError("No hash available for corruption detection."));
         }
 
-        // Check data integrity
+        // Check for accidental corruption
         var hashResult = _hasher.EncodeToBase64Hash(Data);
         if (!hashResult.IsSuccess || !string.Equals(hashResult.Value, Hash, StringComparison.Ordinal))
         {
@@ -361,6 +375,24 @@ public sealed partial class ContentContainer
         var errorMessage = $"Provider for {keyName} not found.";
         LogProviderNotFound(errorMessage);
         throw new KeyNotFoundException(errorMessage);
+    }
+
+    private static void ValidateProviderType(string keyName, Type type)
+    {
+        var isAllowed = keyName switch
+        {
+            "Serializer" => ProviderTypeRegistry.IsAllowedSerializer(type),
+            "CompressionProvider" => ProviderTypeRegistry.IsAllowedCompression(type),
+            "EncryptionProvider" => ProviderTypeRegistry.IsAllowedEncryption(type),
+            _ => false
+        };
+
+        if (!isAllowed)
+        {
+            throw new ArgumentException(
+                $"Provider type '{type.FullName}' is not allowed for provider key '{keyName}'.",
+                nameof(type));
+        }
     }
 
     /// <summary>

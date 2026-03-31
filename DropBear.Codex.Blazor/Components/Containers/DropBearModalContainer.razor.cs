@@ -25,6 +25,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
     private const string DEFAULT_TRANSITION_DURATION = "0.3s";
     private const string DEFAULT_DIMENSION = "auto";
     private const string ENTER_TRANSITION_CLASS = "enter";
+    private const string UtilsModuleName = Enums.JsModuleNames.Utils;
 
     /// <summary>
     ///     The keys we want to remove from the child parameters dictionary
@@ -44,6 +45,7 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
 
     // Modal overlay element reference for focus management
     private ElementReference _modalOverlay;
+    private IJSObjectReference? _jsUtilsModule;
 
     [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
 
@@ -279,9 +281,12 @@ public sealed partial class DropBearModalContainer : DropBearComponentBase
         {
             try
             {
-                // Focus the modal overlay for keyboard navigation
-                await JSRuntime.InvokeVoidAsync("eval",
-                    "document.querySelector('[role=\"dialog\"]')?.focus()");
+                var utilsModuleResult = await GetJsModuleAsync(UtilsModuleName).ConfigureAwait(false);
+                if (utilsModuleResult.IsSuccess)
+                {
+                    _jsUtilsModule = utilsModuleResult.Value;
+                    await _jsUtilsModule!.InvokeVoidAsync($"{UtilsModuleName}API.focusModalDialog", ComponentToken);
+                }
             }
             catch (Exception ex)
             {

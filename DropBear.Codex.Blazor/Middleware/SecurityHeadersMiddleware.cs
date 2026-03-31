@@ -79,6 +79,11 @@ public sealed class SecurityHeadersMiddleware
                     nonce)
                 : ContentSecurityPolicyHelper.Presets.Development;
         }
+        else if (!string.IsNullOrEmpty(nonce) &&
+                 cspPolicy.Contains(ContentSecurityPolicyHelper.NoncePlaceholder, StringComparison.Ordinal))
+        {
+            cspPolicy = cspPolicy.Replace(ContentSecurityPolicyHelper.NoncePlaceholder, nonce, StringComparison.Ordinal);
+        }
 
         headers.Append("Content-Security-Policy", cspPolicy);
 

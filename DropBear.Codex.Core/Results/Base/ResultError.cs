@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Frozen;
 using System.Diagnostics;
@@ -15,7 +15,7 @@ namespace DropBear.Codex.Core.Results.Base;
 
 /// <summary>
 ///     Base class for all result errors, providing common functionality.
-///     Optimized for .NET 9 with modern C# features and frozen collections.
+///     Optimized for .NET 10 with modern C# features and frozen collections.
 /// </summary>
 [DebuggerDisplay("{DebuggerDisplay,nq}")]
 [DebuggerTypeProxy(typeof(ResultErrorDebugView))]
@@ -187,8 +187,16 @@ public abstract record ResultError
 
         foreach (var (key, value) in metadata)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(key);
-            ArgumentNullException.ThrowIfNull(value);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException("Metadata keys cannot be null or whitespace.", nameof(metadata));
+            }
+
+            if (value is null)
+            {
+                throw new ArgumentNullException(nameof(metadata), "Metadata values cannot be null.");
+            }
+
             newMetadata[key] = value;
         }
 
@@ -372,4 +380,3 @@ public abstract record ResultError
 
     #endregion
 }
-

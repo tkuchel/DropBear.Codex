@@ -100,6 +100,7 @@ public sealed class CombinedSerializer : ISerializer
                     return Result<byte[], SerializationError>.Failure(streamResult.Error!);
                 }
 
+                EnsureWithinMemoryThreshold(memoryStream.Length);
                 var resultBytes = memoryStream.ToArray();
 
                 stopwatch.Stop();
@@ -126,6 +127,7 @@ public sealed class CombinedSerializer : ISerializer
                     return Result<byte[], SerializationError>.Failure(streamResult.Error!);
                 }
 
+                EnsureWithinMemoryThreshold(memoryStream.Length);
                 var resultBytes = memoryStream.ToArray();
 
                 stopwatch.Stop();
@@ -212,6 +214,15 @@ public sealed class CombinedSerializer : ISerializer
             return Result<T, SerializationError>.Failure(
                 SerializationError.ForType<T>($"Combined deserialization error: {ex.Message}", "Deserialize"),
                 ex);
+        }
+    }
+
+    private void EnsureWithinMemoryThreshold(long size)
+    {
+        if (size > _config.MaxMemoryThreshold)
+        {
+            throw new InvalidOperationException(
+                $"Serialized output exceeds the configured memory threshold of {_config.MaxMemoryThreshold} bytes.");
         }
     }
 

@@ -19,21 +19,26 @@ public sealed partial class LocalStorageManager : IStorageManager
 {
     // Optimal buffer size for file operations
     private const int BufferSize = 81920; // 80KB buffer for file operations
+    private const long MaxBufferedReadBytes = 1024L * 1024L * 100L; // 100MB hard cap for buffered reads
     private readonly ILogger<LocalStorageManager> _logger;
     private readonly RecyclableMemoryStreamManager _memoryStreamManager;
+    private readonly string _rootDirectory;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="LocalStorageManager" /> class.
     /// </summary>
     /// <param name="memoryStreamManager">A <see cref="RecyclableMemoryStreamManager" /> for efficient memory usage.</param>
     /// <param name="logger">The logger instance for logging operations.</param>
+    /// <param name="rootDirectory">The configured root directory that all file operations must stay within.</param>
     /// <exception cref="ArgumentNullException">Thrown if <paramref name="memoryStreamManager" /> or <paramref name="logger" /> is null.</exception>
     public LocalStorageManager(
         RecyclableMemoryStreamManager memoryStreamManager,
-        ILogger<LocalStorageManager> logger)
+        ILogger<LocalStorageManager> logger,
+        string? rootDirectory = null)
     {
         _memoryStreamManager = memoryStreamManager ?? throw new ArgumentNullException(nameof(memoryStreamManager));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _rootDirectory = NormalizeRootDirectory(rootDirectory ?? AppContext.BaseDirectory);
     }
 
     /// <inheritdoc />
@@ -124,6 +129,13 @@ public sealed partial class LocalStorageManager : IStorageManager
             }
 
             var fileInfo = new FileInfo(safePath);
+            if (fileInfo.Length > MaxBufferedReadBytes)
+            {
+                LogReadExceededBufferLimit(identifier, fileInfo.Length, MaxBufferedReadBytes);
+                return Result<Stream, StorageError>.Failure(
+                    StorageError.ReadFailed(identifier,
+                        $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+            }
 
             // Create memory stream with size hint
             var memoryStream = fileInfo.Length <= int.MaxValue
@@ -145,10 +157,21 @@ public sealed partial class LocalStorageManager : IStorageManager
                 var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
                 try
                 {
+                    long totalBytesRead = 0;
                     int bytesRead;
                     while ((bytesRead = await fileStream.ReadAsync(
                                buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                     {
+                        totalBytesRead += bytesRead;
+                        if (totalBytesRead > MaxBufferedReadBytes)
+                        {
+                            memoryStream.Dispose();
+                            LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
+                            return Result<Stream, StorageError>.Failure(
+                                StorageError.ReadFailed(identifier,
+                                    $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+                        }
+
                         await memoryStream.WriteAsync(
                             buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                     }
@@ -298,16 +321,22 @@ public sealed partial class LocalStorageManager : IStorageManager
 
         try
         {
-            // Get the full path to resolve any symbolic links or relative components
-            var fullPath = Path.GetFullPath(path);
+            var fullPath = Path.IsPathRooted(path)
+                ? Path.GetFullPath(path)
+                : Path.GetFullPath(Path.Combine(_rootDirectory, path));
 
-            // Additional check: verify the resolved path doesn't escape to unexpected locations
-            // by checking that it's a valid rooted path
             if (!Path.IsPathRooted(fullPath))
             {
                 LogPathTraversalAttempt(path, "Resolved path is not rooted");
                 return Result<string, StorageError>.Failure(
                     StorageError.InvalidPath(path, "Invalid path format."));
+            }
+
+            if (!fullPath.StartsWith(_rootDirectory, StringComparison.OrdinalIgnoreCase))
+            {
+                LogPathTraversalAttempt(path, "Resolved path escapes the configured root directory");
+                return Result<string, StorageError>.Failure(
+                    StorageError.InvalidPath(path, "Path must stay within the configured storage root."));
             }
 
             return Result<string, StorageError>.Success(fullPath);
@@ -374,6 +403,14 @@ public sealed partial class LocalStorageManager : IStorageManager
         LogDirectoryCreated(directoryPath);
     }
 
+    private static string NormalizeRootDirectory(string rootDirectory)
+    {
+        var fullRootPath = Path.GetFullPath(rootDirectory);
+        return fullRootPath.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal)
+            ? fullRootPath
+            : fullRootPath + Path.DirectorySeparatorChar;
+    }
+
     #endregion
 
     #region LoggerMessage Source Generators
@@ -398,6 +435,10 @@ public sealed partial class LocalStorageManager : IStorageManager
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error reading file {fileName} from local storage")]
     private partial void LogReadFailed(Exception ex, string fileName);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Read for file {fileName} exceeded the in-memory buffer limit. Requested bytes: {requestedBytes}, Limit: {limitBytes}")]
+    private partial void LogReadExceededBufferLimit(string fileName, long requestedBytes, long limitBytes);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Deleted existing file {fileName} before update")]
     private partial void LogDeletedBeforeUpdate(string fileName);

@@ -22,6 +22,7 @@ namespace DropBear.Codex.Serialization.Providers;
 /// </summary>
 public sealed class RSAKeyProvider
 {
+    private const string ProtectedPrivateKeyPemLabel = "DPAPI PROTECTED PRIVATE KEY";
     private readonly bool _createIfNotExists;
     private readonly ILogger _logger = LoggerFactory.Logger.ForContext<RSAKeyProvider>();
     private readonly string _privateKeyPath;
@@ -176,7 +177,9 @@ public sealed class RSAKeyProvider
             // Check if PEM format is required (e.g., by checking file extension or user configuration)
             if (Path.GetExtension(filePath).Equals(".pem", StringComparison.OrdinalIgnoreCase))
             {
-                var pemKey = ConvertToPemString(parameters, isPrivate);
+                var pemKey = isPrivate
+                    ? ConvertToProtectedPemString(parameters)
+                    : ConvertToPemString(parameters, isPrivate);
                 File.WriteAllText(filePath, pemKey);
                 _logger.Information("Saved RSA key in PEM format to {FilePath}", filePath);
             }
@@ -305,6 +308,7 @@ public sealed class RSAKeyProvider
     /// <param name="isPrivate">Whether this is a private key.</param>
     /// <returns>The RSA parameters.</returns>
     /// <exception cref="CryptographicException">Thrown if the PEM format is invalid or cannot be parsed.</exception>
+    [SupportedOSPlatform("windows")]
     private RSAParameters ConvertFromPemString(string pem, bool isPrivate)
     {
         var base64Key = pem
@@ -324,6 +328,21 @@ public sealed class RSAKeyProvider
 
         if (isPrivate)
         {
+            if (pem.Contains($"BEGIN {ProtectedPrivateKeyPemLabel}", StringComparison.Ordinal))
+            {
+                var decryptedKeyBytes = Unprotect(keyBytes, null, DataProtectionScope.CurrentUser);
+                try
+                {
+                    rsa.ImportPkcs8PrivateKey(decryptedKeyBytes, out _);
+                }
+                catch (CryptographicException)
+                {
+                    rsa.ImportRSAPrivateKey(decryptedKeyBytes, out _);
+                }
+
+                return rsa.ExportParameters(true);
+            }
+
             try
             {
                 // Try PKCS#8 format first
@@ -350,6 +369,15 @@ public sealed class RSAKeyProvider
         }
 
         return rsa.ExportParameters(isPrivate);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private string ConvertToProtectedPemString(RSAParameters parameters)
+    {
+        using var rsa = RSA.Create();
+        rsa.ImportParameters(parameters);
+        var protectedPrivateKey = Protect(rsa.ExportPkcs8PrivateKey(), null, DataProtectionScope.CurrentUser);
+        return PemEncode(protectedPrivateKey, ProtectedPrivateKeyPemLabel);
     }
 
     /// <summary>

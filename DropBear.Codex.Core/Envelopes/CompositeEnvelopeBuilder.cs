@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Frozen;
 using DropBear.Codex.Core.Interfaces;
@@ -10,7 +10,7 @@ namespace DropBear.Codex.Core.Envelopes;
 
 /// <summary>
 ///     Fluent builder for constructing composite envelopes.
-///     Optimized for .NET 9 with modern builder patterns.
+///     Optimized for .NET 10 with modern builder patterns.
 /// </summary>
 public sealed class CompositeEnvelopeBuilder<T>
 {
@@ -38,7 +38,11 @@ public sealed class CompositeEnvelopeBuilder<T>
     {
         foreach (var payload in payloads)
         {
-            ArgumentNullException.ThrowIfNull(payload);
+            if (payload is null)
+            {
+                throw new ArgumentNullException(nameof(payloads), "Payload collection cannot contain null items.");
+            }
+
             _payloads.Add(payload);
         }
 
@@ -54,7 +58,11 @@ public sealed class CompositeEnvelopeBuilder<T>
 
         foreach (var payload in payloads)
         {
-            ArgumentNullException.ThrowIfNull(payload);
+            if (payload is null)
+            {
+                throw new ArgumentNullException(nameof(payloads), "Payload collection cannot contain null items.");
+            }
+
             _payloads.Add(payload);
         }
 
@@ -83,8 +91,16 @@ public sealed class CompositeEnvelopeBuilder<T>
     {
         foreach (var (key, value) in headers)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(key);
-            ArgumentNullException.ThrowIfNull(value);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException("Header keys cannot be null or whitespace.", nameof(headers));
+            }
+
+            if (value is null)
+            {
+                throw new ArgumentNullException(nameof(headers), "Header values cannot be null.");
+            }
+
             _headers[key] = value;
         }
 
@@ -100,8 +116,16 @@ public sealed class CompositeEnvelopeBuilder<T>
 
         foreach (var (key, value) in headers)
         {
-            ArgumentException.ThrowIfNullOrWhiteSpace(key);
-            ArgumentNullException.ThrowIfNull(value);
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                throw new ArgumentException("Header keys cannot be null or whitespace.", nameof(headers));
+            }
+
+            if (value is null)
+            {
+                throw new ArgumentNullException(nameof(headers), "Header values cannot be null.");
+            }
+
             _headers[key] = value;
         }
 
@@ -141,7 +165,7 @@ public sealed class CompositeEnvelopeBuilder<T>
     /// <summary>
     ///     Builds and seals the composite envelope with a signature.
     /// </summary>
-    public CompositeEnvelope<T> BuildAndSeal(Func<IEnumerable<T>, string> signatureGenerator)
+    public CompositeEnvelope<T> BuildAndSeal(Func<CompositeEnvelope<T>, string> signatureGenerator)
     {
         ArgumentNullException.ThrowIfNull(signatureGenerator);
 
@@ -150,15 +174,24 @@ public sealed class CompositeEnvelopeBuilder<T>
             throw new InvalidOperationException("At least one payload is required");
         }
 
-        var signature = signatureGenerator(_payloads);
-
-
-        return new CompositeEnvelope<T>(
+        var createdAt = DateTime.UtcNow;
+        var sealedAt = DateTime.UtcNow;
+        var signableEnvelope = new CompositeEnvelope<T>(
             _payloads.ToFrozenSet(),
             _headers.ToFrozenDictionary(StringComparer.Ordinal),
             true,
-            DateTime.UtcNow,
-            DateTime.UtcNow,
+            createdAt,
+            sealedAt,
+            null,
+            _telemetry ?? TelemetryProvider.Current);
+        var signature = signatureGenerator(signableEnvelope);
+
+        return new CompositeEnvelope<T>(
+            signableEnvelope.Payloads.ToFrozenSet(),
+            signableEnvelope.Headers.ToFrozenDictionary(StringComparer.Ordinal),
+            true,
+            createdAt,
+            sealedAt,
             signature,
             _telemetry ?? TelemetryProvider.Current);
     }

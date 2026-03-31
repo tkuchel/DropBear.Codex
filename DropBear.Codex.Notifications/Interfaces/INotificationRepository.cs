@@ -20,10 +20,12 @@ public interface INotificationRepository
     /// <summary>
     ///     Retrieves a notification by its unique identifier.
     /// </summary>
+    /// <param name="userId">The owning user ID.</param>
     /// <param name="id">The notification ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A Result containing the notification record if found, or an error.</returns>
     Task<Result<NotificationRecord?, NotificationError>> GetByIdAsync(
+        Guid userId,
         Guid id,
         CancellationToken cancellationToken = default);
 
@@ -50,10 +52,12 @@ public interface INotificationRepository
     /// <summary>
     ///     Marks a notification as read.
     /// </summary>
+    /// <param name="userId">The owning user ID.</param>
     /// <param name="id">The notification ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A Result indicating success or failure.</returns>
     Task<Result<Unit, NotificationError>> MarkAsReadAsync(
+        Guid userId,
         Guid id,
         CancellationToken cancellationToken = default);
 
@@ -70,10 +74,12 @@ public interface INotificationRepository
     /// <summary>
     ///     Dismisses a notification.
     /// </summary>
+    /// <param name="userId">The owning user ID.</param>
     /// <param name="id">The notification ID.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>A Result indicating success or failure.</returns>
     Task<Result<Unit, NotificationError>> DismissAsync(
+        Guid userId,
         Guid id,
         CancellationToken cancellationToken = default);
 

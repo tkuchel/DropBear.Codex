@@ -1,4 +1,7 @@
+using System.Text;
 using DropBear.Codex.Serialization.ConfigurationPresets;
+using DropBear.Codex.Serialization.Extensions;
+using DropBear.Codex.Serialization.Factories;
 using DropBear.Codex.Serialization.Serializers;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -249,6 +252,42 @@ public sealed class JsonSerializerTests
         deserializeResult.IsSuccess.Should().BeTrue();
     }
 
+    [Fact]
+    public async Task SerializeAsync_ShouldReject_OutputThatExceedsConfiguredMemoryThreshold()
+    {
+        var serializer = CreateSerializer(maxMemoryThreshold: 32);
+        var value = new TestPerson("John Doe", 30, "john@example.com");
+
+        var result = await serializer.SerializeAsync(value);
+
+        result.IsSuccess.Should().BeFalse();
+        result.Error.Should().NotBeNull();
+        result.Error!.Message.Should().Contain("memory threshold");
+    }
+
+    [Fact]
+    public async Task WithDefaultJsonOptions_ShouldEscape_HtmlSensitiveCharacters()
+    {
+        var builder = new SerializationBuilder()
+            .WithSerializer<JsonSerializer>()
+            .WithDefaultJsonOptions();
+
+        var buildResult = builder.Build();
+
+        buildResult.IsSuccess.Should().BeTrue();
+        buildResult.Value.Should().BeOfType<JsonSerializer>();
+
+        var serializer = (JsonSerializer)buildResult.Value!;
+        var payload = new { Message = "<script>alert('xss')</script>" };
+
+        var result = await serializer.SerializeAsync(payload);
+
+        result.IsSuccess.Should().BeTrue();
+        var json = Encoding.UTF8.GetString(result.Value!);
+        json.Should().Contain("\\u003Cscript\\u003E");
+        json.Should().NotContain("<script>");
+    }
+
     #endregion
 
     #region GetCapabilities Tests
@@ -276,7 +315,7 @@ public sealed class JsonSerializerTests
 
     #region Helper Methods
 
-    private static JsonSerializer CreateSerializer()
+    private static JsonSerializer CreateSerializer(long maxMemoryThreshold = 1024 * 1024 * 100)
     {
         var config = new SerializationConfig
         {
@@ -288,7 +327,8 @@ public sealed class JsonSerializerTests
             RecyclableMemoryStreamManager = new RecyclableMemoryStreamManager(),
             BufferSize = 4096,
             EnableCaching = false,
-            MaxCacheSize = 100
+            MaxCacheSize = 100,
+            MaxMemoryThreshold = maxMemoryThreshold
         };
 
         var logger = NullLogger<JsonSerializer>.Instance;

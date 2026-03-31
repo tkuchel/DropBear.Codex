@@ -20,6 +20,8 @@ namespace DropBear.Codex.Blazor.Components.Files;
 /// <summary>
 ///     A Blazor component for handling file uploads with drag-and-drop support and progress tracking.
 ///     Optimized for Blazor Server with proper thread safety, memory management, and resilience features.
+///     Client-side extension and MIME filtering is provided for convenience, but callers must still perform
+///     trusted server-side validation of uploaded content.
 /// </summary>
 public sealed partial class DropBearFileUploader : DropBearComponentBase
 {
@@ -217,8 +219,8 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
     private readonly Timer _progressUpdateTimer;
 
     /// <summary>
-    ///     SECURITY FIX: Allowlist of permitted file extensions (replaces blocklist approach).
-    ///     Only these file types can be uploaded to prevent extension bypass attacks.
+    ///     Allowlist of permitted file extensions used for client-side filtering.
+    ///     This does not validate the underlying file contents and must not be treated as a security boundary.
     /// </summary>
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -311,7 +313,9 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <summary>
     ///     Gets or sets the collection of allowed file types (MIME types).
-    ///     If empty, all file types are allowed (except those with blocked extensions).
+    ///     If empty, any browser-reported MIME type is accepted so long as the filename extension passes the
+    ///     client-side allowlist.
+    ///     MIME types are browser-supplied metadata and must be backed by trusted server-side validation.
     /// </summary>
     [Parameter]
     public IReadOnlyCollection<string> AllowedFileTypes { get; set; } = [];
@@ -738,7 +742,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
 
     /// <summary>
     ///     Validates a file against size and type restrictions.
-    ///     SECURITY FIX: Uses allowlist instead of blocklist for file extensions.
+    ///     This is a client-side filtering step only and does not inspect file signatures or file contents.
     /// </summary>
     /// <param name="file">The browser file to validate.</param>
     /// <returns>True if the file is valid; otherwise, false.</returns>
@@ -751,7 +755,7 @@ public sealed partial class DropBearFileUploader : DropBearComponentBase
             return false;
         }
 
-        // SECURITY FIX: Use allowlist approach - only permitted extensions are allowed
+        // Client-side extension filtering only; do not treat this as trusted content validation.
         var extension = Path.GetExtension(file.Name);
         if (string.IsNullOrEmpty(extension) || !AllowedExtensions.Contains(extension))
         {

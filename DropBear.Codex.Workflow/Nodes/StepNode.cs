@@ -4,9 +4,11 @@ using DropBear.Codex.Workflow.Common;
 using DropBear.Codex.Workflow.Configuration;
 using DropBear.Codex.Workflow.Context;
 using DropBear.Codex.Workflow.Interfaces;
+using DropBear.Codex.Workflow.Persistence.Implementation;
 using DropBear.Codex.Workflow.Metrics;
 using DropBear.Codex.Workflow.Results;
 using Microsoft.Extensions.DependencyInjection;
+using System.Reflection;
 
 #endregion
 
@@ -81,7 +83,7 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
                 lastResult = step.Timeout.HasValue
                     ? await ExecuteWithTimeoutAsync(step, context, step.Timeout.Value, cancellationToken)
                         .ConfigureAwait(false)
-                    : await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+                    : await ExecuteStepAsync(step, context, cancellationToken).ConfigureAwait(false);
 
                 if (lastResult.IsSuccess)
                 {
@@ -184,12 +186,61 @@ public sealed class StepNode<TContext, TStep> : WorkflowNodeBase<TContext>, ILin
 
         try
         {
-            return await step.ExecuteAsync(context, cts.Token).ConfigureAwait(false);
+            return await ExecuteStepAsync(step, context, cts.Token).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return StepResult.Failure($"Step '{step.StepName}' exceeded timeout of {timeout.TotalSeconds} seconds");
         }
+    }
+
+    private static async ValueTask<StepResult> ExecuteStepAsync(
+        TStep step,
+        TContext context,
+        CancellationToken cancellationToken)
+    {
+        var signalContext = WorkflowSignalContextAccessor.Current;
+        if (signalContext is null)
+        {
+            return await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+
+        var signalNameProperty = step.GetType().GetProperty("SignalName", BindingFlags.Public | BindingFlags.Instance);
+        var processSignalMethod = step.GetType().GetMethod("ProcessSignalAsync", BindingFlags.Public | BindingFlags.Instance);
+
+        if (signalNameProperty?.GetValue(step) is not string expectedSignalName ||
+            processSignalMethod is null ||
+            !string.Equals(expectedSignalName, signalContext.SignalName, StringComparison.OrdinalIgnoreCase))
+        {
+            return await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+
+        var parameters = processSignalMethod.GetParameters();
+        if (parameters.Length != 3)
+        {
+            return await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
+        }
+
+        var payloadParameterType = parameters[1].ParameterType;
+        if (signalContext.Payload is not null && !payloadParameterType.IsInstanceOfType(signalContext.Payload))
+        {
+            return StepResult.Failure(
+                $"Signal payload type mismatch for step '{step.StepName}'. Expected {payloadParameterType.Name} but received {signalContext.Payload.GetType().Name}");
+        }
+
+        object? invocationResult = processSignalMethod.Invoke(step, [context, signalContext.Payload, cancellationToken]);
+
+        if (invocationResult is ValueTask<StepResult> typedValueTask)
+        {
+            return await typedValueTask.ConfigureAwait(false);
+        }
+
+        if (invocationResult is Task<StepResult> task)
+        {
+            return await task.ConfigureAwait(false);
+        }
+
+        return await step.ExecuteAsync(context, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>

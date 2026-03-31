@@ -20,6 +20,7 @@ public sealed partial class BlobStorageManager : IStorageManager
 {
     // Optimal buffer size for blob operations
     private const int BufferSize = 81920; // 80KB buffer for blob operations
+    private const long MaxBufferedReadBytes = 1024L * 1024L * 100L; // 100MB hard cap for buffered reads
     private readonly IBlobStorage _blobStorage;
     private readonly string _containerName;
     private readonly ILogger<BlobStorageManager> _logger;
@@ -108,6 +109,15 @@ public sealed partial class BlobStorageManager : IStorageManager
                     StorageError.ReadFailed(identifier, "Blob not found or no access."));
             }
 
+            if (readStream.CanSeek && readStream.Length > MaxBufferedReadBytes)
+            {
+                await readStream.DisposeAsync().ConfigureAwait(false);
+                LogReadExceededBufferLimit(identifier, readStream.Length, MaxBufferedReadBytes);
+                return Result<Stream, StorageError>.Failure(
+                    StorageError.ReadFailed(identifier,
+                        $"Blob exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+            }
+
             // Use memory stream with a size hint if available
             var memoryStream = readStream.Length > 0 && readStream.Length <= int.MaxValue
                 ? _memoryStreamManager.GetStream(null, (int)readStream.Length)
@@ -117,10 +127,21 @@ public sealed partial class BlobStorageManager : IStorageManager
             var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
             try
             {
+                long totalBytesRead = 0;
                 int bytesRead;
                 while ((bytesRead = await readStream.ReadAsync(
                            buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                 {
+                    totalBytesRead += bytesRead;
+                    if (totalBytesRead > MaxBufferedReadBytes)
+                    {
+                        memoryStream.Dispose();
+                        LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
+                        return Result<Stream, StorageError>.Failure(
+                            StorageError.ReadFailed(identifier,
+                                $"Blob exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+                    }
+
                     await memoryStream.WriteAsync(
                         buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                 }
@@ -323,6 +344,10 @@ public sealed partial class BlobStorageManager : IStorageManager
 
     [LoggerMessage(Level = LogLevel.Error, Message = "Error reading blob {blobName} from container {containerName}")]
     private partial void LogReadFailed(Exception ex, string blobName, string containerName);
+
+    [LoggerMessage(Level = LogLevel.Warning,
+        Message = "Read for blob {blobName} exceeded the in-memory buffer limit. Requested bytes: {requestedBytes}, Limit: {limitBytes}")]
+    private partial void LogReadExceededBufferLimit(string blobName, long requestedBytes, long limitBytes);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Successfully deleted blob {blobName} from container {containerName}")]
     private partial void LogDeleteSuccessful(string blobName, string containerName);

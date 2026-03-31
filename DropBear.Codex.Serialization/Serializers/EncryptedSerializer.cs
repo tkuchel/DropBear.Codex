@@ -15,10 +15,12 @@ using ILogger = Microsoft.Extensions.Logging.ILogger<DropBear.Codex.Serializatio
 namespace DropBear.Codex.Serialization.Serializers;
 
 /// <summary>
-///     Serializer that applies encryption to serialized data before serialization and decryption after deserialization.
+///     Serializer that encrypts serialized data by default.
+///     Plaintext fallback for small payloads is disabled unless explicitly enabled.
 /// </summary>
 public sealed partial class EncryptedSerializer : ISerializer, IDisposable
 {
+    private readonly bool _allowPlaintextFallbackForSmallObjects;
     private readonly int _encryptionThreshold;
     private readonly IEncryptor _encryptor;
     private readonly ISerializer _innerSerializer;
@@ -37,21 +39,27 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
     ///     The size threshold in bytes for encryption (objects smaller than this won't be
     ///     encrypted if skipSmallObjects is true).
     /// </param>
+    /// <param name="allowPlaintextFallbackForSmallObjects">
+    ///     Explicit opt-in for returning plaintext when <paramref name="skipSmallObjects" /> is enabled and the payload
+    ///     falls below <paramref name="encryptionThreshold" />.
+    /// </param>
     /// <exception cref="ArgumentNullException">Thrown if required parameters are null.</exception>
     public EncryptedSerializer(
         ISerializer innerSerializer,
         IEncryptionProvider encryptionProvider,
         ILogger logger,
         bool skipSmallObjects = false,
-        int encryptionThreshold = 100) // Default to 100 bytes - usually encrypt almost everything
+        int encryptionThreshold = 100,
+        bool allowPlaintextFallbackForSmallObjects = false) // Default to encrypt almost everything
     {
         _innerSerializer = innerSerializer ?? throw new ArgumentNullException(nameof(innerSerializer));
         _encryptor = encryptionProvider?.GetEncryptor() ?? throw new ArgumentNullException(nameof(encryptionProvider));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _skipSmallObjects = skipSmallObjects;
         _encryptionThreshold = encryptionThreshold;
+        _allowPlaintextFallbackForSmallObjects = allowPlaintextFallbackForSmallObjects;
 
-        LogEncryptedSerializerInitialized(_logger, _skipSmallObjects, _encryptionThreshold);
+        LogEncryptedSerializerInitialized(_logger, _skipSmallObjects, _encryptionThreshold, _allowPlaintextFallbackForSmallObjects);
     }
 
     /// <summary>
@@ -97,7 +105,9 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
             var serializedData = serializeResult.Value!;
 
             // Skip encryption for small objects if configured
-            if (_skipSmallObjects && serializedData.Length < _encryptionThreshold)
+            if (_skipSmallObjects &&
+                _allowPlaintextFallbackForSmallObjects &&
+                serializedData.Length < _encryptionThreshold)
             {
                 LogSkippingEncryptionForSmallObject(_logger, typeof(T).Name, serializedData.Length);
 
@@ -259,6 +269,7 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
             ["EncryptionEnabled"] = true,
             ["SkipSmallObjects"] = _skipSmallObjects,
             ["EncryptionThreshold"] = _encryptionThreshold,
+            ["AllowPlaintextFallbackForSmallObjects"] = _allowPlaintextFallbackForSmallObjects,
             ["EncryptorType"] = _encryptor.GetType().Name
         };
 
@@ -269,8 +280,9 @@ public sealed partial class EncryptedSerializer : ISerializer, IDisposable
 
     [LoggerMessage(Level = LogLevel.Information,
         Message =
-            "EncryptedSerializer initialized with SkipSmallObjects: {SkipSmallObjects}, EncryptionThreshold: {EncryptionThreshold} bytes")]
-    static partial void LogEncryptedSerializerInitialized(ILogger logger, bool skipSmallObjects, int encryptionThreshold);
+            "EncryptedSerializer initialized with SkipSmallObjects: {SkipSmallObjects}, EncryptionThreshold: {EncryptionThreshold} bytes, AllowPlaintextFallbackForSmallObjects: {AllowPlaintextFallbackForSmallObjects}")]
+    static partial void LogEncryptedSerializerInitialized(ILogger logger, bool skipSmallObjects, int encryptionThreshold,
+        bool allowPlaintextFallbackForSmallObjects);
 
     [LoggerMessage(Level = LogLevel.Information,
         Message = "Starting serialization and encryption of type {Type}")]
