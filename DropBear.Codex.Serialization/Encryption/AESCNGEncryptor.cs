@@ -136,7 +136,14 @@ public sealed class AESCNGEncryptor : IEncryptor, IDisposable
                     await cryptoStream.FlushFinalBlockAsync(cancellationToken).ConfigureAwait(false);
                 } // cryptoStream and encryptor are disposed here
 
-                var encryptedData = resultStream.ToArray();
+                resultStream.Position = 0;
+                byte[] encryptedData;
+                using (var bufferStream = new System.IO.MemoryStream())
+                {
+                    await resultStream.CopyToAsync(bufferStream, cancellationToken).ConfigureAwait(false);
+                    encryptedData = bufferStream.ToArray();
+                }
+
                 var authenticationTag = ComputeAuthenticationTag(
                     authenticationKey,
                     encryptedKey,
