@@ -23,7 +23,13 @@ public sealed class InputValidatorTests
         isSuccess.Should().BeFalse();
         error.Should().NotBeNull();
         error.Should().BeOfType<UtilityError>();
-        ((UtilityError)error!).Message.Should().Contain("suspicious");
+
+        if (error is not UtilityError utilityError)
+        {
+            throw new InvalidOperationException("Expected error to be of type UtilityError.");
+        }
+
+        utilityError.Message.Should().Contain("suspicious");
     }
 
     [Fact]
