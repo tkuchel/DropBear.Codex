@@ -8,9 +8,7 @@ public sealed class InputValidatorTests
     [Fact]
     public void ValidateSafe_ShouldFlag_SuspiciousPatternsWithoutClaimingTheyAreSafe()
     {
-#pragma warning disable CS0618
-        var result = InputValidator.ValidateSafe("<script>alert(1)</script>", "html");
-#pragma warning restore CS0618
+        var result = InputValidator.Validate("<script>alert(1)</script>", "html");
 
         result.IsSuccess.Should().BeFalse();
         result.Error.Should().NotBeNull();
