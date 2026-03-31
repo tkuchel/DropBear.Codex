@@ -1,3 +1,4 @@
+using DropBear.Codex.Utilities.Errors;
 using DropBear.Codex.Utilities.Validators;
 using FluentAssertions;
 
@@ -12,11 +13,17 @@ public sealed class InputValidatorTests
 
         method.Should().NotBeNull();
 
-        dynamic result = method!.Invoke(null, ["<script>alert(1)</script>", "html"])!;
+        var result = method!.Invoke(null, ["<script>alert(1)</script>", "html"]);
+        result.Should().NotBeNull();
 
-        ((bool)result.IsSuccess).Should().BeFalse();
-        result.Error.Should().NotBeNull();
-        ((string)result.Error!.Message).Should().Contain("suspicious");
+        var resultType = result!.GetType();
+        var isSuccess = (bool?)resultType.GetProperty("IsSuccess")?.GetValue(result);
+        var error = resultType.GetProperty("Error")?.GetValue(result);
+
+        isSuccess.Should().BeFalse();
+        error.Should().NotBeNull();
+        error.Should().BeOfType<UtilityError>();
+        ((UtilityError)error!).Message.Should().Contain("suspicious");
     }
 
     [Fact]

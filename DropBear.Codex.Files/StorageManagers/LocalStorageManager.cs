@@ -138,51 +138,63 @@ public sealed partial class LocalStorageManager : IStorageManager
             }
 
             // Create memory stream with size hint
-            await using var memoryStream = fileInfo.Length <= int.MaxValue
+            var memoryStream = fileInfo.Length <= int.MaxValue
                 ? _memoryStreamManager.GetStream(null, (int)fileInfo.Length)
                 : _memoryStreamManager.GetStream();
+            var disposeMemoryStream = true;
 
-            // Use optimized file options for reading
-            var fileStream = new FileStream(
-                safePath,
-                FileMode.Open,
-                FileAccess.Read,
-                FileShare.Read,
-                BufferSize,
-                FileOptions.Asynchronous | FileOptions.SequentialScan);
-
-            await using (fileStream.ConfigureAwait(false))
+            try
             {
-                // Use ArrayPool for optimal buffer management
-                var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
-                try
+                // Use optimized file options for reading
+                var fileStream = new FileStream(
+                    safePath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read,
+                    BufferSize,
+                    FileOptions.Asynchronous | FileOptions.SequentialScan);
+
+                await using (fileStream.ConfigureAwait(false))
                 {
-                    long totalBytesRead = 0;
-                    int bytesRead;
-                    while ((bytesRead = await fileStream.ReadAsync(
-                               buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                    // Use ArrayPool for optimal buffer management
+                    var buffer = ArrayPool<byte>.Shared.Rent(BufferSize);
+                    try
                     {
-                        totalBytesRead += bytesRead;
-                        if (totalBytesRead > MaxBufferedReadBytes)
+                        long totalBytesRead = 0;
+                        int bytesRead;
+                        while ((bytesRead = await fileStream.ReadAsync(
+                                   buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
                         {
-                            LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
-                            return Result<Stream, StorageError>.Failure(
-                                StorageError.ReadFailed(identifier,
-                                    $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+                            totalBytesRead += bytesRead;
+                            if (totalBytesRead > MaxBufferedReadBytes)
+                            {
+                                LogReadExceededBufferLimit(identifier, totalBytesRead, MaxBufferedReadBytes);
+                                return Result<Stream, StorageError>.Failure(
+                                    StorageError.ReadFailed(identifier,
+                                        $"File exceeds the maximum buffered read size of {MaxBufferedReadBytes} bytes."));
+                            }
+
+                            await memoryStream.WriteAsync(
+                                buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                         }
-
-                        await memoryStream.WriteAsync(
-                            buffer.AsMemory(0, bytesRead), cancellationToken).ConfigureAwait(false);
                     }
-
-                    memoryStream.Position = 0;
-
-                    LogReadSuccessful(identifier);
-                    return Result<Stream, StorageError>.Success(memoryStream);
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                    }
                 }
-                finally
+
+                memoryStream.Position = 0;
+                disposeMemoryStream = false;
+
+                LogReadSuccessful(identifier);
+                return Result<Stream, StorageError>.Success(memoryStream);
+            }
+            finally
+            {
+                if (disposeMemoryStream)
                 {
-                    ArrayPool<byte>.Shared.Return(buffer);
+                    await memoryStream.DisposeAsync().ConfigureAwait(false);
                 }
             }
         }
