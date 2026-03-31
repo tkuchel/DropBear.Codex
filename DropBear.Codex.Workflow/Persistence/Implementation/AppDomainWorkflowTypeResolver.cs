@@ -197,7 +197,6 @@ public sealed partial class AppDomainWorkflowTypeResolver : IWorkflowTypeResolve
         // Only allow workflow-related types from allowed assemblies
         // Types must be in application assemblies or DropBear.Codex assemblies
         Assembly assembly = type.Assembly;
-        string assemblyName = assembly.GetName().Name ?? string.Empty;
 
         // Block all system and Microsoft assemblies
         if (IsSystemAssembly(assembly))
