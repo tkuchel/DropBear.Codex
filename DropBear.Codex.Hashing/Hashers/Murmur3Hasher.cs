@@ -1,6 +1,7 @@
 #region
 
 using System.Buffers;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
@@ -324,7 +325,7 @@ public sealed class Murmur3Hasher : BaseHasher
     private Result<string, HashingError> ComputeHashHex(ReadOnlySpan<byte> data)
     {
         var hashVal = MurmurHash3.Hash32(data, _seed);
-        return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+        return Result<string, HashingError>.Success(hashVal.ToString("x8", CultureInfo.InvariantCulture));
     }
 
     /// <summary>

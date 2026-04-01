@@ -41,12 +41,6 @@
         <!-- Enables optimizations during build -->
         <Deterministic>true</Deterministic>
         <!-- Ensures deterministic builds -->
-        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-        <!-- Optionally ensure warnings are treated as errors -->
-        <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-        <!-- Nullable reference type warnings as errors -->
-        <NoWarn>CS1591</NoWarn>
-        <!-- Suppresses missing XML comments warnings (CS1591) if needed -->
         <!-- Output Options -->
         <OutputType>Library</OutputType>
         <!-- Specifies that the project is a class library -->

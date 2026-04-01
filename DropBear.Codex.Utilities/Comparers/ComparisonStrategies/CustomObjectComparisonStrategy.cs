@@ -26,6 +26,8 @@ public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
     /// <inheritdoc />
     public bool CanCompare(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
+
         // We exclude:
         // 1) Primitive or enum types
         // 2) Strings
@@ -83,7 +85,31 @@ public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
                 totalScore += propertyScore;
                 propertiesCompared++;
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
+            {
+                // Log and skip problematic properties
+                Logger.Warning(ex, "Error comparing property {Property} on type {Type}",
+                    prop.Name, value1.GetType().Name);
+            }
+            catch (MethodAccessException ex)
+            {
+                // Log and skip problematic properties
+                Logger.Warning(ex, "Error comparing property {Property} on type {Type}",
+                    prop.Name, value1.GetType().Name);
+            }
+            catch (TargetException ex)
+            {
+                // Log and skip problematic properties
+                Logger.Warning(ex, "Error comparing property {Property} on type {Type}",
+                    prop.Name, value1.GetType().Name);
+            }
+            catch (TargetInvocationException ex)
+            {
+                // Log and skip problematic properties
+                Logger.Warning(ex, "Error comparing property {Property} on type {Type}",
+                    prop.Name, value1.GetType().Name);
+            }
+            catch (TargetParameterCountException ex)
             {
                 // Log and skip problematic properties
                 Logger.Warning(ex, "Error comparing property {Property} on type {Type}",
@@ -121,7 +147,7 @@ public sealed class CustomObjectComparisonStrategy : IComparisonStrategy
 
             // Get only readable public instance properties with no index parameters
             var properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance)
-                .Where(p => p.CanRead && !p.GetIndexParameters().Any())
+                .Where(p => p.CanRead && p.GetIndexParameters().Length == 0)
                 .ToArray();
 
             PropertyCache[type] = properties;

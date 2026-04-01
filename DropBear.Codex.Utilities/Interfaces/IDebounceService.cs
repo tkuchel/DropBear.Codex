@@ -9,17 +9,17 @@ using DropBear.Codex.Utilities.Errors;
 namespace DropBear.Codex.Utilities.Interfaces;
 
 /// <summary>
-///     Interface for a service that manages debounced function or action calls.
+///     Interface for a service that manages debounced operations or action calls.
 /// </summary>
 public interface IDebounceService
 {
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{T, TError}" />.
+    ///     Debounces an operation that returns a <see cref="Result{T, TError}" />.
     /// </summary>
     /// <typeparam name="T">The type of the result value.</typeparam>
     /// <typeparam name="TError">The type of error that can occur.</typeparam>
-    /// <param name="function">The function to execute which returns a <see cref="Result{T, TError}" />.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="operation">The operation to execute which returns a <see cref="Result{T, TError}" />.</param>
+    /// <param name="key">An optional unique identifier for the operation call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
@@ -27,11 +27,11 @@ public interface IDebounceService
     ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
     /// </param>
     /// <returns>
-    ///     A <see cref="Task" /> containing a <see cref="Result{T, TError}" /> with the function result or a debounce
+    ///     A <see cref="Task" /> containing a <see cref="Result{T, TError}" /> with the operation result or a debounce
     ///     error.
     /// </returns>
     Task<Result<T, TError>> DebounceAsync<T, TError>(
-        Func<Task<Result<T, TError>>> function,
+        Func<Task<Result<T, TError>>> operation,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
@@ -40,11 +40,11 @@ public interface IDebounceService
         where TError : ResultError;
 
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{T, DebounceError}" />.
+    ///     Debounces an operation that returns a <see cref="Result{T, DebounceError}" />.
     /// </summary>
     /// <typeparam name="T">The type of the result value.</typeparam>
-    /// <param name="function">The function to execute which returns a <see cref="Result{T, DebounceError}" />.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="operation">The operation to execute which returns a <see cref="Result{T, DebounceError}" />.</param>
+    /// <param name="key">An optional unique identifier for the operation call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
@@ -52,11 +52,11 @@ public interface IDebounceService
     ///     Automatically filled by the compiler to provide the line number in the source code of the caller.
     /// </param>
     /// <returns>
-    ///     A <see cref="Task" /> containing a <see cref="Result{T, DebounceError}" /> with the function result or a
+    ///     A <see cref="Task" /> containing a <see cref="Result{T, DebounceError}" /> with the operation result or a
     ///     debounce error.
     /// </returns>
     Task<Result<T, DebounceError>> DebounceAsync<T>(
-        Func<Task<Result<T, DebounceError>>> function,
+        Func<Task<Result<T, DebounceError>>> operation,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
@@ -87,10 +87,10 @@ public interface IDebounceService
         [CallerLineNumber] int lineNumber = 0);
 
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{Unit, DebounceError}" />.
+    ///     Debounces an operation that returns a <see cref="Result{Unit, DebounceError}" />.
     /// </summary>
-    /// <param name="function">The asynchronous function to execute.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="operation">The asynchronous operation to execute.</param>
+    /// <param name="key">An optional unique identifier for the operation call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
@@ -102,7 +102,7 @@ public interface IDebounceService
     ///     error.
     /// </returns>
     Task<Result<Unit, DebounceError>> DebounceAsync(
-        Func<Task<Result<Unit, DebounceError>>> function,
+        Func<Task<Result<Unit, DebounceError>>> operation,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",

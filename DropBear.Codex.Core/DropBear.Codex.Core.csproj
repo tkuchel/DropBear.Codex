@@ -27,22 +27,8 @@
         <RootNamespace>DropBear.Codex.Core</RootNamespace>
         <Optimize>true</Optimize>
         <Deterministic>true</Deterministic>
-        <!-- FIXED: Enable ContinuousIntegrationBuild in CI environments -->
-        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
-        <!-- Quality Settings -->
-        <!-- FIXED: Only enable TreatWarningsAsErrors in Release builds -->
-        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
-        <!-- FIXED: Specific nullable warnings as errors -->
-        <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-        <!-- FIXED: Only suppress CS1591 in Debug builds while documentation is being completed -->
-        <NoWarn Condition="'$(Configuration)' == 'Debug'">CS1591</NoWarn>
-        <!-- In Release, all XML documentation must be present -->
+        <EnableStrictDropBearWarnings>true</EnableStrictDropBearWarnings>
         <!-- Code Analysis -->
-        <!-- FIXED: Enable comprehensive code analysis -->
-        <EnableNETAnalyzers>true</EnableNETAnalyzers>
-        <AnalysisLevel>latest-all</AnalysisLevel>
-        <AnalysisMode>AllEnabledByDefault</AnalysisMode>
-        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
         <!-- Output Options -->
         <OutputType>Library</OutputType>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>

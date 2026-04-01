@@ -26,9 +26,6 @@
         <RootNamespace>DropBear.Codex.Tasks</RootNamespace>
         <Optimize>true</Optimize>
         <Deterministic>true</Deterministic>
-        <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-        <WarningsAsErrors>CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
-        <NoWarn>CS1591</NoWarn>
         <OutputType>Library</OutputType>
         <GenerateDocumentationFile>true</GenerateDocumentationFile>
         <DebugType>embedded</DebugType>

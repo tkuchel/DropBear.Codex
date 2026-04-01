@@ -1,6 +1,7 @@
 #region
 
 using System.Buffers;
+using System.Globalization;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Hashing.Errors;
@@ -20,12 +21,12 @@ public abstract class BaseHasher : IHasher
     /// <summary>
     ///     Algorithm name for the specific hasher - used in logging.
     /// </summary>
-    protected readonly string AlgorithmName;
+    protected string AlgorithmName { get; }
 
     /// <summary>
     ///     Logger for the specific hasher implementation.
     /// </summary>
-    protected readonly ILogger Logger;
+    protected ILogger Logger { get; }
 
     /// <summary>
     ///     Initializes a new instance of <see cref="BaseHasher" /> with a logger and algorithm name.
@@ -164,7 +165,7 @@ public abstract class BaseHasher : IHasher
     /// </summary>
     /// <param name="minSize">Minimum required size of the buffer.</param>
     /// <returns>A byte array of at least <paramref name="minSize" /> length.</returns>
-    protected byte[] GetTemporaryBuffer(int minSize)
+    protected static byte[] GetTemporaryBuffer(int minSize)
     {
         // For smaller arrays, use ArrayPool
         return ArrayPool<byte>.Shared.Rent(minSize);
@@ -174,12 +175,9 @@ public abstract class BaseHasher : IHasher
     ///     Returns a borrowed buffer to the ArrayPool.
     /// </summary>
     /// <param name="buffer">The buffer to return.</param>
-    protected void ReturnTemporaryBuffer(byte[] buffer)
+    protected static void ReturnTemporaryBuffer(byte[] buffer)
     {
-        if (buffer != null)
-        {
-            ArrayPool<byte>.Shared.Return(buffer);
-        }
+        ArrayPool<byte>.Shared.Return(buffer);
     }
 
     /// <summary>
@@ -213,6 +211,8 @@ public abstract class BaseHasher : IHasher
     /// <returns>Byte array representation.</returns>
     protected static byte[] HexToBytes(string hex)
     {
+        ArgumentNullException.ThrowIfNull(hex);
+
         if (hex.Length % 2 != 0)
         {
             throw new ArgumentException("Hex string must have even length", nameof(hex));
@@ -221,7 +221,7 @@ public abstract class BaseHasher : IHasher
         var bytes = new byte[hex.Length / 2];
         for (var i = 0; i < bytes.Length; i++)
         {
-            bytes[i] = Convert.ToByte(hex.Substring(i * 2, 2), 16);
+            bytes[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         }
 
         return bytes;

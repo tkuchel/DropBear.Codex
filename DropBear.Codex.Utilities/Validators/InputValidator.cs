@@ -104,6 +104,10 @@ public static partial class InputValidator
     /// <summary>
     ///     Validates a URL format.
     /// </summary>
+    [SuppressMessage(
+        "Design",
+        "CA1054:URI-like parameters should not be strings",
+        Justification = "This overload validates raw user input before URI construction. A Uri overload is also provided for callers that already have a parsed URI.")]
     public static Result<Uri, UtilityError> ValidateUrl(
         string url,
         UriKind uriKind = UriKind.Absolute,
@@ -142,6 +146,37 @@ public static partial class InputValidator
         }
 
         return Result<Uri, UtilityError>.Success(uri);
+    }
+
+    /// <summary>
+    ///     Validates a URL object and optional scheme restrictions.
+    /// </summary>
+    public static Result<Uri, UtilityError> ValidateUrl(
+        Uri url,
+        string[]? allowedSchemes = null)
+    {
+        ArgumentNullException.ThrowIfNull(url);
+
+        if (!url.IsAbsoluteUri)
+        {
+            return Result<Uri, UtilityError>.Failure(
+                UtilityError.ValidationFailed("Invalid URL format"));
+        }
+
+        if (allowedSchemes is { Length: > 0 })
+        {
+            var isAllowed = Array.Exists(allowedSchemes, scheme =>
+                string.Equals(url.Scheme, scheme, StringComparison.OrdinalIgnoreCase));
+
+            if (!isAllowed)
+            {
+                return Result<Uri, UtilityError>.Failure(
+                    UtilityError.ValidationFailed(
+                        $"URL scheme '{url.Scheme}' is not allowed. Allowed schemes: {string.Join(", ", allowedSchemes)}"));
+            }
+        }
+
+        return Result<Uri, UtilityError>.Success(url);
     }
 
     /// <summary>
@@ -316,7 +351,7 @@ public static partial class InputValidator
 
         // Check for path traversal patterns
         if (filePath.Contains("..", StringComparison.Ordinal) ||
-            filePath.Contains("~", StringComparison.Ordinal))
+            filePath.Contains('~', StringComparison.Ordinal))
         {
             return Result<string, UtilityError>.Failure(
                 UtilityError.ValidationFailed("File path contains potentially unsafe traversal patterns"));
@@ -336,7 +371,22 @@ public static partial class InputValidator
                         UtilityError.ValidationFailed("File path attempts to access outside allowed directory"));
                 }
             }
-            catch (Exception ex)
+            catch (ArgumentException ex)
+            {
+                return Result<string, UtilityError>.Failure(
+                    UtilityError.ValidationFailed($"Invalid file path: {ex.Message}"));
+            }
+            catch (IOException ex)
+            {
+                return Result<string, UtilityError>.Failure(
+                    UtilityError.ValidationFailed($"Invalid file path: {ex.Message}"));
+            }
+            catch (NotSupportedException ex)
+            {
+                return Result<string, UtilityError>.Failure(
+                    UtilityError.ValidationFailed($"Invalid file path: {ex.Message}"));
+            }
+            catch (System.Security.SecurityException ex)
             {
                 return Result<string, UtilityError>.Failure(
                     UtilityError.ValidationFailed($"Invalid file path: {ex.Message}"));

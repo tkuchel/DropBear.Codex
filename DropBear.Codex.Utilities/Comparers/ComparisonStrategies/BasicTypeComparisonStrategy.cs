@@ -23,6 +23,8 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     /// <inheritdoc />
     public bool CanCompare(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
+
         return type.IsPrimitive || type.IsEnum || type == typeof(string) ||
                type == typeof(Guid) || type == typeof(DateTime) || type == typeof(DateTimeOffset) ||
                type == typeof(TimeSpan) || type == typeof(decimal);
@@ -65,7 +67,7 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     /// <param name="str2">Second string to compare</param>
     /// <returns>Confidence score from 0.0 to 1.0</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private double CompareStrings(string str1, string str2)
+    private static double CompareStrings(string str1, string str2)
     {
         // Fast path for exact matches
         if (string.Equals(str1, str2, StringComparison.Ordinal))
@@ -102,7 +104,7 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     ///     Compares integer values by calculating the relative difference.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private double CompareIntegers(int i1, int i2)
+    private static double CompareIntegers(int i1, int i2)
     {
         if (i1 == i2)
         {
@@ -127,7 +129,7 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     ///     Compares double values with special handling for near-zero values.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private double CompareDoubles(double d1, double d2)
+    private static double CompareDoubles(double d1, double d2)
     {
         // Direct equality check for efficiency
         if (Math.Abs(d1 - d2) < double.Epsilon)
@@ -154,7 +156,7 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     ///     Compares decimal values with high precision.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private double CompareDecimals(decimal m1, decimal m2)
+    private static double CompareDecimals(decimal m1, decimal m2)
     {
         if (m1 == m2)
         {
@@ -180,7 +182,7 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     ///     Compares DateTime values with special handling for different precisions.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private double CompareDateTimes(DateTime dt1, DateTime dt2)
+    private static double CompareDateTimes(DateTime dt1, DateTime dt2)
     {
         // Exact match
         if (dt1 == dt2)
@@ -228,7 +230,7 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
     /// <summary>
     ///     Generic comparison for IComparable types.
     /// </summary>
-    private double CompareNumeric(IComparable comparable1, object value2)
+    private static double CompareNumeric(IComparable comparable1, object value2)
     {
         // Direct equality check
         if (comparable1.Equals(value2))
@@ -261,7 +263,17 @@ public sealed class BasicTypeComparisonStrategy : IComparisonStrategy
             // Return similarity score
             return Math.Max(0.0, 1.0 - (difference / average));
         }
-        catch
+        catch (InvalidCastException)
+        {
+            // If numeric conversion fails, fall back to binary comparison
+            return 0.0;
+        }
+        catch (FormatException)
+        {
+            // If numeric conversion fails, fall back to binary comparison
+            return 0.0;
+        }
+        catch (OverflowException)
         {
             // If numeric conversion fails, fall back to binary comparison
             return 0.0;

@@ -337,7 +337,7 @@ public static class HashingHelper
         try
         {
             int bytesRead;
-            while ((bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)
+            while ((bytesRead = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken)
                        .ConfigureAwait(false)) > 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();

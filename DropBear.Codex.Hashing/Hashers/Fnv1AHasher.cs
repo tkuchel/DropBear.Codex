@@ -1,6 +1,7 @@
 #region
 
 using System.Buffers;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
@@ -124,12 +125,12 @@ public sealed class Fnv1AHasher : BaseHasher
                         if (_use64Bit)
                         {
                             var hashVal = Fnv1a.Hash64(bufferSpan);
-                            return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                            return Result<string, HashingError>.Success(hashVal.ToString("x16", CultureInfo.InvariantCulture));
                         }
                         else
                         {
                             var hashVal = Fnv1a.Hash32(bufferSpan);
-                            return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                            return Result<string, HashingError>.Success(hashVal.ToString("x8", CultureInfo.InvariantCulture));
                         }
                     }
                     finally
@@ -178,12 +179,12 @@ public sealed class Fnv1AHasher : BaseHasher
                 if (_use64Bit)
                 {
                     var hashVal = Fnv1a.Hash64(buffer);
-                    return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                    return Result<string, HashingError>.Success(hashVal.ToString("x16", CultureInfo.InvariantCulture));
                 }
                 else
                 {
                     var hashVal = Fnv1a.Hash32(buffer);
-                    return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                    return Result<string, HashingError>.Success(hashVal.ToString("x8", CultureInfo.InvariantCulture));
                 }
             }
             else
@@ -197,12 +198,12 @@ public sealed class Fnv1AHasher : BaseHasher
                     if (_use64Bit)
                     {
                         var hashVal = Fnv1a.Hash64(bufferSpan);
-                        return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                        return Result<string, HashingError>.Success(hashVal.ToString("x16", CultureInfo.InvariantCulture));
                     }
                     else
                     {
                         var hashVal = Fnv1a.Hash32(bufferSpan);
-                        return Result<string, HashingError>.Success(hashVal.ToString("x8"));
+                        return Result<string, HashingError>.Success(hashVal.ToString("x8", CultureInfo.InvariantCulture));
                     }
                 }
                 finally

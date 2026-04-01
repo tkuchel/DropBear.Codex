@@ -9,6 +9,42 @@ namespace DropBear.Codex.Utilities.Extensions;
 /// </summary>
 public static class LoggerExtensions
 {
+    private static readonly Action<ILogger, string, string, Exception?> TraceWithCallerMessage =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Trace,
+            new EventId(0, nameof(LogWithCaller)),
+            "[{CallerInfo}] {Message}");
+
+    private static readonly Action<ILogger, string, string, Exception?> DebugWithCallerMessage =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Debug,
+            new EventId(0, nameof(LogWithCaller)),
+            "[{CallerInfo}] {Message}");
+
+    private static readonly Action<ILogger, string, string, Exception?> InformationWithCallerMessage =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Information,
+            new EventId(0, nameof(LogWithCaller)),
+            "[{CallerInfo}] {Message}");
+
+    private static readonly Action<ILogger, string, string, Exception?> WarningWithCallerMessage =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Warning,
+            new EventId(0, nameof(LogWithCaller)),
+            "[{CallerInfo}] {Message}");
+
+    private static readonly Action<ILogger, string, string, Exception?> ErrorWithCallerMessage =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Error,
+            new EventId(0, nameof(LogWithCaller)),
+            "[{CallerInfo}] {Message}");
+
+    private static readonly Action<ILogger, string, string, Exception?> CriticalWithCallerMessage =
+        LoggerMessage.Define<string, string>(
+            LogLevel.Critical,
+            new EventId(0, nameof(LogWithCaller)),
+            "[{CallerInfo}] {Message}");
+
     /// <summary>
     ///     Logs a message with automatic caller information included for enhanced diagnostics.
     /// </summary>
@@ -51,10 +87,39 @@ public static class LoggerExtensions
         [CallerFilePath] string sourceFilePath = "",
         [CallerLineNumber] int sourceLineNumber = 0)
     {
+        ArgumentNullException.ThrowIfNull(logger);
+
+        if (!logger.IsEnabled(logLevel))
+        {
+            return;
+        }
+
         var callerInfo = CallerLogger.GetCallerInfo(memberName, sourceFilePath, sourceLineNumber);
-        logger.Log(
-            logLevel,
-            exception,
-            $"[{callerInfo}] {state}");
+        var message = state?.ToString() ?? string.Empty;
+
+        switch (logLevel)
+        {
+            case LogLevel.Trace:
+                TraceWithCallerMessage(logger, callerInfo, message, exception);
+                break;
+            case LogLevel.Debug:
+                DebugWithCallerMessage(logger, callerInfo, message, exception);
+                break;
+            case LogLevel.Information:
+                InformationWithCallerMessage(logger, callerInfo, message, exception);
+                break;
+            case LogLevel.Warning:
+                WarningWithCallerMessage(logger, callerInfo, message, exception);
+                break;
+            case LogLevel.Error:
+                ErrorWithCallerMessage(logger, callerInfo, message, exception);
+                break;
+            case LogLevel.Critical:
+                CriticalWithCallerMessage(logger, callerInfo, message, exception);
+                break;
+            case LogLevel.None:
+            default:
+                break;
+        }
     }
 }

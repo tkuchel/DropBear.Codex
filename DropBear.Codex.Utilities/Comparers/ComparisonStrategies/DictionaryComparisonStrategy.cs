@@ -85,7 +85,22 @@ public sealed class DictionaryComparisonStrategy : IComparisonStrategy
 
             return keysCompared > 0 ? totalScore / keysCompared : 0;
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
+        {
+            Logger.Warning(ex, "Error during dictionary comparison");
+            return 0;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Warning(ex, "Error during dictionary comparison");
+            return 0;
+        }
+        catch (KeyNotFoundException ex)
+        {
+            Logger.Warning(ex, "Error during dictionary comparison");
+            return 0;
+        }
+        catch (NotSupportedException ex)
         {
             Logger.Warning(ex, "Error during dictionary comparison");
             return 0;

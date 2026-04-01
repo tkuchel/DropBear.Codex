@@ -53,7 +53,22 @@ public static class ReadOnlyExtensions
             var readOnlyInstance = Activator.CreateInstance(readOnlyType, obj);
             return Result<T, ReadOnlyConversionError>.Success((T)readOnlyInstance!);
         }
-        catch (Exception ex)
+        catch (MissingMethodException ex)
+        {
+            return Result<T, ReadOnlyConversionError>.Failure(
+                new ReadOnlyConversionError("Failed to create read-only version.", ex));
+        }
+        catch (MemberAccessException ex)
+        {
+            return Result<T, ReadOnlyConversionError>.Failure(
+                new ReadOnlyConversionError("Failed to create read-only version.", ex));
+        }
+        catch (TargetInvocationException ex)
+        {
+            return Result<T, ReadOnlyConversionError>.Failure(
+                new ReadOnlyConversionError("Failed to create read-only version.", ex));
+        }
+        catch (TypeLoadException ex)
         {
             return Result<T, ReadOnlyConversionError>.Failure(
                 new ReadOnlyConversionError("Failed to create read-only version.", ex));

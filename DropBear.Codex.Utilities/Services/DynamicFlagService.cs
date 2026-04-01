@@ -394,7 +394,13 @@ public class DynamicFlagService : IDynamicFlagService
             Logger.Information("Flag data serialized successfully");
             return Result<string, FlagServiceError>.Success(serialized);
         }
-        catch (Exception ex)
+        catch (JsonException ex)
+        {
+            Logger.Error(ex, "Error serializing flag data");
+            return Result<string, FlagServiceError>.Failure(
+                new FlagServiceError($"Failed to serialize flag data: {ex.Message}"), ex);
+        }
+        catch (NotSupportedException ex)
         {
             Logger.Error(ex, "Error serializing flag data");
             return Result<string, FlagServiceError>.Failure(
@@ -443,7 +449,13 @@ public class DynamicFlagService : IDynamicFlagService
             Logger.Information("Flag data deserialized successfully");
             return Result<Unit, FlagServiceError>.Success(Unit.Value);
         }
-        catch (Exception ex)
+        catch (JsonException ex)
+        {
+            Logger.Error(ex, "Error deserializing flag data");
+            return Result<Unit, FlagServiceError>.Failure(
+                new FlagServiceError($"Failed to deserialize flag data: {ex.Message}"), ex);
+        }
+        catch (NotSupportedException ex)
         {
             Logger.Error(ex, "Error deserializing flag data");
             return Result<Unit, FlagServiceError>.Failure(
@@ -457,34 +469,25 @@ public class DynamicFlagService : IDynamicFlagService
     /// <returns>A Result containing a dictionary with flag names as keys and their states as values, or an error.</returns>
     public Result<IDictionary<string, bool>, FlagServiceError> GetAllFlags()
     {
-        try
-        {
-            var flags = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+        var flags = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var flagName in _flagMap.Keys)
+        foreach (var flagName in _flagMap.Keys)
+        {
+            var result = IsFlagSet(flagName);
+            if (result.IsSuccess)
             {
-                var result = IsFlagSet(flagName);
-                if (result.IsSuccess)
-                {
-                    flags[flagName] = result.Value;
-                }
-                else
-                {
-                    // This shouldn't happen since we're iterating over existing flags,
-                    // but handle it gracefully anyway
-                    Logger.Warning("Error getting state for flag '{FlagName}': {Error}",
-                        flagName, result.Error?.Message);
-                }
+                flags[flagName] = result.Value;
             }
+            else
+            {
+                // This shouldn't happen since we're iterating over existing flags,
+                // but handle it gracefully anyway
+                Logger.Warning("Error getting state for flag '{FlagName}': {Error}",
+                    flagName, result.Error?.Message);
+            }
+        }
 
-            return Result<IDictionary<string, bool>, FlagServiceError>.Success(flags);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error getting all flags");
-            return Result<IDictionary<string, bool>, FlagServiceError>.Failure(
-                new FlagServiceError($"Failed to get all flags: {ex.Message}"), ex);
-        }
+        return Result<IDictionary<string, bool>, FlagServiceError>.Success(flags);
     }
 
     /// <summary>
@@ -493,22 +496,13 @@ public class DynamicFlagService : IDynamicFlagService
     /// <returns>A Result indicating success or an error.</returns>
     public Result<Unit, FlagServiceError> ClearAllFlags()
     {
-        try
-        {
-            _flagMap.Clear();
-            _flags = 0;
-            _nextFreeBit = 0;
-            _cache.Clear();
+        _flagMap.Clear();
+        _flags = 0;
+        _nextFreeBit = 0;
+        _cache.Clear();
 
-            Logger.Information("All flags cleared");
-            return Result<Unit, FlagServiceError>.Success(Unit.Value);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error clearing all flags");
-            return Result<Unit, FlagServiceError>.Failure(
-                new FlagServiceError($"Failed to clear all flags: {ex.Message}"), ex);
-        }
+        Logger.Information("All flags cleared");
+        return Result<Unit, FlagServiceError>.Success(Unit.Value);
     }
 
     /// <summary>

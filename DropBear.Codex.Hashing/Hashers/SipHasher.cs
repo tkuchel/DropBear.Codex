@@ -1,6 +1,7 @@
 #region
 
 using System.Buffers;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
@@ -139,7 +140,7 @@ public sealed class SipHasher : BaseHasher, IDisposable
                         var bufferSpan = buffer.AsSpan(0, byteCount);
                         Encoding.UTF8.GetBytes(input, bufferSpan);
                         var hashVal = SipHash24.Hash64(bufferSpan, _key);
-                        return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                        return Result<string, HashingError>.Success(hashVal.ToString("x16", CultureInfo.InvariantCulture));
                     }
                     finally
                     {
@@ -183,7 +184,7 @@ public sealed class SipHasher : BaseHasher, IDisposable
                 Span<byte> buffer = stackalloc byte[byteCount];
                 Encoding.UTF8.GetBytes(input, buffer);
                 var hashVal = SipHash24.Hash64(buffer, _key);
-                return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                return Result<string, HashingError>.Success(hashVal.ToString("x16", CultureInfo.InvariantCulture));
             }
             else
             {
@@ -193,7 +194,7 @@ public sealed class SipHasher : BaseHasher, IDisposable
                     var bufferSpan = buffer.AsSpan(0, byteCount);
                     Encoding.UTF8.GetBytes(input, bufferSpan);
                     var hashVal = SipHash24.Hash64(bufferSpan, _key);
-                    return Result<string, HashingError>.Success(hashVal.ToString("x16"));
+                    return Result<string, HashingError>.Success(hashVal.ToString("x16", CultureInfo.InvariantCulture));
                 }
                 finally
                 {

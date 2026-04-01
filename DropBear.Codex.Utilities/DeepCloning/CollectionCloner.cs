@@ -42,6 +42,10 @@ public static class CollectionCloner
         int currentDepth = 0,
         int maxDepth = 32)
     {
+        ArgumentNullException.ThrowIfNull(collection);
+        ArgumentNullException.ThrowIfNull(collectionType);
+        ArgumentNullException.ThrowIfNull(track);
+
         if (currentDepth >= maxDepth)
         {
             Logger.Warning("Maximum cloning depth reached for collection of type {Type}", collectionType.Name);
@@ -122,6 +126,10 @@ public static class CollectionCloner
         int currentDepth = 0,
         int maxDepth = 32)
     {
+        ArgumentNullException.ThrowIfNull(array);
+        ArgumentNullException.ThrowIfNull(arrayType);
+        ArgumentNullException.ThrowIfNull(track);
+
         if (currentDepth >= maxDepth)
         {
             Logger.Warning("Maximum cloning depth reached for array of type {Type}", arrayType.Name);
@@ -169,6 +177,8 @@ public static class CollectionCloner
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool IsImmutableCollection(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
+
         // Check namespace for System.Collections.Immutable
         if (type.Namespace?.StartsWith("System.Collections.Immutable", StringComparison.OrdinalIgnoreCase) == true)
         {
@@ -198,6 +208,10 @@ public static class CollectionCloner
         int currentDepth = 0,
         int maxDepth = 32)
     {
+        ArgumentNullException.ThrowIfNull(collection);
+        ArgumentNullException.ThrowIfNull(collectionType);
+        ArgumentNullException.ThrowIfNull(track);
+
         if (currentDepth >= maxDepth)
         {
             Logger.Warning("Maximum cloning depth reached for immutable collection of type {Type}",
@@ -243,6 +257,8 @@ public static class CollectionCloner
     /// <returns>An expression that represents the new instance.</returns>
     public static Expression CreateNewInstanceExpression(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
+
         // If it's an interface or abstract class, get a concrete type
         var concreteType = type.IsInterface || type.IsAbstract
             ? GetConcreteType(type)

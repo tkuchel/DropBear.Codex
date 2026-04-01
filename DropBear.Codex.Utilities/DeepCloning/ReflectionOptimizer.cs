@@ -148,6 +148,7 @@ public static class ReflectionOptimizer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static object? GetDefaultValue(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
         return type.IsValueType ? Activator.CreateInstance(type) : null;
     }
 
@@ -159,6 +160,8 @@ public static class ReflectionOptimizer
     /// <exception cref="MissingMethodException">Thrown when the type does not have a parameterless constructor.</exception>
     public static object CreateInstance(Type type)
     {
+        ArgumentNullException.ThrowIfNull(type);
+
         if (!HasParameterlessConstructor(type))
         {
             throw new MissingMethodException($"Type {type.FullName} does not have a parameterless constructor.");

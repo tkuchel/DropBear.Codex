@@ -4,9 +4,7 @@ using System.Buffers;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
-using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
-using Serilog;
 
 #endregion
 
@@ -18,8 +16,6 @@ namespace DropBear.Codex.Utilities.Converters;
 /// </summary>
 public static class BinaryAndHexConverter
 {
-    private static readonly ILogger Logger = LoggerFactory.Logger.ForContext(typeof(BinaryAndHexConverter));
-
     // Table for valid hex characters using SearchValues<char> for optimized lookup
     private static readonly SearchValues<char> ValidHexChars = SearchValues.Create("0123456789ABCDEFabcdef");
 
@@ -35,48 +31,39 @@ public static class BinaryAndHexConverter
             return Result<string, BinaryConversionError>.Success(string.Empty);
         }
 
+        // Pre-calculate output size
+        var charCount = value.Length;
+        var outputSize = charCount * 8;
+
+        // For small strings, use stack allocation; for larger ones use pooled array
+        char[]? rentedArray = null;
+        var result = outputSize <= 1024
+            ? stackalloc char[outputSize]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(outputSize)).AsSpan(0, outputSize);
+
         try
         {
-            // Pre-calculate output size
-            var charCount = value.Length;
-            var outputSize = charCount * 8;
+            var bytes = Encoding.UTF8.GetBytes(value);
+            var position = 0;
 
-            // For small strings, use stack allocation; for larger ones use pooled array
-            char[]? rentedArray = null;
-            var result = outputSize <= 1024
-                ? stackalloc char[outputSize]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(outputSize)).AsSpan(0, outputSize);
-
-            try
+            foreach (var b in bytes)
             {
-                var bytes = Encoding.UTF8.GetBytes(value);
-                var position = 0;
-
-                foreach (var b in bytes)
+                // Convert each byte to 8 bits
+                for (var bit = 7; bit >= 0; bit--)
                 {
-                    // Convert each byte to 8 bits
-                    for (var bit = 7; bit >= 0; bit--)
-                    {
-                        result[position++] = ((b >> bit) & 1) == 1 ? '1' : '0';
-                    }
-                }
-
-                return Result<string, BinaryConversionError>.Success(new string(result.Slice(0, position)));
-            }
-            finally
-            {
-                // Return the rented array to the pool if we used one
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
+                    result[position++] = ((b >> bit) & 1) == 1 ? '1' : '0';
                 }
             }
+
+            return Result<string, BinaryConversionError>.Success(new string(result.Slice(0, position)));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error converting string to binary");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert string to binary: {ex.Message}"), ex);
+            // Return the rented array to the pool if we used one
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -98,41 +85,32 @@ public static class BinaryAndHexConverter
                 new BinaryConversionError("Binary string is not valid. Length must be a multiple of 8."));
         }
 
-        try
+        // Calculate output size (1 byte per 8 binary digits)
+        var byteCount = value.Length / 8;
+        var bytes = new byte[byteCount];
+
+        // Convert each 8-bit sequence to a byte
+        for (var i = 0; i < byteCount; i++)
         {
-            // Calculate output size (1 byte per 8 binary digits)
-            var byteCount = value.Length / 8;
-            var bytes = new byte[byteCount];
+            var byteChars = value.Slice(i * 8, 8);
 
-            // Convert each 8-bit sequence to a byte
-            for (var i = 0; i < byteCount; i++)
+            // Validate binary chars
+            for (var j = 0; j < 8; j++)
             {
-                var byteChars = value.Slice(i * 8, 8);
-
-                // Validate binary chars
-                for (var j = 0; j < 8; j++)
+                if (byteChars[j] != '0' && byteChars[j] != '1')
                 {
-                    if (byteChars[j] != '0' && byteChars[j] != '1')
-                    {
-                        return Result<string, BinaryConversionError>.Failure(
-                            new BinaryConversionError("Invalid binary character encountered."));
-                    }
+                    return Result<string, BinaryConversionError>.Failure(
+                        new BinaryConversionError("Invalid binary character encountered."));
                 }
-
-                // Parse the 8-bit sequence
-                bytes[i] = (byte)Convert.ToInt32(new string(byteChars), 2);
             }
 
-            // Convert bytes back to string
-            var result = Encoding.UTF8.GetString(bytes);
-            return Result<string, BinaryConversionError>.Success(result);
+            // Parse the 8-bit sequence
+            bytes[i] = (byte)Convert.ToInt32(new string(byteChars), 2);
         }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error converting binary to string");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert binary to string: {ex.Message}"), ex);
-        }
+
+        // Convert bytes back to string
+        var result = Encoding.UTF8.GetString(bytes);
+        return Result<string, BinaryConversionError>.Success(result);
     }
 
     /// <summary>
@@ -154,56 +132,47 @@ public static class BinaryAndHexConverter
                 new BinaryConversionError("Binary string length must be a multiple of 4 for hex conversion."));
         }
 
+        // Calculate output size (1 hex char per 4 binary digits)
+        var hexLength = value.Length / 4;
+
+        // Use stack allocation for small outputs, pooled array for larger ones
+        char[]? rentedArray = null;
+        var result = hexLength <= 1024
+            ? stackalloc char[hexLength]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(hexLength)).AsSpan(0, hexLength);
+
         try
         {
-            // Calculate output size (1 hex char per 4 binary digits)
-            var hexLength = value.Length / 4;
-
-            // Use stack allocation for small outputs, pooled array for larger ones
-            char[]? rentedArray = null;
-            var result = hexLength <= 1024
-                ? stackalloc char[hexLength]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(hexLength)).AsSpan(0, hexLength);
-
-            try
+            // Process 4 binary digits at a time
+            for (var i = 0; i < value.Length; i += 4)
             {
-                // Process 4 binary digits at a time
-                for (var i = 0; i < value.Length; i += 4)
-                {
-                    var chunk = value.Slice(i, 4);
+                var chunk = value.Slice(i, 4);
 
-                    // Validate chunk contains only 0 and 1
-                    for (var j = 0; j < 4; j++)
+                // Validate chunk contains only 0 and 1
+                for (var j = 0; j < 4; j++)
+                {
+                    if (chunk[j] != '0' && chunk[j] != '1')
                     {
-                        if (chunk[j] != '0' && chunk[j] != '1')
-                        {
-                            return Result<string, BinaryConversionError>.Failure(
-                                new BinaryConversionError("Invalid binary character encountered."));
-                        }
+                        return Result<string, BinaryConversionError>.Failure(
+                            new BinaryConversionError("Invalid binary character encountered."));
                     }
-
-                    // Convert 4 binary digits to hex via arithmetic (avoids string allocation)
-                    int nibble = ((chunk[0] - '0') << 3) | ((chunk[1] - '0') << 2) |
-                                 ((chunk[2] - '0') << 1) | (chunk[3] - '0');
-                    result[i / 4] = "0123456789ABCDEF"[nibble];
                 }
 
-                return Result<string, BinaryConversionError>.Success(new string(result));
+                // Convert 4 binary digits to hex via arithmetic (avoids string allocation)
+                int nibble = ((chunk[0] - '0') << 3) | ((chunk[1] - '0') << 2) |
+                             ((chunk[2] - '0') << 1) | (chunk[3] - '0');
+                result[i / 4] = "0123456789ABCDEF"[nibble];
             }
-            finally
-            {
-                // Return the rented array to the pool if we used one
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+
+            return Result<string, BinaryConversionError>.Success(new string(result));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error converting binary to hex");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert binary to hex: {ex.Message}"), ex);
+            // Return the rented array to the pool if we used one
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -219,55 +188,46 @@ public static class BinaryAndHexConverter
             return Result<string, BinaryConversionError>.Success(string.Empty);
         }
 
+        // Calculate output size (4 binary digits per hex char)
+        var binaryLength = value.Length * 4;
+
+        // Use stack allocation for small outputs, pooled array for larger ones
+        char[]? rentedArray = null;
+        var result = binaryLength <= 1024
+            ? stackalloc char[binaryLength]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(binaryLength)).AsSpan(0, binaryLength);
+
         try
         {
-            // Calculate output size (4 binary digits per hex char)
-            var binaryLength = value.Length * 4;
-
-            // Use stack allocation for small outputs, pooled array for larger ones
-            char[]? rentedArray = null;
-            var result = binaryLength <= 1024
-                ? stackalloc char[binaryLength]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(binaryLength)).AsSpan(0, binaryLength);
-
-            try
+            // Process each hex character
+            for (var i = 0; i < value.Length; i++)
             {
-                // Process each hex character
-                for (var i = 0; i < value.Length; i++)
+                var hexChar = char.ToUpperInvariant(value[i]);
+
+                // Validate hex char
+                if (!ValidHexChars.Contains(hexChar))
                 {
-                    var hexChar = char.ToUpperInvariant(value[i]);
-
-                    // Validate hex char
-                    if (!ValidHexChars.Contains(hexChar))
-                    {
-                        return Result<string, BinaryConversionError>.Failure(
-                            new BinaryConversionError($"Invalid hexadecimal character: '{hexChar}'"));
-                    }
-
-                    // Convert hex char to 4 binary digits via arithmetic (avoids string allocation)
-                    int nibble = hexChar >= 'A' ? hexChar - 'A' + 10 : hexChar - '0';
-                    result[i * 4] = (nibble & 8) != 0 ? '1' : '0';
-                    result[i * 4 + 1] = (nibble & 4) != 0 ? '1' : '0';
-                    result[i * 4 + 2] = (nibble & 2) != 0 ? '1' : '0';
-                    result[i * 4 + 3] = (nibble & 1) != 0 ? '1' : '0';
+                    return Result<string, BinaryConversionError>.Failure(
+                        new BinaryConversionError($"Invalid hexadecimal character: '{hexChar}'"));
                 }
 
-                return Result<string, BinaryConversionError>.Success(new string(result));
+                // Convert hex char to 4 binary digits via arithmetic (avoids string allocation)
+                int nibble = hexChar >= 'A' ? hexChar - 'A' + 10 : hexChar - '0';
+                result[i * 4] = (nibble & 8) != 0 ? '1' : '0';
+                result[i * 4 + 1] = (nibble & 4) != 0 ? '1' : '0';
+                result[i * 4 + 2] = (nibble & 2) != 0 ? '1' : '0';
+                result[i * 4 + 3] = (nibble & 1) != 0 ? '1' : '0';
             }
-            finally
-            {
-                // Return the rented array to the pool if we used one
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+
+            return Result<string, BinaryConversionError>.Success(new string(result));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error converting hex to binary");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert hex to binary: {ex.Message}"), ex);
+            // Return the rented array to the pool if we used one
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -283,17 +243,8 @@ public static class BinaryAndHexConverter
             return Result<byte[], BinaryConversionError>.Success([]);
         }
 
-        try
-        {
-            var bytes = Encoding.UTF8.GetBytes(value);
-            return Result<byte[], BinaryConversionError>.Success(bytes);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error converting string to binary bytes");
-            return Result<byte[], BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert string to binary bytes: {ex.Message}"), ex);
-        }
+        var bytes = Encoding.UTF8.GetBytes(value);
+        return Result<byte[], BinaryConversionError>.Success(bytes);
     }
 
     /// <summary>
@@ -308,17 +259,8 @@ public static class BinaryAndHexConverter
             return Result<string, BinaryConversionError>.Success(string.Empty);
         }
 
-        try
-        {
-            var result = Encoding.UTF8.GetString(value);
-            return Result<string, BinaryConversionError>.Success(result);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error converting binary bytes to string");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert binary bytes to string: {ex.Message}"), ex);
-        }
+        var result = Encoding.UTF8.GetString(value);
+        return Result<string, BinaryConversionError>.Success(result);
     }
 
     /// <summary>
@@ -333,26 +275,17 @@ public static class BinaryAndHexConverter
             return Result<byte[], BinaryConversionError>.Success([]);
         }
 
-        try
-        {
-            var bytes = Encoding.UTF8.GetBytes(value);
-            var hex = Convert.ToHexString(bytes);
+        var bytes = Encoding.UTF8.GetBytes(value);
+        var hex = Convert.ToHexString(bytes);
 
-            // Convert hex string to byte array (2 hex chars per byte)
-            var result = new byte[hex.Length / 2];
-            for (var i = 0; i < result.Length; i++)
-            {
-                result[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber);
-            }
-
-            return Result<byte[], BinaryConversionError>.Success(result);
-        }
-        catch (Exception ex)
+        // Convert hex string to byte array (2 hex chars per byte)
+        var result = new byte[hex.Length / 2];
+        for (var i = 0; i < result.Length; i++)
         {
-            Logger.Error(ex, "Error converting string to hex bytes");
-            return Result<byte[], BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert string to hex bytes: {ex.Message}"), ex);
+            result[i] = byte.Parse(hex.AsSpan(i * 2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         }
+
+        return Result<byte[], BinaryConversionError>.Success(result);
     }
 
     /// <summary>
@@ -367,17 +300,8 @@ public static class BinaryAndHexConverter
             return Result<string, BinaryConversionError>.Success(string.Empty);
         }
 
-        try
-        {
-            var hex = Convert.ToHexString(value);
-            return Result<string, BinaryConversionError>.Success(hex);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error converting hex bytes to string");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert hex bytes to string: {ex.Message}"), ex);
-        }
+        var hex = Convert.ToHexString(value);
+        return Result<string, BinaryConversionError>.Success(hex);
     }
 
     /// <summary>
@@ -399,37 +323,28 @@ public static class BinaryAndHexConverter
                 new BinaryConversionError("Hex string must have an even length."));
         }
 
-        try
+        // Use a pooled array for better memory efficiency
+        var byteLength = hex.Length / 2;
+        var result = new byte[byteLength];
+
+        for (var i = 0; i < byteLength; i++)
         {
-            // Use a pooled array for better memory efficiency
-            var byteLength = hex.Length / 2;
-            var result = new byte[byteLength];
+            var hexChars = hex.AsSpan(i * 2, 2);
 
-            for (var i = 0; i < byteLength; i++)
+            // Validate hex chars
+            for (var j = 0; j < 2; j++)
             {
-                var hexChars = hex.AsSpan(i * 2, 2);
-
-                // Validate hex chars
-                for (var j = 0; j < 2; j++)
+                if (!ValidHexChars.Contains(hexChars[j]))
                 {
-                    if (!ValidHexChars.Contains(hexChars[j]))
-                    {
-                        return Result<byte[], BinaryConversionError>.Failure(
-                            new BinaryConversionError($"Invalid hexadecimal character: '{hexChars[j]}'"));
-                    }
+                    return Result<byte[], BinaryConversionError>.Failure(
+                        new BinaryConversionError($"Invalid hexadecimal character: '{hexChars[j]}'"));
                 }
-
-                result[i] = byte.Parse(hexChars, NumberStyles.HexNumber);
             }
 
-            return Result<byte[], BinaryConversionError>.Success(result);
+            result[i] = byte.Parse(hexChars, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
         }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error converting hex string to byte array");
-            return Result<byte[], BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert hex string to byte array: {ex.Message}"), ex);
-        }
+
+        return Result<byte[], BinaryConversionError>.Success(result);
     }
 
     /// <summary>
@@ -445,16 +360,7 @@ public static class BinaryAndHexConverter
                 new BinaryConversionError("Byte array cannot be null or empty."));
         }
 
-        try
-        {
-            return Result<string, BinaryConversionError>.Success(Convert.ToHexString(bytes));
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error converting byte array to hex string");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to convert byte array to hex string: {ex.Message}"), ex);
-        }
+        return Result<string, BinaryConversionError>.Success(Convert.ToHexString(bytes));
     }
 
     /// <summary>
@@ -606,35 +512,26 @@ public static class BinaryAndHexConverter
                 new BinaryConversionError("Invalid binary string."));
         }
 
+        char[]? rentedArray = null;
+        var result = binary.Length <= 1024
+            ? stackalloc char[binary.Length]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
+
         try
         {
-            char[]? rentedArray = null;
-            var result = binary.Length <= 1024
-                ? stackalloc char[binary.Length]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
-
-            try
+            for (var i = 0; i < binary.Length; i++)
             {
-                for (var i = 0; i < binary.Length; i++)
-                {
-                    result[i] = binary[i] == '0' ? '1' : '0';
-                }
+                result[i] = binary[i] == '0' ? '1' : '0';
+            }
 
-                return Result<string, BinaryConversionError>.Success(new string(result));
-            }
-            finally
-            {
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+            return Result<string, BinaryConversionError>.Success(new string(result));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error performing bitwise NOT operation");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to perform bitwise NOT: {ex.Message}"), ex);
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -669,40 +566,31 @@ public static class BinaryAndHexConverter
             return Result<string, BinaryConversionError>.Success(new string(binary));
         }
 
+        // Result will be same length, padded with zeros from the right
+        char[]? rentedArray = null;
+        var result = binary.Length <= 1024
+            ? stackalloc char[binary.Length]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
+
         try
         {
-            // Result will be same length, padded with zeros from the right
-            char[]? rentedArray = null;
-            var result = binary.Length <= 1024
-                ? stackalloc char[binary.Length]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
-
-            try
+            // Copy binary content shifted left
+            if (shift < binary.Length)
             {
-                // Copy binary content shifted left
-                if (shift < binary.Length)
-                {
-                    binary.Slice(shift).CopyTo(result);
-                }
-
-                // Fill the remaining positions with zeros
-                result.Slice(binary.Length - shift).Fill('0');
-
-                return Result<string, BinaryConversionError>.Success(new string(result));
+                binary.Slice(shift).CopyTo(result);
             }
-            finally
-            {
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+
+            // Fill the remaining positions with zeros
+            result.Slice(binary.Length - shift).Fill('0');
+
+            return Result<string, BinaryConversionError>.Success(new string(result));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error performing shift left operation");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to perform shift left: {ex.Message}"), ex);
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -737,40 +625,31 @@ public static class BinaryAndHexConverter
             return Result<string, BinaryConversionError>.Success(new string(binary));
         }
 
+        // Result will be same length, padded with zeros from the left
+        char[]? rentedArray = null;
+        var result = binary.Length <= 1024
+            ? stackalloc char[binary.Length]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
+
         try
         {
-            // Result will be same length, padded with zeros from the left
-            char[]? rentedArray = null;
-            var result = binary.Length <= 1024
-                ? stackalloc char[binary.Length]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
+            // Fill the left part with zeros
+            result.Slice(0, Math.Min(shift, binary.Length)).Fill('0');
 
-            try
+            // Copy binary content shifted right if there's room
+            if (shift < binary.Length)
             {
-                // Fill the left part with zeros
-                result.Slice(0, Math.Min(shift, binary.Length)).Fill('0');
-
-                // Copy binary content shifted right if there's room
-                if (shift < binary.Length)
-                {
-                    binary.Slice(0, binary.Length - shift).CopyTo(result.Slice(shift));
-                }
-
-                return Result<string, BinaryConversionError>.Success(new string(result));
+                binary.Slice(0, binary.Length - shift).CopyTo(result.Slice(shift));
             }
-            finally
-            {
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+
+            return Result<string, BinaryConversionError>.Success(new string(result));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error performing shift right operation");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to perform shift right: {ex.Message}"), ex);
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -798,40 +677,31 @@ public static class BinaryAndHexConverter
                 new BinaryConversionError("Invalid binary string."));
         }
 
+        var maxLength = Math.Max(binary1.Length, binary2.Length);
+
+        char[]? rentedArray = null;
+        var result = maxLength <= 1024
+            ? stackalloc char[maxLength]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(maxLength)).AsSpan(0, maxLength);
+
         try
         {
-            var maxLength = Math.Max(binary1.Length, binary2.Length);
-
-            char[]? rentedArray = null;
-            var result = maxLength <= 1024
-                ? stackalloc char[maxLength]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(maxLength)).AsSpan(0, maxLength);
-
-            try
+            for (var i = 0; i < maxLength; i++)
             {
-                for (var i = 0; i < maxLength; i++)
-                {
-                    var bit1 = i < binary1.Length && binary1[i] == '1';
-                    var bit2 = i < binary2.Length && binary2[i] == '1';
+                var bit1 = i < binary1.Length && binary1[i] == '1';
+                var bit2 = i < binary2.Length && binary2[i] == '1';
 
-                    result[i] = operation(bit1, bit2) ? '1' : '0';
-                }
+                result[i] = operation(bit1, bit2) ? '1' : '0';
+            }
 
-                return Result<string, BinaryConversionError>.Success(new string(result));
-            }
-            finally
-            {
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+            return Result<string, BinaryConversionError>.Success(new string(result));
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error performing bitwise operation");
-            return Result<string, BinaryConversionError>.Failure(
-                new BinaryConversionError($"Failed to perform bitwise operation: {ex.Message}"), ex);
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 }

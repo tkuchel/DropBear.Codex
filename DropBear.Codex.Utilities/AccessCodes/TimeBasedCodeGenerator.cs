@@ -76,6 +76,11 @@ public class TimeBasedCodeGenerator
             throw new ArgumentOutOfRangeException(nameof(codeLength), "Code length must be at least 4 characters.");
         }
 
+        if (string.IsNullOrEmpty(_characterSet))
+        {
+            throw new ArgumentException("Character set cannot be null or empty.", nameof(characterSet));
+        }
+
         if (_validityDuration <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(validityDuration), "Validity duration must be positive.");
@@ -107,28 +112,19 @@ public class TimeBasedCodeGenerator
     /// <returns>A Result containing the generated code or error information.</returns>
     public Result<string, TimeBasedCodeError> GenerateCode(DateTime dateTime)
     {
-        try
-        {
-            var normalizedDateTime = NormalizeToTimeStep(dateTime.ToUniversalTime());
+        var normalizedDateTime = NormalizeToTimeStep(dateTime.ToUniversalTime());
 
-            // We incorporate the date/time and the secret key into an HMAC-SHA256 hash
-            var message = normalizedDateTime.ToString(DateTimeFormat, CultureInfo.InvariantCulture) + _secretKey;
-            using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_secretKey));
-            var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
-            var hashString = Convert.ToBase64String(hash);
+        // We incorporate the date/time and the secret key into an HMAC-SHA256 hash
+        var message = normalizedDateTime.ToString(DateTimeFormat, CultureInfo.InvariantCulture) + _secretKey;
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(_secretKey));
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(message));
+        var hashString = Convert.ToBase64String(hash);
 
-            // Convert the hash into a code of length _codeLength using characters from _characterSet
-            var code = GenerateCodeFromHash(hashString, _codeLength, _characterSet);
+        // Convert the hash into a code of length _codeLength using characters from _characterSet
+        var code = GenerateCodeFromHash(hashString, _codeLength, _characterSet);
 
-            Logger.Debug("Generated code for normalized date window: {DateTime}", normalizedDateTime);
-            return Result<string, TimeBasedCodeError>.Success(code);
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error generating code for date: {DateTime}", dateTime);
-            return Result<string, TimeBasedCodeError>.Failure(
-                new TimeBasedCodeError($"Failed to generate code: {ex.Message}"), ex);
-        }
+        Logger.Debug("Generated code for normalized date window: {DateTime}", normalizedDateTime);
+        return Result<string, TimeBasedCodeError>.Success(code);
     }
 
     /// <summary>
@@ -170,48 +166,39 @@ public class TimeBasedCodeGenerator
             _validationCache.TryRemove(code, out _);
         }
 
-        try
+        var normalizedDateTime = NormalizeToTimeStep(dateTime.ToUniversalTime());
+        // The earliest time we consider a code valid
+        var validityStart = normalizedDateTime - _validityDuration - _gracePeriod;
+        // The latest time it can be valid
+        var validityEnd = normalizedDateTime;
+
+        // We check each configured time step from validityStart up to validityEnd for a match
+        for (var checkTime = NormalizeToTimeStep(validityStart); checkTime <= validityEnd; checkTime = checkTime.Add(_timeStep))
         {
-            var normalizedDateTime = NormalizeToTimeStep(dateTime.ToUniversalTime());
-            // The earliest time we consider a code valid
-            var validityStart = normalizedDateTime - _validityDuration - _gracePeriod;
-            // The latest time it can be valid
-            var validityEnd = normalizedDateTime;
-
-            // We check each configured time step from validityStart up to validityEnd for a match
-            for (var checkTime = NormalizeToTimeStep(validityStart); checkTime <= validityEnd; checkTime = checkTime.Add(_timeStep))
+            var generatedCodeResult = GenerateCode(checkTime);
+            if (!generatedCodeResult.IsSuccess)
             {
-                var generatedCodeResult = GenerateCode(checkTime);
-                if (!generatedCodeResult.IsSuccess)
-                {
-                    continue;
-                }
-
-                if (string.Equals(code, generatedCodeResult.Value, StringComparison.Ordinal))
-                {
-                    Logger.Information("Code validated successfully for date: {DateTime}", dateTime);
-
-                    // Cache the successful validation result
-                    var expiryTime = dateTime + _validityDuration;
-                    _validationCache.TryAdd(code, (expiryTime, true));
-
-                    return Result<bool, TimeBasedCodeError>.Success(true);
-                }
+                continue;
             }
 
-            // Cache the failed validation to prevent brute force attacks
-            var failedExpiryTime = dateTime + TimeSpan.FromMinutes(1); // Short cache time for failures
-            _validationCache.TryAdd(code, (failedExpiryTime, false));
+            if (string.Equals(code, generatedCodeResult.Value, StringComparison.Ordinal))
+            {
+                Logger.Information("Code validated successfully for date: {DateTime}", dateTime);
 
-            Logger.Information("Code validation failed for date: {DateTime}", dateTime);
-            return Result<bool, TimeBasedCodeError>.Success(false);
+                // Cache the successful validation result
+                var expiryTime = dateTime + _validityDuration;
+                _validationCache.TryAdd(code, (expiryTime, true));
+
+                return Result<bool, TimeBasedCodeError>.Success(true);
+            }
         }
-        catch (Exception ex)
-        {
-            Logger.Error(ex, "Error validating code: {Code} for date: {DateTime}", code, dateTime);
-            return Result<bool, TimeBasedCodeError>.Failure(
-                new TimeBasedCodeError($"Failed to validate code: {ex.Message}"), ex);
-        }
+
+        // Cache the failed validation to prevent brute force attacks
+        var failedExpiryTime = dateTime + TimeSpan.FromMinutes(1); // Short cache time for failures
+        _validationCache.TryAdd(code, (failedExpiryTime, false));
+
+        Logger.Information("Code validation failed for date: {DateTime}", dateTime);
+        return Result<bool, TimeBasedCodeError>.Success(false);
     }
 
     /// <summary>

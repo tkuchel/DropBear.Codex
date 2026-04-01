@@ -22,6 +22,7 @@ public sealed class CloneMethodAttribute : Attribute
     public CloneMethodAttribute(bool useExpression = true, int depth = 32)
     {
         UseExpression = useExpression;
+        Depth = depth;
         MaxDepth = depth > 0 ? depth : int.MaxValue;
     }
 
@@ -34,6 +35,11 @@ public sealed class CloneMethodAttribute : Attribute
     ///     When false, the class will be cloned using JSON serialization, which is more flexible but slower.
     /// </remarks>
     public bool UseExpression { get; }
+
+    /// <summary>
+    ///     Gets the requested maximum recursion depth supplied to the attribute constructor.
+    /// </summary>
+    public int Depth { get; }
 
     /// <summary>
     ///     Gets the maximum recursion depth for cloning this type.

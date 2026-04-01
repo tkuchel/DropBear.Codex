@@ -61,7 +61,7 @@ public sealed class CompareResult
     /// <summary>
     ///     Gets or sets the collection of field-level results for this comparison.
     /// </summary>
-    public IList<FieldCompareResult> FieldResults { get; set; }
+    public IList<FieldCompareResult> FieldResults { get; }
 
     /// <summary>
     ///     Gets or sets additional information about the comparison.

@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
 #endregion
@@ -57,6 +58,10 @@ public static class ReadOnlySpanExtensions
     ///     the struct layout for best performance.
     ///     </para>
     /// </remarks>
+    [SuppressMessage(
+        "Design",
+        "CA1034:Nested types should not be visible",
+        Justification = "The nested ref struct is intentionally scoped to this span helper API to preserve zero-allocation foreach usage and avoid exposing it as a general-purpose top-level type.")]
     [StructLayout(LayoutKind.Auto)]
     public ref struct ZipEnumerator
     {

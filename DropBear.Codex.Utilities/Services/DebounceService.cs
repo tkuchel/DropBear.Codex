@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using DropBear.Codex.Core.Logging;
 using DropBear.Codex.Core.Results.Base;
@@ -13,7 +14,7 @@ using Serilog;
 namespace DropBear.Codex.Utilities.Services;
 
 /// <summary>
-///     Service for managing debounced function or action calls.
+///     Service for managing debounced operations or action calls.
 ///     Debouncing prevents a method from being called too frequently.
 /// </summary>
 public class DebounceService : IDebounceService
@@ -28,7 +29,7 @@ public class DebounceService : IDebounceService
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="DebounceService" /> class.
-    ///     Uses an <see cref="IMemoryCache" /> to store timestamps for debouncing function or action calls.
+    ///     Uses an <see cref="IMemoryCache" /> to store timestamps for debouncing operations or action calls.
     /// </summary>
     /// <param name="memoryCache">The memory cache used to store timestamps for debouncing.</param>
     public DebounceService(IMemoryCache memoryCache)
@@ -43,13 +44,13 @@ public class DebounceService : IDebounceService
     }
 
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{T, TError}" />.
-    ///     Ensures that the function is not executed more frequently than the specified minimum interval.
+    ///     Debounces an operation that returns a <see cref="Result{T, TError}" />.
+    ///     Ensures that the operation is not executed more frequently than the specified minimum interval.
     /// </summary>
     /// <typeparam name="T">The type of the result value.</typeparam>
     /// <typeparam name="TError">The type of error that can occur.</typeparam>
-    /// <param name="function">The function to execute which returns a <see cref="Result{T, TError}" />.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="operation">The operation to execute which returns a <see cref="Result{T, TError}" />.</param>
+    /// <param name="key">An optional unique identifier for the operation call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
@@ -57,9 +58,13 @@ public class DebounceService : IDebounceService
     ///     Automatically filled by the compiler to provide the line number in the source code of the
     ///     caller.
     /// </param>
-    /// <returns>A Result containing the function result or a debounce error.</returns>
+    /// <returns>A Result containing the operation result or a debounce error.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "This method intentionally wraps arbitrary caller-supplied operations and converts unexpected failures into the Result error channel.")]
     public async Task<Result<T, TError>> DebounceAsync<T, TError>(
-        Func<Task<Result<T, TError>>> function,
+        Func<Task<Result<T, TError>>> operation,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
@@ -67,6 +72,8 @@ public class DebounceService : IDebounceService
         [CallerLineNumber] int lineNumber = 0)
         where TError : ResultError
     {
+        ArgumentNullException.ThrowIfNull(operation);
+
         key = GenerateKey(key, caller, filePath, lineNumber);
         debounceTime ??= _defaultDebounceTime;
 
@@ -78,26 +85,26 @@ public class DebounceService : IDebounceService
 
         try
         {
-            var result = await function().ConfigureAwait(false);
-            Logger.Debug("Debounced function executed: {Key}, Success: {Success}", key, result.IsSuccess);
+            var result = await operation().ConfigureAwait(false);
+            Logger.Debug("Debounced operation executed: {Key}, Success: {Success}", key, result.IsSuccess);
             return result;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during debounced function execution: {Key}", key);
+            Logger.Error(ex, "Error during debounced operation execution: {Key}", key);
             return Result<T, TError>.Failure(
-                (TError)CreateError(typeof(TError), $"An error occurred while executing the function: {ex.Message}"),
+                (TError)CreateError(typeof(TError), $"An error occurred while executing the operation: {ex.Message}"),
                 ex);
         }
     }
 
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{T, DebounceError}" />.
-    ///     Ensures that the function is not executed more frequently than the specified minimum interval.
+    ///     Debounces an operation that returns a <see cref="Result{T, DebounceError}" />.
+    ///     Ensures that the operation is not executed more frequently than the specified minimum interval.
     /// </summary>
     /// <typeparam name="T">The type of the result value.</typeparam>
-    /// <param name="function">The function to execute which returns a <see cref="Result{T, DebounceError}" />.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="operation">The operation to execute which returns a <see cref="Result{T, DebounceError}" />.</param>
+    /// <param name="key">An optional unique identifier for the operation call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
@@ -105,15 +112,21 @@ public class DebounceService : IDebounceService
     ///     Automatically filled by the compiler to provide the line number in the source code of the
     ///     caller.
     /// </param>
-    /// <returns>A Result containing the function result or a debounce error.</returns>
+    /// <returns>A Result containing the operation result or a debounce error.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "This method intentionally wraps arbitrary caller-supplied operations and converts unexpected failures into the Result error channel.")]
     public async Task<Result<T, DebounceError>> DebounceAsync<T>(
-        Func<Task<Result<T, DebounceError>>> function,
+        Func<Task<Result<T, DebounceError>>> operation,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
         [CallerFilePath] string filePath = "",
         [CallerLineNumber] int lineNumber = 0)
     {
+        ArgumentNullException.ThrowIfNull(operation);
+
         key = GenerateKey(key, caller, filePath, lineNumber);
         debounceTime ??= _defaultDebounceTime;
 
@@ -125,15 +138,15 @@ public class DebounceService : IDebounceService
 
         try
         {
-            var result = await function().ConfigureAwait(false);
-            Logger.Debug("Debounced function executed: {Key}, Success: {Success}", key, result.IsSuccess);
+            var result = await operation().ConfigureAwait(false);
+            Logger.Debug("Debounced operation executed: {Key}, Success: {Success}", key, result.IsSuccess);
             return result;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during debounced function execution: {Key}", key);
+            Logger.Error(ex, "Error during debounced operation execution: {Key}", key);
             return Result<T, DebounceError>.Failure(
-                new DebounceError($"An error occurred while executing the function: {ex.Message}"),
+                new DebounceError($"An error occurred while executing the operation: {ex.Message}"),
                 ex);
         }
     }
@@ -152,6 +165,10 @@ public class DebounceService : IDebounceService
     ///     caller.
     /// </param>
     /// <returns>A Result indicating success or a debounce error.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "This method intentionally wraps arbitrary caller-supplied actions and converts unexpected failures into the Result error channel.")]
     public async Task<Result<Unit, DebounceError>> DebounceAsync(
         Action action,
         string key = "",
@@ -160,6 +177,8 @@ public class DebounceService : IDebounceService
         [CallerFilePath] string filePath = "",
         [CallerLineNumber] int lineNumber = 0)
     {
+        ArgumentNullException.ThrowIfNull(action);
+
         key = GenerateKey(key, caller, filePath, lineNumber);
         debounceTime ??= _defaultDebounceTime;
 
@@ -185,11 +204,11 @@ public class DebounceService : IDebounceService
     }
 
     /// <summary>
-    ///     Debounces a function that returns a <see cref="Result{Unit, DebounceError}" />.
-    ///     Ensures that the function is not executed more frequently than the specified minimum interval.
+    ///     Debounces an operation that returns a <see cref="Result{Unit, DebounceError}" />.
+    ///     Ensures that the operation is not executed more frequently than the specified minimum interval.
     /// </summary>
-    /// <param name="function">The asynchronous function to execute.</param>
-    /// <param name="key">An optional unique identifier for the function call used for debouncing purposes.</param>
+    /// <param name="operation">The asynchronous operation to execute.</param>
+    /// <param name="key">An optional unique identifier for the operation call used for debouncing purposes.</param>
     /// <param name="debounceTime">The minimum time interval between successive executions.</param>
     /// <param name="caller">Automatically filled by the compiler to provide the method name of the caller.</param>
     /// <param name="filePath">Automatically filled by the compiler to provide the source file path of the caller.</param>
@@ -198,14 +217,20 @@ public class DebounceService : IDebounceService
     ///     caller.
     /// </param>
     /// <returns>A Result indicating success or a debounce error.</returns>
+    [SuppressMessage(
+        "Design",
+        "CA1031:Do not catch general exception types",
+        Justification = "This method intentionally wraps arbitrary caller-supplied operations and converts unexpected failures into the Result error channel.")]
     public async Task<Result<Unit, DebounceError>> DebounceAsync(
-        Func<Task<Result<Unit, DebounceError>>> function,
+        Func<Task<Result<Unit, DebounceError>>> operation,
         string key = "",
         TimeSpan? debounceTime = null,
         [CallerMemberName] string caller = "",
         [CallerFilePath] string filePath = "",
         [CallerLineNumber] int lineNumber = 0)
     {
+        ArgumentNullException.ThrowIfNull(operation);
+
         key = GenerateKey(key, caller, filePath, lineNumber);
         debounceTime ??= _defaultDebounceTime;
 
@@ -217,15 +242,15 @@ public class DebounceService : IDebounceService
 
         try
         {
-            var result = await function().ConfigureAwait(false);
-            Logger.Debug("Debounced function executed: {Key}, Success: {Success}", key, result.IsSuccess);
+            var result = await operation().ConfigureAwait(false);
+            Logger.Debug("Debounced operation executed: {Key}, Success: {Success}", key, result.IsSuccess);
             return result;
         }
         catch (Exception ex)
         {
-            Logger.Error(ex, "Error during debounced function execution: {Key}", key);
+            Logger.Error(ex, "Error during debounced operation execution: {Key}", key);
             return Result<Unit, DebounceError>.Failure(
-                new DebounceError($"An error occurred while executing the function: {ex.Message}"),
+                new DebounceError($"An error occurred while executing the operation: {ex.Message}"),
                 ex);
         }
     }

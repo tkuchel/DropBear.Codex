@@ -101,7 +101,39 @@ public static class ObjectComparer
 
             return result;
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
+        {
+            Logger.Error(ex, "Error during comparison");
+            CompareResultPool.Return(compareResult);
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during comparison: {ex.Message}"),
+                ex);
+        }
+        catch (MethodAccessException ex)
+        {
+            Logger.Error(ex, "Error during comparison");
+            CompareResultPool.Return(compareResult);
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during comparison: {ex.Message}"),
+                ex);
+        }
+        catch (TargetException ex)
+        {
+            Logger.Error(ex, "Error during comparison");
+            CompareResultPool.Return(compareResult);
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during comparison: {ex.Message}"),
+                ex);
+        }
+        catch (TargetInvocationException ex)
+        {
+            Logger.Error(ex, "Error during comparison");
+            CompareResultPool.Return(compareResult);
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during comparison: {ex.Message}"),
+                ex);
+        }
+        catch (TargetParameterCountException ex)
         {
             Logger.Error(ex, "Error during comparison");
             CompareResultPool.Return(compareResult);
@@ -157,9 +189,10 @@ public static class ObjectComparer
                     var value1 = prop.GetValue(obj1);
                     var value2 = prop.GetValue(obj2);
 
-                    // Use ValueTask to avoid thread pool starvation for CPU-bound work
-                    var fieldScore = await ValueTask.FromResult(CompareValues(value1, value2, 0, maxDepth)).ConfigureAwait(false);
+                    var fieldScore = CompareValues(value1, value2, 0, maxDepth);
                     fieldResults.Add(new FieldCompareResult(prop.Name, fieldScore));
+
+                    await ValueTask.CompletedTask.ConfigureAwait(false);
                 }).ConfigureAwait(false);
 
             var resultList = fieldResults.ToList();
@@ -179,7 +212,35 @@ public static class ObjectComparer
 
             return result;
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
+        {
+            Logger.Error(ex, "Error during parallel comparison");
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during parallel comparison: {ex.Message}"),
+                ex);
+        }
+        catch (MethodAccessException ex)
+        {
+            Logger.Error(ex, "Error during parallel comparison");
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during parallel comparison: {ex.Message}"),
+                ex);
+        }
+        catch (TargetException ex)
+        {
+            Logger.Error(ex, "Error during parallel comparison");
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during parallel comparison: {ex.Message}"),
+                ex);
+        }
+        catch (TargetInvocationException ex)
+        {
+            Logger.Error(ex, "Error during parallel comparison");
+            return Result<CompareResult, ObjectComparisonError>.Failure(
+                new ObjectComparisonError($"An error occurred during parallel comparison: {ex.Message}"),
+                ex);
+        }
+        catch (TargetParameterCountException ex)
         {
             Logger.Error(ex, "Error during parallel comparison");
             return Result<CompareResult, ObjectComparisonError>.Failure(
@@ -196,7 +257,7 @@ public static class ObjectComparer
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool ShouldCompareProperty(PropertyInfo property)
     {
-        return property.CanRead && !property.GetIndexParameters().Any();
+        return property.CanRead && property.GetIndexParameters().Length == 0;
     }
 
     /// <summary>
@@ -246,7 +307,17 @@ public static class ObjectComparer
         {
             return strategy.Compare(value1, value2, currentDepth + 1, maxDepth);
         }
-        catch (Exception ex)
+        catch (ArgumentException ex)
+        {
+            Logger.Error(ex, "Error during value comparison for type {Type}", type.Name);
+            return 0.0;
+        }
+        catch (InvalidOperationException ex)
+        {
+            Logger.Error(ex, "Error during value comparison for type {Type}", type.Name);
+            return 0.0;
+        }
+        catch (OverflowException ex)
         {
             Logger.Error(ex, "Error during value comparison for type {Type}", type.Name);
             return 0.0;

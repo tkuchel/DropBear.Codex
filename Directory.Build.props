@@ -59,6 +59,21 @@
         ═══════════════════════════════════════════════════════════════════════
     -->
 
+    <PropertyGroup>
+        <IsDropBearTestProject Condition="$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Tests'))">true</IsDropBearTestProject>
+        <IsDropBearBenchmarkProject Condition="$([System.String]::Copy('$(MSBuildProjectName)').EndsWith('.Benchmarks'))">true</IsDropBearBenchmarkProject>
+        <ContinuousIntegrationBuild Condition="'$(CI)' == 'true' or '$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+        <EnableNETAnalyzers>true</EnableNETAnalyzers>
+        <AnalysisLevel>latest-all</AnalysisLevel>
+        <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+        <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+        <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release' and '$(EnableStrictDropBearWarnings)' == 'true'">true</TreatWarningsAsErrors>
+        <WarningsAsErrors>$(WarningsAsErrors);CS8600;CS8602;CS8603;CS8625</WarningsAsErrors>
+        <NoWarn Condition="'$(Configuration)' == 'Debug'">$(NoWarn);CS1591</NoWarn>
+        <NoWarn Condition="'$(IsDropBearTestProject)' == 'true'">$(NoWarn);CS1591;CA1707;CA1812;CA1849;CA1852;CA2000;CA2007;CA5394</NoWarn>
+        <NoWarn Condition="'$(IsDropBearBenchmarkProject)' == 'true'">$(NoWarn);CS1591</NoWarn>
+    </PropertyGroup>
+
     <ItemGroup>
         <!-- Nerdbank.GitVersioning: Automatic version management from Git -->
         <PackageReference Include="Nerdbank.GitVersioning" Condition="!Exists('packages.config')">

@@ -356,7 +356,7 @@ public sealed class ExtendedBlake3Hasher : Blake3Hasher
             {
                 int bytesRead;
                 while ((bytesRead = await inputStream.ReadAsync(
-                           buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                           buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false)) > 0)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     hasher.Update(buffer.AsSpan(0, bytesRead));
@@ -686,7 +686,7 @@ public sealed class ExtendedBlake3Hasher : Blake3Hasher
             {
                 int bytesRead;
                 while ((bytesRead = await inputStream.ReadAsync(
-                           buffer, 0, buffer.Length, cancellationToken).ConfigureAwait(false)) > 0)
+                           buffer.AsMemory(0, buffer.Length), cancellationToken).ConfigureAwait(false)) > 0)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     hasher.Update(buffer.AsSpan(0, bytesRead));

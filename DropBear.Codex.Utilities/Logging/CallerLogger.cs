@@ -48,7 +48,7 @@ public static class CallerLogger
 
         return new StringBuilder()
             .Append(frame.GetFileName() ?? "Unknown File")
-            .Append(":")
+            .Append(':')
             .Append(frame.GetMethod()?.Name ?? "Unknown Method")
             .Append(":Line ")
             .Append(frame.GetFileLineNumber())

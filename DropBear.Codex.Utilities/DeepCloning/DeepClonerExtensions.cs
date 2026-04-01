@@ -124,6 +124,8 @@ public static class DeepClonerExtensions
         Action<T> transform)
         where T : class
     {
+        ArgumentNullException.ThrowIfNull(transform);
+
         if (obj == null)
         {
             return Result<T, DeepCloneError>.Success(null!);
@@ -163,6 +165,8 @@ public static class DeepClonerExtensions
         where TSource : class
         where TDestination : class
     {
+        ArgumentNullException.ThrowIfNull(converter);
+
         if (obj == null)
         {
             return Result<TDestination, DeepCloneError>.Success(null!);

@@ -57,6 +57,9 @@ build_output.txt
 build_async_changes.txt
 intermediate_build.txt
 release_build_output.txt
+solution-build.log
+files-build.log
+*-build.log
 build_*.txt
 *_output.txt
 *_errors.txt

@@ -26,6 +26,8 @@ Current version is defined in [`version.json`](version.json).
 - [ ] `CHANGELOG.md` updated with release notes under `[Unreleased]`
 - [ ] Security issues documented in `SECURITY.md`
 - [ ] Breaking changes clearly documented
+- [ ] `README.md` still matches the current target framework, project inventory, and workflow badge links
+- [ ] Package metadata remains aligned with the mono-repo identity and current NuGet descriptions/tags
 
 ### 2. Update Version
 
@@ -126,6 +128,7 @@ git push origin v2025.11.0
 - Check packages are live: https://www.nuget.org/packages?q=DropBear.Codex
 - Verify all projects published
 - Check package metadata is correct
+- Spot-check package descriptions, repository/project URLs, and supported framework claims
 
 **GitHub Release:**
 - Verify release created: https://github.com/tkuchel/DropBear.Codex/releases

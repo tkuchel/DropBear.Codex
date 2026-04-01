@@ -1,6 +1,7 @@
 #region
 
 using System.Buffers;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using DropBear.Codex.Core.Results.Base;
@@ -140,12 +141,12 @@ public sealed class XxHasher : BaseHasher
                         if (_use32Bit)
                         {
                             var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
-                            return Result<string, HashingError>.Success(hash.ToString("x8"));
+                            return Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
                         }
                         else
                         {
                             var hash = XXHash.Hash64(bufferSpan, _seed);
-                            return Result<string, HashingError>.Success(hash.ToString("x16"));
+                            return Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
                         }
                     }
                     finally
@@ -196,12 +197,12 @@ public sealed class XxHasher : BaseHasher
                 if (_use32Bit)
                 {
                     var hash = XXHash.Hash32(buffer, (uint)_seed);
-                    return Result<string, HashingError>.Success(hash.ToString("x8"));
+                    return Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
                 }
                 else
                 {
                     var hash = XXHash.Hash64(buffer, _seed);
-                    return Result<string, HashingError>.Success(hash.ToString("x16"));
+                    return Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
                 }
             }
             else
@@ -215,12 +216,12 @@ public sealed class XxHasher : BaseHasher
                     if (_use32Bit)
                     {
                         var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
-                        return Result<string, HashingError>.Success(hash.ToString("x8"));
+                        return Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
                     }
                     else
                     {
                         var hash = XXHash.Hash64(bufferSpan, _seed);
-                        return Result<string, HashingError>.Success(hash.ToString("x16"));
+                        return Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
                     }
                 }
                 finally
@@ -274,12 +275,12 @@ public sealed class XxHasher : BaseHasher
                         if (use32Bit)
                         {
                             var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
-                            return Result<string, HashingError>.Success(hash.ToString("x8"));
+                            return Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
                         }
                         else
                         {
                             var hash = XXHash.Hash64(bufferSpan, _seed);
-                            return Result<string, HashingError>.Success(hash.ToString("x16"));
+                            return Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
                         }
                     }
                     finally
@@ -290,23 +291,45 @@ public sealed class XxHasher : BaseHasher
             }
             else
             {
-                var buffer = byteCount <= 512 ? stackalloc byte[byteCount] : ArrayPool<byte>.Shared.Rent(byteCount).AsSpan(0, byteCount);
-                Encoding.UTF8.GetBytes(input, buffer);
-
-                if (use32Bit)
+                if (byteCount <= 512)
                 {
-                    var hash = XXHash.Hash32(buffer, (uint)_seed);
-                    hashResult = Result<string, HashingError>.Success(hash.ToString("x8"));
+                    Span<byte> buffer = stackalloc byte[byteCount];
+                    Encoding.UTF8.GetBytes(input, buffer);
+
+                    if (use32Bit)
+                    {
+                        var hash = XXHash.Hash32(buffer, (uint)_seed);
+                        hashResult = Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
+                    }
+                    else
+                    {
+                        var hash = XXHash.Hash64(buffer, _seed);
+                        hashResult = Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
+                    }
                 }
                 else
                 {
-                    var hash = XXHash.Hash64(buffer, _seed);
-                    hashResult = Result<string, HashingError>.Success(hash.ToString("x16"));
-                }
+                    var rentedBuffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                    try
+                    {
+                        var buffer = rentedBuffer.AsSpan(0, byteCount);
+                        Encoding.UTF8.GetBytes(input, buffer);
 
-                if (byteCount > 512)
-                {
-                    ArrayPool<byte>.Shared.Return(buffer.ToArray());
+                        if (use32Bit)
+                        {
+                            var hash = XXHash.Hash32(buffer, (uint)_seed);
+                            hashResult = Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
+                        }
+                        else
+                        {
+                            var hash = XXHash.Hash64(buffer, _seed);
+                            hashResult = Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedBuffer);
+                    }
                 }
             }
         }
@@ -358,12 +381,12 @@ public sealed class XxHasher : BaseHasher
                 if (use32Bit)
                 {
                     var hash = XXHash.Hash32(buffer, (uint)_seed);
-                    hashResult = Result<string, HashingError>.Success(hash.ToString("x8"));
+                    hashResult = Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
                 }
                 else
                 {
                     var hash = XXHash.Hash64(buffer, _seed);
-                    hashResult = Result<string, HashingError>.Success(hash.ToString("x16"));
+                    hashResult = Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
                 }
             }
             else
@@ -377,12 +400,12 @@ public sealed class XxHasher : BaseHasher
                     if (use32Bit)
                     {
                         var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
-                        hashResult = Result<string, HashingError>.Success(hash.ToString("x8"));
+                        hashResult = Result<string, HashingError>.Success(hash.ToString("x8", CultureInfo.InvariantCulture));
                     }
                     else
                     {
                         var hash = XXHash.Hash64(bufferSpan, _seed);
-                        hashResult = Result<string, HashingError>.Success(hash.ToString("x16"));
+                        hashResult = Result<string, HashingError>.Success(hash.ToString("x16", CultureInfo.InvariantCulture));
                     }
                 }
                 finally

@@ -11,6 +11,11 @@ namespace DropBear.Codex.Utilities.Errors;
 /// </summary>
 public sealed record TaskError : ResultError
 {
+    /// <summary>
+    ///     Initializes a new instance of the <see cref="TaskError" /> record.
+    /// </summary>
+    /// <param name="message">The error message.</param>
+    /// <param name="exception">The optional underlying exception.</param>
     public TaskError(string message, Exception? exception = null)
         : base(message)
     {

@@ -1,5 +1,6 @@
 ﻿#region
 
+using System.Globalization;
 using System.Collections.Frozen;
 using DropBear.Codex.Core.Results.Base;
 using DropBear.Codex.Utilities.Errors;
@@ -31,16 +32,9 @@ public static class PersonHelper
                 new PersonError("Both family name and given names cannot be empty."));
         }
 
-        try
-        {
-            var format = NameFormats[givenNameFirst];
-            return Result<string, PersonError>.Success(string
-                .Format(format, givenNames.Trim().ToString(), familyName.Trim().ToString()).TrimEnd(','));
-        }
-        catch (Exception ex)
-        {
-            return Result<string, PersonError>.Failure(new PersonError("Error formatting name.", ex));
-        }
+        var format = NameFormats[givenNameFirst];
+        return Result<string, PersonError>.Success(string
+            .Format(CultureInfo.InvariantCulture, format, givenNames.Trim().ToString(), familyName.Trim().ToString()).TrimEnd(','));
     }
 
     /// <summary>
@@ -56,19 +50,12 @@ public static class PersonHelper
                 new PersonError("At least one address component must be provided."));
         }
 
-        try
-        {
-            string?[] addressParts = [line1, line2, city, state, postCode];
-            var filteredParts = addressParts
-                .Where(part => !string.IsNullOrWhiteSpace(part))
-                .Select(part => part!.Trim());
+        string?[] addressParts = [line1, line2, city, state, postCode];
+        var filteredParts = addressParts
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!.Trim());
 
-            var result = string.Join(separator, filteredParts);
-            return Result<string, PersonError>.Success(result);
-        }
-        catch (Exception ex)
-        {
-            return Result<string, PersonError>.Failure(new PersonError("Error formatting address.", ex));
-        }
+        var result = string.Join(separator, filteredParts);
+        return Result<string, PersonError>.Success(result);
     }
 }

@@ -19,26 +19,20 @@ namespace DropBear.Codex.Utilities.Exporters;
 public sealed class ExcelExporter<T> where T : class
 {
     private static readonly ILogger Logger = LoggerFactory.Logger.ForContext<ExcelExporter<T>>();
-    private static readonly PropertyInfo[] _properties;
-    private static readonly Dictionary<Type, Action<IXLCell, object>> _typeHandlers;
-
-    static ExcelExporter()
-    {
-        _properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
-
-        _typeHandlers = new Dictionary<Type, Action<IXLCell, object>>
+    private static readonly PropertyInfo[] _properties = typeof(T).GetProperties(BindingFlags.Public | BindingFlags.Instance);
+    private static readonly Dictionary<Type, Action<IXLCell, object>> _typeHandlers =
+        new()
         {
             [typeof(int)] = (cell, value) => cell.SetValue(Convert.ToInt32(value, CultureInfo.InvariantCulture)),
             [typeof(double)] = (cell, value) => cell.SetValue(Convert.ToDouble(value, CultureInfo.InvariantCulture)),
             [typeof(decimal)] = (cell, value) => cell.SetValue(Convert.ToDecimal(value, CultureInfo.InvariantCulture)),
-            [typeof(bool)] = (cell, value) => cell.SetValue(Convert.ToBoolean(value)),
+            [typeof(bool)] = (cell, value) => cell.SetValue(Convert.ToBoolean(value, CultureInfo.InvariantCulture)),
             [typeof(DateTime)] = (cell, value) =>
             {
                 cell.SetValue(Convert.ToDateTime(value, CultureInfo.InvariantCulture));
                 cell.Style.DateFormat.Format = "yyyy-MM-dd hh:mm:ss";
             }
         };
-    }
 
     /// <summary>
     ///     Exports the provided list of objects to an Excel file.
@@ -228,7 +222,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <param name="data">The list of objects to include in the workbook.</param>
     /// <param name="options">Export options.</param>
     /// <returns>An XLWorkbook containing the data.</returns>
-    private XLWorkbook CreateWorkbook(IReadOnlyList<T> data, ExcelExportOptions options)
+    private static XLWorkbook CreateWorkbook(IReadOnlyList<T> data, ExcelExportOptions options)
     {
         try
         {
@@ -290,7 +284,7 @@ public sealed class ExcelExporter<T> where T : class
     /// <summary>
     ///     Processes a chunk of data to add to the worksheet.
     /// </summary>
-    private void ProcessDataChunk(IXLWorksheet worksheet, List<T> chunk, int startRow)
+    private static void ProcessDataChunk(IXLWorksheet worksheet, List<T> chunk, int startRow)
     {
         for (var rowIndex = 0; rowIndex < chunk.Count; rowIndex++)
         {

@@ -193,10 +193,7 @@ public sealed class HashBuilder : IHashBuilder
             throw new ArgumentException("Key cannot be null or whitespace.", nameof(key));
         }
 
-        if (hasherFactory == null)
-        {
-            throw new ArgumentNullException(nameof(hasherFactory));
-        }
+        ArgumentNullException.ThrowIfNull(hasherFactory);
 
         _customHashers[key] = hasherFactory;
         _logger.Debug("Hasher registered for key: {Key}", key);

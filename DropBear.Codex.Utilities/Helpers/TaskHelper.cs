@@ -30,31 +30,32 @@ public static class TaskHelper
             return Result<bool, TaskError>.Failure(new TaskError("Task cannot be null."));
         }
 
-        try
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        var completedTask = await Task.WhenAny(task, Task.Delay(timeout, timeoutCts.Token)).ConfigureAwait(false);
+
+        if (completedTask != task)
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeout);
-            var completedTask = await Task.WhenAny(task, Task.Delay(timeout, timeoutCts.Token)).ConfigureAwait(false);
-
-            if (completedTask == task)
-            {
-                // Cancel the delay task since we completed successfully
-                await timeoutCts.CancelAsync().ConfigureAwait(false);
-                return Result<bool, TaskError>.Success(true);
-            }
-
-            // Timeout occurred - signal cancellation
             await timeoutCts.CancelAsync().ConfigureAwait(false);
             return Result<bool, TaskError>.Failure(new TaskError("Task timed out."));
         }
-        catch (OperationCanceledException)
+
+        await timeoutCts.CancelAsync().ConfigureAwait(false);
+
+        if (task.IsCanceled)
         {
             return Result<bool, TaskError>.Failure(new TaskError("Task was cancelled."));
         }
-        catch (Exception ex)
+
+        if (task.IsFaulted)
         {
-            return Result<bool, TaskError>.Failure(new TaskError("Error during task execution.", ex));
+            var exception = task.Exception?.GetBaseException();
+            return Result<bool, TaskError>.Failure(
+                new TaskError("Error during task execution.", exception),
+                exception);
         }
+
+        return Result<bool, TaskError>.Success(true);
     }
 
     /// <summary>
@@ -75,30 +76,31 @@ public static class TaskHelper
             return Result<T, TaskError>.Failure(new TaskError("Task cannot be null."));
         }
 
-        try
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        var completedTask = await Task.WhenAny(task, Task.Delay(timeout, timeoutCts.Token)).ConfigureAwait(false);
+
+        if (completedTask != task)
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            timeoutCts.CancelAfter(timeout);
-            var completedTask = await Task.WhenAny(task, Task.Delay(timeout, timeoutCts.Token)).ConfigureAwait(false);
-
-            if (completedTask == task)
-            {
-                // Cancel the delay task since we completed successfully
-                await timeoutCts.CancelAsync().ConfigureAwait(false);
-                return Result<T, TaskError>.Success(await task.ConfigureAwait(false));
-            }
-
-            // Timeout occurred - signal cancellation
             await timeoutCts.CancelAsync().ConfigureAwait(false);
             return Result<T, TaskError>.Failure(new TaskError("Task timed out."));
         }
-        catch (OperationCanceledException)
+
+        await timeoutCts.CancelAsync().ConfigureAwait(false);
+
+        if (task.IsCanceled)
         {
             return Result<T, TaskError>.Failure(new TaskError("Task was cancelled."));
         }
-        catch (Exception ex)
+
+        if (task.IsFaulted)
         {
-            return Result<T, TaskError>.Failure(new TaskError("Error during task execution.", ex));
+            var exception = task.Exception?.GetBaseException();
+            return Result<T, TaskError>.Failure(
+                new TaskError("Error during task execution.", exception),
+                exception);
         }
+
+        return Result<T, TaskError>.Success(await task.ConfigureAwait(false));
     }
 }

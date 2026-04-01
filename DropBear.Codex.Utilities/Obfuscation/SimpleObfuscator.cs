@@ -78,76 +78,67 @@ public static class SimpleObfuscator
                 new ObfuscationError("Value to encode cannot be null or empty."));
         }
 
+        // Convert to binary with Result pattern
+        var binaryResult = BinaryAndHexConverter.StringToBinary(value);
+        if (!binaryResult.IsSuccess)
+        {
+            return Result<string, ObfuscationError>.Failure(
+                new ObfuscationError($"Failed to convert value to binary: {binaryResult.Error?.Message}"));
+        }
+
+        // Calculate hash for accidental corruption detection
+        var hash = GenerateHash(value);
+
+        // Convert hash to binary with Result pattern
+        var hashBinaryResult = BinaryAndHexConverter.StringToBinary(hash);
+        if (!hashBinaryResult.IsSuccess)
+        {
+            return Result<string, ObfuscationError>.Failure(
+                new ObfuscationError($"Failed to convert hash to binary: {hashBinaryResult.Error?.Message}"));
+        }
+
+        // Combine value binary and hash binary
+        var binary = binaryResult.Value!;
+        var hashBinary = hashBinaryResult.Value!;
+        var binaryWithHash = binary + hashBinary;
+
+        // Generate deterministic pseudo-random sequence based on key
+        var pseudoRandomSequence = GetPseudoRandomSequence(binaryWithHash.Length, key);
+
+        // Use buffer pool for large strings to reduce allocations
+        char[]? rentedArray = null;
+        var resultBuffer = binaryWithHash.Length <= 1024
+            ? stackalloc char[binaryWithHash.Length]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(binaryWithHash.Length)).AsSpan(0, binaryWithHash.Length);
+
         try
         {
-            // Convert to binary with Result pattern
-            var binaryResult = BinaryAndHexConverter.StringToBinary(value);
-            if (!binaryResult.IsSuccess)
+            // Perform the obfuscation
+            for (var i = 0; i < binaryWithHash.Length; i++)
+            {
+                resultBuffer[i] =
+                    (char)('0' + ((binaryWithHash[i] == '0' ? 1 : 0) ^ (pseudoRandomSequence[i] % 2)));
+            }
+
+            var obfuscatedBinary = new string(resultBuffer);
+
+            // Convert obfuscated binary to hex
+            var hexResult = BinaryAndHexConverter.BinaryToHex(obfuscatedBinary);
+            if (!hexResult.IsSuccess)
             {
                 return Result<string, ObfuscationError>.Failure(
-                    new ObfuscationError($"Failed to convert value to binary: {binaryResult.Error?.Message}"));
+                    new ObfuscationError($"Failed to convert binary to hex: {hexResult.Error?.Message}"));
             }
 
-            // Calculate hash for accidental corruption detection
-            var hash = GenerateHash(value);
-
-            // Convert hash to binary with Result pattern
-            var hashBinaryResult = BinaryAndHexConverter.StringToBinary(hash);
-            if (!hashBinaryResult.IsSuccess)
-            {
-                return Result<string, ObfuscationError>.Failure(
-                    new ObfuscationError($"Failed to convert hash to binary: {hashBinaryResult.Error?.Message}"));
-            }
-
-            // Combine value binary and hash binary
-            var binary = binaryResult.Value!;
-            var hashBinary = hashBinaryResult.Value!;
-            var binaryWithHash = binary + hashBinary;
-
-            // Generate deterministic pseudo-random sequence based on key
-            var pseudoRandomSequence = GetPseudoRandomSequence(binaryWithHash.Length, key);
-
-            // Use buffer pool for large strings to reduce allocations
-            char[]? rentedArray = null;
-            var resultBuffer = binaryWithHash.Length <= 1024
-                ? stackalloc char[binaryWithHash.Length]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(binaryWithHash.Length)).AsSpan(0, binaryWithHash.Length);
-
-            try
-            {
-                // Perform the obfuscation
-                for (var i = 0; i < binaryWithHash.Length; i++)
-                {
-                    resultBuffer[i] =
-                        (char)('0' + ((binaryWithHash[i] == '0' ? 1 : 0) ^ (pseudoRandomSequence[i] % 2)));
-                }
-
-                var obfuscatedBinary = new string(resultBuffer);
-
-                // Convert obfuscated binary to hex
-                var hexResult = BinaryAndHexConverter.BinaryToHex(obfuscatedBinary);
-                if (!hexResult.IsSuccess)
-                {
-                    return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError($"Failed to convert binary to hex: {hexResult.Error?.Message}"));
-                }
-
-                return Result<string, ObfuscationError>.Success(hexResult.Value!);
-            }
-            finally
-            {
-                // Return rented array to the pool if used
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
-            }
+            return Result<string, ObfuscationError>.Success(hexResult.Value!);
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error during encoding");
-            return Result<string, ObfuscationError>.Failure(
-                new ObfuscationError($"Failed to encode value: {ex.Message}"), ex);
+            // Return rented array to the pool if used
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
@@ -165,90 +156,81 @@ public static class SimpleObfuscator
                 new ObfuscationError("Obfuscated value cannot be null or empty."));
         }
 
+        // Convert hex to binary with Result pattern
+        var binaryResult = BinaryAndHexConverter.HexToBinary(obfuscatedValue);
+        if (!binaryResult.IsSuccess)
+        {
+            return Result<string, ObfuscationError>.Failure(
+                new ObfuscationError($"Failed to convert hex to binary: {binaryResult.Error?.Message}"));
+        }
+
+        var binary = binaryResult.Value!;
+
+        // Get deterministic pseudo-random sequence based on key
+        var pseudoRandomSequence = GetPseudoRandomSequence(binary.Length, key);
+
+        // Use buffer pool for large strings to reduce allocations
+        char[]? rentedArray = null;
+        var resultBuffer = binary.Length <= 1024
+            ? stackalloc char[binary.Length]
+            : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
+
         try
         {
-            // Convert hex to binary with Result pattern
-            var binaryResult = BinaryAndHexConverter.HexToBinary(obfuscatedValue);
-            if (!binaryResult.IsSuccess)
+            // Perform the deobfuscation
+            for (var i = 0; i < binary.Length; i++)
+            {
+                resultBuffer[i] = (char)('0' + (((binary[i] - '0') ^ (pseudoRandomSequence[i] % 2)) == 0 ? 1 : 0));
+            }
+
+            var deobfuscatedBinary = new string(resultBuffer);
+
+            // Split the binary into original value and hash
+            if (deobfuscatedBinary.Length <= 256)
             {
                 return Result<string, ObfuscationError>.Failure(
-                    new ObfuscationError($"Failed to convert hex to binary: {binaryResult.Error?.Message}"));
+                    new ObfuscationError("Invalid obfuscated data: insufficient length for corruption detection."));
             }
 
-            var binary = binaryResult.Value!;
+            var originalBinary = deobfuscatedBinary[..^256];
+            var hashBinary = deobfuscatedBinary[^256..];
 
-            // Get deterministic pseudo-random sequence based on key
-            var pseudoRandomSequence = GetPseudoRandomSequence(binary.Length, key);
-
-            // Use buffer pool for large strings to reduce allocations
-            char[]? rentedArray = null;
-            var resultBuffer = binary.Length <= 1024
-                ? stackalloc char[binary.Length]
-                : (rentedArray = ArrayPool<char>.Shared.Rent(binary.Length)).AsSpan(0, binary.Length);
-
-            try
+            // Convert original binary back to string
+            var originalValueResult = BinaryAndHexConverter.BinaryToString(originalBinary);
+            if (!originalValueResult.IsSuccess)
             {
-                // Perform the deobfuscation
-                for (var i = 0; i < binary.Length; i++)
-                {
-                    resultBuffer[i] = (char)('0' + (((binary[i] - '0') ^ (pseudoRandomSequence[i] % 2)) == 0 ? 1 : 0));
-                }
-
-                var deobfuscatedBinary = new string(resultBuffer);
-
-                // Split the binary into original value and hash
-                if (deobfuscatedBinary.Length <= 256)
-                {
-                    return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError("Invalid obfuscated data: insufficient length for corruption detection."));
-                }
-
-                var originalBinary = deobfuscatedBinary[..^256];
-                var hashBinary = deobfuscatedBinary[^256..];
-
-                // Convert original binary back to string
-                var originalValueResult = BinaryAndHexConverter.BinaryToString(originalBinary);
-                if (!originalValueResult.IsSuccess)
-                {
-                    return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError(
-                            $"Failed to convert binary to string: {originalValueResult.Error?.Message}"));
-                }
-
-                // Convert hash binary back to string
-                var hashResult = BinaryAndHexConverter.BinaryToString(hashBinary);
-                if (!hashResult.IsSuccess)
-                {
-                    return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError($"Failed to convert hash binary to string: {hashResult.Error?.Message}"));
-                }
-
-                var originalValue = originalValueResult.Value!;
-                var hash = hashResult.Value!;
-
-                // Check for accidental corruption by recalculating the hash
-                if (!string.Equals(GenerateHash(originalValue), hash, StringComparison.Ordinal))
-                {
-                    return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError("Data corruption detection failed: hash mismatch."));
-                }
-
-                return Result<string, ObfuscationError>.Success(originalValue);
+                return Result<string, ObfuscationError>.Failure(
+                    new ObfuscationError(
+                        $"Failed to convert binary to string: {originalValueResult.Error?.Message}"));
             }
-            finally
+
+            // Convert hash binary back to string
+            var hashResult = BinaryAndHexConverter.BinaryToString(hashBinary);
+            if (!hashResult.IsSuccess)
             {
-                // Return rented array to the pool if used
-                if (rentedArray != null)
-                {
-                    ArrayPool<char>.Shared.Return(rentedArray);
-                }
+                return Result<string, ObfuscationError>.Failure(
+                    new ObfuscationError($"Failed to convert hash binary to string: {hashResult.Error?.Message}"));
             }
+
+            var originalValue = originalValueResult.Value!;
+            var hash = hashResult.Value!;
+
+            // Check for accidental corruption by recalculating the hash
+            if (!string.Equals(GenerateHash(originalValue), hash, StringComparison.Ordinal))
+            {
+                return Result<string, ObfuscationError>.Failure(
+                    new ObfuscationError("Data corruption detection failed: hash mismatch."));
+            }
+
+            return Result<string, ObfuscationError>.Success(originalValue);
         }
-        catch (Exception ex)
+        finally
         {
-            Logger.Error(ex, "Error during decoding");
-            return Result<string, ObfuscationError>.Failure(
-                new ObfuscationError($"Failed to decode value: {ex.Message}"), ex);
+            // Return rented array to the pool if used
+            if (rentedArray != null)
+            {
+                ArrayPool<char>.Shared.Return(rentedArray);
+            }
         }
     }
 
