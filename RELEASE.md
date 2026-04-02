@@ -28,6 +28,7 @@ Current version is defined in [`version.json`](version.json).
 - [ ] Breaking changes clearly documented
 - [ ] `README.md` still matches the current target framework, project inventory, and workflow badge links
 - [ ] Package metadata remains aligned with the mono-repo identity and current NuGet descriptions/tags
+- [ ] Review workflow annotations and distinguish real failures from upstream GitHub Action runtime deprecation noise before blocking a release
 
 ### 2. Update Version
 
@@ -283,6 +284,10 @@ git push origin develop
 - **[ci.yml](.github/workflows/ci.yml)**: Runs on every push/PR
 - **[release.yml](.github/workflows/release.yml)**: Triggered by version tags (`v*`)
 - **[codeql.yml](.github/workflows/codeql.yml)**: Security analysis
+
+### Workflow Note
+
+This repository currently forces JavaScript-based GitHub Actions to run on Node 24. If workflow annotations still mention Node 20 deprecation for pinned actions, treat that as an upstream action-maintainer reminder unless the workflow itself is failing. Keep the pinned SHAs current as part of normal release hygiene.
 
 ## Questions?
 

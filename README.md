@@ -157,6 +157,12 @@ The library has recently gone through a broad security review and remediation pa
 
 Some APIs are intentionally explicit sharp edges, such as trusted HTML rendering helpers. When a helper says content must already be trusted, it should be treated as an application-level responsibility rather than a built-in safety boundary.
 
+## Workflow Maintenance
+
+GitHub Actions for `CI (.NET 10)` and `CodeQL Security Analysis` are currently green on both `develop` and `master`. The remaining workflow annotations are limited to GitHub-hosted Node runtime deprecation warnings from a small number of pinned upstream actions such as `actions/checkout`, `actions/cache`, and `actions/upload-artifact`.
+
+Those warnings are currently external ecosystem noise rather than a repository failure mode. This repository already opts into Node 24 execution with `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true`, and pinned action SHAs should be refreshed periodically as newer upstream releases become available.
+
 ## Contributing
 
 Contributions are welcome! Please see our [Contributing Guidelines](CONTRIBUTING.md) for detailed information on:
