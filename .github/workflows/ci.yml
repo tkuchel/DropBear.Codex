@@ -31,17 +31,17 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           fetch-depth: 0
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@3e891b0cb619bf60e2c25674b222b8940e2c1c25 # v4.1.0
+        uses: actions/setup-dotnet@d4c94342e560b34958eacfc5d055d21461ed1c5d # v5.0.0
         with:
           dotnet-version: 10.0.x
 
       - name: Cache NuGet packages
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: ~/.nuget/packages
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
@@ -74,7 +74,7 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
       - name: Publish Coverage Report
-        uses: danielpalme/ReportGenerator-GitHub-Action@ee0ae774f6d3afedcbd1683c1ab21b83670bdf8e # v5.5.1
+        uses: danielpalme/ReportGenerator-GitHub-Action@cf6fe1b38ed5becc89ffe056c1f240825993be5b # v5.5.4
         with:
           reports: "./TestResults/**/coverage.cobertura.xml"
           targetdir: "./TestResults/CoverageReport"
@@ -96,7 +96,7 @@ jobs:
 
       - name: Annotate Test Results
         if: always()
-        uses: dorny/test-reporter@ee41dc9ab458bd171e5c9fe1a8f32484b186520a # v2.0.0
+        uses: dorny/test-reporter@a43b3a5f7366b97d083190328d2c652e1a8b6aa2 # v3.0.0
         with:
           name: ".NET Tests (${{ matrix.os }})"
           path: "TestResults/collected/*.trx"
