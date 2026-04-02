@@ -43,13 +43,25 @@ public sealed class DelayNode<TContext> : WorkflowNodeBase<TContext>, ILinkableN
     {
         try
         {
-            await Task.Delay(_delay, cancellationToken).ConfigureAwait(false);
+            // SECURITY: Cap delay to prevent DoS via extremely long delays
+            TimeSpan actualDelay = _delay;
+            if (actualDelay > Common.WorkflowConstants.Limits.MaxDelayDuration)
+            {
+                actualDelay = Common.WorkflowConstants.Limits.MaxDelayDuration;
+            }
+
+            await Task.Delay(actualDelay, cancellationToken).ConfigureAwait(false);
 
             IWorkflowNode<TContext>[] nextNodes = _nextNode is not null
                 ? [_nextNode]
                 : [];
 
-            var metadata = new Dictionary<string, object> { ["DelayDuration"] = _delay.TotalMilliseconds };
+            var metadata = new Dictionary<string, object>
+            {
+                ["DelayDuration"] = actualDelay.TotalMilliseconds,
+                ["RequestedDelay"] = _delay.TotalMilliseconds,
+                ["DelayCapped"] = actualDelay != _delay
+            };
 
             return NodeExecutionResult<TContext>.Success(nextNodes, metadata);
         }

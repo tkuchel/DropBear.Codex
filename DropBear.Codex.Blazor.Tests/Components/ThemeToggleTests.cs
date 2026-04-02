@@ -243,3 +243,5 @@ public sealed class ThemeToggleTests : ComponentTestBase
         exception.Should().BeNull();
     }
 }
+
+

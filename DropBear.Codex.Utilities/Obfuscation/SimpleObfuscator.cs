@@ -65,11 +65,12 @@ public static class SimpleObfuscator
     }
 
     /// <summary>
-    ///     Encodes the specified value by obfuscating it and appending a hash for integrity verification.
+    ///     Encodes the specified value by obfuscating it and appending a hash for accidental corruption detection.
     /// </summary>
     /// <param name="value">The value to encode.</param>
+    /// <param name="key">Optional key for deterministic obfuscation. If null, a default key is used.</param>
     /// <returns>A Result containing the obfuscated and hashed value in hexadecimal format, or error information.</returns>
-    public static Result<string, ObfuscationError> Encode(string value)
+    public static Result<string, ObfuscationError> Encode(string value, string? key = null)
     {
         if (string.IsNullOrEmpty(value))
         {
@@ -87,7 +88,7 @@ public static class SimpleObfuscator
                     new ObfuscationError($"Failed to convert value to binary: {binaryResult.Error?.Message}"));
             }
 
-            // Calculate hash for integrity
+            // Calculate hash for accidental corruption detection
             var hash = GenerateHash(value);
 
             // Convert hash to binary with Result pattern
@@ -103,8 +104,8 @@ public static class SimpleObfuscator
             var hashBinary = hashBinaryResult.Value!;
             var binaryWithHash = binary + hashBinary;
 
-            // Generate or get cached pseudo-random sequence
-            var pseudoRandomSequence = GetPseudoRandomSequence(binaryWithHash.Length);
+            // Generate deterministic pseudo-random sequence based on key
+            var pseudoRandomSequence = GetPseudoRandomSequence(binaryWithHash.Length, key);
 
             // Use buffer pool for large strings to reduce allocations
             char[]? rentedArray = null;
@@ -151,11 +152,12 @@ public static class SimpleObfuscator
     }
 
     /// <summary>
-    ///     Decodes the specified obfuscated value and verifies its integrity.
+    ///     Decodes the specified obfuscated value and checks for accidental corruption.
     /// </summary>
     /// <param name="obfuscatedValue">The obfuscated value to decode.</param>
+    /// <param name="key">Optional key for deterministic obfuscation. Must match the key used during encoding.</param>
     /// <returns>A Result containing the original value, or error information.</returns>
-    public static Result<string, ObfuscationError> Decode(string obfuscatedValue)
+    public static Result<string, ObfuscationError> Decode(string obfuscatedValue, string? key = null)
     {
         if (string.IsNullOrEmpty(obfuscatedValue))
         {
@@ -175,8 +177,8 @@ public static class SimpleObfuscator
 
             var binary = binaryResult.Value!;
 
-            // Get or generate pseudo-random sequence
-            var pseudoRandomSequence = GetPseudoRandomSequence(binary.Length);
+            // Get deterministic pseudo-random sequence based on key
+            var pseudoRandomSequence = GetPseudoRandomSequence(binary.Length, key);
 
             // Use buffer pool for large strings to reduce allocations
             char[]? rentedArray = null;
@@ -198,7 +200,7 @@ public static class SimpleObfuscator
                 if (deobfuscatedBinary.Length <= 256)
                 {
                     return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError("Invalid obfuscated data: insufficient length for hash verification."));
+                        new ObfuscationError("Invalid obfuscated data: insufficient length for corruption detection."));
                 }
 
                 var originalBinary = deobfuscatedBinary[..^256];
@@ -224,11 +226,11 @@ public static class SimpleObfuscator
                 var originalValue = originalValueResult.Value!;
                 var hash = hashResult.Value!;
 
-                // Verify integrity by recalculating hash
+                // Check for accidental corruption by recalculating the hash
                 if (!string.Equals(GenerateHash(originalValue), hash, StringComparison.Ordinal))
                 {
                     return Result<string, ObfuscationError>.Failure(
-                        new ObfuscationError("Data integrity check failed: hash mismatch."));
+                        new ObfuscationError("Data corruption detection failed: hash mismatch."));
                 }
 
                 return Result<string, ObfuscationError>.Success(originalValue);
@@ -251,47 +253,52 @@ public static class SimpleObfuscator
     }
 
     /// <summary>
-    ///     Generates or retrieves a cached pseudo-random sequence of integers for obfuscation.
+    ///     Generates or retrieves a cached deterministic pseudo-random sequence of integers for obfuscation.
+    ///     The sequence is derived from the key using HKDF to ensure encode/decode produce the same sequence.
     /// </summary>
     /// <param name="length">The length of the sequence.</param>
-    /// <returns>A list of random integers.</returns>
+    /// <param name="key">Optional key for deterministic generation. If null, a default key is used.</param>
+    /// <returns>A list of deterministic pseudo-random integers.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static List<int> GetPseudoRandomSequence(int length)
+    private static List<int> GetPseudoRandomSequence(int length, string? key = null)
     {
+        // Use a default key if none provided (for backward compatibility with light obfuscation)
+        var effectiveKey = key ?? "DropBear.Codex.DefaultObfuscationKey";
+
+        // Create a cache key that includes both length and key
+        var cacheKey = HashCode.Combine(length, effectiveKey);
+
         // Return cached sequence if available and not too large
-        if (length <= MaxCacheSize && RandomSequenceCache.TryGetValue(length, out var cachedSequence))
+        if (length <= MaxCacheSize && RandomSequenceCache.TryGetValue(cacheKey, out var cachedSequence))
         {
             return cachedSequence;
         }
 
-        // Generate a new sequence
-        using var rng = RandomNumberGenerator.Create();
+        // Generate deterministic sequence using HKDF
         var randomNumbers = new List<int>(length);
+        var keyBytes = Encoding.UTF8.GetBytes(effectiveKey);
 
-        // Use a buffer for better performance with multiple random values
-        var bufferSize = Math.Min(length, 1024) * 4; // 4 bytes per int
-        var randomBuffer = new byte[bufferSize];
+        // Use HKDF to derive a deterministic key
+        var salt = Encoding.UTF8.GetBytes("DropBear.Codex.Obfuscation.Salt.v1");
+        var info = Encoding.UTF8.GetBytes("DropBear.Codex.Obfuscation.Info.v1");
 
-        for (var i = 0; i < length; i += bufferSize / 4)
+        // Calculate how many bytes we need (4 bytes per int)
+        var bytesNeeded = length * 4;
+        var derivedKey = new byte[bytesNeeded];
+
+        // Use HKDF to derive deterministic bytes
+        HKDF.DeriveKey(HashAlgorithmName.SHA256, keyBytes, derivedKey, salt, info);
+
+        // Convert bytes to integers
+        for (var i = 0; i < length; i++)
         {
-            // Calculate how many more integers we need
-            var remainingInts = Math.Min(bufferSize / 4, length - i);
-            var bytesToGenerate = remainingInts * 4;
-
-            // Fill the buffer with random bytes
-            rng.GetBytes(randomBuffer, 0, bytesToGenerate);
-
-            // Convert bytes to integers
-            for (var j = 0; j < remainingInts; j++)
-            {
-                randomNumbers.Add(BitConverter.ToInt32(randomBuffer, j * 4));
-            }
+            randomNumbers.Add(BitConverter.ToInt32(derivedKey, i * 4));
         }
 
         // Cache the sequence if not too large
         if (length <= MaxCacheSize && RandomSequenceCache.Count < MaxCacheEntries)
         {
-            RandomSequenceCache[length] = randomNumbers;
+            RandomSequenceCache[cacheKey] = randomNumbers;
         }
 
         return randomNumbers;

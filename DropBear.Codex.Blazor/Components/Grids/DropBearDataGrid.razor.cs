@@ -52,7 +52,9 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
         SizeLimit = SelectorCacheMaxSize, ExpirationScanFrequency = TimeSpan.FromMinutes(10)
     });
 
-    private ConditionalWeakTable<TItem, Dictionary<string, string>> _searchableValues = new();
+    // QUALITY FIX: Changed to use regular Dictionary with explicit cleanup instead of ConditionalWeakTable
+    // ConditionalWeakTable holds strong references to values, preventing GC of row metadata
+    private Dictionary<TItem, Dictionary<string, string>> _searchableValues = new();
 
     private readonly MemoryCache _searchTermCache = new(new MemoryCacheOptions
     {
@@ -315,6 +317,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
                 _debounceTokenSource.Dispose();
             }
 
+            // QUALITY FIX: Properly clear the searchable values dictionary
             _searchableValues.Clear();
 
             // Clear memory caches BEFORE disposing them
@@ -338,7 +341,7 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             LogErrorDuringDisposal(Logger, ex);
         }
 
-        await base.DisposeAsync();
+        await base.DisposeAsync().ConfigureAwait(false);
     }
 
     protected override async Task OnParametersSetAsync()
@@ -439,8 +442,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
                 StateHasChanged();
 
-                // Use a fresh weak table to avoid memory issues
-                var newSearchableValues = new ConditionalWeakTable<TItem, Dictionary<string, string>>();
+                // QUALITY FIX: Use a fresh dictionary for searchable values
+                var newSearchableValues = new Dictionary<TItem, Dictionary<string, string>>();
 
                 if (_cachedItems is not null)
                 {
@@ -652,9 +655,10 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
     /// <summary>
     ///     Pre-computes searchable values sequentially in a thread-safe manner.
+    ///     QUALITY FIX: Updated to use Dictionary instead of ConditionalWeakTable.
     /// </summary>
     private void PreComputeSearchableValuesSequential(
-        ConditionalWeakTable<TItem, Dictionary<string, string>> searchValues)
+        Dictionary<TItem, Dictionary<string, string>> searchValues)
     {
         if (_cachedItems is null)
         {
@@ -677,18 +681,10 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
             try
             {
-                if (!searchValues.TryGetValue(item, out _))
+                if (!searchValues.ContainsKey(item))
                 {
                     var values = ComputeSearchableValues(item);
-                    try
-                    {
-                        searchValues.Add(item, values);
-                    }
-                    catch (ArgumentException)
-                    {
-                        // Another thread might have added the item in the meantime
-                        // This is expected and safe to ignore
-                    }
+                    searchValues[item] = values;
                 }
             }
             catch (Exception ex)
@@ -700,9 +696,10 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
     /// <summary>
     ///     Pre-computes searchable values for all items in parallel, using a thread-safe approach.
+    ///     QUALITY FIX: Updated to use Dictionary instead of ConditionalWeakTable.
     /// </summary>
     private Task PreComputeSearchableValuesParallelAsync(
-        ConditionalWeakTable<TItem, Dictionary<string, string>> searchValues)
+        Dictionary<TItem, Dictionary<string, string>> searchValues)
     {
         if (_cachedItems is null)
         {
@@ -733,29 +730,20 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
                     try
                     {
-                        // Check if we already have values for this item
-                        if (searchValues.TryGetValue(item, out _))
-                        {
-                            return; // Skip items that already have values
-                        }
-
                         var values = ComputeSearchableValues(item);
 
-                        // Thread-safe add to the ConditionalWeakTable
-                        try
+                        // QUALITY FIX: Thread-safe add to dictionary using lock
+                        lock (searchValues)
                         {
-                            searchValues.Add(item, values);
-
-                            var processed = Interlocked.Increment(ref itemsProcessed);
-                            if (EnableDebugMode && processed % 1000 == 0)
+                            if (!searchValues.ContainsKey(item))
                             {
-                                LogProcessedItemsForSearchIndexing(Logger, processed, totalItems);
+                                searchValues[item] = values;
+                                var processed = Interlocked.Increment(ref itemsProcessed);
+                                if (EnableDebugMode && processed % 1000 == 0)
+                                {
+                                    LogProcessedItemsForSearchIndexing(Logger, processed, totalItems);
+                                }
                             }
-                        }
-                        catch (ArgumentException)
-                        {
-                            // Another thread might have added the item in the meantime
-                            // This is expected and safe to ignore
                         }
                     }
                     catch (Exception ex)
@@ -1100,9 +1088,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
             }
         }
 
-        // Clear the search values to force recomputation
-        // Use a new ConditionalWeakTable to avoid threading issues
-        var newSearchableValues = new ConditionalWeakTable<TItem, Dictionary<string, string>>();
+        // QUALITY FIX: Clear the search values to force recomputation
+        var newSearchableValues = new Dictionary<TItem, Dictionary<string, string>>();
 
         if (_cachedItems is not null)
         {
@@ -1134,8 +1121,8 @@ public sealed partial class DropBearDataGrid<TItem> : DropBearComponentBase wher
 
         _compiledSelectors.Clear();
 
-        // Create and set a new empty table instead of clearing the existing one
-        Interlocked.Exchange(ref _searchableValues, new ConditionalWeakTable<TItem, Dictionary<string, string>>());
+        // QUALITY FIX: Create and set a new empty dictionary instead of clearing the existing one
+        Interlocked.Exchange(ref _searchableValues, new Dictionary<TItem, Dictionary<string, string>>());
 
         _searchTermCache.Clear();
         StateHasChanged();

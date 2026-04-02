@@ -97,10 +97,11 @@ public sealed class AESCNGEncryptionProvider : IEncryptionProvider, IDisposable
             throw new ObjectDisposedException(nameof(AESCNGEncryptionProvider));
         }
 
-        _logger.Information("Creating AES encryptor using AESCNG with KeySize: {KeySize}, Caching: {EnableCaching}",
-            _rsa.KeySize, _enableCaching);
+        _logger.Information("Creating AES encryptor using AESCNG with KeySize: {KeySize}. Caching is disabled for security.",
+            _rsa.KeySize);
 
-        return new AESCNGEncryptor(_rsa, _memoryStreamManager, _enableCaching, _maxCacheSize);
+        // Note: enableCaching and maxCacheSize parameters are deprecated and ignored
+        return new AESCNGEncryptor(_rsa, _memoryStreamManager, false, 0);
     }
 
     /// <summary>

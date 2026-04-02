@@ -4,7 +4,7 @@ Thank you for considering contributing to DropBear.Codex! This document provides
 
 ## Prerequisites
 
-- **.NET 9 SDK** or later
+- **.NET 10 SDK** or later
 - A .NET IDE (JetBrains Rider, Visual Studio 2022, or VS Code with C# extension)
 - Git
 - Familiarity with Railway-Oriented Programming and the Result pattern
@@ -67,7 +67,7 @@ We follow **Conventional Commits** for clear and consistent commit messages:
 ```bash
 feat(workflow): add parallel node execution support
 fix(serialization): resolve null reference in MessagePack deserializer
-docs(readme): update installation instructions for .NET 9
+docs(readme): update installation instructions for .NET 10
 test(core): add comprehensive Result pattern tests
 ```
 
@@ -234,10 +234,11 @@ public Result<User, UserError> GetUser(int userId)
 
 ## Release Process
 
-1. **Version Bump**: Update version in `Directory.Build.props` or individual `.csproj` files.
-2. **CHANGELOG**: Move items from `[Unreleased]` to new version section.
-3. **Tag Release**: Create a tag `v<version>` (e.g., `v2025.11.0`).
-4. **NuGet**: Packages are automatically published via GitHub Actions.
+1. **Version Bump**: Update [`version.json`](version.json) and let Nerdbank.GitVersioning flow the version through the solution.
+2. **CHANGELOG**: Move items from `[Unreleased]` to a new version section.
+3. **Docs and Metadata**: Keep `README.md`, package metadata, and workflow references aligned with the current solution and target framework.
+4. **Tag Release**: Create a tag `v<version>` (for example `v2025.11.0`).
+5. **NuGet**: Packages are automatically published via GitHub Actions.
 
 ## Architecture Guidelines
 

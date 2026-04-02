@@ -268,15 +268,23 @@ public sealed partial class DropBearSnackbarContainer : DropBearComponentBase
     }
 
     /// <summary>
-    ///     Cleans up all event subscriptions.
+    ///     QUALITY FIX: Cleans up all event subscriptions to prevent memory leaks.
+    ///     Ensures handlers are properly unsubscribed in Dispose.
     /// </summary>
     private void CleanupSubscriptions()
     {
-        // Unsubscribe from service events
+        // QUALITY FIX: Unsubscribe from service events to prevent memory leaks
         if (SnackbarService is not null)
         {
-            SnackbarService.OnShow -= HandleSnackbarShowAsync;
-            SnackbarService.OnRemove -= HandleSnackbarRemoveAsync;
+            try
+            {
+                SnackbarService.OnShow -= HandleSnackbarShowAsync;
+                SnackbarService.OnRemove -= HandleSnackbarRemoveAsync;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Service might already be disposed
+            }
         }
 
         // Dispose notification subscriptions

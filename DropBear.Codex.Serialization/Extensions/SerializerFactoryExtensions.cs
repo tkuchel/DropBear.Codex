@@ -58,7 +58,7 @@ public static partial class SerializerFactoryExtensions
             PropertyNameCaseInsensitive = true,
             NumberHandling = JsonNumberHandling.AllowReadingFromString,
             ReferenceHandler = ReferenceHandler.Preserve,
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            Encoder = JavaScriptEncoder.Default,
             PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             MaxDepth = 64
         };
@@ -84,8 +84,7 @@ public static partial class SerializerFactoryExtensions
         if (resolverEnabled)
         {
             options = options.WithResolver(CompositeResolver.Create(
-                StandardResolverAllowPrivate.Instance,
-                StandardResolver.Instance));
+                ContractlessStandardResolver.Instance));
         }
 
         return builder.WithMessagePackSerializerOptions(options);

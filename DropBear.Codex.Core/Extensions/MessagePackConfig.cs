@@ -13,25 +13,27 @@ namespace DropBear.Codex.Core.Extensions;
 /// </summary>
 public static class MessagePackConfig
 {
+    private static readonly IFormatterResolver SafeDefaultResolver = ContractlessStandardResolver.Instance;
+
     // Default options - cached for performance
     private static readonly MessagePackSerializerOptions DefaultOptions =
         MessagePackSerializerOptions.Standard
             .WithCompression(MessagePackCompression.Lz4BlockArray)
-            .WithResolver(StandardResolverAllowPrivate.Instance)
+            .WithResolver(SafeDefaultResolver)
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
     // High-performance options - no compression
     private static readonly MessagePackSerializerOptions HighPerformanceOptions =
         MessagePackSerializerOptions.Standard
             .WithCompression(MessagePackCompression.None)
-            .WithResolver(StandardResolverAllowPrivate.Instance)
+            .WithResolver(SafeDefaultResolver)
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
     // Compact options - maximum compression
     private static readonly MessagePackSerializerOptions CompactOptions =
         MessagePackSerializerOptions.Standard
             .WithCompression(MessagePackCompression.Lz4Block)
-            .WithResolver(StandardResolverAllowPrivate.Instance)
+            .WithResolver(SafeDefaultResolver)
             .WithSecurity(MessagePackSecurity.UntrustedData);
 
     /// <summary>

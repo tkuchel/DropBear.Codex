@@ -1,6 +1,5 @@
 ﻿#region
 
-using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DropBear.Codex.Core.Logging;
@@ -15,9 +14,6 @@ namespace DropBear.Codex.Files.Converters;
 /// </summary>
 public sealed class TypeConverter : JsonConverter<Type>
 {
-    // Use Dictionary<string, Type> for caching Type lookups to improve performance
-    private static readonly Dictionary<string, Type> TypeCache = new(StringComparer.Ordinal);
-    private static readonly Lock SyncLock = new();
     private readonly ILogger _logger;
 
     /// <summary>
@@ -50,28 +46,13 @@ public sealed class TypeConverter : JsonConverter<Type>
 
         try
         {
-            // Check cache first for performance
-            lock (SyncLock)
+            if (ProviderTypeRegistry.TryResolve(typeName, out var resolvedType))
             {
-                if (TypeCache.TryGetValue(typeName, out var cachedType))
-                {
-                    return cachedType;
-                }
+                return resolvedType;
             }
 
-            // Attempt to resolve the type by name
-            var resolvedType = Type.GetType(typeName, AssemblyResolver, null, true);
-
-            // Add to cache if resolved
-            if (resolvedType != null)
-            {
-                lock (SyncLock)
-                {
-                    TypeCache[typeName] = resolvedType;
-                }
-            }
-
-            return resolvedType;
+            _logger.Warning("Rejected unregistered provider type during deserialization: {TypeName}", typeName);
+            return null;
         }
         catch (Exception ex)
         {
@@ -96,41 +77,12 @@ public sealed class TypeConverter : JsonConverter<Type>
 
         try
         {
-            writer.WriteStringValue(value.AssemblyQualifiedName);
+            writer.WriteStringValue(ProviderTypeRegistry.GetIdentifier(value));
         }
         catch (Exception ex)
         {
             _logger.Error(ex, "Failed to write Type: {TypeName}", value.FullName);
             writer.WriteNullValue();
-        }
-    }
-
-    /// <summary>
-    ///     Resolves an assembly name to an <see cref="Assembly" />, used when deserializing a <see cref="Type" />.
-    /// </summary>
-    /// <param name="assemblyName">The name of the assembly to load.</param>
-    /// <returns>An <see cref="Assembly" /> if resolution succeeds, or <c>null</c> otherwise.</returns>
-    private Assembly? AssemblyResolver(AssemblyName assemblyName)
-    {
-        try
-        {
-            // Try to load from loaded assemblies first
-            var assembly = AppDomain.CurrentDomain.GetAssemblies()
-                .FirstOrDefault(a => AssemblyName.ReferenceMatchesDefinition(
-                    assemblyName, a.GetName()));
-
-            if (assembly != null)
-            {
-                return assembly;
-            }
-
-            // Fall back to normal loading
-            return Assembly.Load(assemblyName);
-        }
-        catch (Exception ex)
-        {
-            _logger.Error(ex, "Failed to load assembly: {AssemblyName}", assemblyName.FullName);
-            return null;
         }
     }
 }

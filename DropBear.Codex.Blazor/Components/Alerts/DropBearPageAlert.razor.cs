@@ -31,7 +31,8 @@ public partial class DropBearPageAlert : DropBearComponentBase
     public string? Title { get; set; }
 
     /// <summary>
-    /// The message body of the alert, supports HTML.
+    /// The message body of the alert.
+    /// By default this content is HTML-encoded before rendering, so untrusted input is displayed as text.
     /// </summary>
     [Parameter]
     public string? Message { get; set; }

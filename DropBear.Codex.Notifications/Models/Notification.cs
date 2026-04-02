@@ -14,6 +14,8 @@ public sealed class Notification
 {
     /// <summary>
     ///     Initializes a new instance of the <see cref="Notification" /> class.
+    ///     SECURITY NOTE: Message and Title are stored as-is. When rendering in UI,
+    ///     ensure HTML sanitization is applied (e.g., using HtmlSanitizationHelper).
     /// </summary>
     /// <param name="channelId">The channel ID associated with the notification.</param>
     /// <param name="type">The type of the notification.</param>

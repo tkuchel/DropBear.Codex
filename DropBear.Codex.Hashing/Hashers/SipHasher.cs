@@ -17,9 +17,10 @@ namespace DropBear.Codex.Hashing.Hashers;
 ///     A <see cref="IHasher" /> implementation using SipHash-2-4 (64-bit).
 ///     Requires a 16-byte key, no salt or iteration support.
 /// </summary>
-public sealed class SipHasher : BaseHasher
+public sealed class SipHasher : BaseHasher, IDisposable
 {
     private byte[] _key;
+    private bool _disposed;
 
     /// <summary>
     ///     Initializes a new instance of the <see cref="SipHasher" /> class with a 16-byte key.
@@ -340,5 +341,34 @@ public sealed class SipHasher : BaseHasher
             return Result<string, HashingError>.Failure(
                 HashComputationError.AlgorithmError(ex.Message), ex);
         }
+    }
+
+    /// <summary>
+    ///     Disposes the SipHasher and securely clears the key from memory.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        // SECURITY FIX: Clear cryptographic key material from memory
+        if (_key != null)
+        {
+            CryptographicOperations.ZeroMemory(_key);
+            Logger.Debug("SipHash key cleared from memory.");
+        }
+
+        _disposed = true;
+        GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    ///     Finalizer to ensure key is cleared even if Dispose is not called.
+    /// </summary>
+    ~SipHasher()
+    {
+        Dispose();
     }
 }

@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Options;
 using Polly;
 using Polly.CircuitBreaker;
+using System.Net;
 using Serilog;
 
 #endregion
@@ -325,6 +326,9 @@ public sealed class NotificationService : INotificationService, IDisposable
                 throw new OperationCanceledException("Notification publishing was canceled.", cancellationToken);
             }
 
+            // SECURITY: Sanitize notification message and title to prevent stored XSS
+            SanitizeNotification(notification);
+
             // If the notification is marked sensitive, encrypt any string data
             Notification notificationToPublish;
             if (isSensitive)
@@ -431,6 +435,26 @@ public sealed class NotificationService : INotificationService, IDisposable
             return Result<Unit, NotificationError>.Failure(NotificationError.FromException(ex)
                 .WithContext(nameof(PublishNotificationToChannelAsync)));
         }
+    }
+
+    /// <summary>
+    ///     Sanitizes notification message and title to prevent stored XSS attacks.
+    ///     HTML-encodes user-provided text before storage/publishing.
+    /// </summary>
+    /// <param name="notification">The notification whose text fields will be sanitized in-place.</param>
+    private static void SanitizeNotification(Notification notification)
+    {
+        // Notification.Message and Title have private setters, so we use the Initialize method
+        // to create a sanitized copy. However, since Initialize is pool-oriented, we sanitize
+        // at the boundary by encoding before the publish pipeline stores or renders it.
+        // Note: This modifies the notification in-place via its Initialize method.
+        notification.Initialize(
+            notification.ChannelId,
+            notification.Type,
+            notification.Severity,
+            WebUtility.HtmlEncode(notification.Message),
+            notification.Title is not null ? WebUtility.HtmlEncode(notification.Title) : null,
+            notification.Data);
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-﻿#region
+#region
 
 using System.Collections.Concurrent;
 using System.Reflection;
@@ -91,24 +91,29 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(state);
-        ArgumentException.ThrowIfNullOrWhiteSpace(state.WorkflowInstanceId);
+
+        string workflowInstanceId = state.WorkflowInstanceId;
+        if (string.IsNullOrWhiteSpace(workflowInstanceId))
+        {
+            throw new ArgumentException("Workflow instance ID is required.", nameof(state));
+        }
 
         string typeName = typeof(TContext).FullName ?? typeof(TContext).Name;
         var wrapper = new WorkflowStateWrapper { ContextTypeName = typeName, State = state };
 
         _states.AddOrUpdate(
-            state.WorkflowInstanceId,
+            workflowInstanceId,
             wrapper,
             (_, _) => wrapper);
 
         _instanceToTypeIndex.AddOrUpdate(
-            state.WorkflowInstanceId,
+            workflowInstanceId,
             typeName,
             (_, _) => typeName);
 
-        LogSavedWorkflowState(state.WorkflowInstanceId, state.Status);
+        LogSavedWorkflowState(workflowInstanceId, state.Status);
 
-        return ValueTask.FromResult(state.WorkflowInstanceId);
+        return ValueTask.FromResult(workflowInstanceId);
     }
 
     /// <inheritdoc />
@@ -118,22 +123,27 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
     {
         ThrowIfDisposed();
         ArgumentNullException.ThrowIfNull(state);
-        ArgumentException.ThrowIfNullOrWhiteSpace(state.WorkflowInstanceId);
+
+        string workflowInstanceId = state.WorkflowInstanceId;
+        if (string.IsNullOrWhiteSpace(workflowInstanceId))
+        {
+            throw new ArgumentException("Workflow instance ID is required.", nameof(state));
+        }
 
         string typeName = typeof(TContext).FullName ?? typeof(TContext).Name;
         var wrapper = new WorkflowStateWrapper { ContextTypeName = typeName, State = state };
 
         _states.AddOrUpdate(
-            state.WorkflowInstanceId,
+            workflowInstanceId,
             wrapper,
             (_, _) => wrapper);
 
         _instanceToTypeIndex.AddOrUpdate(
-            state.WorkflowInstanceId,
+            workflowInstanceId,
             typeName,
             (_, _) => typeName);
 
-        LogUpdatedWorkflowState(state.WorkflowInstanceId, state.Status);
+        LogUpdatedWorkflowState(workflowInstanceId, state.Status);
 
         return ValueTask.CompletedTask;
     }
@@ -218,7 +228,6 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
                         count++;
                         yield return typedState;
 
-                        // Allow cooperative cancellation
                         await Task.Yield();
                     }
                 }
@@ -243,7 +252,6 @@ public sealed partial class InMemoryWorkflowStateRepository : IWorkflowStateRepo
             return ValueTask.FromResult<(string?, string?)>((null, null));
         }
 
-        // Get type info from the state object using reflection
         Type stateType = wrapper.State.GetType();
         PropertyInfo? assemblyQualifiedNameProp = stateType.GetProperty("ContextAssemblyQualifiedName");
         PropertyInfo? typeNameProp = stateType.GetProperty("ContextTypeName");

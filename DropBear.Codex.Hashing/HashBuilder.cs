@@ -327,7 +327,10 @@ public sealed class HashBuilder : IHashBuilder
 
         public bool Return(IHasher obj)
         {
-            return true;
+            // Pool safety: hashers with mutable state (Argon2 salt, XxHasher bit mode)
+            // have been fixed to use local variables, so returning to pool is safe.
+            // Reject disposed hashers (SipHasher implements IDisposable).
+            return obj is not IDisposable;
         }
     }
 }

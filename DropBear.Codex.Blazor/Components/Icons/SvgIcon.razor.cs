@@ -3,6 +3,7 @@
 using DropBear.Codex.Blazor.Components.Bases;
 using DropBear.Codex.Blazor.Errors;
 using DropBear.Codex.Core.Results.Base;
+using DropBear.Codex.Blazor.Services;
 
 #endregion
 
@@ -20,19 +21,7 @@ public partial class SvgIcon : DropBearComponentBase
     /// <returns>A Result indicating success or detailed error information.</returns>
     public static Result<bool, IconError> ValidateSvgContent(string svgContent)
     {
-        if (string.IsNullOrWhiteSpace(svgContent))
-        {
-            return Result<bool, IconError>.Failure(
-                IconError.InvalidSvgFormat("SVG content is empty"));
-        }
-
-        if (!svgContent.Contains("<svg"))
-        {
-            return Result<bool, IconError>.Failure(
-                IconError.InvalidSvgFormat("Content does not contain SVG tag"));
-        }
-
-        return Result<bool, IconError>.Success(true);
+        return IconLibrary.ValidateSvgContent(svgContent);
     }
 
     /// <summary>

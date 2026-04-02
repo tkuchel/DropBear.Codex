@@ -1,8 +1,8 @@
 # DropBear Codex
 
-**DropBear Codex** is a collection of modular C# libraries built with .NET 9, designed to provide robust, reusable components for enterprise-grade applications. The libraries follow Railway-Oriented Programming principles with a comprehensive Result pattern for error handling. All libraries are published as NuGet packages for easy integration.
+**DropBear Codex** is a collection of modular C# libraries built with .NET 10, designed to provide robust, reusable components for enterprise-grade applications. The libraries follow Railway-Oriented Programming principles with a comprehensive Result pattern for error handling. All libraries are published as NuGet packages for easy integration.
 
-[![CI (.NET 9)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml/badge.svg)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml)
+[![CI (.NET 10)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml/badge.svg)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/tkuchel/DropBear.Codex/actions/workflows/codeql.yml/badge.svg)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -13,14 +13,16 @@
 - 🔐 **Security First**: Built-in hashing, encryption, and secure serialization
 - 📦 **Modular Design**: Use only what you need - each library is independent
 - ✅ **Production Ready**: Extensive test coverage, code analysis, and quality gates
-- 🚀 **Modern .NET 9**: Built with latest C# 12+ features and performance optimizations
+- 🚀 **Modern .NET 10**: Built with current .NET and C# features plus performance-oriented defaults
 - 📊 **Observability**: OpenTelemetry integration for distributed tracing
+- 🛡️ **Security Hardened**: Recent audit-driven fixes across crypto, serialization, workflow persistence, Blazor rendering, and notification ownership
 
 ## Table of Contents
 - [Projects](#projects)
 - [Getting Started](#getting-started)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Security Notes](#security-notes)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -44,10 +46,13 @@ The solution includes the following libraries:
 - **DropBear.Codex.Blazor**: Custom Blazor component library for interactive web applications.
 - **DropBear.Codex.Notifications**: Notification infrastructure with multiple channels and delivery strategies.
 
+### Tooling
+- **DropBear.Codex.Benchmarks**: BenchmarkDotNet suite for tracking hot-path performance and regression risk across the libraries.
+
 ## Getting Started
 
 ### Prerequisites
-- **.NET 9 SDK** or later
+- **.NET 10 SDK** or later
 - A .NET development environment (JetBrains Rider, Visual Studio 2022, or VS Code)
 
 ### Development Setup
@@ -136,6 +141,21 @@ var result = await engine.ExecuteAsync(workflow, context);
 ```
 
 For detailed examples and advanced usage, see the [CLAUDE.md](CLAUDE.md) file and individual project documentation.
+
+## Security Notes
+
+The library has recently gone through a broad security review and remediation pass. Key hardening areas include:
+
+- Secret-backed anti-forgery token validation and tighter CSP defaults in `DropBear.Codex.Blazor`
+- Removal of unsafe type/provider resolution from persisted and file metadata paths
+- Authenticated encryption for protected serialization payloads
+- Correct envelope sealing/signature invalidation on mutation
+- Root-scoped local storage and enforced buffered-read / serialization memory limits
+- Notification ownership enforcement to prevent cross-user access by identifier
+- Fail-closed handling of untrusted HTML and stricter SVG custom icon validation
+- Safer default MessagePack and JSON serializer helper configurations
+
+Some APIs are intentionally explicit sharp edges, such as trusted HTML rendering helpers. When a helper says content must already be trusted, it should be treated as an application-level responsibility rather than a built-in safety boundary.
 
 ## Contributing
 

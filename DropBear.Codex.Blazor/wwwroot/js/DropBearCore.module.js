@@ -240,6 +240,44 @@ window.DropBearCore = {
   }
 };
 
+// SECURITY FIX: Safe helper functions for module initialization checks
+// These replace the unsafe eval() calls in JsInitializationService
+window.DropBear = window.DropBear || {};
+window.DropBear.Codex = window.DropBear.Codex || {};
+
+/**
+ * Safely check if a module is initialized without using eval()
+ * @param {string} moduleName - Name of the module to check
+ * @returns {boolean} True if module exists and is initialized
+ */
+window.DropBear.Codex.checkModuleInitialized = function(moduleName) {
+  if (!moduleName || typeof moduleName !== 'string') {
+    return false;
+  }
+
+  const module = window[moduleName];
+  return typeof module !== 'undefined' &&
+         module !== null &&
+         module.__initialized === true;
+};
+
+/**
+ * Safely check if a module needs initialization without using eval()
+ * @param {string} moduleName - Name of the module to check
+ * @returns {boolean} True if module exists but needs initialization
+ */
+window.DropBear.Codex.checkModuleNeedsInitialization = function(moduleName) {
+  if (!moduleName || typeof moduleName !== 'string') {
+    return false;
+  }
+
+  const module = window[moduleName];
+  return typeof module !== 'undefined' &&
+         module !== null &&
+         module.__initialized !== true &&
+         typeof module.initialize === 'function';
+};
+
 // Register with ModuleManager after window attachment
 window.DropBearModuleManager.register(
   'DropBearCore',

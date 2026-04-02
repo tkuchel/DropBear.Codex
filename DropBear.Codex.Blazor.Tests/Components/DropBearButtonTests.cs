@@ -344,3 +344,5 @@ public sealed class DropBearButtonTests : ComponentTestBase
         exception.Should().BeNull();
     }
 }
+
+

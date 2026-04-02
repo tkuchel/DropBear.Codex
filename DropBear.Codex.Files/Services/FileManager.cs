@@ -860,9 +860,18 @@ public sealed partial class FileManager
     /// <exception cref="UnauthorizedAccessException">Thrown when path traversal is detected.</exception>
     private string GetFullPath(string path)
     {
+        // Get the absolute path for the base directory (normalized)
+        var normalizedBaseDirectory = Path.GetFullPath(_baseDirectory);
+
+        // Ensure base directory ends with directory separator for proper prefix matching
+        if (!normalizedBaseDirectory.EndsWith(Path.DirectorySeparatorChar.ToString(), StringComparison.Ordinal))
+        {
+            normalizedBaseDirectory += Path.DirectorySeparatorChar;
+        }
+
         // Get the absolute path
         string fullPath;
-        if (Path.IsPathRooted(path) && path.StartsWith(_baseDirectory, StringComparison.Ordinal))
+        if (Path.IsPathRooted(path) && path.StartsWith(normalizedBaseDirectory, StringComparison.OrdinalIgnoreCase))
         {
             // Already a full path within base directory
             fullPath = Path.GetFullPath(path);
@@ -870,14 +879,15 @@ public sealed partial class FileManager
         else
         {
             // Combine with base directory and resolve
-            fullPath = Path.GetFullPath(Path.Combine(_baseDirectory, path));
+            fullPath = Path.GetFullPath(path, normalizedBaseDirectory);
         }
 
         // SECURITY: Ensure resolved path is still within base directory
         // This prevents path traversal attacks like "../../etc/passwd"
-        if (!fullPath.StartsWith(_baseDirectory, StringComparison.Ordinal))
+        // Use OrdinalIgnoreCase for Windows file system case-insensitivity
+        if (!fullPath.StartsWith(normalizedBaseDirectory, StringComparison.OrdinalIgnoreCase))
         {
-            LogPathTraversalAttemptBlocked(_logger, path, fullPath, _baseDirectory);
+            LogPathTraversalAttemptBlocked(_logger, path, fullPath, normalizedBaseDirectory);
 
             throw new UnauthorizedAccessException(
                 $"Path traversal detected: '{path}' attempts to access outside base directory");

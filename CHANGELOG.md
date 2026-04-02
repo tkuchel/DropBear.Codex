@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Security regression coverage** (2026-03-31):
+  - Added focused tests for anti-forgery validation, envelope sealing, notification ownership, workflow signal replay, authenticated encryption, browser file bounds checking, stricter SVG validation, and safer serializer defaults
+
+### Platform
+- **.NET 10 upgrade** (2026-03-31):
+  - Retargeted the solution to .NET 10
+  - Updated central package management versions for the current framework baseline
+
+### Documentation
+- **Documentation refresh** (2026-03-31):
+  - Updated README to reflect .NET 10 and the recent security hardening work
+  - Corrected helper/component docs that previously implied raw HTML rendering or stronger security guarantees than the implementation provided
+
+### Fixed
+- **Security hardening pass** (2026-03-31):
+  - Enforced per-user ownership checks for notification read/update flows
+  - Replaced forgeable anti-forgery token validation with secret-backed token authentication
+  - Made untrusted HTML rendering fail closed by default and removed unsafe `eval`-based JS interop
+  - Hardened `BrowserFileProxy` and file upload/browser metadata contracts around advisory client-side values
+  - Removed unsafe type/provider resolution from file and workflow persistence boundaries
+  - Persisted workflow signal payloads correctly across resume paths
+  - Corrected envelope and composite-envelope sealing so signatures cover canonical state and are invalidated on mutation
+  - Added authentication to AES-CNG encrypted payloads and protected private PEM persistence
+  - Enforced serializer and storage memory limits and safer default MessagePack/JSON helper configurations
+  - Tightened SVG custom icon validation and aligned a broad set of API/docs contracts with the actual security guarantees
+
+### Cleanup
+- Removed generated audit artifacts from the repository worktree
+
 ### Added
 - **Performance Benchmarking Infrastructure** (Priority 3.3 - 2025-11-02):
   - Added `DropBear.Codex.Benchmarks` project using BenchmarkDotNet 0.14.0
@@ -241,4 +271,3 @@ var result = AntiForgeryHelper.ValidateToken(
 ### Added
 - Setup initial structure for `DropBear.Codex` libraries.
 - Created foundational projects and initial implementations.
-

@@ -23,7 +23,8 @@ public sealed record SnackbarInstance
     public string? Title { get; init; }
 
     /// <summary>
-    ///     Main message content (supports HTML markup).
+    ///     Main message content.
+    ///     By default this is HTML-encoded by the snackbar component before rendering, so untrusted input is shown as text.
     /// </summary>
     [Required]
     public string Message { get; init; } = string.Empty;

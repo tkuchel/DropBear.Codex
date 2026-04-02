@@ -251,10 +251,70 @@ public sealed class XxHasher : BaseHasher
 
         cancellationToken.ThrowIfCancellationRequested();
 
-        // Determine if we're working with 32-bit or 64-bit hash based on expected length
-        _use32Bit = expectedHash.Length <= 8;
+        // THREAD SAFETY FIX: Use local variable instead of mutating instance state
+        var use32Bit = expectedHash.Length <= 8;
 
-        var hashResult = await HashAsync(input, cancellationToken).ConfigureAwait(false);
+        // Compute hash with determined bit size
+        Result<string, HashingError> hashResult;
+        if (use32Bit != _use32Bit)
+        {
+            // Temporarily override for this operation using local computation
+            var byteCount = Encoding.UTF8.GetByteCount(input);
+            if (input.Length > 100000)
+            {
+                hashResult = await Task.Run(() =>
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                    try
+                    {
+                        var bufferSpan = buffer.AsSpan(0, byteCount);
+                        Encoding.UTF8.GetBytes(input, bufferSpan);
+
+                        if (use32Bit)
+                        {
+                            var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
+                            return Result<string, HashingError>.Success(hash.ToString("x8"));
+                        }
+                        else
+                        {
+                            var hash = XXHash.Hash64(bufferSpan, _seed);
+                            return Result<string, HashingError>.Success(hash.ToString("x16"));
+                        }
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(buffer);
+                    }
+                }, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                var buffer = byteCount <= 512 ? stackalloc byte[byteCount] : ArrayPool<byte>.Shared.Rent(byteCount).AsSpan(0, byteCount);
+                Encoding.UTF8.GetBytes(input, buffer);
+
+                if (use32Bit)
+                {
+                    var hash = XXHash.Hash32(buffer, (uint)_seed);
+                    hashResult = Result<string, HashingError>.Success(hash.ToString("x8"));
+                }
+                else
+                {
+                    var hash = XXHash.Hash64(buffer, _seed);
+                    hashResult = Result<string, HashingError>.Success(hash.ToString("x16"));
+                }
+
+                if (byteCount > 512)
+                {
+                    ArrayPool<byte>.Shared.Return(buffer.ToArray());
+                }
+            }
+        }
+        else
+        {
+            hashResult = await HashAsync(input, cancellationToken).ConfigureAwait(false);
+        }
+
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute XXHash for verification (async).");
@@ -280,10 +340,62 @@ public sealed class XxHasher : BaseHasher
             return Result<Unit, HashingError>.Failure(HashVerificationError.MissingInput);
         }
 
-        // Determine if we're working with 32-bit or 64-bit hash based on expected length
-        _use32Bit = expectedHash.Length <= 8;
+        // THREAD SAFETY FIX: Use local variable instead of mutating instance state
+        var use32Bit = expectedHash.Length <= 8;
 
-        var hashResult = Hash(input);
+        // Compute hash with determined bit size
+        Result<string, HashingError> hashResult;
+        if (use32Bit != _use32Bit)
+        {
+            // Compute directly with correct bit size
+            var byteCount = Encoding.UTF8.GetByteCount(input);
+
+            if (byteCount <= 512)
+            {
+                Span<byte> buffer = stackalloc byte[byteCount];
+                Encoding.UTF8.GetBytes(input, buffer);
+
+                if (use32Bit)
+                {
+                    var hash = XXHash.Hash32(buffer, (uint)_seed);
+                    hashResult = Result<string, HashingError>.Success(hash.ToString("x8"));
+                }
+                else
+                {
+                    var hash = XXHash.Hash64(buffer, _seed);
+                    hashResult = Result<string, HashingError>.Success(hash.ToString("x16"));
+                }
+            }
+            else
+            {
+                var buffer = ArrayPool<byte>.Shared.Rent(byteCount);
+                try
+                {
+                    var bufferSpan = buffer.AsSpan(0, byteCount);
+                    Encoding.UTF8.GetBytes(input, bufferSpan);
+
+                    if (use32Bit)
+                    {
+                        var hash = XXHash.Hash32(bufferSpan, (uint)_seed);
+                        hashResult = Result<string, HashingError>.Success(hash.ToString("x8"));
+                    }
+                    else
+                    {
+                        var hash = XXHash.Hash64(bufferSpan, _seed);
+                        hashResult = Result<string, HashingError>.Success(hash.ToString("x16"));
+                    }
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(buffer);
+                }
+            }
+        }
+        else
+        {
+            hashResult = Hash(input);
+        }
+
         if (!hashResult.IsSuccess)
         {
             Logger.Error("Failed to compute XXHash for verification (sync).");

@@ -35,22 +35,27 @@ public sealed partial class AppDomainWorkflowTypeResolver : IWorkflowTypeResolve
             return null;
         }
 
-        // Try assembly qualified name first (most reliable)
+        var contextTypes = _knownTypes.Value.Values;
+
         if (!string.IsNullOrEmpty(assemblyQualifiedName))
         {
-            var type = Type.GetType(assemblyQualifiedName);
-            if (type is not null)
+            var knownType = contextTypes.FirstOrDefault(type =>
+                string.Equals(type.AssemblyQualifiedName, assemblyQualifiedName, StringComparison.Ordinal));
+
+            if (knownType is not null)
             {
-                LogResolvedFromAssemblyQualifiedName(type.FullName ?? type.Name);
-                return type;
+                LogResolvedFromAssemblyQualifiedName(knownType.FullName ?? knownType.Name);
+                return knownType;
             }
         }
 
-        // Fallback: try to find by type name in known types
         if (!string.IsNullOrEmpty(typeName))
         {
-            var contextTypes = _knownTypes.Value;
-            if (contextTypes.TryGetValue(typeName, out Type? knownType))
+            var knownType = contextTypes.FirstOrDefault(type =>
+                string.Equals(type.FullName, typeName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(type.Name, typeName, StringComparison.OrdinalIgnoreCase));
+
+            if (knownType is not null)
             {
                 LogResolvedFromKnownTypes(typeName);
                 return knownType;
@@ -158,11 +163,61 @@ public sealed partial class AppDomainWorkflowTypeResolver : IWorkflowTypeResolve
 
     private static bool IsSystemAssembly(Assembly assembly)
     {
-        string assemblyName = assembly.GetName().Name ?? string.Empty;
-        return assemblyName.StartsWith("System", StringComparison.OrdinalIgnoreCase) ||
-               assemblyName.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase) ||
-               assemblyName.StartsWith("mscorlib", StringComparison.OrdinalIgnoreCase) ||
-               assemblyName.StartsWith("netstandard", StringComparison.OrdinalIgnoreCase);
+        var name = assembly.GetName().Name ?? string.Empty;
+        return name.StartsWith("System", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("mscorlib", StringComparison.OrdinalIgnoreCase) ||
+               name.StartsWith("netstandard", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    ///     SECURITY: Validates that a type is safe to resolve and instantiate.
+    ///     Prevents Remote Code Execution by rejecting dangerous types.
+    /// </summary>
+    private static bool IsTypeSafeForResolution(Type type)
+    {
+        // Reject types from dangerous namespaces
+        string? ns = type.Namespace;
+        if (ns is null)
+        {
+            return false;
+        }
+
+        // Block system diagnostic and runtime types that could execute arbitrary code
+        if (ns.StartsWith("System.Diagnostics", StringComparison.Ordinal) ||
+            ns.StartsWith("System.Runtime.Loader", StringComparison.Ordinal) ||
+            ns.StartsWith("System.Reflection.Emit", StringComparison.Ordinal) ||
+            ns.StartsWith("System.CodeDom", StringComparison.Ordinal) ||
+            ns.StartsWith("Microsoft.CodeAnalysis", StringComparison.Ordinal) ||
+            ns.StartsWith("System.Management", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Only allow workflow-related types from allowed assemblies
+        // Types must be in application assemblies or DropBear.Codex assemblies
+        Assembly assembly = type.Assembly;
+
+        // Block all system and Microsoft assemblies
+        if (IsSystemAssembly(assembly))
+        {
+            return false;
+        }
+
+        // Type must be a concrete class
+        if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
+        {
+            return false;
+        }
+
+        // Reject compiler-generated or nested closure types
+        if (type.Name.Contains("<") || type.Name.Contains(">") ||
+            type.FullName?.Contains("+<") == true)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     #region Logging
@@ -211,6 +266,11 @@ public sealed partial class AppDomainWorkflowTypeResolver : IWorkflowTypeResolve
         Level = LogLevel.Error,
         Message = "Error during context type discovery")]
     partial void LogContextTypeDiscoveryError(ReflectionTypeLoadException exception);
+
+    [LoggerMessage(
+        Level = LogLevel.Warning,
+        Message = "Type '{TypeName}' rejected by security validation")]
+    partial void LogTypeRejectedBySecurity(string typeName);
 
     #endregion
 }

@@ -56,6 +56,11 @@ public sealed class ExcelExporter<T> where T : class
             return Result<string, ExportError>.Failure(new ExportError("Data cannot be null."));
         }
 
+        if (data.Count == 0)
+        {
+            return Result<string, ExportError>.Failure(new ExportError("Data collection is empty. Cannot export an empty collection."));
+        }
+
         if (string.IsNullOrWhiteSpace(filePath))
         {
             return Result<string, ExportError>.Failure(new ExportError("File path cannot be null or empty."));
@@ -95,6 +100,11 @@ public sealed class ExcelExporter<T> where T : class
         if (data == null)
         {
             return Result<string, ExportError>.Failure(new ExportError("Data cannot be null."));
+        }
+
+        if (data.Count == 0)
+        {
+            return Result<string, ExportError>.Failure(new ExportError("Data collection is empty. Cannot export an empty collection."));
         }
 
         if (string.IsNullOrWhiteSpace(filePath))
@@ -141,6 +151,11 @@ public sealed class ExcelExporter<T> where T : class
             return Result<MemoryStream, ExportError>.Failure(new ExportError("Data cannot be null."));
         }
 
+        if (data.Count == 0)
+        {
+            return Result<MemoryStream, ExportError>.Failure(new ExportError("Data collection is empty. Cannot export an empty collection."));
+        }
+
         try
         {
             using var workbook = CreateWorkbook(data, options);
@@ -176,6 +191,11 @@ public sealed class ExcelExporter<T> where T : class
         if (data == null)
         {
             return Result<MemoryStream, ExportError>.Failure(new ExportError("Data cannot be null."));
+        }
+
+        if (data.Count == 0)
+        {
+            return Result<MemoryStream, ExportError>.Failure(new ExportError("Data collection is empty. Cannot export an empty collection."));
         }
 
         try

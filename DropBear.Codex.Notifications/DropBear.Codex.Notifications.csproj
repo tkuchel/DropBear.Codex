@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
         <!-- Target Frameworks -->
-        <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+        <TargetFramework>net10.0</TargetFramework>
         <!-- Language Features -->
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
@@ -85,8 +85,7 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <!-- For serialization support -->
-        <PackageReference Include="System.Text.Json" />
+        <!-- System.Text.Json removed: included in the net10.0 shared framework -->
         <!-- Optional: Any additional dependencies for the notification system -->
         <PackageReference Include="Microsoft.Extensions.Configuration" />
         <PackageReference Update="Nerdbank.GitVersioning"></PackageReference>

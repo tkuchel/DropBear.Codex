@@ -27,7 +27,7 @@ public static class DropBearFileExtensions
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        Converters = { new TypeConverter(), new ContentContainerConverter(), new JsonStringEnumConverter() }
+        Converters = { new ContentContainerConverter(), new JsonStringEnumConverter() }
     };
 
     // A shared memory stream manager to optimize allocations

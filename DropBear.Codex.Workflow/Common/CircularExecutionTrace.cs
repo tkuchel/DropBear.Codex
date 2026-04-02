@@ -43,15 +43,17 @@ public sealed class CircularExecutionTrace<T>
         _count = 0;
 
         // Initialize streaming channel if enabled
+        // SECURITY: Use bounded channel to prevent memory exhaustion
         if (enableStreaming)
         {
-            var options = new UnboundedChannelOptions
+            var options = new BoundedChannelOptions(capacity * 2)
             {
+                FullMode = BoundedChannelFullMode.DropOldest,
                 SingleReader = false,
                 SingleWriter = false,
                 AllowSynchronousContinuations = false
             };
-            _streamingChannel = Channel.CreateUnbounded<T>(options);
+            _streamingChannel = Channel.CreateBounded<T>(options);
         }
     }
 
