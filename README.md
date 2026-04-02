@@ -2,7 +2,7 @@
 
 **DropBear Codex** is a collection of modular C# libraries built with .NET 10, designed to provide robust, reusable components for enterprise-grade applications. The libraries follow Railway-Oriented Programming principles with a comprehensive Result pattern for error handling. All libraries are published as NuGet packages for easy integration.
 
-[![CI (.NET 9)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml/badge.svg)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml)
+[![CI (.NET 10)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml/badge.svg)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/tkuchel/DropBear.Codex/actions/workflows/codeql.yml/badge.svg)](https://github.com/tkuchel/DropBear.Codex/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -45,6 +45,9 @@ The solution includes the following libraries:
 ### UI & Notifications
 - **DropBear.Codex.Blazor**: Custom Blazor component library for interactive web applications.
 - **DropBear.Codex.Notifications**: Notification infrastructure with multiple channels and delivery strategies.
+
+### Tooling
+- **DropBear.Codex.Benchmarks**: BenchmarkDotNet suite for tracking hot-path performance and regression risk across the libraries.
 
 ## Getting Started
 
