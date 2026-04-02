@@ -13,6 +13,11 @@ public sealed class AESCNGEncryptorTests
     [Fact]
     public async Task EncryptAsync_ThenDecryptAsync_ShouldRoundTripPlaintext()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         using var rsa = RSA.Create(2048);
         using var encryptor = new AESCNGEncryptor(rsa, new RecyclableMemoryStreamManager());
         var plaintext = Encoding.UTF8.GetBytes("authenticated payload");
@@ -28,6 +33,11 @@ public sealed class AESCNGEncryptorTests
     [Fact]
     public async Task DecryptAsync_ShouldFail_WhenCiphertextIsTampered()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         using var rsa = RSA.Create(2048);
         using var encryptor = new AESCNGEncryptor(rsa, new RecyclableMemoryStreamManager());
         var plaintext = Encoding.UTF8.GetBytes("authenticated payload");

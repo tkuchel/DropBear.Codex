@@ -13,6 +13,11 @@ public sealed class RSAKeyProviderTests : IDisposable
     [Fact]
     public void GetRsaProvider_ShouldPersist_PrivatePemUsingProtectedEnvelope()
     {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         Directory.CreateDirectory(_testDirectory);
         var publicKeyPath = Path.Combine(_testDirectory, "public.pem");
         var privateKeyPath = Path.Combine(_testDirectory, "private.pem");

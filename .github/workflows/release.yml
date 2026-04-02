@@ -12,6 +12,11 @@ on:
         default: 'false'
         type: boolean
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false # Don't cancel releases in progress
@@ -42,6 +47,15 @@ jobs:
           key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj', '**/Directory.Packages.props') }}
           restore-keys: |
             ${{ runner.os }}-nuget-
+
+      - name: Validate Version Alignment
+        shell: pwsh
+        run: |
+          ./validate-version-alignment.ps1
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Version validation failed! See output above for details."
+            exit 1
+          }
 
       - name: Restore
         run: dotnet restore --nologo

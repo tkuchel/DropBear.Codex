@@ -9,6 +9,11 @@ on:
     - cron: '24 3 * * 4' # Weekly on Thursday at 3:24 AM UTC
   workflow_dispatch: # Allow manual triggering
 
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: codeql-${{ github.ref }}
   cancel-in-progress: true
