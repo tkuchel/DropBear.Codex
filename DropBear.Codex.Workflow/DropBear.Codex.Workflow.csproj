@@ -89,6 +89,7 @@
     <!-- Files to Include in Package -->
     <ItemGroup>
         <!--    <None Include="icon.png" Pack="true" PackagePath="" Condition="Exists('icon.png')" />-->
+        <PackageReference Include="Microsoft.Extensions.Options" />
         <None Include="PACKAGE_README.md" Pack="true" PackagePath="" Condition="Exists('PACKAGE_README.md')" />
         <None Include="SECURITY.md" Pack="true" PackagePath="" Condition="Exists('SECURITY.md')" />
         <None Include="LICENSE" Pack="true" PackagePath="" Condition="Exists('LICENSE')" />
