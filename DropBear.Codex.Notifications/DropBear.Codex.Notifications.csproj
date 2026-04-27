@@ -58,6 +58,7 @@
     <!-- Item Group for Dependencies -->
     <ItemGroup>
         <!-- DropBear.Codex.Core is required since Notifications depends on it -->
+        <PackageReference Include="Microsoft.Extensions.Caching.Memory" />
         <ProjectReference Include="..\DropBear.Codex.Core\DropBear.Codex.Core.csproj" />
         <ProjectReference Include="..\DropBear.Codex.Serialization\DropBear.Codex.Serialization.csproj" />
         <PackageReference Include="JetBrains.Annotations">
