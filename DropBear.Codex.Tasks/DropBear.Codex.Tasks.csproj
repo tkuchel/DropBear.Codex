@@ -49,6 +49,7 @@
             <PrivateAssets>all</PrivateAssets>
             <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
         <PackageReference Include="Microsoft.SourceLink.GitHub">
             <PrivateAssets>All</PrivateAssets>
         </PackageReference>
