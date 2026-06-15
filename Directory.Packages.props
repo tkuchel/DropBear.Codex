@@ -55,7 +55,7 @@
     <!-- ===== State Management ===== -->
     <PackageVersion Include="Stateless" Version="5.20.0" />
     <!-- ===== Resilience & Retry ===== -->
-    <PackageVersion Include="Polly" Version="8.6.6" />
+    <PackageVersion Include="Polly" Version="8.7.0" />
   </ItemGroup>
 
   <!-- ═══════════════════════════════════════════════════════════════════════════
