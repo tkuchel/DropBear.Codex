@@ -45,7 +45,7 @@
     <PackageVersion Include="FluentStorage.Azure.Blobs" Version="6.0.2" />
     <PackageVersion Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
     <!-- ===== Utilities ===== -->
-    <PackageVersion Include="ClosedXML" Version="0.105.0" />
+    <PackageVersion Include="ClosedXML" Version="0.105.1" />
     <PackageVersion Include="FuzzySharp" Version="2.0.2" />
     <!-- ===== Messaging & Events ===== -->
     <PackageVersion Include="MessagePipe" Version="1.8.2" />
