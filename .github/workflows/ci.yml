@@ -74,7 +74,7 @@ jobs:
             -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=cobertura
 
       - name: Publish Coverage Report
-        uses: danielpalme/ReportGenerator-GitHub-Action@254e112b8bf6be39303adac2af5e31ee84b48b70 # v5.5.7
+        uses: danielpalme/ReportGenerator-GitHub-Action@049f7ec958c672fd31d5cc1cb01622dc8d2e23ab # v5.5.7
         with:
           reports: "./TestResults/**/coverage.cobertura.xml"
           targetdir: "./TestResults/CoverageReport"
